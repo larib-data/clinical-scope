@@ -18,7 +18,7 @@ hiddenimports += collect_submodules("dash_daq")
 hiddenimports += collect_submodules("clinical_data_visualizer")
 
 a = Analysis(
-    ['core_api.py'],
+    ['../dash_api/core_api.py'],
     pathex=[],
     binaries=[],
     datas=datas,
@@ -39,7 +39,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='core_api',
+    name='ClinicalVisuAppAlexis',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -55,5 +55,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='core_api',
+    name='ClinicalVisuAppAlexis',
 )

@@ -1,5 +1,6 @@
 # === Imports === #
 import webbrowser
+from importlib.metadata import PackageNotFoundError, version
 
 import dash_bootstrap_components as dbc
 import dash_daq as daq
@@ -10,12 +11,18 @@ from clinical_data_visualizer import logger_config
 # Import callbacks to register them with the app
 from clinical_data_visualizer.dash_api import callbacks  # noqa: F401
 
+# === API Version === #
+try:
+    __version__ = version("clinical_data_visualizer")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev (not installed)"
+
 # === Configure the logger and add new app run message === #
 logs_path_root = logger_config.get_logs_path()
 logs_path = logs_path_root / "app/dash_api.log"
 logger = logger_config.setup_logging(logs_path, debug=True)
 logger.info("========================================")
-logger.info("New app run")
+logger.info("New app run - Version %s", __version__)
 logger.info("========================================")
 
 
@@ -36,6 +43,22 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callb
 
 app.layout = html.Div(
     [
+        # Version display in top right corner
+        html.Div(
+            f"API Version: {__version__}",
+            style={
+                "position": "absolute",
+                "top": "10px",
+                "right": "10px",
+                "color": "#666",
+                "fontSize": "12px",
+                "fontFamily": "monospace",
+                "backgroundColor": "#f0f0f0",
+                "padding": "4px 8px",
+                "borderRadius": "4px",
+                "border": "1px solid #ddd",
+            },
+        ),
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
