@@ -6,32 +6,27 @@ from clinical_data_visualizer import utilities as utl
 
 
 # ==================================================================================================
-def read_waves_data(
-    path: str | Path,
-    delimiter=None,
-    decimal='.'
-) -> pd.DataFrame:
-
+def read_waves_data(path: str | Path, delimiter=None, decimal=".") -> pd.DataFrame:
     path = Path(path)
 
     if path.name.endswith("parquet"):
         data_df = pd.read_parquet(path)
 
     elif path.name.endswith("csv"):
-
         data_df = pd.read_csv(
             path,
             sep=delimiter,
             engine="python",
             decimal=decimal,
-            encoding='utf-8',
-            encoding_errors='ignore',
-        ) # no dtype specify, to use pandas guessing capabilities
+            encoding="utf-8",
+            encoding_errors="ignore",
+        )  # no dtype specify, to use pandas guessing capabilities
 
     else:
         raise ValueError("invalid data_type -> 'csv' and 'parquet' are the allowed values.")
 
     return data_df
+
 
 # ==================================================================================================
 def filter_dataframe_by_time(

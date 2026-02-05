@@ -72,7 +72,7 @@ class FluxmedParametersDataSource(DataSourceBase):
             # Extract column names and units
             col_names = lines[col_idx].split()
             col_units = lines[col_idx + 1].split()
-            columns = [f"{n}({u})" for n, u in zip(col_names, col_units)]
+            columns = [f"{n}({u})" for n, u in zip(col_names, col_units, strict=False)]
 
             # Make columns unique if duplicates exist
             def make_unique(columns):

@@ -88,33 +88,32 @@ def find_file(
 
     if len(matches) == 1:
         selected_path = matches[0]
-    else:
-        if preferred_suffixes:
-            selected_path = None
-            for suffix in preferred_suffixes:
-                filtered = [f for f in matches if f.suffix.lower() == suffix.lower()]
-                if len(filtered) == 1:
-                    selected_path = filtered[0]
-                    break
+    elif preferred_suffixes:
+        selected_path = None
+        for suffix in preferred_suffixes:
+            filtered = [f for f in matches if f.suffix.lower() == suffix.lower()]
+            if len(filtered) == 1:
+                selected_path = filtered[0]
+                break
 
-            if selected_path is None:
-                logger.warning(
-                    "⚠️ Multiple '%s' files found in '%s' (keyword='%s'), "
-                    "and suffix preferences could not resolve a unique match.",
-                    data_source_name,
-                    folder_path,
-                    keyword,
-                )
-                return None
-        else:
+        if selected_path is None:
             logger.warning(
                 "⚠️ Multiple '%s' files found in '%s' (keyword='%s'), "
-                "and no suffix preference provided.",
+                "and suffix preferences could not resolve a unique match.",
                 data_source_name,
                 folder_path,
                 keyword,
             )
             return None
+    else:
+        logger.warning(
+            "⚠️ Multiple '%s' files found in '%s' (keyword='%s'), "
+            "and no suffix preference provided.",
+            data_source_name,
+            folder_path,
+            keyword,
+        )
+        return None
 
     logger.info("📄 Selected file for '%s': %s", data_source_name, selected_path)
     return selected_path
@@ -136,9 +135,8 @@ def find_file_list(folder_path: Path, extension: str, description: str) -> list[
     if not files:
         logger.debug("Could not find any %s in folder '%s'", description, folder_path)
         return None
-    else:
-        logger.debug("Found %s: %s in folder %s", description, files, folder_path)
-        return files
+    logger.debug("Found %s: %s in folder %s", description, files, folder_path)
+    return files
 
 
 # ==================================================================================================
@@ -163,6 +161,7 @@ def wrap_label(text: str, max_line_length: int = 12, break_chars: str = r"[ \-_]
 
     Returns:
         Wrapped text string with <br> line breaks.
+
     """
     tokens = re.split(f"({break_chars})", text)
     lines = []
@@ -249,8 +248,7 @@ def filter_data_by_timestamps(
     # Ensure index is in the library timezone
     if filtered.index.tz is None:
         raise ValueError("Dataframe 'data' index should be timezone-aware")
-    else:
-        filtered.index = filtered.index.tz_convert(cst.LIBRARY_TZ)
+    filtered.index = filtered.index.tz_convert(cst.LIBRARY_TZ)
 
     # Localize or convert input timestamps
     if time_start is not None:
@@ -295,6 +293,7 @@ def change_ndarray_timezone(
         tuple: (adjusted_array, new_timezone)
             - adjusted_array: The array with timestamps adjusted to appear as if in new_timezone.
             - new_timezone: The target timezone (for reference).
+
     """
     if array_timezone is None or array_timezone == new_timezone:
         return array, new_timezone
@@ -313,12 +312,12 @@ def get_column_name_from_pattern(columns: pd.Index | list[str], pattern: str) ->
 
         if len(matching_columns) == 1:
             return matching_columns[0]
-        elif len(matching_columns) == 0:
+        if len(matching_columns) == 0:
             logger.warning("No column found in dataframe from the pattern %s", pattern)
         else:
             logger.warning(
                 "More than one column found in dataframe with the pattern %s. -> Ignored", pattern
             )
         return None
-    else:  # Could not find any pattern, consider there was none
-        return pattern
+    # Could not find any pattern, consider there was none
+    return pattern

@@ -67,7 +67,7 @@ class FluxmedSignalsDataSource(DataSourceBase):
             # Build column names
             col_names = re.split(r"\s+", lines[header_idx])
             col_units = re.split(r"\s+", lines[units_idx])
-            columns = [f"{name}({unit})" for name, unit in zip(col_names, col_units)]
+            columns = [f"{name}({unit})" for name, unit in zip(col_names, col_units, strict=False)]
 
             # Extract numeric rows only
             numeric_lines = [
@@ -90,7 +90,9 @@ class FluxmedSignalsDataSource(DataSourceBase):
             # Build datetime index
             time_col = columns[0]
             df = df.apply(pd.to_numeric, errors="coerce")
-            df.index = pd.to_datetime([start_time + timedelta(seconds=float(t)) for t in df[time_col]])
+            df.index = pd.to_datetime(
+                [start_time + timedelta(seconds=float(t)) for t in df[time_col]]
+            )
             df.index.name = "datetime_index"
         else:
             raise NotImplementedError(

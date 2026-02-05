@@ -90,7 +90,7 @@ def main(
                     if signals:
                         pg = PlotGroup(name=group_name, signals=signals)
                         plot_group_list.append(pg)
-                except Exception:  # noqa: PERF203
+                except Exception:
                     logger.exception(
                         "⚠️ Failed to create grouped PlotGroup '%s' in datasource '%s'.",
                         group_name,
@@ -157,7 +157,7 @@ def main(
             signals = [sig for sig in all_signal_list if sig.raw_name in grouped_field_list]
             if signals:
                 plot_group_list.append(PlotGroup(name=group_name, signals=signals))
-        except Exception:  # noqa: PERF203
+        except Exception:
             logger.exception("⚠️ Failed to create global PlotGroup '%s'.", group_name)
 
     # Handle global loop not implemented

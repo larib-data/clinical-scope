@@ -35,15 +35,14 @@ def _optimize_df_types(df: pd.DataFrame) -> pd.DataFrame:
                         df[col] = df[col].astype("UInt32")
                     else:
                         df[col] = df[col].astype("UInt64")
+                elif c_min >= np.iinfo(np.int8).min and c_max <= np.iinfo(np.int8).max:
+                    df[col] = df[col].astype("Int8")
+                elif c_min >= np.iinfo(np.int16).min and c_max <= np.iinfo(np.int16).max:
+                    df[col] = df[col].astype("Int16")
+                elif c_min >= np.iinfo(np.int32).min and c_max <= np.iinfo(np.int32).max:
+                    df[col] = df[col].astype("Int32")
                 else:
-                    if c_min >= np.iinfo(np.int8).min and c_max <= np.iinfo(np.int8).max:
-                        df[col] = df[col].astype("Int8")
-                    elif c_min >= np.iinfo(np.int16).min and c_max <= np.iinfo(np.int16).max:
-                        df[col] = df[col].astype("Int16")
-                    elif c_min >= np.iinfo(np.int32).min and c_max <= np.iinfo(np.int32).max:
-                        df[col] = df[col].astype("Int32")
-                    else:
-                        df[col] = df[col].astype("Int64")
+                    df[col] = df[col].astype("Int64")
             else:
                 df[col] = pd.to_numeric(df[col], downcast="float")
     return df
@@ -94,7 +93,9 @@ class MindRayDataSource(DataSourceBase):
 
     @classmethod
     def _find(cls, folder_path: Path) -> list[Path] | None:
-        return helper.find_file_list(folder_path, options_naming.KEYWORD_EXTENSION, "Mindray files file")
+        return helper.find_file_list(
+            folder_path, options_naming.KEYWORD_EXTENSION, "Mindray files file"
+        )
 
     @classmethod
     @helper.time_it

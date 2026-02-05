@@ -20,14 +20,14 @@ from clinical_data_visualizer.dash_api.callbacks.shape_callbacks import (
 )
 
 __all__ = [
-    "load_db_options",
     "build_patient_options_ui",
-    "process_visualization",
-    "sync_plotly_annotations",
+    "load_db_options",
     "lock_and_style_shapes",
-    "persist_shapes",
-    "save_annotations_and_shapes",
-    "update_shape_options",
-    "toggle_modal",
     "modify_shape",
+    "persist_shapes",
+    "process_visualization",
+    "save_annotations_and_shapes",
+    "sync_plotly_annotations",
+    "toggle_modal",
+    "update_shape_options",
 ]

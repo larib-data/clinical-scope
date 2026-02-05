@@ -52,8 +52,8 @@ class DataSourceBase(ABC):
 
         Returns:
             Path or list[Path] or None: Found file(s), or None if not found
+
         """
-        pass
 
     @classmethod
     @abstractmethod
@@ -67,8 +67,8 @@ class DataSourceBase(ABC):
 
         Returns:
             pd.DataFrame: Loaded data with datetime index
+
         """
-        pass
 
     @classmethod
     def _quick_load(cls, path_dataframe: Path) -> pd.DataFrame:
@@ -176,7 +176,7 @@ class DataSourceBase(ABC):
                 if cls.SOURCE_OPTIONS is not None:
                     kwargs["source_options"] = cls.SOURCE_OPTIONS
                 list_signal_container.append(Signal.time_series_from_dataframe(**kwargs))
-            except Exception:  # noqa: PERF203
+            except Exception:
                 logger.exception("Could not process the signal '%s' as Signal object", signal)
 
         return list_signal_container
@@ -188,6 +188,7 @@ class DataSourceBase(ABC):
 
         Returns:
             Path to folder, or None if not found
+
         """
         return folder_path
 
@@ -207,8 +208,11 @@ class DataSourceBase(ABC):
 
         Returns:
             list[Signal]: Extracted signals
+
         """
-        database_options = database_options_specific if database_options_specific is not None else {}
+        database_options = (
+            database_options_specific if database_options_specific is not None else {}
+        )
         patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
 
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])

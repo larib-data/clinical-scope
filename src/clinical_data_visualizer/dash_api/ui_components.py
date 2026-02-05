@@ -29,6 +29,7 @@ def dash_widget_factory(schema_class, component_id_prefix: str):
 
     Returns:
         html.Div: A Div containing the label and input component
+
     """
     t = schema_class.API_TYPE
     default = schema_class.DEFAULT
@@ -110,6 +111,7 @@ def parse_color(color: str) -> str:
 
     Returns:
         str: Standardized color string
+
     """
     # Parse rgb/rgba strings
     r, g, b, a = 128, 128, 128, 1  # default gray

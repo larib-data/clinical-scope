@@ -21,6 +21,7 @@ def parse_datetime(s: str) -> datetime:
 
     Returns:
         datetime: Parsed datetime object
+
     """
     try:
         return datetime.fromisoformat(s)
@@ -38,5 +39,6 @@ def format_datetime(dt: datetime) -> str:
 
     Returns:
         str: Datetime string in Plotly format (milliseconds precision)
+
     """
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]  # drop microseconds to milliseconds

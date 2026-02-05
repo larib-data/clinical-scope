@@ -48,7 +48,9 @@ class PhilipsWavesDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _format(cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict) -> pd.DataFrame:
+    def _format(
+        cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
+    ) -> pd.DataFrame:
         # Philips waves doesn't need timezone handling (already has it)
         df = cls._apply_time_shift(df, patient_options)
         df = cls._filter_by_datetime(df, patient_options)

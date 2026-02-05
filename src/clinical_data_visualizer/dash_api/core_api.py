@@ -90,7 +90,9 @@ app.layout = html.Div(
                                                 html.Label("Global (full y-axis):"),
                                                 dcc.Checklist(
                                                     id="shape-global-input",
-                                                    options=[{"label": "Global", "value": "global"}],
+                                                    options=[
+                                                        {"label": "Global", "value": "global"}
+                                                    ],
                                                     value=[],
                                                 ),
                                             ],

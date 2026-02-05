@@ -1,0 +1,87 @@
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".git",
+    ".ipynb_checkpoints",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    ".vscode",
+]
+
+line-length = 100
+indent-width = 4
+
+target-version = "py312"
+
+[lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = ["ALL"]
+ignore = [
+    "COM812", # Incompatible with ruff format
+    "D203", # Incompatible with D211. D211 prefered by the formater
+    "INP",
+    "FIX", # Allows todo/fixme
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D106",
+    "D107",
+    "D202", # Authorize a line break after docstring
+    "D212", # Incompatible with D213. D213 prefered because easier to read summary on a clean line
+    "D401",
+    "D417",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913", # Functions with a lot of args
+    "PLR0914",
+    "PLR0915",
+    "PLR0916",
+    "PLR0917",
+    "TD002", # Avoid asking todo author
+    "TD003", # Avoid asking todo issue link
+    "FBT001",
+    "FBT002",
+    "ANN002",
+    "ANN003",
+    "C90", # mccabe functions complexity
+    "ERA001", # Commented out code
+    "ANN401", # Allow 'Any' as typehint 
+]
+
+fixable = ["ALL"]
+unfixable = []
+
+[lint.extend-per-file-ignores]
+"tests/*" = [
+    "ANN001",
+    "ANN201",
+    "S101", # Accept assert
+    "PT011", # pytest raise too broad, maybe should be removed
+]
+"example/*" = [
+    "ANN001",
+    "ANN201",
+]
+"scripts/*" = [
+    "ANN001",
+    "ANN201",
+]
+
+"API/app.ipynb" = [
+    "PLW0602",
+    "PLW0603",
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+docstring-code-format = true
+docstring-code-line-length = "dynamic"

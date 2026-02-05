@@ -464,25 +464,25 @@ class Signal:
         if self.trace_options.plot_options.plot_type == cst.PlotType.TIME_SERIES:
             hovertemplate = (
                 f"<b>{self.name}</b><br>"
-                + "%{x|%H:%M:%S.%f} | %{y}"
-                + f" {
+                 "%{x|%H:%M:%S.%f} | %{y}"
+                 f" {
                     y_unit_name if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
                 }<br>"
-                + "<extra></extra>"
+                 "<extra></extra>"
             )
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
             hovertemplate = (
                 f"<b>{self.name}</b><br>"
-                + "%{x}"
-                + f" {
+                 "%{x}"
+                 f" {
                     x_unit_name if x_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
                 }"
-                + " | %{y}"
-                + f" {
+                 " | %{y}"
+                 f" {
                     y_unit_name if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
                 }<br>"
-                + "<extra></extra>"
+                 "<extra></extra>"
             )
         else:
             hovertemplate = None

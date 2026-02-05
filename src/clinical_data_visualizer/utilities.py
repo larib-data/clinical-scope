@@ -11,12 +11,14 @@ import plotly.graph_objects as go
 # ==================================================================================================
 logger = logging.getLogger(__name__)
 
+
 # ==================================================================================================
 def is_timestamp(value: object) -> bool:
     """Check if the value is a pandas Timestamp or can be converted to one."""
     return isinstance(value, (pd.Timestamp, np.datetime64)) or (
         isinstance(value, str) and is_convertible_to_timestamp(value)
     )
+
 
 # ==================================================================================================
 def is_convertible_to_timestamp(value: str) -> bool:
@@ -29,6 +31,7 @@ def is_convertible_to_timestamp(value: str) -> bool:
             return False
     return False
 
+
 # ==================================================================================================
 def is_numeric(value: object) -> bool:
     """Check if the value is a numeric type (int, float, or convertible)."""
@@ -36,12 +39,14 @@ def is_numeric(value: object) -> bool:
         isinstance(value, str) and value.replace(".", "", 1).isdigit()
     )
 
+
 # ==================================================================================================
 def convert_to_timestamp(value: object) -> pd.Timestamp | None:
     """Convert a valid timestamp input to a pandas Timestamp."""
     if isinstance(value, (pd.Timestamp, np.datetime64, str)):
         return pd.Timestamp(value)
     return None
+
 
 # ==================================================================================================
 def convert_to_numeric(value: object) -> float | None:
@@ -51,15 +56,16 @@ def convert_to_numeric(value: object) -> float | None:
     except ValueError:
         return None
 
+
 # ==================================================================================================
 def calculate_range_with_padding(
     data: list | np.ndarray, padding_percentage: float = 0.1
 ) -> list[float]:
-
     data_range = max(data) - min(data)
     padding = data_range * padding_percentage
 
     return [min(data) - padding, max(data) + padding]
+
 
 # ==================================================================================================
 def print_out_figure(path_output: str | Path, figures: list | go.Figure) -> None:
@@ -73,23 +79,17 @@ def print_out_figure(path_output: str | Path, figures: list | go.Figure) -> None
         for fig in figures:
             file_out.write(fig.to_html(full_html=False, include_plotlyjs="cdn"))
 
+
 # ==================================================================================================
 def compute_integral(signal: list | np.ndarray, time_step: float) -> float:
-
-    integral = time_step * (
-        0.5 * signal[0]
-        + np.sum(signal[1:-1])
-        + 0.5 * signal[-1]
-    )
+    integral = time_step * (0.5 * signal[0] + np.sum(signal[1:-1]) + 0.5 * signal[-1])
 
     return integral
 
+
 # ==================================================================================================
 def compute_rolling_average(
-    data: pd.DataFrame,
-    name: str,
-    period: float,
-    time_step: float
+    data: pd.DataFrame, name: str, period: float, time_step: float
 ) -> np.ndarray:
     """
     Be careful, this function assumes that the heart rate is constant
@@ -102,18 +102,18 @@ def compute_rolling_average(
 
     avg = np.zeros(n_data)
 
-    for i in range(0, n_data):
+    for i in range(n_data):
         if i < n_data_period:
             avg[i] = np.nan
         else:
-            avg[i] = 1.0 / period * compute_integral(signal[i - n_data_period:i], time_step)
+            avg[i] = 1.0 / period * compute_integral(signal[i - n_data_period : i], time_step)
             # alternative implementation: avg[i] = data.loc[data.index[i - n_data_period:i+1], name].mean()  # noqa: E501
 
     return avg
 
+
 # ==================================================================================================
 def colors_generator(n, color_scale=None, seed=29):
-
     random.seed(seed)
 
     # Define the color scale, and if one is provided, avoid basic colors
@@ -121,19 +121,26 @@ def colors_generator(n, color_scale=None, seed=29):
         n_colors_left = n
         colors = []
     else:
-        color_scale = 'plasma'
+        color_scale = "plasma"
         n_colors_left = n - 10
         # Color-blind friendly palette for n < 11
         colors = [
-            '#0072b2', '#e69f00', '#cc79a7', '#56b4e9', '#d55e00', '#009eaa',
-            '#999999', '#9f4a96', '#7e2954', "#9DFF00"
+            "#0072b2",
+            "#e69f00",
+            "#cc79a7",
+            "#56b4e9",
+            "#d55e00",
+            "#009eaa",
+            "#999999",
+            "#9f4a96",
+            "#7e2954",
+            "#9DFF00",
         ]
 
     if n_colors_left > 0:
         colors_colorscale = list(
             plotly.colors.sample_colorscale(
-                color_scale,
-                [i / (n_colors_left) for i in range(n_colors_left)]
+                color_scale, [i / (n_colors_left) for i in range(n_colors_left)]
             )
         )
         random.shuffle(colors_colorscale)
@@ -141,9 +148,11 @@ def colors_generator(n, color_scale=None, seed=29):
 
     return colors
 
+
 # ==================================================================================================
 def patient_data_color():
     return "#000000"
+
 
 # ==================================================================================================
 def downsample_dataframe(df: pd.DataFrame, downsample_ratio: float) -> pd.DataFrame:
@@ -153,15 +162,17 @@ def downsample_dataframe(df: pd.DataFrame, downsample_ratio: float) -> pd.DataFr
         df = df.iloc[::step]
 
     return df
+
+
 # ==================================================================================================
 def hex_to_rgb(hex_color: str) -> tuple:
-
     if (len(hex_color) != 7) and (not hex_color.startswith("#")):
         raise ValueError("invalid input, hex_color must start with '#' and have 6 digits")
 
     hex_color = hex_color.lstrip("#")
 
     return int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+
 
 # ==================================================================================================
 def find_delimiter(path_file: str | Path) -> str:

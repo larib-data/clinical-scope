@@ -140,19 +140,19 @@ def _parse_eit_asc_file(
                 tidal_variations_summary = False
                 tidal_variations_full = False
                 continue
-            elif "Tidal Image" in line:
+            if "Tidal Image" in line:
                 tidal_image = True
                 dynamic_image = False
                 tidal_variations_summary = False
                 tidal_variations_full = False
                 continue
-            elif line == "Tidal Variations":
+            if line == "Tidal Variations":
                 tidal_variations_summary = True
                 dynamic_image = False
                 tidal_image = False
                 tidal_variations_full = False
                 continue
-            elif not line and tidal_variations_summary:
+            if not line and tidal_variations_summary:
                 tidal_variations_full = True
                 tidal_variations_summary = False
                 dynamic_image = False
@@ -292,7 +292,9 @@ class EITDataSource(DataSourceBase):
         patient_options_eit = patient_options.get(cls.DATASOURCE_NAME, {})
 
         # Create datetime index with the right timezone
-        timezone = database_options_specific.get(cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}).get(
+        timezone = database_options_specific.get(
+            cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
+        ).get(
             options_naming.DatabaseOptionsAdditionalInformations.TIMEZONE,
             options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,
         )

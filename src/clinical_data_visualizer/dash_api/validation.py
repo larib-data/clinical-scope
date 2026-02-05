@@ -22,6 +22,7 @@ def _validate_by_type(value, api_type, extension: str | None = None) -> str | No
 
     Returns:
         Error message string if invalid, None if valid
+
     """
     try:
         if api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
@@ -62,6 +63,7 @@ def validate_value(schema_class, value) -> tuple[bool, str]:
     Returns:
         Tuple[bool, str]: (is_valid, error_message)
         If valid, error_message is empty string
+
     """
     name = schema_class.NAME
     mandatory = schema_class.MANDATORY
@@ -92,6 +94,7 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
         Tuple[dict, list]: (validated_dict, errors)
         validated_dict: Dictionary of validated values organized by field name
         errors: List of error messages
+
     """
     validated_dict = {}
     errors = []

@@ -15,7 +15,8 @@ from dash import ALL, Input, Output, State, callback, dcc, html
 import clinical_data_visualizer.constants as cst
 import clinical_data_visualizer.datasource_list as datasource
 from clinical_data_visualizer import wrapper
-from clinical_data_visualizer.dash_api import helper_api as ui_helper, ui_components, validation
+from clinical_data_visualizer.dash_api import helper_api as ui_helper
+from clinical_data_visualizer.dash_api import ui_components, validation
 from clinical_data_visualizer.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
@@ -142,7 +143,7 @@ def process_visualization(n_clicks, db_options, schema_data, values, ids):
     # Map IDs to values
     logger.debug(f"ids: {ids}")
     logger.debug(f"values: {values}")
-    values_by_id = {i["name"]: v for i, v in zip(ids, values)}
+    values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
 
     # Validate
     validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)

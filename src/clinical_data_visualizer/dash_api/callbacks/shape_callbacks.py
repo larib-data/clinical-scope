@@ -58,7 +58,7 @@ def sync_plotly_annotations(relayout_list, figures, graph_ids, store):
 
     store = store or {"by_figure": {}}
 
-    for relayout, fig, gid in zip(relayout_list, figures, graph_ids):
+    for relayout, fig, gid in zip(relayout_list, figures, graph_ids, strict=False):
         if not relayout:
             continue
 
@@ -126,7 +126,7 @@ def persist_shapes(figures, ids, store):
     """Persist shapes from figures to annotations store."""
     store = store.copy() if store else {"by_figure": {}}
 
-    for fig, gid in zip(figures, ids):
+    for fig, gid in zip(figures, ids, strict=False):
         fig_name = gid["name"]
         shapes = fig.get("layout", {}).get("shapes", [])
 
@@ -149,7 +149,6 @@ def save_annotations_and_shapes(store, folder_visu_path):
         with path.open("w") as f:
             json.dump(store, f, indent=2, default=str)
 
-    return
 
 
 @callback(Output("shape-selector", "options"), Input("annotations-store", "data"))
@@ -165,9 +164,7 @@ def update_shape_options(store):
             if shape is None:
                 continue
 
-            display_label, value, color = shape_manager.build_shape_option_label(
-                fig_name, shape, i
-            )
+            display_label, value, color = shape_manager.build_shape_option_label(fig_name, shape, i)
             square_color = ui_components.parse_color(color)
 
             label = html.Span(

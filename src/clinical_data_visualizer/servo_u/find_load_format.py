@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -31,7 +31,7 @@ def parse_header_info(lines):
 
 def compute_timestamp_index_from_timems(time_ms_series, start_time):
     """Compute timezone-aware timestamps from Time(ms) column + log start."""
-    start_time = start_time.replace(tzinfo=timezone.utc).astimezone(
+    start_time = start_time.replace(tzinfo=UTC).astimezone(
         pd.Timestamp.now(tz=options_naming.DATA_SOURCE_DEFAULT_TIMEZONE).tz
     )
     timestamps = [start_time + timedelta(milliseconds=ms) for ms in time_ms_series]
@@ -145,7 +145,9 @@ class ServoUDataSource(DataSourceBase):
 
         for file_path in file_path_list:
             if not first_file_done:
-                df_local, start_time, rename_map = parse_file(file_path, start_time, first_file=True)
+                df_local, start_time, rename_map = parse_file(
+                    file_path, start_time, first_file=True
+                )
                 first_file_done = True
             else:
                 df_local, _, _ = parse_file(file_path, start_time, rename_map=rename_map)
@@ -158,7 +160,9 @@ class ServoUDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _format(cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict) -> pd.DataFrame:
+    def _format(
+        cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
+    ) -> pd.DataFrame:
         # Servo U doesn't need timezone handling (already has it from loading)
         df = cls._apply_time_shift(df, patient_options)
         df = cls._filter_by_datetime(df, patient_options)
