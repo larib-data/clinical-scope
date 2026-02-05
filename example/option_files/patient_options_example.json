@@ -1,0 +1,15 @@
+{
+    "data_folder": "/Volumes/Data/ProjetVisu/Ramage/Patient1",
+    "datetime_start": null,
+    "datetime_end": null,
+    "quick_load": false,
+    "philips_waves": {
+        "time_shift": 20.0
+    },
+    "philips_numerics": {
+        "time_shift": 20.0
+    },
+    "eit": {
+        "day": "2024-10-08"
+    }
+}
