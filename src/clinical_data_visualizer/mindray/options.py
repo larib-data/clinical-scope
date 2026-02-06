@@ -1,10 +1,11 @@
 import clinical_data_visualizer.constants as cst
 
 KEYWORD_FOLDER = "mindray"
-KEYWORD_EXTENSION = ".csv"
+KEYWORD_EXTENSION = [".xml", ".csv"]
+PREFERED_FILE_EXTENSION = [".xml", ".csv"]
 
 FILE_NAME_DATAFRAME_LOADED = "mindray_waves.parquet"
-DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
+DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
 
 class DatabaseOptionsAdditionalInformations:

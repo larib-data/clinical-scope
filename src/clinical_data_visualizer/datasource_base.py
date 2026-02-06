@@ -89,19 +89,9 @@ class DataSourceBase(ABC):
         cls, df: pd.DataFrame, database_options_specific: dict, default_timezone: str
     ) -> pd.DataFrame:
         """Apply timezone to DataFrame index if not already set."""
-        if hasattr(cls.OPTIONS_MODULE, "DatabaseOptionsAdditionalInformations"):
-            timezone = database_options_specific.get(
-                cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
-            ).get(
-                cls.OPTIONS_MODULE.DatabaseOptionsAdditionalInformations.TIMEZONE,
-                default_timezone,
-            )
-        else:
-            timezone = default_timezone
-
-        if df.index.tz is None:
-            df.index = df.index.tz_localize(timezone)
-        return df
+        return helper.apply_timezone_to_dataframe(
+            df, database_options_specific, default_timezone, cls.OPTIONS_MODULE
+        )
 
     @classmethod
     def _apply_time_shift(cls, df: pd.DataFrame, patient_options: dict) -> pd.DataFrame:

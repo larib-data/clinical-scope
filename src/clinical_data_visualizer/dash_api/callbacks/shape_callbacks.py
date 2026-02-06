@@ -150,7 +150,6 @@ def save_annotations_and_shapes(store, folder_visu_path):
             json.dump(store, f, indent=2, default=str)
 
 
-
 @callback(Output("shape-selector", "options"), Input("annotations-store", "data"))
 def update_shape_options(store):
     """Update shape selector dropdown options."""

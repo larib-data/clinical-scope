@@ -120,17 +120,29 @@ def find_file(
 
 
 # ==================================================================================================
-def find_file_list(folder_path: Path, extension: str, description: str) -> list[Path] | None:
+def find_file_list(
+    folder_path: Path, extension: str | list[str], description: str
+) -> list[Path] | None:
     """
-    Find and return all files in `folder_path` ending with `extension`,
-    sorted alphabetically. Logs results using `description`.
+    Find and return all files in `folder_path` ending with `extension`, sorted alphabetically. Logs results using `description`.
 
-    :param folder_path: Folder to search in.
-    :param extension: File extension pattern, e.g., ".csv", ".parquet"
-    :param description: Human-readable description for logging.
-    :return: Sorted list of matching Path objects, or None if none found.
-    """
-    files = sorted(folder_path.glob(f"*{extension}"))
+    folder_path: Folder to search in.
+    extension: File extension pattern (e.g., ".csv") or list of extensions (e.g., [".csv", ".parquet"])
+    description: Human-readable description for logging.
+
+    Return: Sorted list of matching Path objects, or None if none found.
+
+    """  # noqa: E501
+    # Normalize extension to always be a list
+    extensions = [extension] if isinstance(extension, str) else extension
+
+    # Collect all matching files across all extensions
+    files = []
+    for ext in extensions:
+        files.extend(folder_path.glob(f"*{ext}"))
+
+    # Sort alphabetically
+    files = sorted(files)
 
     if not files:
         logger.debug("Could not find any %s in folder '%s'", description, folder_path)
@@ -321,3 +333,28 @@ def get_column_name_from_pattern(columns: pd.Index | list[str], pattern: str) ->
         return None
     # Could not find any pattern, consider there was none
     return pattern
+
+
+def apply_timezone_to_dataframe(
+    df: pd.DataFrame,
+    database_options_specific: dict,
+    default_timezone: str,
+    options_module=None,  # noqa: ANN001
+) -> pd.DataFrame:
+    """Apply timezone to DataFrame index if not already set."""
+    timezone = default_timezone
+
+    if options_module and hasattr(options_module, "DatabaseOptionsAdditionalInformations"):
+        additional_info_class = options_module.DatabaseOptionsAdditionalInformations
+        if hasattr(additional_info_class, "TIMEZONE"):
+            timezone = database_options_specific.get(
+                cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
+            ).get(
+                additional_info_class.TIMEZONE,
+                default_timezone,
+            )
+
+    if df.index.tz is None:
+        df.index = df.index.tz_localize(timezone)
+
+    return df

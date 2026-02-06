@@ -26,7 +26,6 @@ def main(option_dict):
     logger.info("Script finished sucessfully")
 
 
-
 # ==================================================================================================
 def args_parser(args):
     parser = argparse.ArgumentParser(description="Time series visualization tool")
