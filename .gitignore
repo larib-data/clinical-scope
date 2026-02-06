@@ -13,6 +13,9 @@ dist/
 *.egg
 .eggs/
 
+# PyInstaller build output
+builded_app/
+
 # Virtual environments
 venv/
 .venv/
