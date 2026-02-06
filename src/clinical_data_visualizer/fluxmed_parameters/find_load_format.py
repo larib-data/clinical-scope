@@ -29,10 +29,6 @@ class FluxmedParametersDataSource(DataSourceBase):
     SOURCE_OPTIONS = options_naming.source_options
 
     @classmethod
-    def _find_folder(cls, folder_path: Path) -> Path | None:
-        return helper.find_folder(folder_path, options_naming.KEYWORD_FOLDER, "FLUXMED folder")
-
-    @classmethod
     def _find(cls, folder_path: Path) -> Path | None:
         return helper.find_file(
             folder_path,

@@ -174,13 +174,63 @@ class DataSourceBase(ABC):
     @classmethod
     def _find_folder(cls, folder_path: Path) -> Path | None:
         """
-        Find the datasource folder. Override if datasource uses subfolder.
+        Find the datasource folder using flexible keyword matching.
+
+        The method searches for folders containing all required keywords from FOLDER_KEYWORDS.
+        Matching is case-insensitive and works with any separator (_, -, space, etc.).
+
+        Priority:
+        1. Exact match with EXPECTED_FOLDER_NAME
+        2. Folder containing all FOLDER_KEYWORDS (case-insensitive, any order/separator)
+        3. Returns None if no match found
 
         Returns:
             Path to folder, or None if not found
 
         """
-        return folder_path
+        # Get folder keywords
+        folder_keywords = getattr(cls.OPTIONS_MODULE, "FOLDER_KEYWORDS", None)
+
+        if folder_keywords is None or len(folder_keywords) == 0:
+            # No subfolder expected, use root patient folder
+            return folder_path
+
+        # Try exact match first (for performance)
+        expected_folder_name = getattr(cls.OPTIONS_MODULE, "EXPECTED_FOLDER_NAME", None)
+        if expected_folder_name:
+            expected_path = folder_path / expected_folder_name
+            if expected_path.is_dir():
+                return expected_path
+
+        # Flexible keyword matching: find folder containing all keywords
+        if not folder_path.is_dir():
+            logger.warning("Patient folder '%s' does not exist", folder_path)
+            return None
+
+        for subfolder in folder_path.iterdir():
+            if not subfolder.is_dir():
+                continue
+
+            # Check if folder name contains all required keywords (case-insensitive)
+            folder_name_lower = subfolder.name.lower()
+            if all(keyword.lower() in folder_name_lower for keyword in folder_keywords):
+                if subfolder.name != expected_folder_name:
+                    logger.info(
+                        "Found %s folder '%s' matching keywords %s (recommended name: '%s')",
+                        cls.DATASOURCE_NAME,
+                        subfolder.name,
+                        folder_keywords,
+                        expected_folder_name,
+                    )
+                return subfolder
+
+        logger.warning(
+            "No folder found in '%s' containing all keywords %s for datasource '%s'",
+            folder_path,
+            folder_keywords,
+            cls.DATASOURCE_NAME,
+        )
+        return None
 
     @classmethod
     @helper.time_it

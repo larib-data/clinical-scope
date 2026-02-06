@@ -1,5 +1,7 @@
 import clinical_data_visualizer.constants as cst
 
+EXPECTED_FOLDER_NAME = "fluxmed_signals"
+FOLDER_KEYWORDS = ["fluxmed", "signals"]
 KEYWORD_FOLDER = "fluxmed"
 KEYWORD_FILE = "signals"
 

@@ -1,5 +1,7 @@
 import clinical_data_visualizer.constants as cst
 
+EXPECTED_FOLDER_NAME = "servo_u"
+FOLDER_KEYWORDS = ["servo"]
 KEYWORD_FOLDER = "servo u"
 KEYWORD_EXTENSION = ".sta"
 

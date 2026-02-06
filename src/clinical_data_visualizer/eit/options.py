@@ -1,5 +1,7 @@
 from clinical_data_visualizer import constants as cst
 
+EXPECTED_FOLDER_NAME = "eit"
+FOLDER_KEYWORDS = ["eit"]
 KEYWORD_FILE_EXTENSION = ".asc"
 FILE_NAME_DATAFRAME_LOADED = "eit.parquet"
 

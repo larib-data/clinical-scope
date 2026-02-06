@@ -1,5 +1,7 @@
 import clinical_data_visualizer.constants as cst
 
+EXPECTED_FOLDER_NAME = "mindray"
+FOLDER_KEYWORDS = ["mindray"]
 KEYWORD_FOLDER = "mindray"
 KEYWORD_EXTENSION = [".xml", ".csv"]
 PREFERED_FILE_EXTENSION = [".xml", ".csv"]

@@ -128,10 +128,6 @@ class ServoUDataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    def _find_folder(cls, folder_path: Path) -> Path | None:
-        return helper.find_folder(folder_path, options_naming.KEYWORD_FOLDER, "Servo U folder")
-
-    @classmethod
     def _find(cls, folder_path: Path) -> list[Path] | None:
         return helper.find_file_list(folder_path, options_naming.KEYWORD_EXTENSION, "Servo U file")
 
