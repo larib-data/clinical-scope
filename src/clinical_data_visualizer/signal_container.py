@@ -206,7 +206,7 @@ class Quality:
 class Signal:
     raw_name: str
     name: str
-    trace: go.Scattergl | None = None
+    trace: go.Scatter | None = None
     data: Data = field(default_factory=Data)
     trace_options: TraceOptions = field(default_factory=TraceOptions)
     metadata: Metadata = field(default_factory=Metadata)
@@ -486,7 +486,7 @@ class Signal:
             )
         else:
             hovertemplate = None
-        trace = go.Scattergl(
+        trace = go.Scatter(
             x=x,
             y=self.data.y,
             name=self.name,
@@ -536,7 +536,7 @@ class PlotGroup:
         elapsed = time.perf_counter() - start
         self.timing["__post_init__"] = elapsed
 
-    def assign_axes(self) -> list[tuple[go.Scattergl, bool]]:
+    def assign_axes(self) -> list[tuple[go.Scatter, bool]]:
         traces_with_axes = []
         # Assign traces to axes
         for sig in self.signals:
