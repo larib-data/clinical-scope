@@ -622,6 +622,13 @@ class PlotModel:
                 fig.update_xaxes(matches=f"x{master_row}", row=row_idx, col=1)
             else:
                 x_type_to_master_row[x_data_type] = row_idx
+
+            if self.name == "time_series":
+                fig.update_yaxes(
+                    modebardisable= "zoominout",
+                    row=row_idx
+                )
+
         fig.update_layout(
             title_text=self.name,
             height=total_fig_height,
@@ -631,6 +638,15 @@ class PlotModel:
                 namelength=-1  # Show full curve name
             ),
         )
+
+        fig.update_layout(
+            modebar_remove=[
+                "select2d",
+                "lasso2d",
+                "autoScale2d",
+            ]
+        )
+
         elapsed = time.perf_counter() - start
         self.timing["to_figure"] = elapsed
         logger.debug(
