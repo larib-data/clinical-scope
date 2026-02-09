@@ -7,6 +7,7 @@ and managing UI-related utilities.
 
 import logging
 import re
+from typing import Any
 
 from dash import dcc, html
 
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 # ==================================================================================================
 
 
-def dash_widget_factory(schema_class, component_id_prefix: str):
+def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div:
     """
     Create a Dash input component based on a schema class.
 
@@ -80,7 +81,7 @@ def dash_widget_factory(schema_class, component_id_prefix: str):
     return html.Div(children=[label, input_component], style={"marginBottom": "8px"})
 
 
-def build_ui_and_schema_registry(options_class, prefix: str):
+def build_ui_and_schema_registry(options_class: Any, prefix: str) -> tuple[html.Div, dict]:
     components = []
     schema_lookup = {}
 

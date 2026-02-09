@@ -19,9 +19,7 @@ if options_naming.KEYWORD_FILE_EXTENSION in options_naming.FILE_NAME_DATAFRAME_L
         f"'FILE_NAME_DATAFRAME_LOADED'({options_naming.FILE_NAME_DATAFRAME_LOADED}). "
         "This dangerous since we might override the raw data, or read the wrong one"
     )
-    raise ValueError(
-        msg
-    )
+    raise ValueError(msg)
 
 
 def _add_index_timestamp_to_eit_dataframe(
@@ -51,14 +49,13 @@ def _add_index_timestamp_to_eit_dataframe(
                 "'day.tz' and 'timezone' can't be None at the same time, otherwise we can't "
                 "assign time zone to dataframe"
             )
-            raise ValueError(
-                msg
-            )
+            raise ValueError(msg)
     return df[~df.index.duplicated(keep="first")]
 
 
-
-def _parse_asc_selected_columns(lines: list[str], selected_cols=None) -> pd.DataFrame:
+def _parse_asc_selected_columns(
+    lines: list[str], selected_cols: list[str] | None = None
+) -> pd.DataFrame:
     """Parses only selected columns from a large ASC dataframe (line-by-line)."""
     header_line = lines[0].strip()
     all_columns = [x.replace("+", "").replace(",", ".").strip() for x in header_line.split("\t")]
@@ -78,11 +75,11 @@ def _parse_asc_selected_columns(lines: list[str], selected_cols=None) -> pd.Data
         col_indices = [index_map[c] for c in selected_cols]
 
     rows = []
-    for line in lines[1:]:
-        line = line.strip()
-        if not line:
+    for raw_line in lines[1:]:
+        stripped_line = raw_line.strip()
+        if not stripped_line:
             continue
-        values = [x.replace("+", "").replace(",", ".").strip() for x in line.split("\t")]
+        values = [x.replace("+", "").replace(",", ".").strip() for x in stripped_line.split("\t")]
         if len(values) < len(all_columns):
             values += [None] * (len(all_columns) - len(values))
         rows.append([values[i] for i in col_indices])
@@ -100,15 +97,15 @@ def _parse_metadata_lines(lines: list[str]) -> dict:
     metadata = {}
     notes = []
 
-    for line in lines:
-        line = line.strip()
-        if not line:
+    for raw_line in lines:
+        stripped_line = raw_line.strip()
+        if not stripped_line:
             continue
-        if ":" in line:
-            key, value = line.split(":", 1)
+        if ":" in stripped_line:
+            key, value = stripped_line.split(":", 1)
             metadata[key.strip()] = value.strip()
         else:
-            notes.append(line)
+            notes.append(stripped_line)
 
     for i, note in enumerate(notes, 1):
         metadata[f"Note_{i}"] = note
@@ -137,44 +134,44 @@ def _parse_eit_asc_file(
     lines_tidal_variation_full_df = []
 
     with Path.open(Path(path), "r", encoding="latin-1") as f:
-        for _i, line in enumerate(f):
-            line = line.strip()
+        for _i, raw_line in enumerate(f):
+            stripped_line = raw_line.strip()
 
-            if "Dynamic Image" in line:
+            if "Dynamic Image" in stripped_line:
                 dynamic_image = True
                 tidal_image = False
                 tidal_variations_summary = False
                 tidal_variations_full = False
                 continue
-            if "Tidal Image" in line:
+            if "Tidal Image" in stripped_line:
                 tidal_image = True
                 dynamic_image = False
                 tidal_variations_summary = False
                 tidal_variations_full = False
                 continue
-            if line == "Tidal Variations":
+            if stripped_line == "Tidal Variations":
                 tidal_variations_summary = True
                 dynamic_image = False
                 tidal_image = False
                 tidal_variations_full = False
                 continue
-            if not line and tidal_variations_summary:
+            if not stripped_line and tidal_variations_summary:
                 tidal_variations_full = True
                 tidal_variations_summary = False
                 dynamic_image = False
                 tidal_image = False
                 continue
 
-            if dynamic_image and line:
-                lines_dynamic_image_matrix.append(line)
-            elif tidal_image and line:
-                lines_tidal_image_matrix.append(line)
-            elif tidal_variations_summary and line:
-                lines_tidal_variation_summary_df.append(line)
-            elif tidal_variations_full and line:
-                lines_tidal_variation_full_df.append(line)
+            if dynamic_image and stripped_line:
+                lines_dynamic_image_matrix.append(stripped_line)
+            elif tidal_image and stripped_line:
+                lines_tidal_image_matrix.append(stripped_line)
+            elif tidal_variations_summary and stripped_line:
+                lines_tidal_variation_summary_df.append(stripped_line)
+            elif tidal_variations_full and stripped_line:
+                lines_tidal_variation_full_df.append(stripped_line)
             else:
-                lines_metadata.append(line)
+                lines_metadata.append(stripped_line)
 
     df_tidal_variation_summary_df = _parse_asc_selected_columns(lines_tidal_variation_summary_df)
 
@@ -326,5 +323,5 @@ class EITDataSource(DataSourceBase):
 
 
 # Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None):
+def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
     return EITDataSource.main(patient_options, database_options_specific)

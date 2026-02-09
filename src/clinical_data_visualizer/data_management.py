@@ -6,7 +6,9 @@ from clinical_data_visualizer import utilities as utl
 
 
 # ==================================================================================================
-def read_waves_data(path: str | Path, delimiter=None, decimal=".") -> pd.DataFrame:
+def read_waves_data(
+    path: str | Path, delimiter: str | None = None, decimal: str = "."
+) -> pd.DataFrame:
     path = Path(path)
 
     if path.name.endswith("parquet"):

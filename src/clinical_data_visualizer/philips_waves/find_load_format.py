@@ -28,21 +28,20 @@ class PhilipsWavesDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         else:
             msg = f"file_path extension was neither '.csv' or '.parquet'. Input: '{file_path}'"
-            raise NotImplementedError(
-                msg
-            )
+            raise NotImplementedError(msg)
         df = df[~df.index.duplicated(keep="first")]
 
         if options_naming.ALLOW_LOADED_DATAFRAME_SAVING:
             cls._save_dataframe(df, path_output)
         else:
             logger.info(
-                "Not saving loaded data for philips waves, since it can be large and loading is trivial"
+                "Not saving loaded data for philips waves, since it can be "
+                "large and loading is trivial"
             )
 
         return df
@@ -50,7 +49,10 @@ class PhilipsWavesDataSource(DataSourceBase):
     @classmethod
     @helper.time_it
     def _format(
-        cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
+        cls,
+        df: pd.DataFrame,
+        patient_options: dict,
+        database_options_specific: dict,  # noqa: ARG003
     ) -> pd.DataFrame:
         # Philips waves doesn't need timezone handling (already has it)
         df = cls._apply_time_shift(df, patient_options)
@@ -58,5 +60,5 @@ class PhilipsWavesDataSource(DataSourceBase):
 
 
 # Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None):
+def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
     return PhilipsWavesDataSource.main(patient_options, database_options_specific)

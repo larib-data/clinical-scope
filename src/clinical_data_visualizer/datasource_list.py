@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def add_main_module(cls):
+def add_main_module(cls: type) -> type:
     module_path = f"clinical_data_visualizer.{cls.NAME}.find_load_format"
     module = importlib.import_module(module_path)
 
@@ -95,7 +95,7 @@ class DataSource:
     )
 
     @classmethod
-    def get_subclass_by_name(cls, name):
+    def get_subclass_by_name(cls, name: str) -> type | None:
         nested_classes = get_nested_classes(cls)
         for nested_class in nested_classes:
             if name == nested_class.NAME:
@@ -103,7 +103,7 @@ class DataSource:
         return None
 
 
-def get_nested_classes(cls):
+def get_nested_classes(cls: type) -> list[type]:
     return [
         value
         for name, value in vars(cls).items()

@@ -1,6 +1,7 @@
 import datetime
 import logging
 import sys
+import types
 from logging.handlers import BaseRotatingHandler, TimedRotatingFileHandler
 from pathlib import Path
 
@@ -24,8 +25,9 @@ def get_handler(path_logs: str | Path) -> BaseRotatingHandler:
 # ==================================================================================================
 def get_handlers(path_logs: str | Path) -> tuple[BaseRotatingHandler, logging.StreamHandler]:
     """
-    Create a file handler (rotates at 4:00 AM, keeps 7 backups)
-    and a colored console handler with readable delimiters.
+    Create a file handler (rotates at 4:00 AM, keeps 7 backups).
+
+    Also creates a colored console handler with readable delimiters.
     """
     # ---------------- File Handler ----------------
     file_handler = TimedRotatingFileHandler(
@@ -53,7 +55,7 @@ def get_handlers(path_logs: str | Path) -> tuple[BaseRotatingHandler, logging.St
         }
         RESET = "\033[0m"
 
-        def format(self, record, min_width_name=85) -> str:
+        def format(self, record: logging.LogRecord, min_width_name: int = 85) -> str:
             color = self.COLORS.get(record.levelname, self.RESET)
             record.asctime = self.formatTime(record, datefmt="%H:%M:%S")
             name_aligned = f"{record.name:<{min_width_name}}"
@@ -71,7 +73,11 @@ def get_handlers(path_logs: str | Path) -> tuple[BaseRotatingHandler, logging.St
 
 # ==================================================================================================
 def install_logging_excepthook(logger: logging.Logger) -> None:
-    def _hook(exc_type, exc_value, exc_traceback) -> None:
+    def _hook(
+        exc_type: type[BaseException],
+        exc_value: BaseException,
+        exc_traceback: types.TracebackType,
+    ) -> None:
         if issubclass(exc_type, KeyboardInterrupt):
             logger.info("KeyboardInterrupt received, shutting down gracefully...")
             sys.__excepthook__(exc_type, exc_value, exc_traceback)

@@ -2,6 +2,7 @@ import logging
 import time
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,12 +14,18 @@ from clinical_data_visualizer import helper
 
 logger = logging.getLogger(__name__)
 
+MAX_ALLOWED_UNITS = 2
 
-def get_unique_or_raise(values: list, attribute_name: str, context: str = ""):
+
+def get_unique_or_raise(
+    values: list[Any],
+    attribute_name: str,
+    context: str = "",
+) -> Any:
     """
     Ensure all values are identical in a list.
-    Raise ValueError if not.
-    Returns the unique value (or None if list empty).
+
+    Raise ValueError if not. Returns the unique value (or None if list empty).
     """
     unique_values = list(set(values))
     if len(unique_values) > 1:
@@ -26,18 +33,19 @@ def get_unique_or_raise(values: list, attribute_name: str, context: str = ""):
             f"We can't combine {context} with different '{attribute_name}' attributes. "
             f"Given: {unique_values}"
         )
-        raise ValueError(
-            msg
-        )
+        raise ValueError(msg)
     return unique_values[0] if unique_values else None
 
 
-def compute_average_priority(items: list):
+def compute_average_priority(items: list[Any]) -> float:
     """Compute average plot_priority, defaulting missing to 10000."""
     return float(np.mean([getattr(item, "plot_priority", 10000) or 10000 for item in items]))
 
 
-def merge_y_ranges(signals: list["Signal"], unit_name: str):
+def merge_y_ranges(
+    signals: list["Signal"],
+    unit_name: str,
+) -> list[float] | None:
     """Merge y_axis_range for signals with the same unit."""
     ranges = [
         sig.trace_options.plot_options.y_axis_range
@@ -83,7 +91,8 @@ class PlotOptions:
     plot_type: str | None = None
     plot_priority: float | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Initialize PlotOptions with default values."""
         if self.y_unit_name is None:
             self.y_unit_name = (
                 cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO
@@ -111,10 +120,11 @@ class PlotOptions:
         primary_unit = y_unit_list[0] if y_unit_list else None
         secondary_unit = y_unit_list[1] if len(y_unit_list) > 1 else None
 
-        if len(y_unit_list) > 2:
+        if len(y_unit_list) > MAX_ALLOWED_UNITS:
             logger.warning(
-                "⚠️ Signals %s can't be plotted on one plot: more than 2 units: %s",
+                "⚠️ Signals %s can't be plotted on one plot: more than %d units: %s",
                 [sig.name for sig in signals],
+                MAX_ALLOWED_UNITS,
                 y_unit_list,
             )
 
@@ -176,7 +186,8 @@ class TraceOptions:
     marker_size: float | None = None
     plot_options: PlotOptions = field(default_factory=PlotOptions)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Initialize TraceOptions with default values."""
         # I believe default params are better left here rather than in constants.py file ?
         if self.mode is None:
             self.mode = "lines"
@@ -217,7 +228,13 @@ class Signal:
     timing: dict = field(default_factory=dict, init=False)
 
     @staticmethod
-    def _build_trace_options(raw_signal_name, database_options_specific, source_options, plot_type):
+    def _build_trace_options(
+        raw_signal_name: str,
+        database_options_specific: dict[str, Any],
+        source_options: dict[str, Any],
+        plot_type: str,
+    ) -> "TraceOptions":
+        """Build trace options from database and source options."""
         data_opts = database_options_specific.get(cst.DatabaseOptions.DATA, {})
         data_numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
         # PlotOptions fields
@@ -431,7 +448,7 @@ class Signal:
         return obj
 
     # ---------------- Regular Methods ----------------
-    def to_plotly_trace(self):
+    def to_plotly_trace(self) -> go.Scatter:
         start = time.perf_counter()
         if self.trace is not None:
             logger.warning("Trace of %s will be overwritten", self.name)
@@ -503,7 +520,8 @@ class Signal:
         logger.debug("⏳ %.4fs for to_plotly_trace for signal '%s'", elapsed, self.name)
         return trace
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Initialize Signal by creating its Plotly trace."""
         self.trace = self.to_plotly_trace()
 
 
@@ -523,7 +541,8 @@ class PlotGroup:
         plot_group.timing["from_single_signal"] = elapsed
         return plot_group
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Initialize PlotGroup with plot options."""
         start = time.perf_counter()
         # Derive group-level plot options
         if isinstance(self.signals, Signal):
@@ -559,7 +578,7 @@ class PlotModel:
     figure: go.Figure | None = None
     timing: dict = field(default_factory=dict)  # Add timing dictionary
 
-    def to_figure(self, base_spacing=0.05, min_spacing=0.005) -> go.Figure:
+    def to_figure(self, base_spacing: float = 0.05, min_spacing: float = 0.005) -> go.Figure:
         start = time.perf_counter()
         n_rows = len(self.groups)
         total_fig_height = np.sum(
@@ -655,12 +674,12 @@ class PlotModel:
         )
         return fig
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """
-        Initialize PlotGroup object:
-        - Validate plot_type and square_plot consistency
-        - Sort groups by plot_priority
-        - Build figure.
+        Initialize PlotModel object.
+
+        Validates plot_type and square_plot consistency,
+        sorts groups by plot_priority, and builds the figure.
         """
         plot_group = self.groups
 
@@ -686,6 +705,7 @@ class PlotModel:
 
     @staticmethod
     def assign_plot_model(plot_group_list: list[PlotGroup]) -> list["PlotModel"]:
+        """Assign plot groups to plot models by plot type."""
         groups = {}
         for plot_group in plot_group_list:
             plot_type = plot_group.plot_options.plot_type
@@ -698,7 +718,7 @@ class PlotModel:
         ]
 
     @staticmethod
-    def to_html(plot_models: list["PlotModel"], patient_options: dict) -> None:
+    def to_html(plot_models: list["PlotModel"], patient_options: dict[str, Any]) -> None:
         if not plot_models:
             logger.warning("⚠️ PlotModel figure generation to html was called with empty list")
         data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])

@@ -8,6 +8,7 @@ and shape editing modal.
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from dash import (
     ALL,
@@ -52,7 +53,12 @@ logger = logging.getLogger(__name__)
     State("annotations-store", "data"),
     prevent_initial_call=True,
 )
-def sync_plotly_annotations(relayout_list, figures, graph_ids, store):
+def sync_plotly_annotations(
+    relayout_list: list[Any],
+    figures: list[dict[str, Any]],
+    graph_ids: list[dict[str, Any]],
+    store: dict[str, Any] | None,
+) -> dict[str, Any]:
     """Sync Plotly annotations from figures to store."""
     if not relayout_list:
         return no_update
@@ -84,7 +90,12 @@ def sync_plotly_annotations(relayout_list, figures, graph_ids, store):
     State({"type": "resampler-store", "name": MATCH}, "data"),
     prevent_initial_call=True,
 )
-def lock_and_style_shapes(relayout, fig, gid, resampler_uid):
+def lock_and_style_shapes(
+    relayout: dict[str, Any],
+    fig: dict[str, Any],
+    gid: dict[str, Any],  # noqa: ARG001
+    resampler_uid: str | None,
+) -> Patch:
     """Lock newly drawn shapes, apply styling, and resample traces on zoom/pan."""
     if not relayout:
         raise exceptions.PreventUpdate
@@ -120,7 +131,8 @@ def lock_and_style_shapes(relayout, fig, gid, resampler_uid):
                     midpoint = dt0 + (dt1 - dt0) / 2
                     patch["layout"]["shapes"][idx]["x0"] = datetime_utils.format_datetime(midpoint)
                     patch["layout"]["shapes"][idx]["x1"] = datetime_utils.format_datetime(midpoint)
-                except Exception:
+                except (TypeError, ValueError):
+                    # Skip shapes that can't be parsed as datetime
                     pass
 
     if patch is not None:
@@ -135,7 +147,11 @@ def lock_and_style_shapes(relayout, fig, gid, resampler_uid):
     State("annotations-store", "data"),
     prevent_initial_call=True,
 )
-def persist_shapes(figures, ids, store):
+def persist_shapes(
+    figures: list[dict[str, Any]],
+    ids: list[dict[str, Any]],
+    store: dict[str, Any] | None,
+) -> dict[str, Any]:
     """Persist shapes from figures to annotations store."""
     store = store.copy() if store else {"by_figure": {}}
 
@@ -155,7 +171,10 @@ def persist_shapes(figures, ids, store):
     State("folder-visu-path", "data"),
     prevent_initial_call=True,
 )
-def save_annotations_and_shapes(store, folder_visu_path) -> None:
+def save_annotations_and_shapes(
+    store: dict[str, Any] | None,
+    folder_visu_path: str | None,
+) -> None:
     """Save annotations and shapes to JSON file."""
     if folder_visu_path:
         path = Path(folder_visu_path) / "annotations.json"
@@ -164,7 +183,7 @@ def save_annotations_and_shapes(store, folder_visu_path) -> None:
 
 
 @callback(Output("shape-selector", "options"), Input("annotations-store", "data"))
-def update_shape_options(store):
+def update_shape_options(store: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Update shape selector dropdown options."""
     if not store or "by_figure" not in store:
         return []
@@ -204,7 +223,14 @@ def update_shape_options(store):
     State("annotations-store", "data"),
     prevent_initial_call=True,
 )
-def toggle_modal(modify_clicks, delete_clicks, save_clicks, cancel_clicks, selected_value, store):
+def toggle_modal(
+    modify_clicks: int,  # noqa: ARG001
+    delete_clicks: int,  # noqa: ARG001
+    save_clicks: int,  # noqa: ARG001
+    cancel_clicks: int,  # noqa: ARG001
+    selected_value: str | None,
+    store: dict[str, Any] | None,
+) -> tuple[dict[str, Any], Any, Any, Any]:
     """Toggle the shape edit modal and populate fields."""
     triggered = callback_context.triggered_id
 
@@ -252,18 +278,18 @@ def toggle_modal(modify_clicks, delete_clicks, save_clicks, cancel_clicks, selec
     prevent_initial_call=True,
 )
 def modify_shape(
-    n_clicks_save,
-    n_clicks_delete,
-    selected_value,
-    new_name,
-    new_color,
-    global_value,
-    fig,
-):
+    n_clicks_save: int,  # noqa: ARG001
+    n_clicks_delete: int,  # noqa: ARG001
+    selected_value: str | None,
+    new_name: str | None,
+    new_color: dict[str, Any] | None,
+    global_value: list[str] | None,
+    fig: dict[str, Any],
+) -> Patch:
     """Modify or delete a shape based on user action."""
     ctx = callback_context
     triggered_props = ctx.triggered_prop_ids
-    logger.debug(f"ctx.outputs_list: {ctx.outputs_list}")
+    logger.debug("ctx.outputs_list: %s", ctx.outputs_list)
     current_fig_name = (ctx.outputs_list).get("id", {}).get("name")
 
     # Guard 1 - Only react to Save or Delete explicitly
@@ -275,14 +301,15 @@ def modify_shape(
         )
     ):
         logger.debug(
-            f"triggered_props: {triggered_props}. Stopped running modify_shape due to guard 1"
+            "triggered_props: %s. Stopped running modify_shape due to guard 1",
+            triggered_props,
         )
         return Patch()
 
     # Guard 2 - Selection must exist
     parsed = shape_manager.parse_shape_selector_value(selected_value)
     if not parsed:
-        logger.debug(f"selected_value empty or invalid: {selected_value}")
+        logger.debug("selected_value empty or invalid: %s", selected_value)
         return Patch()
 
     selected_fig_name, shape_idx = parsed
@@ -296,8 +323,11 @@ def modify_shape(
 
     if not shapes or shape_idx >= len(shapes):
         logger.debug(
-            f"shapes object too small: shape_idx: {shape_idx}, shapes:{shapes}. "
-            "Might be a bug. might be the callback firing too early, see if the feature seems buggy"
+            "shapes object too small: shape_idx: %s, shapes:%s. "
+            "Might be a bug. might be the callback firing too early, "
+            "see if the feature seems buggy",
+            shape_idx,
+            shapes,
         )
         return Patch()
 

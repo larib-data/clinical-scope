@@ -46,7 +46,7 @@ def args_parser(args):
     logs_path = library_dir / "scripts" / f"{script_name}.log"
 
     logger_config.setup_logging(logs_path, options["debug"])
-    logger.info(f"Starting script: {script_name}")
+    logger.info("Starting script: %s", script_name)
 
     main(options)
 

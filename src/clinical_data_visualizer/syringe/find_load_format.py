@@ -30,7 +30,7 @@ class SyringeDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() == ".csv":
@@ -62,20 +62,16 @@ class SyringeDataSource(DataSourceBase):
                 else:
                     msg = (
                         "We need a column to play the role of the datetime index column<br>"
-                        "Maybe we could do something with a given day and if a relative column time "
-                        "exists, but not implemented."
+                        "Maybe we could do something with a given day and if a "
+                        "relative column time exists, but not implemented."
                     )
-                    raise NotImplementedError(
-                        msg
-                    )
+                    raise NotImplementedError(msg)
 
             cols_to_convert = list(df.columns)
             df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors="coerce")
         else:
             msg = f"Invalid file format: {file_path.name}. Only .csv or .parquet supported."
-            raise NotImplementedError(
-                msg
-            )
+            raise NotImplementedError(msg)
 
         df = df[~df.index.duplicated(keep="first")]
         cls._save_dataframe(df, path_output)
@@ -83,5 +79,5 @@ class SyringeDataSource(DataSourceBase):
 
 
 # Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None):
+def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
     return SyringeDataSource.main(patient_options, database_options_specific)

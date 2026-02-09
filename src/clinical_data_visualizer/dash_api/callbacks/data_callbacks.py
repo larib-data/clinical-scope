@@ -9,6 +9,7 @@ import base64
 import json
 import logging
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from dash import ALL, Input, Output, State, callback, dcc, html
@@ -28,6 +29,14 @@ logger = logging.getLogger(__name__)
 FIGURE_RESAMPLER_CACHE = {}
 
 
+def _validate_json_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
+    """Validate and parse JSON file."""
+    if not filename.endswith(".json"):
+        msg = "Invalid file type"
+        raise ValueError(msg)
+    return json.loads(decoded_content.decode("utf-8"))
+
+
 @callback(
     Output("db-options-store", "data"),
     Output("db-options-status", "children"),
@@ -35,20 +44,18 @@ FIGURE_RESAMPLER_CACHE = {}
     State("db-options-upload", "filename"),
     prevent_initial_call=True,
 )
-def load_db_options(contents, filename):
+def load_db_options(
+    contents: str | None,
+    filename: str,
+) -> tuple[dict[str, Any] | None, html.Div | None]:
     """Load and parse uploaded database options JSON file."""
-    try:
-        if not contents:
-            return None, None
+    if not contents:
+        return None, None
 
+    try:
         _, content_string = contents.split(",")
         decoded = base64.b64decode(content_string)
-
-        if not filename.endswith(".json"):
-            msg = "Invalid file type"
-            raise ValueError(msg)
-
-        database_options_dict = json.loads(decoded.decode("utf-8"))
+        database_options_dict = _validate_json_file(decoded, filename)
         logger.debug("loaded database_options_dict: %r", database_options_dict)
 
         return (
@@ -72,7 +79,9 @@ def load_db_options(contents, filename):
     Input("db-options-store", "data"),
     prevent_initial_call=True,
 )
-def build_patient_options_ui(database_options):
+def build_patient_options_ui(
+    database_options: dict[str, Any] | None,
+) -> tuple[list[Any] | None, dict[str, str]]:
     """Build the patient options UI based on loaded database options."""
     if not database_options:
         return None, {}
@@ -109,7 +118,7 @@ def build_patient_options_ui(database_options):
     return components, schema_data
 
 
-def _rehydrate_schema_classes(schema_data: dict) -> dict:
+def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
     """Rehydrate schema classes from schema_data dictionary."""
     schema_class_lookup = {}
     for k, v in schema_data.items():
@@ -119,9 +128,9 @@ def _rehydrate_schema_classes(schema_data: dict) -> dict:
             parts = k.split(".")
             datasource_name = parts[1] if len(parts) > 1 else None
             datasource_class = datasource.DataSource.get_subclass_by_name(datasource_name)
-            logger.debug(f"parts: {parts}")
-            logger.debug(f"datasource_name: {datasource_name}")
-            logger.debug(f"datasource_class: {datasource_class}")
+            logger.debug("parts: %s", parts)
+            logger.debug("datasource_name: %s", datasource_name)
+            logger.debug("datasource_class: %s", datasource_class)
             schema_class_lookup[k] = getattr(
                 datasource_class.OPTIONS.PatientOptionsDataSourceRelative, v
             )
@@ -140,7 +149,13 @@ def _rehydrate_schema_classes(schema_data: dict) -> dict:
     State({"type": "patient-option", "name": ALL}, "id"),
     prevent_initial_call=True,
 )
-def process_visualization(n_clicks, db_options, schema_data, values, ids):
+def process_visualization(
+    n_clicks: int,  # noqa: ARG001
+    db_options: dict[str, Any] | None,
+    schema_data: dict[str, str],
+    values: list[Any],
+    ids: list[dict[str, str]],
+) -> tuple[Any, Any, Any, str | None]:
     """Process visualization request with validated patient options."""
     if not db_options:
         return None, "Database options not loaded", None, None
@@ -148,14 +163,14 @@ def process_visualization(n_clicks, db_options, schema_data, values, ids):
     schema_class_lookup = _rehydrate_schema_classes(schema_data)
 
     # Map IDs to values
-    logger.debug(f"ids: {ids}")
-    logger.debug(f"values: {values}")
+    logger.debug("ids: %s", ids)
+    logger.debug("values: %s", values)
     values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
 
     # Validate
     validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
-    logger.debug(f"errors: {errors}")
-    logger.debug(f"validated_dict: {validated_dict}")
+    logger.debug("errors: %s", errors)
+    logger.debug("validated_dict: %s", validated_dict)
 
     if errors:
         return None, html.Ul([html.Li(e) for e in errors]), None, None
@@ -195,7 +210,10 @@ def process_visualization(n_clicks, db_options, schema_data, values, ids):
     )
 
 
-def _build_graphs(model, annotations_data: dict) -> list:
+def _build_graphs(
+    model: Any,
+    annotations_data: dict[str, Any],
+) -> list[html.Div]:
     """
     Build list of dcc.Graph + dcc.Store components from model.
 

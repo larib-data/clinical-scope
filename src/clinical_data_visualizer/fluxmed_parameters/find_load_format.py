@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -18,9 +18,7 @@ if options_naming.KEYWORD_FILE in options_naming.FILE_NAME_DATAFRAME_LOADED:
         f"'FILE_NAME_DATAFRAME_LOADED'({options_naming.FILE_NAME_DATAFRAME_LOADED}). "
         "This dangerous since we might override the raw data, or read the wrong one"
     )
-    raise ValueError(
-        msg
-    )
+    raise ValueError(msg)
 
 
 class FluxmedParametersDataSource(DataSourceBase):
@@ -42,7 +40,7 @@ class FluxmedParametersDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         time_col_name = "Time(sec)"
 
         if file_path.suffix.lower() == ".parquet":
@@ -55,7 +53,7 @@ class FluxmedParametersDataSource(DataSourceBase):
                 raise ValueError("Cannot extract timestamp from filename: " + filename)
 
             start_time_str = match.group(1)
-            start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S")
+            start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S").replace(tzinfo=UTC)
 
             # Read the first lines to get headers and units
             with Path.open(file_path, "r", encoding="utf-8") as f:
@@ -74,7 +72,7 @@ class FluxmedParametersDataSource(DataSourceBase):
             columns = [f"{n}({u})" for n, u in zip(col_names, col_units, strict=False)]
 
             # Make columns unique if duplicates exist
-            def make_unique(columns):
+            def make_unique(columns: list[str]) -> list[str]:
                 seen = {}
                 result = []
                 for col in columns:
@@ -110,10 +108,11 @@ class FluxmedParametersDataSource(DataSourceBase):
             df.index = pd.to_datetime(timestamps)
             df.index.name = "datetime_index"
         else:
-            msg = f"file_path extension was neither '.txt', '.csv' or '.parquet'. Input: '{file_path}'"
-            raise NotImplementedError(
-                msg
+            msg = (
+                f"file_path extension was neither '.txt', '.csv' or '.parquet'. "
+                f"Input: '{file_path}'"
             )
+            raise NotImplementedError(msg)
 
         df = df[~df.index.duplicated(keep="first")]
         cls._save_dataframe(df, path_output)
@@ -121,5 +120,5 @@ class FluxmedParametersDataSource(DataSourceBase):
 
 
 # Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None):
+def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
     return FluxmedParametersDataSource.main(patient_options, database_options_specific)

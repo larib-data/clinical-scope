@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -12,7 +13,7 @@ from clinical_data_visualizer.datasource_base import DataSourceBase
 logger = logging.getLogger(__name__)
 
 
-def parse_header_info(lines):
+def parse_header_info(lines: list[str]) -> dict[str, datetime]:
     """Parse header metadata from Servo U file."""
     header_info = {}
     for line in lines:
@@ -22,14 +23,18 @@ def parse_header_info(lines):
             value = match.group(2).strip()
             for fmt in ("%Y-%m-%d:%H:%M:%S.%f", "%Y-%m-%d:%H:%M:%S"):
                 try:
-                    header_info[field] = datetime.strptime(value, fmt)
+                    header_info[field] = datetime.strptime(value, fmt).replace(tzinfo=UTC)
                     break
-                except Exception:
-                    pass
+                except ValueError:
+                    # Try next format
+                    continue
     return header_info
 
 
-def compute_timestamp_index_from_timems(time_ms_series, start_time):
+def compute_timestamp_index_from_timems(
+    time_ms_series: pd.Series,
+    start_time: datetime,
+) -> pd.DatetimeIndex:
     """Compute timezone-aware timestamps from Time(ms) column + log start."""
     start_time = start_time.replace(tzinfo=UTC).astimezone(
         pd.Timestamp.now(tz=options_naming.DATA_SOURCE_DEFAULT_TIMEZONE).tz
@@ -38,12 +43,18 @@ def compute_timestamp_index_from_timems(time_ms_series, start_time):
     return pd.DatetimeIndex(timestamps, name="datetime_index")
 
 
-def extract_column_mapping_from_section(lines):
+MIN_SEPARATORS_NEEDED = 3
+MAPPING_PARTS_EXPECTED = 2
+
+
+def extract_column_mapping_from_section(
+    lines: list[str],
+) -> dict[str, str]:
     """Extract mapping from the section between the 2nd and 3rd '%%%%%%...' separator."""
     separator_indices = [
         i for i, L in enumerate(lines) if L.strip().startswith("%%%%%%") and set(L.strip()) == {"%"}
     ]
-    if len(separator_indices) < 3:
+    if len(separator_indices) < MIN_SEPARATORS_NEEDED:
         msg = "File does not have enough separators for mapping section"
         raise ValueError(msg)
 
@@ -52,12 +63,12 @@ def extract_column_mapping_from_section(lines):
 
     mapping = {}
     for line in lines[start_idx:end_idx]:
-        line = line.strip()
-        if not line or line.startswith("% Phase"):
+        stripped_line = line.strip()
+        if not stripped_line or stripped_line.startswith("% Phase"):
             continue
-        line = line.lstrip("%").strip()
-        parts = line.split(":")
-        if len(parts) != 2:
+        stripped_line = stripped_line.lstrip("%").strip()
+        parts = stripped_line.split(":")
+        if len(parts) != MAPPING_PARTS_EXPECTED:
             continue
         code_with_unit, measurement = parts
         code_with_unit = code_with_unit.strip()
@@ -68,7 +79,12 @@ def extract_column_mapping_from_section(lines):
     return mapping
 
 
-def parse_file(filepath: Path, start_time, first_file=False, rename_map=None):
+def parse_file(
+    filepath: Path,
+    start_time: datetime | None,
+    first_file: bool = False,
+    rename_map: dict[str, str] | None = None,
+) -> tuple[pd.DataFrame, datetime, dict[str, str] | None]:
     """Parse a single Servo U file."""
     with Path.open(filepath, "r", encoding="utf-8") as f:
         lines = f.readlines()
@@ -135,7 +151,12 @@ class ServoUDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(
+        cls,
+        file_path_list: list[Path],
+        path_output: Path,
+        **kwargs: Any,  # noqa: ARG003
+    ) -> pd.DataFrame:
         all_dfs = []
         first_file_done = False
         start_time = None
@@ -159,7 +180,10 @@ class ServoUDataSource(DataSourceBase):
     @classmethod
     @helper.time_it
     def _format(
-        cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
+        cls,
+        df: pd.DataFrame,
+        patient_options: dict,
+        database_options_specific: dict,  # noqa: ARG003
     ) -> pd.DataFrame:
         # Servo U doesn't need timezone handling (already has it from loading)
         df = cls._apply_time_shift(df, patient_options)
@@ -167,5 +191,9 @@ class ServoUDataSource(DataSourceBase):
 
 
 # Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None):
+def main(
+    patient_options: dict,
+    database_options_specific: dict | None,
+) -> pd.DataFrame:
+    """Load and process Servo U data."""
     return ServoUDataSource.main(patient_options, database_options_specific)

@@ -5,13 +5,17 @@ This module contains validation functions for user input, schema validation,
 and type checking.
 """
 
+from typing import Any
+
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
 
 
-def _validate_by_type(value, api_type, extension: str | None = None) -> str | None:
+def _validate_by_type(
+    value: Any, api_type: cst.ApiType, extension: str | None = None
+) -> str | None:
     """
     Validate a value based on its API type.
 
@@ -46,13 +50,13 @@ def _validate_by_type(value, api_type, extension: str | None = None) -> str | No
             if not p.is_dir():
                 return "must be an existing folder"
 
-    except Exception as e:
-        return str(e)
+    except (ValueError, TypeError, AttributeError):
+        return str(value)
 
     return None
 
 
-def validate_value(schema_class, value) -> tuple[bool, str]:
+def validate_value(schema_class: Any, value: Any) -> tuple[bool, str]:
     """
     Validate a value against a schema class.
 

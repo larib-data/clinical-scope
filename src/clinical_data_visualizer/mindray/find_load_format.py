@@ -1,10 +1,11 @@
 import logging
 import re
-import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
+from defusedxml.ElementTree import parse as parse_xml
 
 import clinical_data_visualizer.mindray.options as options_naming
 from clinical_data_visualizer import helper
@@ -16,9 +17,10 @@ logger = logging.getLogger(__name__)
 def _optimize_df_types(df: pd.DataFrame) -> pd.DataFrame:
     """
     Optimize DataFrame types using pandas nullable dtypes.
-    - Integer columns -> nullable integer dtypes (Int8, Int16, UInt8, etc.)
-    - Float columns -> downcast to float32 if possible
-    - Works with NaNs (missing values).
+
+    Integer columns -> nullable integer dtypes (Int8, Int16, UInt8, etc.)
+    Float columns -> downcast to float32 if possible
+    Works with NaNs (missing values).
     """
     for col in df.columns:
         if pd.api.types.is_integer_dtype(df[col]) or pd.api.types.is_float_dtype(df[col]):
@@ -56,16 +58,17 @@ def _get_name_time_series(file_path: Path) -> str:
     return match.group(1)
 
 
-def _is_float(x) -> bool | None:
-    """True if x is a valid float."""
+def _is_float(x: Any) -> bool:
+    """Check if x is a valid float."""
     try:
         float(x)
-        return True
-    except Exception:
+    except (ValueError, TypeError):
         return False
+    else:
+        return True
 
 
-def _remove_polluted_columns(df):
+def _remove_polluted_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Remove polluted columns where at least one cell contains non-numeric data."""
     good_cols = [0]  # Keep timestamp column
 
@@ -92,7 +95,7 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         Tuple of (df_waveform, df_patient)
 
     """
-    tree = ET.parse(path_xml)
+    tree = parse_xml(path_xml)
     root = tree.getroot()
 
     # Extract patient info
@@ -185,7 +188,7 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
     wf_unit = waveform_unit_value_counts.index[0]
     wf_type = waveform_type_value_counts.index[0]
 
-    return pd.DataFrame({f"{wf_type}({wf_unit})": df["Value"].values}, index=df["Time"])
+    return pd.DataFrame({f"{wf_type}({wf_unit})": df["Value"].to_numpy()}, index=df["Time"])
 
 
 class MindRayDataSource(DataSourceBase):
@@ -203,7 +206,7 @@ class MindRayDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path_list: list[Path], path_output: Path, **kwargs: Any) -> pd.DataFrame:
         database_options_specific = kwargs.get("database_options_specific", {})
         extension_preference = options_naming.PREFERED_FILE_EXTENSION
 
@@ -290,5 +293,6 @@ class MindRayDataSource(DataSourceBase):
 
 
 # Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None):
+def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
+    """Load and process MindRay data."""
     return MindRayDataSource.main(patient_options, database_options_specific)

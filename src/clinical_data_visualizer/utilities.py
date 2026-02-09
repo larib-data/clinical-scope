@@ -26,9 +26,10 @@ def is_convertible_to_timestamp(value: str) -> bool:
     if not is_numeric(value):
         try:
             pd.Timestamp(value)
-            return True
-        except Exception:
+        except (ValueError, TypeError):
             return False
+        else:
+            return True
     return False
 
 
@@ -85,7 +86,6 @@ def compute_integral(signal: list | np.ndarray, time_step: float) -> float:
     return time_step * (0.5 * signal[0] + np.sum(signal[1:-1]) + 0.5 * signal[-1])
 
 
-
 # ==================================================================================================
 def compute_rolling_average(
     data: pd.DataFrame, name: str, period: float, time_step: float
@@ -110,7 +110,7 @@ def compute_rolling_average(
 
 
 # ==================================================================================================
-def colors_generator(n, color_scale=None, seed=29):
+def colors_generator(n: int, color_scale: str | None = None, seed: int = 29) -> list[str]:
     random.seed(seed)
 
     # Define the color scale, and if one is provided, avoid basic colors
@@ -162,14 +162,24 @@ def downsample_dataframe(df: pd.DataFrame, downsample_ratio: float) -> pd.DataFr
 
 
 # ==================================================================================================
-def hex_to_rgb(hex_color: str) -> tuple:
-    if (len(hex_color) != 7) and (not hex_color.startswith("#")):
+HEX_COLOR_LENGTH = 7
+HEX_PREFIX = "#"
+HEX_DIGIT_PAIRS = 3
+HEX_PAIR_LENGTH = 2
+
+
+def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    if (len(hex_color) != HEX_COLOR_LENGTH) or (not hex_color.startswith(HEX_PREFIX)):
         msg = "invalid input, hex_color must start with '#' and have 6 digits"
         raise ValueError(msg)
 
-    hex_color = hex_color.lstrip("#")
+    hex_color = hex_color.lstrip(HEX_PREFIX)
 
-    return int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return (
+        int(hex_color[0:HEX_PAIR_LENGTH], 16),
+        int(hex_color[HEX_PAIR_LENGTH : 2 * HEX_PAIR_LENGTH], 16),
+        int(hex_color[2 * HEX_PAIR_LENGTH : HEX_DIGIT_PAIRS * HEX_PAIR_LENGTH], 16),
+    )
 
 
 # ==================================================================================================
@@ -179,4 +189,3 @@ def find_delimiter(path_file: str | Path) -> str:
     path_file = Path(path_file)
     with Path.open(path_file) as fp:
         return sniffer.sniff(fp.readline()).delimiter
-

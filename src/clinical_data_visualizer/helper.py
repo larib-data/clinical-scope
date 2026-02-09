@@ -1,8 +1,11 @@
+import contextlib
 import json
 import logging
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def time_it(func):
+def time_it(func: Callable) -> Callable:
     """Decorator to measure and log execution time using import-style function identifier."""
 
-    def arg_wrapper(*args, **kwargs):
+    def arg_wrapper(*args: Any, **kwargs: Any) -> Any:
         start = time.perf_counter()
         result = func(*args, **kwargs)
         end = time.perf_counter()
@@ -24,10 +27,10 @@ def time_it(func):
         func_name = func.__name__
         try:
             module_name = func.__module__
-        except Exception:
+        except AttributeError:
             module_name = "Unknown"
 
-        logger.debug("⏳ %.3fs to run %s from %s", end - start, func_name, module_name)
+        logger.debug("%.3fs to run %s from %s", end - start, func_name, module_name)
         return result
 
     return arg_wrapper
@@ -164,6 +167,7 @@ def load_options(path: Path | None) -> dict:
 def wrap_label(text: str, max_line_length: int = 12, break_chars: str = r"[ \-_]") -> str:
     """
     Wrap a long label into multiple HTML lines (<br>) at allowed break characters.
+
     Used for axis titles or legends in Plotly figures.
 
     Args:
@@ -234,11 +238,8 @@ def shift_data_by_seconds(data: pd.DataFrame, shift: float) -> None:
     if pd.api.types.is_datetime64_any_dtype(data.index):
         data.index = data.index + pd.to_timedelta(shift, unit="s")
         return
-    try:
+    with contextlib.suppress(ValueError, TypeError):
         data.index = pd.to_datetime(data.index) + pd.to_timedelta(shift, unit="s")
-        return
-    except Exception:
-        return
 
 
 # ==================================================================================================

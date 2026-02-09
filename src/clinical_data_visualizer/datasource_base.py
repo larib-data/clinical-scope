@@ -57,7 +57,7 @@ class DataSourceBase(ABC):
 
     @classmethod
     @abstractmethod
-    def _load(cls, file_path, path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path: Path | list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
         """
         Load and parse raw data file(s) into a DataFrame.
 
@@ -137,7 +137,6 @@ class DataSourceBase(ABC):
 
         # Filter by datetime
         return cls._filter_by_datetime(df, patient_options)
-
 
     @classmethod
     @helper.time_it
@@ -285,4 +284,3 @@ class DataSourceBase(ABC):
         return cls._extract_signals(
             df, patient_options=patient_options_specific, database_options_specific=database_options
         )
-

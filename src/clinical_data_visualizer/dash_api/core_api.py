@@ -181,4 +181,4 @@ PORT = 8050
 
 webbrowser.open_new_tab(f"http://{HOST}:{PORT}")
 
-app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
+app.run(host=HOST, port=PORT, debug=True, use_reloader=False)

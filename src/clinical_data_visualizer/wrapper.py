@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from clinical_data_visualizer import constants as cst
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 def process_data_source(
     data_folder: Path,
     source_name: str,
-    main_func,
+    main_func: Callable,
     patient_options: dict,
     database_options_global: dict,
 ) -> list:

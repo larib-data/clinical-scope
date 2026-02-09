@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -30,7 +30,7 @@ class FluxmedSignalsDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() in [".txt", ".csv"]:
@@ -41,7 +41,7 @@ class FluxmedSignalsDataSource(DataSourceBase):
                 raise ValueError("Cannot extract timestamp from filename: " + filename)
 
             start_time_str = match.group(1)
-            start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S")
+            start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S").replace(tzinfo=UTC)
 
             # Read raw file
             with Path.open(file_path, "r", encoding="utf-8") as f:
@@ -93,10 +93,11 @@ class FluxmedSignalsDataSource(DataSourceBase):
             )
             df.index.name = "datetime_index"
         else:
-            msg = f"file_path extension was neither '.txt', '.csv' or '.parquet'. Input: '{file_path}'"
-            raise NotImplementedError(
-                msg
+            msg = (
+                f"file_path extension was neither '.txt', '.csv' or '.parquet'. "
+                f"Input: '{file_path}'"
             )
+            raise NotImplementedError(msg)
 
         df = df[~df.index.duplicated(keep="first")]
         cls._save_dataframe(df, path_output)
@@ -104,5 +105,5 @@ class FluxmedSignalsDataSource(DataSourceBase):
 
 
 # Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None):
+def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
     return FluxmedSignalsDataSource.main(patient_options, database_options_specific)
