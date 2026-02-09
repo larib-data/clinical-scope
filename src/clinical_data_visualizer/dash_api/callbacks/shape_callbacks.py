@@ -24,6 +24,7 @@ from dash import (
 )
 
 from clinical_data_visualizer.dash_api import datetime_utils, shape_manager, ui_components
+from clinical_data_visualizer.dash_api.callbacks.data_callbacks import FIGURE_RESAMPLER_CACHE
 from clinical_data_visualizer.dash_api.helper_api import is_user_annotation
 
 # Style constant for the shape edit popup modal
@@ -80,21 +81,31 @@ def sync_plotly_annotations(relayout_list, figures, graph_ids, store):
     Input({"type": "graph", "name": MATCH}, "relayoutData"),
     State({"type": "graph", "name": MATCH}, "figure"),
     State({"type": "graph", "name": MATCH}, "id"),
+    State({"type": "resampler-store", "name": MATCH}, "data"),
     prevent_initial_call=True,
 )
-def lock_and_style_shapes(relayout, fig, gid):
-    """Lock newly drawn shapes and apply styling."""
-    if not relayout or "shapes" not in fig.get("layout", {}):
+def lock_and_style_shapes(relayout, fig, gid, resampler_uid):
+    """Lock newly drawn shapes, apply styling, and resample traces on zoom/pan."""
+    if not relayout:
         raise exceptions.PreventUpdate
 
-    patch = Patch()
-    shapes = fig["layout"]["shapes"]
+    patch = None
 
+    # Dynamic resampling on zoom/pan (trace data update)
+    if resampler_uid and resampler_uid in FIGURE_RESAMPLER_CACHE:
+        result = FIGURE_RESAMPLER_CACHE[resampler_uid].construct_update_data_patch(relayout)
+        if result is not no_update:
+            patch = result
+
+    # Shape locking and styling (layout.shapes update)
+    shapes = fig.get("layout", {}).get("shapes", [])
     for idx, s in enumerate(shapes):
         logger.debug(s)
         if not s.get("editable", True):
             continue
 
+        if patch is None:
+            patch = Patch()
         patch["layout"]["shapes"][idx]["editable"] = False
 
         shape_type = s.get("type", "rect")
@@ -112,7 +123,9 @@ def lock_and_style_shapes(relayout, fig, gid):
                 except Exception:
                     pass
 
-    return patch
+    if patch is not None:
+        return patch
+    raise exceptions.PreventUpdate
 
 
 @callback(

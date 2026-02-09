@@ -9,8 +9,10 @@ import base64
 import json
 import logging
 from pathlib import Path
+from uuid import uuid4
 
 from dash import ALL, Input, Output, State, callback, dcc, html
+from plotly_resampler import FigureResampler
 
 import clinical_data_visualizer.constants as cst
 import clinical_data_visualizer.datasource_list as datasource
@@ -20,6 +22,10 @@ from clinical_data_visualizer.dash_api import ui_components, validation
 from clinical_data_visualizer.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
+
+# Server-side cache for FigureResampler objects, keyed by UUID.
+# Suitable for single-user desktop app.
+FIGURE_RESAMPLER_CACHE = {}
 
 
 @callback(
@@ -161,6 +167,8 @@ def process_visualization(n_clicks, db_options, schema_data, values, ids):
     annotations_data = ui_helper.load_annotations(name_folder_visu)
     ui_helper.save_json(validated_dict, patient_options_path)
 
+    FIGURE_RESAMPLER_CACHE.clear()
+
     try:
         model = wrapper.main(
             patient_options=validated_dict,
@@ -187,7 +195,12 @@ def process_visualization(n_clicks, db_options, schema_data, values, ids):
 
 
 def _build_graphs(model, annotations_data: dict) -> list:
-    """Build list of dcc.Graph components from model."""
+    """Build list of dcc.Graph + dcc.Store components from model.
+
+    Time-series figures are wrapped with FigureResampler for dynamic
+    downsampling on zoom/pan. A companion dcc.Store holds the cache UUID
+    so the resample_on_zoom callback can retrieve the server-side object.
+    """
     graphs = []
 
     for mod in model:
@@ -213,19 +226,29 @@ def _build_graphs(model, annotations_data: dict) -> list:
             ),
         )
 
+        # Wrap time_series with FigureResampler for dynamic downsampling
+        uid = None
+        if mod.name == "time_series":
+            uid = str(uuid4())
+            fig = FigureResampler(fig)
+            FIGURE_RESAMPLER_CACHE[uid] = fig
+
         graphs.append(
-            dcc.Graph(
-                id={"type": "graph", "name": mod.name},
-                figure=fig,
-                config={
-                    "displayModeBar": True,
-                    "modeBarButtonsToAdd": [
-                        "drawline",  # time point
-                        "drawrect",  # time range
-                    ],
-                },
-                style={"marginBottom": "40px"},
-            )
+            html.Div([
+                dcc.Graph(
+                    id={"type": "graph", "name": mod.name},
+                    figure=fig,
+                    config={
+                        "displayModeBar": True,
+                        "modeBarButtonsToAdd": [
+                            "drawline",  # time point
+                            "drawrect",  # time range
+                        ],
+                    },
+                    style={"marginBottom": "40px"},
+                ),
+                dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
+            ])
         )
 
     return graphs
