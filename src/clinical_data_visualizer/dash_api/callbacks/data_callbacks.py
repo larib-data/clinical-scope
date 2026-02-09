@@ -234,21 +234,23 @@ def _build_graphs(model, annotations_data: dict) -> list:
             FIGURE_RESAMPLER_CACHE[uid] = fig
 
         graphs.append(
-            html.Div([
-                dcc.Graph(
-                    id={"type": "graph", "name": mod.name},
-                    figure=fig,
-                    config={
-                        "displayModeBar": True,
-                        "modeBarButtonsToAdd": [
-                            "drawline",  # time point
-                            "drawrect",  # time range
-                        ],
-                    },
-                    style={"marginBottom": "40px"},
-                ),
-                dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
-            ])
+            html.Div(
+                [
+                    dcc.Graph(
+                        id={"type": "graph", "name": mod.name},
+                        figure=fig,
+                        config={
+                            "displayModeBar": True,
+                            "modeBarButtonsToAdd": [
+                                "drawline",  # time point
+                                "drawrect",  # time range
+                            ],
+                        },
+                        style={"marginBottom": "40px"},
+                    ),
+                    dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
+                ]
+            )
         )
 
     return graphs

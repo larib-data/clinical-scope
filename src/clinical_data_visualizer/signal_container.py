@@ -624,10 +624,7 @@ class PlotModel:
                 x_type_to_master_row[x_data_type] = row_idx
 
             if self.name == "time_series":
-                fig.update_yaxes(
-                    modebardisable= "zoominout",
-                    row=row_idx
-                )
+                fig.update_yaxes(modebardisable="zoominout", row=row_idx)
 
         fig.update_layout(
             title_text=self.name,
