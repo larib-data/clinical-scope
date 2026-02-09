@@ -74,7 +74,8 @@ def dash_widget_factory(schema_class, component_id_prefix: str):
         )
 
     else:
-        raise ValueError(f"Unsupported API_TYPE: {t}")
+        msg = f"Unsupported API_TYPE: {t}"
+        raise ValueError(msg)
 
     return html.Div(children=[label, input_component], style={"marginBottom": "8px"})
 

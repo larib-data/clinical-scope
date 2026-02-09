@@ -60,17 +60,21 @@ class SyringeDataSource(DataSourceBase):
                         # Fallback: treat as float (seconds)
                         df = df.set_index(time_col)
                 else:
-                    raise NotImplementedError(
+                    msg = (
                         "We need a column to play the role of the datetime index column<br>"
                         "Maybe we could do something with a given day and if a relative column time "
                         "exists, but not implemented."
                     )
+                    raise NotImplementedError(
+                        msg
+                    )
 
-            cols_to_convert = [c for c in df.columns]
+            cols_to_convert = list(df.columns)
             df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors="coerce")
         else:
+            msg = f"Invalid file format: {file_path.name}. Only .csv or .parquet supported."
             raise NotImplementedError(
-                f"Invalid file format: {file_path.name}. Only .csv or .parquet supported."
+                msg
             )
 
         df = df[~df.index.duplicated(keep="first")]

@@ -13,10 +13,13 @@ logger = logging.getLogger(__name__)
 
 # Safety check
 if options_naming.KEYWORD_FILE in options_naming.FILE_NAME_DATAFRAME_LOADED:
-    raise ValueError(
+    msg = (
         f"'KEYWORD_FILE'({options_naming.KEYWORD_FILE}) is in "
         f"'FILE_NAME_DATAFRAME_LOADED'({options_naming.FILE_NAME_DATAFRAME_LOADED}). "
         "This dangerous since we might override the raw data, or read the wrong one"
+    )
+    raise ValueError(
+        msg
     )
 
 
@@ -61,7 +64,7 @@ class FluxmedParametersDataSource(DataSourceBase):
             # Find the column names row
             col_idx = None
             for i, line in enumerate(lines):
-                if line.startswith(time_col_name.split("(")[0]):
+                if line.startswith(time_col_name.split("(", maxsplit=1)[0]):
                     col_idx = i
                     break
 
@@ -107,8 +110,9 @@ class FluxmedParametersDataSource(DataSourceBase):
             df.index = pd.to_datetime(timestamps)
             df.index.name = "datetime_index"
         else:
+            msg = f"file_path extension was neither '.txt', '.csv' or '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(
-                f"file_path extension was neither '.txt', '.csv' or '.parquet'. Input: '{file_path}'"
+                msg
             )
 
         df = df[~df.index.duplicated(keep="first")]

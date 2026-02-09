@@ -53,7 +53,7 @@ def get_handlers(path_logs: str | Path) -> tuple[BaseRotatingHandler, logging.St
         }
         RESET = "\033[0m"
 
-        def format(self, record, min_width_name=85):
+        def format(self, record, min_width_name=85) -> str:
             color = self.COLORS.get(record.levelname, self.RESET)
             record.asctime = self.formatTime(record, datefmt="%H:%M:%S")
             name_aligned = f"{record.name:<{min_width_name}}"
@@ -70,8 +70,8 @@ def get_handlers(path_logs: str | Path) -> tuple[BaseRotatingHandler, logging.St
 
 
 # ==================================================================================================
-def install_logging_excepthook(logger: logging.Logger):
-    def _hook(exc_type, exc_value, exc_traceback):
+def install_logging_excepthook(logger: logging.Logger) -> None:
+    def _hook(exc_type, exc_value, exc_traceback) -> None:
         if issubclass(exc_type, KeyboardInterrupt):
             logger.info("KeyboardInterrupt received, shutting down gracefully...")
             sys.__excepthook__(exc_type, exc_value, exc_traceback)

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def save_json(data_json: dict[str, Any], json_path: Path):
+def save_json(data_json: dict[str, Any], json_path: Path) -> None:
     try:
         with Path.open(json_path, "w") as f:
             json.dump(data_json, f, indent=4, default=str)
@@ -36,9 +36,7 @@ def load_annotations(folder_visu_path):
 
 # ==================================================================================================
 def is_user_annotation(ann: dict) -> bool:
-    """
-    Heuristic to detect user-created annotation vs system annotation (subplot titles).
-    """
+    """Heuristic to detect user-created annotation vs system annotation (subplot titles)."""
     # User annotations have x and y in data coordinates (numbers), not 'paper'
     if (
         ann.get("xref") == "paper"

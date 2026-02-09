@@ -55,7 +55,8 @@ class FluxmedSignalsDataSource(DataSourceBase):
                     break
 
             if header_idx is None:
-                raise RuntimeError("No 'Time' header found")
+                msg = "No 'Time' header found"
+                raise RuntimeError(msg)
 
             units_idx = header_idx + 1
             data_start_idx = units_idx + 6  # skip 6 lines after units
@@ -71,7 +72,8 @@ class FluxmedSignalsDataSource(DataSourceBase):
             ]
 
             if not numeric_lines:
-                raise RuntimeError("No numeric signal rows found after skipping 6 lines")
+                msg = "No numeric signal rows found after skipping 6 lines"
+                raise RuntimeError(msg)
 
             # Load into DataFrame
             df = pd.read_csv(
@@ -91,8 +93,9 @@ class FluxmedSignalsDataSource(DataSourceBase):
             )
             df.index.name = "datetime_index"
         else:
+            msg = f"file_path extension was neither '.txt', '.csv' or '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(
-                f"file_path extension was neither '.txt', '.csv' or '.parquet'. Input: '{file_path}'"
+                msg
             )
 
         df = df[~df.index.duplicated(keep="first")]

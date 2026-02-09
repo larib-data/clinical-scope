@@ -136,9 +136,8 @@ class DataSourceBase(ABC):
         df = cls._apply_time_shift(df, patient_options)
 
         # Filter by datetime
-        df = cls._filter_by_datetime(df, patient_options)
+        return cls._filter_by_datetime(df, patient_options)
 
-        return df
 
     @classmethod
     @helper.time_it
@@ -283,8 +282,7 @@ class DataSourceBase(ABC):
         df = cls._format(df, patient_options, database_options)
 
         # Extract signals
-        list_signal_container = cls._extract_signals(
+        return cls._extract_signals(
             df, patient_options=patient_options_specific, database_options_specific=database_options
         )
 
-        return list_signal_container

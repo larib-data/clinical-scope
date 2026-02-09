@@ -32,8 +32,9 @@ class PhilipsWavesDataSource(DataSourceBase):
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         else:
+            msg = f"file_path extension was neither '.csv' or '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(
-                f"file_path extension was neither '.csv' or '.parquet'. Input: '{file_path}'"
+                msg
             )
         df = df[~df.index.duplicated(keep="first")]
 
@@ -53,8 +54,7 @@ class PhilipsWavesDataSource(DataSourceBase):
     ) -> pd.DataFrame:
         # Philips waves doesn't need timezone handling (already has it)
         df = cls._apply_time_shift(df, patient_options)
-        df = cls._filter_by_datetime(df, patient_options)
-        return df
+        return cls._filter_by_datetime(df, patient_options)
 
 
 # Module-level main function for backward compatibility

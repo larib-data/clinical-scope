@@ -221,10 +221,10 @@ def to_float_seconds(
                 [ts.tz_convert(cst.LIBRARY_TZ).value if ts.tzinfo else ts.value for ts in x],
                 dtype=np.int64,
             )
-            x_seconds = x_ns / 1e9
-            return x_seconds
+            return x_ns / 1e9
 
-    raise TypeError(f"Unsupported type for time conversion: {type(x)}")
+    msg = f"Unsupported type for time conversion: {type(x)}"
+    raise TypeError(msg)
 
 
 # ==================================================================================================
@@ -248,9 +248,7 @@ def filter_data_by_timestamps(
     time_end: pd.Timestamp | None,
     filter_date: bool = True,
 ) -> pd.DataFrame:
-    """
-    Filter data between time_start and time_end timestamps using a hardcoded library timezone.
-    """
+    """Filter data between time_start and time_end timestamps using a hardcoded library timezone."""
     if not pd.api.types.is_datetime64_any_dtype(data.index):
         logger.warning("Data index is not datetime. Skipping filtering.")
         return data
@@ -259,7 +257,8 @@ def filter_data_by_timestamps(
 
     # Ensure index is in the library timezone
     if filtered.index.tz is None:
-        raise ValueError("Dataframe 'data' index should be timezone-aware")
+        msg = "Dataframe 'data' index should be timezone-aware"
+        raise ValueError(msg)
     filtered.index = filtered.index.tz_convert(cst.LIBRARY_TZ)
 
     # Localize or convert input timestamps

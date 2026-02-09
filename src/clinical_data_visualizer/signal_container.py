@@ -22,9 +22,12 @@ def get_unique_or_raise(values: list, attribute_name: str, context: str = ""):
     """
     unique_values = list(set(values))
     if len(unique_values) > 1:
-        raise ValueError(
+        msg = (
             f"We can't combine {context} with different '{attribute_name}' attributes. "
             f"Given: {unique_values}"
+        )
+        raise ValueError(
+            msg
         )
     return unique_values[0] if unique_values else None
 
@@ -92,9 +95,7 @@ class PlotOptions:
 
     @staticmethod
     def combine_from_signals(signals: list["Signal"], group_name: str) -> "PlotOptions":
-        """
-        Combine the plot options from a list of signals.
-        """
+        """Combine the plot options from a list of signals."""
         start = time.perf_counter()
 
         if not signals:
@@ -256,14 +257,13 @@ class Signal:
             # Any ohter field
             **additional_plot_options,
         )
-        trace_options = TraceOptions(
+        return TraceOptions(
             plot_options=plot_options,
             line_color=color,
             marker_color=color,
             # Any ohter field
             **additional_trace_options,
         )
-        return trace_options
 
     # ---------------- Initialization Methods ----------------
     @classmethod
@@ -370,7 +370,8 @@ class Signal:
             signal_x.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES
             or signal_y.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES
         ):
-            raise ValueError("Both input signals must be of type 'time_series'.")
+            msg = "Both input signals must be of type 'time_series'."
+            raise ValueError(msg)
 
         x_x = helper.to_float_seconds(signal_x.data.x)
         x_y = helper.to_float_seconds(signal_y.data.x)
@@ -379,7 +380,8 @@ class Signal:
         t_max = min(x_x[-1], x_y[-1])
 
         if t_min >= t_max:
-            raise ValueError("Signals do not have overlapping time intervals.")
+            msg = "Signals do not have overlapping time intervals."
+            raise ValueError(msg)
 
         start = time.perf_counter()
         x_common = np.union1d(
@@ -442,21 +444,21 @@ class Signal:
         x = self.data.x
         # Prepare line dict only if mode includes lines
         line_dict = (
-            dict(
-                color=self.trace_options.line_color,
-                width=self.trace_options.line_width,
-                dash=self.trace_options.line_dash,
-            )
+            {
+                "color": self.trace_options.line_color,
+                "width": self.trace_options.line_width,
+                "dash": self.trace_options.line_dash,
+            }
             if "lines" in self.trace_options.mode
             else None
         )
         # Prepare marker dict only if mode includes markers
         marker_dict = (
-            dict(
-                color=self.trace_options.marker_color,
-                symbol=self.trace_options.marker_symbol,
-                size=self.trace_options.marker_size,
-            )
+            {
+                "color": self.trace_options.marker_color,
+                "symbol": self.trace_options.marker_symbol,
+                "size": self.trace_options.marker_size,
+            }
             if "markers" in self.trace_options.mode
             else None
         )
@@ -631,9 +633,9 @@ class PlotModel:
             height=total_fig_height,
             width=total_fig_height / n_rows if self.square_plot else None,
             showlegend=True,
-            hoverlabel=dict(
-                namelength=-1  # Show full curve name
-            ),
+            hoverlabel={
+                "namelength": -1  # Show full curve name
+            },
         )
 
         fig.update_layout(
@@ -658,7 +660,7 @@ class PlotModel:
         Initialize PlotGroup object:
         - Validate plot_type and square_plot consistency
         - Sort groups by plot_priority
-        - Build figure
+        - Build figure.
         """
         plot_group = self.groups
 
@@ -691,10 +693,9 @@ class PlotModel:
                 groups[plot_type] = [plot_group]
             else:
                 groups[plot_type].append(plot_group)
-        plot_model_list = [
+        return [
             PlotModel(groups=common_plot_group_list) for common_plot_group_list in groups.values()
         ]
-        return plot_model_list
 
     @staticmethod
     def to_html(plot_models: list["PlotModel"], patient_options: dict) -> None:

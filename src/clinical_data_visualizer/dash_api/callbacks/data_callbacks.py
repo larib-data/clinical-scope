@@ -45,7 +45,8 @@ def load_db_options(contents, filename):
         decoded = base64.b64decode(content_string)
 
         if not filename.endswith(".json"):
-            raise ValueError("Invalid file type")
+            msg = "Invalid file type"
+            raise ValueError(msg)
 
         database_options_dict = json.loads(decoded.decode("utf-8"))
         logger.debug("loaded database_options_dict: %r", database_options_dict)
@@ -195,7 +196,8 @@ def process_visualization(n_clicks, db_options, schema_data, values, ids):
 
 
 def _build_graphs(model, annotations_data: dict) -> list:
-    """Build list of dcc.Graph + dcc.Store components from model.
+    """
+    Build list of dcc.Graph + dcc.Store components from model.
 
     Time-series figures are wrapped with FigureResampler for dynamic
     downsampling on zoom/pan. A companion dcc.Store holds the cache UUID
@@ -219,11 +221,11 @@ def _build_graphs(model, annotations_data: dict) -> list:
 
         fig.update_layout(
             dragmode=default_dragmode,
-            newshape=dict(
-                fillcolor="rgba(0,255,0,0.25)",
-                line=dict(color="green", width=2),
-                layer="above",
-            ),
+            newshape={
+                "fillcolor": "rgba(0,255,0,0.25)",
+                "line": {"color": "green", "width": 2},
+                "layer": "above",
+            },
         )
 
         # Wrap time_series with FigureResampler for dynamic downsampling

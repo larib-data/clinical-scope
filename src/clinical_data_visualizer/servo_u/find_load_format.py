@@ -44,7 +44,8 @@ def extract_column_mapping_from_section(lines):
         i for i, L in enumerate(lines) if L.strip().startswith("%%%%%%") and set(L.strip()) == {"%"}
     ]
     if len(separator_indices) < 3:
-        raise ValueError("File does not have enough separators for mapping section")
+        msg = "File does not have enough separators for mapping section"
+        raise ValueError(msg)
 
     start_idx = separator_indices[1] + 1
     end_idx = separator_indices[2]
@@ -84,7 +85,8 @@ def parse_file(filepath: Path, start_time, first_file=False, rename_map=None):
             table_header_idx = i
             break
     if table_header_idx is None:
-        raise ValueError(f"No table header found in {filepath}")
+        msg = f"No table header found in {filepath}"
+        raise ValueError(msg)
 
     # Column names
     header_line = lines[table_header_idx].replace("%%", "").strip()
@@ -161,8 +163,7 @@ class ServoUDataSource(DataSourceBase):
     ) -> pd.DataFrame:
         # Servo U doesn't need timezone handling (already has it from loading)
         df = cls._apply_time_shift(df, patient_options)
-        df = cls._filter_by_datetime(df, patient_options)
-        return df
+        return cls._filter_by_datetime(df, patient_options)
 
 
 # Module-level main function for backward compatibility

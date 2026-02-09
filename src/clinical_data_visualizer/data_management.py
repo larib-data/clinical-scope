@@ -23,7 +23,8 @@ def read_waves_data(path: str | Path, delimiter=None, decimal=".") -> pd.DataFra
         )  # no dtype specify, to use pandas guessing capabilities
 
     else:
-        raise ValueError("invalid data_type -> 'csv' and 'parquet' are the allowed values.")
+        msg = "invalid data_type -> 'csv' and 'parquet' are the allowed values."
+        raise ValueError(msg)
 
     return data_df
 

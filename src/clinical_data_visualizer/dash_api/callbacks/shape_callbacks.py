@@ -155,7 +155,7 @@ def persist_shapes(figures, ids, store):
     State("folder-visu-path", "data"),
     prevent_initial_call=True,
 )
-def save_annotations_and_shapes(store, folder_visu_path):
+def save_annotations_and_shapes(store, folder_visu_path) -> None:
     """Save annotations and shapes to JSON file."""
     if folder_visu_path:
         path = Path(folder_visu_path) / "annotations.json"

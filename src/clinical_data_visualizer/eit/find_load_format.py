@@ -14,10 +14,13 @@ logger = logging.getLogger(__name__)
 
 # Safety check
 if options_naming.KEYWORD_FILE_EXTENSION in options_naming.FILE_NAME_DATAFRAME_LOADED:
-    raise ValueError(
+    msg = (
         f"'KEYWORD_FILE_EXTENSION'({options_naming.KEYWORD_FILE_EXTENSION}) is in "
         f"'FILE_NAME_DATAFRAME_LOADED'({options_naming.FILE_NAME_DATAFRAME_LOADED}). "
         "This dangerous since we might override the raw data, or read the wrong one"
+    )
+    raise ValueError(
+        msg
     )
 
 
@@ -29,7 +32,8 @@ def _add_index_timestamp_to_eit_dataframe(
     """Adds a timestamp index to an eit dataframe based on the 'time' column (fraction of day)."""
     df = df.reset_index()
     if options_naming.Time_column_label not in df.columns:
-        raise ValueError(f"DataFrame must contain a '{options_naming.Time_column_label}' column.")
+        msg = f"DataFrame must contain a '{options_naming.Time_column_label}' column."
+        raise ValueError(msg)
 
     if day is not None:
         base_day = pd.Timestamp(day).normalize()
@@ -43,13 +47,15 @@ def _add_index_timestamp_to_eit_dataframe(
         if timezone is not None:
             df.index = df.index.tz_localize(timezone)
         else:
-            raise ValueError(
+            msg = (
                 "'day.tz' and 'timezone' can't be None at the same time, otherwise we can't "
                 "assign time zone to dataframe"
             )
-    df = df[~df.index.duplicated(keep="first")]
+            raise ValueError(
+                msg
+            )
+    return df[~df.index.duplicated(keep="first")]
 
-    return df
 
 
 def _parse_asc_selected_columns(lines: list[str], selected_cols=None) -> pd.DataFrame:

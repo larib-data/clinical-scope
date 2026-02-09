@@ -18,7 +18,7 @@ def _optimize_df_types(df: pd.DataFrame) -> pd.DataFrame:
     Optimize DataFrame types using pandas nullable dtypes.
     - Integer columns -> nullable integer dtypes (Int8, Int16, UInt8, etc.)
     - Float columns -> downcast to float32 if possible
-    - Works with NaNs (missing values)
+    - Works with NaNs (missing values).
     """
     for col in df.columns:
         if pd.api.types.is_integer_dtype(df[col]) or pd.api.types.is_float_dtype(df[col]):
@@ -56,7 +56,7 @@ def _get_name_time_series(file_path: Path) -> str:
     return match.group(1)
 
 
-def _is_float(x):
+def _is_float(x) -> bool | None:
     """True if x is a valid float."""
     try:
         float(x)
@@ -71,7 +71,7 @@ def _remove_polluted_columns(df):
 
     for col in df.columns[1:]:
         series = df[col].astype(str)
-        numeric_mask = series.apply(lambda x: _is_float(x))
+        numeric_mask = series.apply(_is_float)
         pattern_mask = series.str.contains(
             r"SampleRate:|TimeStamp\(|Beep_Pulse|HeartBeat_", regex=True, na=False
         )
@@ -90,6 +90,7 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     Returns:
         Tuple of (df_waveform, df_patient)
+
     """
     tree = ET.parse(path_xml)
     root = tree.getroot()
@@ -178,7 +179,8 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
     waveform_unit_value_counts = df["WaveformUnit"].value_counts()
 
     if len(waveform_type_value_counts) > 1 or len(waveform_unit_value_counts) > 1:
-        raise ValueError("Unit and value type should be unique in xml file")
+        msg = "Unit and value type should be unique in xml file"
+        raise ValueError(msg)
 
     wf_unit = waveform_unit_value_counts.index[0]
     wf_type = waveform_type_value_counts.index[0]
