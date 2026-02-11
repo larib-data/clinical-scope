@@ -102,29 +102,63 @@ def build_patient_options_ui(
     components = []
     schema_lookup = {}
 
+    header_style = {
+        "borderBottom": "2px solid #dee2e6",
+        "paddingBottom": "8px",
+        "marginBottom": "12px",
+    }
+    card_style = {
+        "border": "1px solid #dee2e6",
+        "borderRadius": "6px",
+        "padding": "12px 16px",
+        "backgroundColor": "#f8f9fa",
+        "marginBottom": "16px",
+    }
+
     # Global options
-    components.append(html.H3("Global Patient Options"))
+    components.append(html.H3("Global Patient Options", style=header_style))
     component, schema = ui_components.build_ui_and_schema_registry(
         cst.PatientOptions, prefix="global"
     )
-    components.append(component)
+    components.append(html.Div(component, style=card_style))
     schema_lookup = schema_lookup | schema
 
     # Per-datasource options
-    components.append(html.H3("Specific Options"))
+    components.append(html.H3("Specific Options", style=header_style))
 
+    datasource_cards = []
     requested_data_sources = database_options.keys()
     for data_source in datasource.DataSource.AVAILABLE:
         if data_source.NAME not in requested_data_sources:
             continue
 
-        components.append(html.H4(data_source.DESCRIPTION))
         component, schema = ui_components.build_ui_and_schema_registry(
             data_source.OPTIONS.PatientOptionsDataSourceRelative,
             prefix=f"specific.{data_source.NAME}",
         )
-        components.append(component)
+        datasource_cards.append(
+            html.Div(
+                [html.H5(data_source.DESCRIPTION), component],
+                style={
+                    "border": "1px solid #dee2e6",
+                    "borderRadius": "6px",
+                    "padding": "12px",
+                    "backgroundColor": "#f8f9fa",
+                },
+            )
+        )
         schema_lookup = schema_lookup | schema
+
+    components.append(
+        html.Div(
+            datasource_cards,
+            style={
+                "display": "grid",
+                "gridTemplateColumns": "1fr 1fr",
+                "gap": "12px",
+            },
+        )
+    )
 
     schema_data = {k: v.__name__ for k, v in schema_lookup.items()}
 
@@ -155,6 +189,7 @@ def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
     Output("validation-errors", "children"),
     Output("process-status", "children"),
     Output("folder-visu-path", "data"),
+    Output("shape-controls", "style"),
     Input("process-button", "n_clicks"),
     State("db-options-store", "data"),
     State("schema-registry", "data"),
@@ -168,10 +203,11 @@ def process_visualization(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
-) -> tuple[Any, Any, Any, str | None]:
+) -> tuple[Any, Any, Any, str | None, dict]:
     """Process visualization request with validated patient options."""
+    shape_hidden = {"display": "none"}
     if not db_options:
-        return None, "Database options not loaded", None, None
+        return None, "Database options not loaded", None, None, shape_hidden
 
     schema_class_lookup = _rehydrate_schema_classes(schema_data)
 
@@ -186,7 +222,7 @@ def process_visualization(
     logger.debug("validated_dict: %s", validated_dict)
 
     if errors:
-        return None, html.Ul([html.Li(e) for e in errors]), None, None
+        return None, html.Ul([html.Li(e) for e in errors]), None, None, shape_hidden
 
     # Save JSON exactly as before
     patient_options_path = (
@@ -213,6 +249,7 @@ def process_visualization(
             None,
             html.Div("Visualization crashed. See logs.", style={"color": "red"}),
             None,
+            shape_hidden,
         )
 
     return (
@@ -220,6 +257,7 @@ def process_visualization(
         None,
         html.Div("Visualization suceeded", style={"color": "green"}),
         name_folder_visu,
+        {"display": "block"},
     )
 
 

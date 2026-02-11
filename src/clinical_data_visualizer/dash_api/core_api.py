@@ -66,7 +66,17 @@ app.layout = html.Div(
             [
                 dcc.Upload(
                     id="db-options-upload",
-                    children=html.Button("Upload database_options.json"),
+                    children=html.Button(
+                        "Upload config file",
+                        style={
+                            "backgroundColor": "#007bff",
+                            "color": "white",
+                            "border": "none",
+                            "padding": "6px 16px",
+                            "borderRadius": "4px",
+                            "cursor": "pointer",
+                        },
+                    ),
                     multiple=False,
                 ),
                 html.Span(" or ", style={"margin": "0 10px", "fontSize": "14px"}),
@@ -90,18 +100,39 @@ app.layout = html.Div(
         html.Hr(),
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
-        html.Button("Process visualization", id="process-button"),
+        html.Button(
+            "Process visualization",
+            id="process-button",
+            style={
+                "backgroundColor": "#fd7e14",
+                "color": "white",
+                "border": "none",
+                "padding": "10px 28px",
+                "borderRadius": "4px",
+                "cursor": "pointer",
+                "fontSize": "16px",
+                "fontWeight": "bold",
+                "marginTop": "16px",
+                "marginBottom": "8px",
+            },
+        ),
         html.Div(id="validation-errors"),
         html.Div(id="process-status"),
         html.Div(id="process-status-annotation"),
-        dcc.Dropdown(
-            id="shape-selector",
-            options=[],
-            value=None,
-            clearable=False,
+        html.Div(
+            id="shape-controls",
+            style={"display": "none"},
+            children=[
+                dcc.Dropdown(
+                    id="shape-selector",
+                    options=[],
+                    value=None,
+                    clearable=False,
+                ),
+                html.Button("Modify", id="modify-button"),
+                html.Button("Delete", id="delete-button"),
+            ],
         ),
-        html.Button("Modify", id="modify-button"),
-        html.Button("Delete", id="delete-button"),
         # Shape edit modal
         html.Div(
             id="shape-edit-popup",
@@ -191,7 +222,8 @@ app.layout = html.Div(
         html.Hr(),
         html.Div(id="visualization-container"),
         dcc.Store(id="annotations-store", data={}),
-    ]
+    ],
+    style={"padding": "20px 32px", "maxWidth": "1400px", "margin": "0 auto"},
 )
 
 HOST = "127.0.0.1"

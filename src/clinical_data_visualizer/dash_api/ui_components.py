@@ -95,11 +95,35 @@ def build_ui_and_schema_registry(options_class: Any, prefix: str) -> tuple[html.
     # Sort by ORDER field
     nested_classes.sort(key=lambda cls: getattr(cls, "ORDER", 999))
 
-    for schema_class in nested_classes:
+    # Index-based iteration with lookahead for consecutive TIMESTAMP fields
+    i = 0
+    while i < len(nested_classes):
+        schema_class = nested_classes[i]
         comp_id = f"{prefix}.{schema_class.NAME}"
-        component = dash_widget_factory(schema_class, prefix)
-        components.append(component)
         schema_lookup[comp_id] = schema_class
+
+        # Check if current and next field are both TIMESTAMP → render side by side
+        if (
+            i + 1 < len(nested_classes)
+            and schema_class.API_TYPE == cst.ApiType.TIMESTAMP
+            and nested_classes[i + 1].API_TYPE == cst.ApiType.TIMESTAMP
+        ):
+            next_class = nested_classes[i + 1]
+            next_comp_id = f"{prefix}.{next_class.NAME}"
+            schema_lookup[next_comp_id] = next_class
+
+            component_left = dash_widget_factory(schema_class, prefix)
+            component_right = dash_widget_factory(next_class, prefix)
+            row = html.Div(
+                [component_left, component_right],
+                style={"display": "flex", "gap": "24px", "marginBottom": "8px"},
+            )
+            components.append(row)
+            i += 2
+        else:
+            component = dash_widget_factory(schema_class, prefix)
+            components.append(component)
+            i += 1
 
     return html.Div(components), schema_lookup
 
