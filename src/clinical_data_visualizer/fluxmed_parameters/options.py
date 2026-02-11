@@ -25,6 +25,9 @@ source_options = {
 }
 
 
+DEFAULT_DATABASE_OPTIONS = {}
+
+
 class DatabaseOptionsAdditionalInformations:
     TIMEZONE = "timezone"
 

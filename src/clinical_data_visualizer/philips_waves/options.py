@@ -9,6 +9,9 @@ FILE_NAME_DATAFRAME_LOADED = "philips_waves.parquet"
 ALLOW_LOADED_DATAFRAME_SAVING = False
 
 
+DEFAULT_DATABASE_OPTIONS = {}
+
+
 class PatientOptionsDataSourceRelative:
     class TimeShift:
         NAME = "time_shift"

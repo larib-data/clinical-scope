@@ -36,8 +36,11 @@ def _add_index_timestamp_to_eit_dataframe(
     if day is not None:
         base_day = pd.Timestamp(day).normalize()
     else:
-        logger.warning("Loading EIT data without giving a day is highly discouraged")
-        base_day = pd.Timestamp("2000-01-01")
+        msg = (
+            "EIT day not provided and could not be inferred from datetime_start. "
+            "Skipping EIT datasource."
+        )
+        raise ValueError(msg)
 
     df = df.copy()
     df.index = base_day + pd.to_timedelta(df[options_naming.Time_column_label], unit="D")
@@ -303,6 +306,10 @@ class EITDataSource(DataSourceBase):
         )
 
         day_str = patient_options_eit.get(options_naming.PatientOptionsDataSourceRelative.Day.NAME)
+        if not day_str:
+            day_str = patient_options.get(cst.PatientOptions.DatetimeStart.NAME)
+            if day_str:
+                logger.info("EIT day not provided, inferring from datetime_start: %s", day_str)
         day = pd.Timestamp(day_str) if day_str else None
         df = _add_index_timestamp_to_eit_dataframe(df, day=day, timezone=timezone)
 

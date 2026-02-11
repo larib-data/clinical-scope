@@ -10,6 +10,9 @@ FILE_NAME_DATAFRAME_LOADED = "mindray_waves.parquet"
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
 
+DEFAULT_DATABASE_OPTIONS = {}
+
+
 class DatabaseOptionsAdditionalInformations:
     TIMEZONE = "timezone"
 

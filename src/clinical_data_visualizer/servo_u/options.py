@@ -13,6 +13,9 @@ REFERENCE_TIME_FIELD = "Log start"  # or "PC Time"
 COLUMN_RELATIVE_TIME = "Time(ms)"
 
 
+DEFAULT_DATABASE_OPTIONS = {}
+
+
 class PatientOptionsDataSourceRelative:
     class TimeShift:
         NAME = "time_shift"

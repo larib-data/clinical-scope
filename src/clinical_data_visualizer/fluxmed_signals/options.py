@@ -9,6 +9,9 @@ FILE_NAME_DATAFRAME_LOADED = "fluxmed_signals.parquet"
 DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 
 
+DEFAULT_DATABASE_OPTIONS = {}
+
+
 class DatabaseOptionsAdditionalInformations:
     TIMEZONE = "timezone"
 

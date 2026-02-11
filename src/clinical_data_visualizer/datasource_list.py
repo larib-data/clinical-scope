@@ -103,6 +103,15 @@ class DataSource:
         return None
 
 
+def generate_default_database_options() -> dict:
+    """Generate database options with all available datasources using their defaults."""
+    db_options = {}
+    for data_source in DataSource.AVAILABLE:
+        default = getattr(data_source.OPTIONS, "DEFAULT_DATABASE_OPTIONS", {})
+        db_options[data_source.NAME] = dict(default)
+    return db_options
+
+
 def get_nested_classes(cls: type) -> list[type]:
     return [
         value

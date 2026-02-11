@@ -62,10 +62,28 @@ app.layout = html.Div(
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
-        dcc.Upload(
-            id="db-options-upload",
-            children=html.Button("Upload database_options.json"),
-            multiple=False,
+        html.Div(
+            [
+                dcc.Upload(
+                    id="db-options-upload",
+                    children=html.Button("Upload database_options.json"),
+                    multiple=False,
+                ),
+                html.Span(" or ", style={"margin": "0 10px", "fontSize": "14px"}),
+                html.Button(
+                    "Default visualization (all sources)",
+                    id="default-viz-button",
+                    style={
+                        "backgroundColor": "#28a745",
+                        "color": "white",
+                        "border": "none",
+                        "padding": "6px 16px",
+                        "borderRadius": "4px",
+                        "cursor": "pointer",
+                    },
+                ),
+            ],
+            style={"display": "flex", "alignItems": "center"},
         ),
         html.Div(id="db-options-status"),
         dcc.Store(id="db-options-store"),

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from dash import ALL, Input, Output, State, callback, dcc, html
+from dash import ALL, Input, Output, State, callback, ctx, dcc, html
 from plotly_resampler import FigureResampler
 
 import clinical_data_visualizer.constants as cst
@@ -41,14 +41,27 @@ def _validate_json_file(decoded_content: bytes, filename: str) -> dict[str, Any]
     Output("db-options-store", "data"),
     Output("db-options-status", "children"),
     Input("db-options-upload", "contents"),
+    Input("default-viz-button", "n_clicks"),
     State("db-options-upload", "filename"),
     prevent_initial_call=True,
 )
 def load_db_options(
     contents: str | None,
+    n_clicks: int | None,  # noqa: ARG001
     filename: str,
 ) -> tuple[dict[str, Any] | None, html.Div | None]:
-    """Load and parse uploaded database options JSON file."""
+    """Load database options from uploaded file or generate defaults."""
+    triggered = ctx.triggered_id
+
+    if triggered == "default-viz-button":
+        return (
+            datasource.generate_default_database_options(),
+            html.Div(
+                "Using default visualization (all sources)",
+                style={"color": "green", "fontWeight": "bold"},
+            ),
+        )
+
     if not contents:
         return None, None
 

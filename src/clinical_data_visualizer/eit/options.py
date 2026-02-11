@@ -18,6 +18,11 @@ pep = "PEP"
 p_crete = "P_crete"
 
 
+DEFAULT_DATABASE_OPTIONS = {
+    "field_display": ["Local 1*", "Local 2*", "Local 3*", "Local 4*"],
+}
+
+
 class DatabaseOptionsAdditionalInformations:
     PERCENTAGE_REF_COLUMN = "percentage_reference_column"
     TIMEZONE = "timezone"
@@ -37,5 +42,5 @@ class PatientOptionsDataSourceRelative:
         NAME = "day"
         API_TYPE = cst.ApiType.DAY
         DEFAULT = ""
-        MANDATORY = True
+        MANDATORY = False
         DESCRIPTION = "Day of EIT recording"
