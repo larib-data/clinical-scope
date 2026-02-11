@@ -87,6 +87,54 @@ ruff check src/
 ruff format src/
 ```
 
+## UI Architecture
+
+### Layout Structure (`core_api.py`)
+The Dash app layout follows this hierarchy:
+- Root container: centered, max-width 1400px, 20px/32px padding
+- Database options section: upload button (blue) or "Default visualization" button (green)
+- Patient options section: dynamically generated based on loaded database options
+- Process button: orange, prominent, triggers visualization
+- Shape controls: dropdown + Modify/Delete buttons (hidden until visualization succeeds)
+- Visualization container: rendered plots with annotation tools
+
+### UI Component Generation (`ui_components.py`)
+- `dash_widget_factory()`: Creates input widgets based on schema class API_TYPE (BOOL, INT, FLOAT, TIMESTAMP, PATH_FILE, PATH_FOLDER)
+- `build_ui_and_schema_registry()`: Builds UI from nested schema classes with special handling:
+  - Consecutive TIMESTAMP fields (e.g., datetime_start + datetime_end) render side-by-side in a flex row
+  - All other fields render vertically with 8px bottom margin
+  - Returns both UI components and schema registry for validation
+
+### Styling Patterns
+**Button Colors:**
+- Blue `#007bff`: Secondary actions (Upload config file)
+- Green `#28a745`: Secondary actions (Default visualization)
+- Orange `#fd7e14`: Primary action (Process visualization, larger/bold)
+
+**Card Components:**
+- Border: `1px solid #dee2e6`
+- Background: `#f8f9fa`
+- Border radius: `6px`
+- Padding: `12px` or `12px 16px`
+
+**Section Headers:**
+- H3: Bottom border `2px solid #dee2e6`, padding-bottom 8px, margin-bottom 12px
+- H5: Used for datasource cards in 2-column grid
+
+### Dynamic UI Generation (`data_callbacks.py`)
+The `build_patient_options_ui` callback creates the patient options form:
+1. **Global options**: Rendered in a card (data_folder, datetime_start/end side-by-side, quick_load)
+2. **Specific options**: Per-datasource cards in a 2-column CSS grid
+   - Only generates UI for datasources present in database_options
+   - Each datasource gets its own card with H5 header
+   - Grid: `gridTemplateColumns: 1fr 1fr`, `gap: 12px`
+
+### Visibility Management
+- Shape controls start hidden (`display: none`)
+- `process_visualization` callback returns 5 outputs including `shape-controls` style
+- On success: `{"display": "block"}` shows dropdown + buttons
+- On failure/no-data: `{"display": "none"}` keeps them hidden
+
 ## Architecture Notes
 
 ### Adding a New Data Source

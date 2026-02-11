@@ -39,10 +39,21 @@ The application will open in your browser at `http://127.0.0.1:8050`.
 
 ### Workflow
 
-1. Upload a `database_options.json` file specifying which data sources to use
+**Option 1: Default Visualization (Quick Start)**
+1. Click "Default visualization (all sources)" button
+   - Automatically loads all 8 data sources with default settings
+   - No `database_options.json` file needed
+2. Configure patient options (data folder, time range, etc.)
+3. Click "Process visualization" to generate the interactive plots
+4. Use the drawing tools to annotate time points or regions of interest
+
+**Option 2: Custom Configuration**
+1. Upload a `database_options.json` file specifying which data sources to use and their display settings
 2. Configure patient options (data folder, time range, signals to display, etc.)
 3. Click "Process visualization" to generate the interactive plots
 4. Use the drawing tools to annotate time points or regions of interest
+
+**Note:** The "Default visualization" mode enables all available data sources (philips_waves, philips_numerics, eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray, syringe) with their default display configurations. You can still upload a custom `database_options.json` later to override this.
 
 ## Patient Data Folder Organization
 
