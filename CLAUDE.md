@@ -56,6 +56,7 @@ src/clinical_data_visualizer/
 - `servo_u` - Servo-U ventilator data
 - `mindray` - Mindray scope data
 - `syringe` - Syringe pump data
+- `other` - Generic data source (auto-discovers CSV/parquet files)
 
 ## Configuration Files
 

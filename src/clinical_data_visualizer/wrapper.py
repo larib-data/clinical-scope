@@ -56,12 +56,6 @@ def main(
         database_options_specific = database_options_global[name]
 
         try:
-            local_group = database_options_specific.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
-            for grouped_field_list in local_group.values():
-                already_used_in_group.extend(grouped_field_list)
-
-            local_loop_group = database_options_specific.get(cst.DatabaseOptions.LOOP, {})
-
             # (1) Create signals
             try:
                 list_signal = data_source.MAIN_MODULE(patient_options, database_options_specific)
@@ -69,6 +63,13 @@ def main(
             except Exception:
                 logger.exception("❌ Failed to create signals for datasource '%s'. Skipping.", name)
                 continue
+
+            # Read grouped/loop fields after MAIN_MODULE (datasource may populate dynamically)
+            local_group = database_options_specific.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
+            for grouped_field_list in local_group.values():
+                already_used_in_group.extend(grouped_field_list)
+
+            local_loop_group = database_options_specific.get(cst.DatabaseOptions.LOOP, {})
 
             # (2) Add default groups (one signal = one group)
             for signal in list_signal:

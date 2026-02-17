@@ -304,6 +304,15 @@ def _build_graphs(
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig
 
+        # Set explicit CSS height so the container matches the figure's intended
+        # height.  Without this, Plotly's default autosize=True sizes the figure
+        # to its container, and an unsized container collapses to a default that
+        # can hide the plot (especially for time-series with few subplots).
+        graph_height = int(mod.computed_height) if mod.computed_height else None
+        graph_style = {"marginBottom": "40px"}
+        if graph_height:
+            graph_style["height"] = f"{graph_height}px"
+
         graphs.append(
             html.Div(
                 [
@@ -317,7 +326,7 @@ def _build_graphs(
                                 "drawrect",  # time range
                             ],
                         },
-                        style={"marginBottom": "40px"},
+                        style=graph_style,
                     ),
                     dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
                 ]

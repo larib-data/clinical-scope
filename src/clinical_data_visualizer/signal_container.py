@@ -244,7 +244,7 @@ class Signal:
             k: v for k, v in plot_options_dict.items() if k in valid_keys_plot_options
         }
         name_signal = data_opts.get(cst.DatabaseOptions.Data.LABEL_CORRESPONDENCE, {}).get(
-            raw_signal_name
+            raw_signal_name, raw_signal_name
         )
         range_signal_plot = data_opts.get(cst.DatabaseOptions.Data.UNIT_RANGE, {}).get(
             raw_signal_name
@@ -301,7 +301,7 @@ class Signal:
         data_opts = database_options_specific.get(cst.DatabaseOptions.DATA, {})
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
         name_signal = data_opts.get(cst.DatabaseOptions.Data.LABEL_CORRESPONDENCE, {}).get(
-            raw_signal_name
+            raw_signal_name, raw_signal_name
         )
         unit_conversion_factor = data_opts.get(cst.DatabaseOptions.Data.UNIT_CONVERSION, {}).get(
             raw_signal_name, cst.DatabaseOptions.DEFAULT_UNIT_FACTOR
@@ -576,6 +576,7 @@ class PlotModel:
     square_plot: bool = False
     plot_type: str | None = None
     figure: go.Figure | None = None
+    computed_height: float | None = None
     timing: dict = field(default_factory=dict)  # Add timing dictionary
 
     def to_figure(self, base_spacing: float = 0.05, min_spacing: float = 0.005) -> go.Figure:
@@ -584,14 +585,11 @@ class PlotModel:
         total_fig_height = np.sum(
             [plot_group.plot_options.plot_height for plot_group in self.groups]
         )
+        self.computed_height = total_fig_height
         proportions = [
             plot_group.plot_options.plot_height / total_fig_height for plot_group in self.groups
         ]
-        subplot_title = (
-            [plot_group.name for plot_group in self.groups]
-            if self.plot_type != cst.PlotType.TIME_SERIES
-            else None
-        )
+        subplot_title = [plot_group.name for plot_group in self.groups]
         vertical_spacing = max(min_spacing, base_spacing / n_rows)
 
         fig = make_subplots(
@@ -619,7 +617,7 @@ class PlotModel:
                 secondary_y=False,
             )
             # Add secondary y-axis title if exists
-            if group.allow_secondary_y and len(group.assign_axes()) > 1:
+            if group.allow_secondary_y and len(traces_with_axes) > 1:
                 second_y_title = group.plot_options.y2_axis_title or ""
                 fig.update_yaxes(
                     title_text=second_y_title,

@@ -81,6 +81,13 @@ class DataSource:
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
+    @add_main_module
+    class Other:
+        NAME = "other"
+        DESCRIPTION = "Other (generic)"
+        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        OPTIONS: object
+
     # This order is the "default" order of plot, so try to choose it a bit carefully
     # Maybe the order should be from the order in database_options, but it's easy to do that there with the global priority honestly  # noqa: E501
     AVAILABLE = (
@@ -92,6 +99,7 @@ class DataSource:
         FluxmedSignals,
         ServoU,
         MindRay,
+        Other,
     )
 
     @classmethod
