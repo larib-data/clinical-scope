@@ -64,7 +64,7 @@ http://127.0.0.1:8050
 
 If the browser does not open automatically, manually navigate to the address above.
 
-![Application launch screen](images/01_launch_screen.png){ width=80% }
+![Application launch screen](images/App_launch.png){ width=100% }
 
 ## Application Overview
 
@@ -73,10 +73,10 @@ The interface is organized top-to-bottom in the following order:
 1. **Database Options** -- Load or select a visualization configuration.
 2. **Patient Options** -- Configure data folder, time range, and per-source settings.
 3. **Process Button** -- Start the visualization.
-4. **Shape Controls** -- Manage annotations (visible after processing).
+4. **Annotations Controls** -- Manage annotations (visible after processing).
 5. **Visualization Area** -- Interactive plots.
 
-![Application main interface](images/02_main_interface.png){ width=80% }
+![Application main interface](images/AppMainScreen.png){ width=100% }
 
 \newpage
 
@@ -132,7 +132,7 @@ Folder names are **flexible** -- they just need to contain the required keywords
 - **Syringe**: Files containing "syringe" in the filename
 - **Other**: `.csv` or `.parquet` files (auto-discovers columns with datetime values)
 
-![Patient folder structure example](images/03_patient_folder.png){ width=80% }
+![Patient folder structure example](images/PatientFolderStructure.png){ width=100% }
 
 \newpage
 
@@ -148,7 +148,7 @@ Click the green **"Default visualization (all sources)"** button. This automatic
 
 This is the recommended starting point for new users.
 
-![Default visualization button](images/04_default_visualization.png){ width=80% }
+![Default visualization button](images/DefaultVisuButton.png){ width=100% }
 
 ## Option 2: Custom Configuration File
 
@@ -156,8 +156,6 @@ Click the blue **"Upload config file"** button to load a custom `database_option
 This gives you full control over which sources are enabled and how each signal is displayed.
 
 See Section 9 for a detailed description of the configuration file format.
-
-![Upload config file button](images/05_upload_config.png){ width=80% }
 
 \newpage
 
@@ -177,7 +175,7 @@ These apply to all data sources:
 | **Time end filter** | End of the time window to display. Leave empty to use all available data. |
 | **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `tdv_visu/` folder, significantly speeding up subsequent loads. |
 
-![Global patient options](images/06_global_options.png){ width=80% }
+![Global patient options](images/GlobalPatientOptions.png){ width=100% }
 
 ## Per-Source Options
 
@@ -190,7 +188,7 @@ individual cards arranged in a two-column grid. Common per-source options includ
 
 Only data sources present in the loaded database options will show their configuration cards.
 
-![Per-source options](images/07_per_source_options.png){ width=80% }
+![Per-source options](images/SpecificOptions.png){ width=100% }
 
 \newpage
 
@@ -216,7 +214,7 @@ button to start generating the plots.
 A success message appears when processing completes. If no data is found for a source, it is
 silently skipped.
 
-![Processing visualization](images/08_processing.png){ width=80% }
+![Processing visualization](images/ProcessVisuButton.png){ width=100% }
 
 \newpage
 
@@ -250,11 +248,11 @@ data is loaded automatically.
 
 This keeps the interface responsive even with millions of data points.
 
-![Interactive plot navigation](images/09_plot_navigation.png){ width=80% }
+![Interactive plot navigation](images/InteractivePlot.png){ width=100% }
 
 \newpage
 
-# Annotations and Shape Tools
+# Annotations
 
 The annotation system lets you mark events, time periods, or regions of interest directly on the
 plots. Annotations are saved to an `annotations.json` file in the `tdv_visu/` folder and persist
@@ -267,13 +265,13 @@ Use the Plotly drawing tools in each plot's toolbar:
 - **Draw Line**: Click two points to draw a vertical line marking a specific event.
 - **Draw Rectangle**: Click and drag to highlight a time region or value range.
 
-Each shape can be given a name and a color via the edit popup that appears after drawing.
+Each annotations can be given a name and a color via the edit popup that appears after drawing.
 
-## Shape Management
+## Annotations Management
 
-After processing, the **Shape Controls** section becomes visible below the Process button:
+After processing, the **Annotation Controls** section becomes visible below the Process button:
 
-- **Shape Dropdown**: Lists all annotations across all figures, showing the figure name and shape
+- **Annotations Dropdown**: Lists all annotations across all figures, showing the annotations
   label.
 - **Modify Button**: Opens the edit popup for the selected annotation (change name, color, or
   whether it spans all subplots).
@@ -283,17 +281,17 @@ After processing, the **Shape Controls** section becomes visible below the Proce
 
 Each annotation has the following properties:
 
-- **Name**: A text label displayed on the shape.
+- **Name**: A text label displayed on the annotation.
 - **Color**: The line or fill color.
-- **Global**: When enabled, the shape spans all subplots in the figure (using paper y-coordinates).
+- **Global**: When enabled, the annotation spans all subplots in the figure (using paper y-coordinates).
 
 ## Persistence
 
 Annotations are automatically saved to `annotations.json` in the patient's `tdv_visu/` folder
-whenever you create, modify, or delete a shape. They are reloaded when you re-process the same
+whenever you create, modify, or delete an annotation. They are reloaded when you re-process the same
 patient data.
 
-![Annotation tools and shape management](images/10_annotations.png){ width=80% }
+![Annotations tools](images/AnnotationsButtons.png){ width=100% }
 
 \newpage
 
