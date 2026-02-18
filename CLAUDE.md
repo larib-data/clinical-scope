@@ -33,7 +33,10 @@ src/clinical_data_visualizer/
 │   ├── core_api.py         # Main entry point, layout definition
 │   ├── ui_components.py    # UI component builders
 │   ├── callbacks/          # Dash callbacks (data & shape handling)
-│   └── shape_manager.py    # Annotation shape management
+│   ├── shape_manager.py    # Annotation shape management
+│   ├── validation.py       # Input validation
+│   ├── helper_api.py       # API helper functions
+│   └── datetime_utils.py   # Datetime utilities
 ├── <datasource>/           # Each data source has its own module:
 │   ├── __init__.py
 │   ├── options.py          # Source-specific options/constants
@@ -44,6 +47,8 @@ src/clinical_data_visualizer/
 ├── wrapper.py              # Main processing logic
 ├── constants.py            # Global constants and option classes
 ├── helper.py               # Utility functions
+├── utilities.py            # Additional utilities
+├── data_management.py      # Data management functions
 └── logger_config.py        # Logging configuration
 ```
 

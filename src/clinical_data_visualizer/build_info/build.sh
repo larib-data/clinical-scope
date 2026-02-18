@@ -89,6 +89,16 @@ mkdir -p "$DIST_PATH"
 # Run PyInstaller
 pyinstaller "$SPEC_FILE" --clean --distpath "$DIST_PATH" --noconfirm
 
+# Copy user guide PDF into the app bundle root (next to executable)
+USER_GUIDE_PDF="$PROJECT_ROOT/docs/user_guide/ClinicalDataVisualizer_UserGuide.pdf"
+if [ -f "$USER_GUIDE_PDF" ]; then
+    cp "$USER_GUIDE_PDF" "$DIST_PATH/$APP_NAME/"
+    echo -e "${GREEN}User guide PDF copied to bundle.${NC}"
+else
+    echo -e "${YELLOW}Warning: User guide PDF not found at $USER_GUIDE_PDF${NC}"
+    echo -e "${YELLOW}  Run docs/user_guide/build_pdf.sh to generate it first.${NC}"
+fi
+
 echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Build Complete!${NC}"

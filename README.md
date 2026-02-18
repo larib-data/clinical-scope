@@ -41,7 +41,7 @@ The application will open in your browser at `http://127.0.0.1:8050`.
 
 **Option 1: Default Visualization (Quick Start)**
 1. Click "Default visualization (all sources)" button
-   - Automatically loads all 8 data sources with default settings
+   - Automatically loads all 9 data sources with default settings
    - No `database_options.json` file needed
 2. Configure patient options (data folder, time range, etc.)
 3. Click "Process visualization" to generate the interactive plots
@@ -53,7 +53,7 @@ The application will open in your browser at `http://127.0.0.1:8050`.
 3. Click "Process visualization" to generate the interactive plots
 4. Use the drawing tools to annotate time points or regions of interest
 
-**Note:** The "Default visualization" mode enables all available data sources (philips_waves, philips_numerics, eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray, syringe) with their default display configurations. You can still upload a custom `database_options.json` later to override this.
+**Note:** The "Default visualization" mode enables all available data sources (philips_waves, philips_numerics, eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray, syringe, other) with their default display configurations. You can still upload a custom `database_options.json` later to override this.
 
 ## Patient Data Folder Organization
 
@@ -71,6 +71,7 @@ Patient1/                        # Root patient folder (configure in patient_opt
 ├── servo_u/                     # Servo-U ventilator data (.sta files)
 ├── mindray/                     # Mindray scope data (.xml or .csv files)
 ├── syringe/                     # Syringe pump data
+├── other/                       # Generic data (.csv or .parquet files)
 └── tdv_visu/                    # Auto-generated: cached data and outputs
 ```
 
@@ -88,6 +89,7 @@ Folder names are **flexible** - they just need to contain the required keywords 
 | **Servo-U** | `servo` | `servo_u` | `Servo-U`, `SERVO`, `servo_data` |
 | **Mindray** | `mindray` | `mindray` | `Mindray`, `MINDRAY` |
 | **Syringe Pumps** | `syringe` | `syringe` | `Syringe`, `syringe_pumps` |
+| **Other (Generic)** | `other` | `other` | `Other`, `OTHER` |
 
 **File Types:**
 - Philips Waves: `.parquet` files
@@ -97,6 +99,7 @@ Folder names are **flexible** - they just need to contain the required keywords 
 - Servo-U: `.sta` files
 - Mindray: `.xml` or `.csv` files
 - Syringe: Files with "syringe" in filename
+- Other: `.csv` or `.parquet` files (auto-discovers with datetime column detection)
 
 ### Folder Naming Rules
 
@@ -136,19 +139,25 @@ If you only have Philips waves and EIT data:
 
 ```
 src/clinical_data_visualizer/
-├── dash_api/           # Dash web application
-│   ├── core_api.py     # Main entry point
-│   ├── ui_components.py
-│   └── ...
-├── philips_waves/      # Philips waveform data source
-├── philips_numerics/   # Philips numeric data source
-├── servo_u/            # Servo-U ventilator data source
-├── fluxmed_signals/    # FluxMed signal data source
-├── fluxmed_parameters/ # FluxMed parameter data source
-├── eit/                # EIT data source
-├── mindray/            # Mindray data source
-├── syringe/            # Syringe pump data source
-├── signal_container.py # Data model for signals and plots
-├── wrapper.py          # Main processing logic
-└── constants.py        # Configuration constants
+├── dash_api/               # Dash web application
+│   ├── core_api.py         # Main entry point, layout definition
+│   ├── ui_components.py    # UI component builders
+│   ├── callbacks/          # Dash callbacks (data & shape handling)
+│   ├── shape_manager.py    # Annotation shape management
+│   ├── validation.py       # Input validation
+│   ├── helper_api.py       # API helper functions
+│   └── datetime_utils.py   # Datetime utilities
+├── <datasource>/           # Each data source has its own module:
+│   ├── __init__.py
+│   ├── options.py          # Source-specific options/constants
+│   └── find_load_format.py # Data loading & processing logic
+├── datasource_base.py      # Abstract base class for datasources
+├── datasource_list.py      # Registry of available datasources
+├── signal_container.py     # Data model for signals and plots
+├── wrapper.py              # Main processing logic
+├── constants.py            # Configuration constants
+├── helper.py               # Utility functions
+├── utilities.py            # Additional utilities
+├── data_management.py      # Data management functions
+└── logger_config.py        # Logging configuration
 ```
