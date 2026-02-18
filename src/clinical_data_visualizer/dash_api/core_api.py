@@ -1,6 +1,8 @@
 # === Imports === #
+import sys
 import webbrowser
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import dash_bootstrap_components as dbc
 import dash_daq as daq
@@ -39,7 +41,18 @@ EDIT_SHAPE_POPUP_STYLE = {
     "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
 }
 
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
+# Resolve assets folder: PyInstaller bundles files under sys._MEIPASS
+if getattr(sys, "frozen", False):
+    _assets_folder = str(Path(sys._MEIPASS) / "clinical_data_visualizer" / "dash_api" / "assets")
+else:
+    _assets_folder = str(Path(__file__).parent / "assets")
+
+app = Dash(
+    __name__,
+    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    suppress_callback_exceptions=True,
+    assets_folder=_assets_folder,
+)
 
 app.layout = html.Div(
     [

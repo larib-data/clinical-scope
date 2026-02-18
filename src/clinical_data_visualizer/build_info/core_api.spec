@@ -11,6 +11,9 @@ datas += collect_data_files("dash")
 datas += collect_data_files("dash_daq")
 datas += collect_data_files("dash_table")
 
+# Include Dash assets (CSS) so they're found at runtime by Dash(__name__)
+datas += [('../dash_api/assets', 'clinical_data_visualizer/dash_api/assets')]
+
 # Collect hidden imports
 hiddenimports = []
 hiddenimports += collect_submodules("dash")
