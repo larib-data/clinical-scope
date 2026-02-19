@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 # ==================================================================================================
 def save_json(data_json: dict[str, Any], json_path: Path) -> None:
     try:
+        Path(json_path).parent.mkdir(parents=True, exist_ok=True)
         with Path.open(json_path, "w") as f:
             json.dump(data_json, f, indent=4, default=str)
     except Exception:

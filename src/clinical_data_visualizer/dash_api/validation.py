@@ -127,12 +127,18 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
             errors.append(f"{description} {error}")
             continue
 
+        # Normalize path values: strip surrounding quotes (e.g. Windows copy-paste)
+        if api_type in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
+            stored_value = str(ui_helper.format_path(value))
+        else:
+            stored_value = value
+
         # Store validated value
         if is_global:
-            validated_dict[name] = value
+            validated_dict[name] = stored_value
         else:
             if specific_name not in validated_dict:
                 validated_dict[specific_name] = {}
-            validated_dict[specific_name][name] = value
+            validated_dict[specific_name][name] = stored_value
 
     return validated_dict, errors

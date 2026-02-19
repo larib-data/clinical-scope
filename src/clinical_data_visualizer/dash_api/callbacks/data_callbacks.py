@@ -171,7 +171,7 @@ def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
     for k, v in schema_data.items():
         if k.startswith("global"):
             schema_class_lookup[k] = getattr(cst.PatientOptions, v)
-        if k.startswith("specific"):
+        elif k.startswith("specific"):
             parts = k.split(".")
             datasource_name = parts[1] if len(parts) > 1 else None
             datasource_class = datasource.DataSource.get_subclass_by_name(datasource_name)

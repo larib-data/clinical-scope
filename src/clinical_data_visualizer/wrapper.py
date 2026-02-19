@@ -1,6 +1,4 @@
 import logging
-from collections.abc import Callable
-from pathlib import Path
 
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
@@ -12,22 +10,6 @@ from clinical_data_visualizer.signal_container import (
 
 # ==================================================================================================
 logger = logging.getLogger(__name__)
-
-
-# ==================================================================================================
-def process_data_source(
-    data_folder: Path,
-    source_name: str,
-    main_func: Callable,
-    patient_options: dict,
-    database_options_global: dict,
-) -> list:
-    """Process a data source and return its trace list."""
-    return main_func(
-        data_folder,
-        patient_options=patient_options.get(source_name, {}),
-        database_options_global=database_options_global,
-    )
 
 
 # ==================================================================================================

@@ -288,7 +288,7 @@ class OtherDataSource(DataSourceBase):
                 continue
 
         # Inject grouped_fields into database_options for the wrapper to use
-        # database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
+        database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
 
         return all_signals
 

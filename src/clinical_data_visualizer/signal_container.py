@@ -577,7 +577,8 @@ class PlotModel:
     plot_type: str | None = None
     figure: go.Figure | None = None
     computed_height: float | None = None
-    timing: dict = field(default_factory=dict)  # Add timing dictionary
+    timing: dict = field(default_factory=dict)
+    name: str | None = None
 
     def to_figure(self, base_spacing: float = 0.05, min_spacing: float = 0.005) -> go.Figure:
         start = time.perf_counter()

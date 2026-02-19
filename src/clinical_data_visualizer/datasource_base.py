@@ -79,7 +79,7 @@ class DataSourceBase(ABC):
     def _save_dataframe(cls, df: pd.DataFrame, path_output: Path) -> None:
         """Save DataFrame to parquet for quick loading."""
         try:
-            Path(path_output).parent.mkdir(parents=False, exist_ok=True)
+            Path(path_output).parent.mkdir(parents=True, exist_ok=True)
             df.to_parquet(path_output)
         except Exception:
             logger.exception("Could not save the dataframe for future quick-reloading:")
