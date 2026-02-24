@@ -66,6 +66,10 @@ class FluxmedParametersDataSource(DataSourceBase):
                     col_idx = i
                     break
 
+            if col_idx is None:
+                msg = "No header row matching time column found"
+                raise RuntimeError(msg)
+
             # Extract column names and units
             col_names = lines[col_idx].split()
             col_units = lines[col_idx + 1].split()

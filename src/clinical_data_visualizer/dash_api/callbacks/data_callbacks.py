@@ -234,6 +234,7 @@ def process_visualization(
 
     FIGURE_RESAMPLER_CACHE.clear()
 
+    logger.info("Processing visualization request for: %s", validated_dict.get("data_folder", "?"))
     try:
         model = wrapper.main(
             patient_options=validated_dict,
@@ -242,20 +243,34 @@ def process_visualization(
         PlotModel.to_html(model, validated_dict)
         graphs = _build_graphs(model, annotations_data)
 
-    except Exception:
+    except Exception as e:
         logger.exception("Could not make the plot: ")
         return (
             None,
             None,
-            html.Div("Visualization crashed. See logs.", style={"color": "red"}),
+            html.Div(
+                [
+                    html.Span("Visualization failed: ", style={"fontWeight": "bold"}),
+                    html.Span(str(e)),
+                    html.Div(
+                        "See application logs for details.",
+                        style={"color": "#999", "fontSize": "12px", "marginTop": "4px"},
+                    ),
+                ],
+                style={"color": "red"},
+            ),
             None,
             shape_hidden,
         )
 
+    logger.info("Visualization succeeded: %d plot model(s) generated.", len(model))
     return (
         graphs,
         None,
-        html.Div("Visualization suceeded", style={"color": "green"}),
+        html.Div(
+            f"Visualization succeeded — {len(model)} plot(s) generated.",
+            style={"color": "green"},
+        ),
         name_folder_visu,
         {"display": "block"},
     )

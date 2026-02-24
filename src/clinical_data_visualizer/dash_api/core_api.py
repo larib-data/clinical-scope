@@ -130,8 +130,10 @@ app.layout = html.Div(
             },
         ),
         html.Div(id="validation-errors"),
-        html.Div(id="process-status"),
-        html.Div(id="process-status-annotation"),
+        dcc.Loading(
+            type="default",
+            children=html.Div(id="process-status"),
+        ),
         html.Div(
             id="shape-controls",
             style={"display": "none"},
@@ -242,6 +244,6 @@ app.layout = html.Div(
 HOST = "127.0.0.1"
 PORT = 8050
 
-webbrowser.open_new_tab(f"http://{HOST}:{PORT}")
-
-app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
+if __name__ == "__main__":
+    webbrowser.open_new_tab(f"http://{HOST}:{PORT}")
+    app.run(host=HOST, port=PORT, debug=False, use_reloader=False)

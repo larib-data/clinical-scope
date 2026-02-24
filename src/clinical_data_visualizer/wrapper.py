@@ -28,6 +28,17 @@ def main(
     for global_grouped_field_list in global_groups.values():
         already_used_in_group.extend(global_grouped_field_list)
 
+    requested_sources = [
+        ds.NAME
+        for ds in datasource_list.DataSource.AVAILABLE
+        if ds.NAME in database_options_global
+    ]
+    logger.info(
+        "🚀 Starting visualization for %d datasource(s): %s",
+        len(requested_sources),
+        requested_sources,
+    )
+
     # Loop through data sources
     for data_source in datasource_list.DataSource.AVAILABLE:
         name = data_source.NAME
@@ -42,6 +53,7 @@ def main(
             try:
                 list_signal = data_source.MAIN_MODULE(patient_options, database_options_specific)
                 all_signal_list.extend(list_signal)
+                logger.info("✅ [%s] %d signal(s) loaded.", name, len(list_signal))
             except Exception:
                 logger.exception("❌ Failed to create signals for datasource '%s'. Skipping.", name)
                 continue
@@ -100,6 +112,7 @@ def main(
                             name,
                             missing,
                         )
+                        continue
 
                     try:
                         loop_signal = Signal.loop_from_signals(signal_x, signal_y, name=loop_name)
@@ -155,4 +168,10 @@ def main(
         logger.exception("❌ Failed to assign PlotModel list.")
         return []
 
+    logger.info(
+        "📊 Visualization complete: %d signal(s), %d plot group(s), %d plot model(s).",
+        len(all_signal_list),
+        len(plot_group_list),
+        len(plot_model_list),
+    )
     return plot_model_list

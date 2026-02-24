@@ -98,12 +98,15 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     tree = parse_xml(path_xml)
     root = tree.getroot()
 
-    # Extract patient info
+    # Extract patient info (elements may be absent in some file variants)
+    def _safe_text(elem: Any) -> str | None:
+        return elem.text if elem is not None else None
+
     patient = {
-        "Gender": root.find(".//Patient/Demographics/Gender").text,
-        "Bed": root.find(".//Patient/AssignedLocation/Bed").text,
-        "PointOfCare": root.find(".//Patient/AssignedLocation/PointOfCare").text,
-        "Paced": root.find(".//Patient/Paced").text,
+        "Gender": _safe_text(root.find(".//Patient/Demographics/Gender")),
+        "Bed": _safe_text(root.find(".//Patient/AssignedLocation/Bed")),
+        "PointOfCare": _safe_text(root.find(".//Patient/AssignedLocation/PointOfCare")),
+        "Paced": _safe_text(root.find(".//Patient/Paced")),
     }
 
     # Extract waveform data

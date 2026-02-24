@@ -146,7 +146,7 @@ def parse_color(color: str) -> str:
         if match:
             r, g, b, a = match.groups()
         color_out = f"rgba({r},{g},{b},{a})"
-    if color.startswith("rgb"):
+    elif color.startswith("rgb"):
         match = re.match(r"rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)", color)
         if match:
             r, g, b = match.groups()

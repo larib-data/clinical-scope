@@ -643,7 +643,7 @@ class PlotModel:
             else:
                 x_type_to_master_row[x_data_type] = row_idx
 
-            if self.name == "time_series":
+            if self.name == cst.PlotType.TIME_SERIES:
                 fig.update_yaxes(modebardisable="zoominout", row=row_idx)
 
         fig.update_layout(

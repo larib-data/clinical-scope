@@ -68,11 +68,11 @@ def extract_shape_properties(shape: dict) -> dict:
     }
 
 
-def build_shape_option_label(fig_name: str, shape: dict, index: int) -> tuple[str, str]:
+def build_shape_option_label(fig_name: str, shape: dict, index: int) -> tuple[str, str, str]:
     """
     Build label and value for shape selector dropdown.
 
-    Returns (display_label, value) tuple.
+    Returns (display_label, value, color) tuple.
     """
     name = shape.get("label", {}).get("text") or f"Shape {index}"
     color = shape.get("line", {}).get("color") or shape.get("fillcolor") or "gray"

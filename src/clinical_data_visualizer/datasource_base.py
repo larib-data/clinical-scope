@@ -262,6 +262,7 @@ class DataSourceBase(ABC):
         )
 
         if cls.ALLOW_QUICK_LOAD and quick_load_enabled and dataframe_path.is_file():
+            logger.info("[%s] Quick loading from cache.", cls.DATASOURCE_NAME)
             df = cls._quick_load(dataframe_path)
         else:
             # Find folder (if datasource uses subfolder)
@@ -275,12 +276,21 @@ class DataSourceBase(ABC):
                 return []
 
             # Load data
+            logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
             df = cls._load(file_path, dataframe_path, database_options_specific=database_options)
+            logger.info(
+                "📥 [%s] Loaded: %d rows x %d columns.",
+                cls.DATASOURCE_NAME,
+                df.shape[0],
+                df.shape[1],
+            )
 
         # Format data
         df = cls._format(df, patient_options, database_options)
 
         # Extract signals
-        return cls._extract_signals(
+        signals = cls._extract_signals(
             df, patient_options=patient_options_specific, database_options_specific=database_options
         )
+        logger.info("🔬 [%s] Extracted %d signal(s).", cls.DATASOURCE_NAME, len(signals))
+        return signals
