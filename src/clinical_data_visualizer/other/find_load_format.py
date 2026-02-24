@@ -288,7 +288,13 @@ class OtherDataSource(DataSourceBase):
                 continue
 
         # Inject grouped_fields into database_options for the wrapper to use
-        database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
+        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
+        group_by_file = patient_options_specific.get(
+            options_naming.PatientOptionsDataSourceRelative.GroupByFile.NAME,
+            options_naming.PatientOptionsDataSourceRelative.GroupByFile.DEFAULT,
+        )
+        if group_by_file:
+            database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
 
         return all_signals
 

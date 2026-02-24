@@ -27,3 +27,10 @@ class PatientOptionsDataSourceRelative:
         DEFAULT = 0.0
         MANDATORY = False
         DESCRIPTION = "Time shift (seconds)"
+
+    class GroupByFile:
+        NAME = "group_by_file"
+        API_TYPE = cst.ApiType.BOOL
+        DEFAULT = True
+        MANDATORY = False
+        DESCRIPTION = "Group signals by source file"
