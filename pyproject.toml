@@ -34,6 +34,10 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
 [project.urls]
 Homepage = "https://gitlab.inria.fr/ajanin/clinicaldatavisualizer"
 Repository = "https://gitlab.inria.fr/ajanin/clinicaldatavisualizer.git"
