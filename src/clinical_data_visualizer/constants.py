@@ -115,4 +115,5 @@ class PlotType:
 
 
 if PlotType.LOOP != DatabaseOptions.LOOP:
-    raise NotImplementedError("No idea it that would work. Error here to warn you")
+    msg = "No idea it that would work. Error here to warn you"
+    raise NotImplementedError(msg)

@@ -5,41 +5,58 @@ This module contains validation functions for user input, schema validation,
 and type checking.
 """
 
-from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
-from clinical_data_visualizer.dash_api import (
-    helper_api as ui_helper,
-)
-
-# ==================================================================================================
-# Validation Functions
-# ==================================================================================================
+from clinical_data_visualizer.dash_api import helper_api as ui_helper
 
 
-def validate_timestamp(value, mandatory: bool = True) -> bool:
+def _validate_by_type(
+    value: Any, api_type: cst.ApiType, extension: str | None = None
+) -> str | None:
     """
-    Validate timestamp format.
+    Validate a value based on its API type.
 
     Args:
-        value: Timestamp string to validate
-        mandatory: Whether the value is mandatory (default: True)
+        value: The value to validate (assumed non-empty)
+        api_type: The cst.ApiType enum value
+        extension: Optional file extension requirement
 
     Returns:
-        bool: True if valid or not mandatory, False otherwise
+        Error message string if invalid, None if valid
+
     """
-    if not value:
-        return not mandatory
     try:
-        pd.Timestamp(value)
-        return True
-    except Exception:
-        return False
+        if api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
+            pd.Timestamp(value)
+
+        elif api_type == cst.ApiType.INT:
+            int(value)
+
+        elif api_type == cst.ApiType.FLOAT:
+            float(value)
+
+        elif api_type == cst.ApiType.PATH_FILE:
+            p = ui_helper.format_path(value)
+            if not p.is_file():
+                return "must be an existing file"
+            if extension and p.suffix != extension:
+                return f"must end with {extension}"
+
+        elif api_type == cst.ApiType.PATH_FOLDER:
+            p = ui_helper.format_path(value)
+            if not p.is_dir():
+                return "must be an existing folder"
+
+    except (ValueError, TypeError, AttributeError):
+        return str(value)
+
+    return None
 
 
-def validate_value(schema_class, value) -> tuple[bool, str]:
+def validate_value(schema_class: Any, value: Any) -> tuple[bool, str]:
     """
     Validate a value against a schema class.
 
@@ -49,71 +66,24 @@ def validate_value(schema_class, value) -> tuple[bool, str]:
 
     Returns:
         Tuple[bool, str]: (is_valid, error_message)
-        If valid, error_message is None
+        If valid, error_message is empty string
+
     """
     name = schema_class.NAME
     mandatory = schema_class.MANDATORY
-    t = schema_class.API_TYPE
+    api_type = schema_class.API_TYPE
+    extension = getattr(schema_class, "EXTENSION", None)
 
     if value in ("", None):
         if mandatory:
             return False, f"{name} is mandatory"
         return True, ""
 
-    try:
-        if t in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
-            pd.Timestamp(value)
-
-        elif t == cst.ApiType.INT:
-            int(value)
-
-        elif t == cst.ApiType.FLOAT:
-            float(value)
-
-        elif t == cst.ApiType.PATH_FILE:
-            p = ui_helper.format_path(value)
-            if not p.is_file():
-                return False, f"{name} must be an existing file"
-            if hasattr(schema_class, "EXTENSION") and p.suffix != schema_class.EXTENSION:
-                return False, f"{name} must end with {schema_class.EXTENSION}"
-
-        elif t == cst.ApiType.PATH_FOLDER:
-            p = ui_helper.format_path(value)
-            if not p.is_dir():
-                return False, f"{name} must be an existing folder"
-
-    except Exception as e:
-        return False, str(e)
+    error = _validate_by_type(value, api_type, extension)
+    if error:
+        return False, f"{name} {error}"
 
     return True, ""
-
-
-def collect_dash_values(values: dict, schemas: dict) -> tuple[dict, list]:
-    """
-    Collect and validate Dash component values.
-
-    Args:
-        values: Dictionary of component values
-        schemas: Dictionary of schema classes for validation
-
-    Returns:
-        Tuple[dict, list]: (validated_values, errors)
-        validated_values: Dictionary of validated field names to values
-        errors: List of error messages
-    """
-    result = {}
-    errors = []
-
-    for field_id, value in values.items():
-        schema = schemas[field_id]
-        valid, error = validate_value(schema, value)
-
-        if not valid:
-            errors.append(f"{schema.DESCRIPTION}: {error}")
-        else:
-            result[schema.NAME] = value
-
-    return result, errors
 
 
 def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, list]:
@@ -128,6 +98,7 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
         Tuple[dict, list]: (validated_dict, errors)
         validated_dict: Dictionary of validated values organized by field name
         errors: List of error messages
+
     """
     validated_dict = {}
     errors = []
@@ -142,40 +113,32 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
         description = getattr(schema, "DESCRIPTION", name)
         mandatory = getattr(schema, "MANDATORY", True)
         api_type = getattr(schema, "API_TYPE", None)
-        ext = getattr(schema, "EXTENSION", None)
+        extension = getattr(schema, "EXTENSION", None)
 
+        # Check mandatory
         if value in ("", None):
             if mandatory:
                 errors.append(f"{description} is mandatory")
             continue
 
-        try:
-            if api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
-                pd.Timestamp(value)
-            elif api_type == cst.ApiType.INT:
-                int(value)
-            elif api_type == cst.ApiType.FLOAT:
-                float(value)
-            elif api_type == cst.ApiType.PATH_FILE:
-                p = Path(value)
-                if not p.is_file():
-                    errors.append(f"{description} must be an existing file")
-                if ext and p.suffix != ext:
-                    errors.append(f"{description} must end with {ext}")
-            elif api_type == cst.ApiType.PATH_FOLDER:
-                p = Path(value)
-                if not p.is_dir():
-                    errors.append(f"{description} must be an existing folder")
-            # add other API_TYPE checks here if needed
-        except Exception as e:
-            errors.append(f"{description}: {e!s}")
+        # Validate by type
+        error = _validate_by_type(value, api_type, extension)
+        if error:
+            errors.append(f"{description} {error}")
+            continue
 
-        if all(name not in e for e in errors):
-            if is_global:
-                validated_dict[name] = value
-            else:
-                if specific_name not in validated_dict:
-                    validated_dict[specific_name] = {}
-                validated_dict[specific_name][name] = value
+        # Normalize path values: strip surrounding quotes (e.g. Windows copy-paste)
+        if api_type in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
+            stored_value = str(ui_helper.format_path(value))
+        else:
+            stored_value = value
+
+        # Store validated value
+        if is_global:
+            validated_dict[name] = stored_value
+        else:
+            if specific_name not in validated_dict:
+                validated_dict[specific_name] = {}
+            validated_dict[specific_name][name] = stored_value
 
     return validated_dict, errors

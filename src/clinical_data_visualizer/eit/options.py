@@ -1,5 +1,7 @@
 from clinical_data_visualizer import constants as cst
 
+EXPECTED_FOLDER_NAME = "eit"
+FOLDER_KEYWORDS = ["eit"]
 KEYWORD_FILE_EXTENSION = ".asc"
 FILE_NAME_DATAFRAME_LOADED = "eit.parquet"
 
@@ -14,6 +16,11 @@ prefix_compliance_loss = "Compliance_loss_%_"
 
 pep = "PEP"
 p_crete = "P_crete"
+
+
+DEFAULT_DATABASE_OPTIONS = {
+    "field_display": ["Local 1*", "Local 2*", "Local 3*", "Local 4*"],
+}
 
 
 class DatabaseOptionsAdditionalInformations:
@@ -35,5 +42,5 @@ class PatientOptionsDataSourceRelative:
         NAME = "day"
         API_TYPE = cst.ApiType.DAY
         DEFAULT = ""
-        MANDATORY = True
+        MANDATORY = False
         DESCRIPTION = "Day of EIT recording"

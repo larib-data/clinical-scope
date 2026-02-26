@@ -5,7 +5,7 @@ This module contains functions for parsing and formatting datetime values
 used in Plotly figures and Dash applications.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 # ==================================================================================================
 # DateTime Utilities
@@ -21,12 +21,13 @@ def parse_datetime(s: str) -> datetime:
 
     Returns:
         datetime: Parsed datetime object
+
     """
     try:
         return datetime.fromisoformat(s)
-    except Exception:
+    except (ValueError, TypeError):
         # fallback if milliseconds or tz are missing
-        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S.%f")
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=UTC)
 
 
 def format_datetime(dt: datetime) -> str:
@@ -38,5 +39,6 @@ def format_datetime(dt: datetime) -> str:
 
     Returns:
         str: Datetime string in Plotly format (milliseconds precision)
+
     """
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]  # drop microseconds to milliseconds

@@ -1,5 +1,7 @@
 import clinical_data_visualizer.constants as cst
 
+EXPECTED_FOLDER_NAME = "servo_u"
+FOLDER_KEYWORDS = ["servo"]
 KEYWORD_FOLDER = "servo u"
 KEYWORD_EXTENSION = ".sta"
 
@@ -9,6 +11,9 @@ DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 
 REFERENCE_TIME_FIELD = "Log start"  # or "PC Time"
 COLUMN_RELATIVE_TIME = "Time(ms)"
+
+
+DEFAULT_DATABASE_OPTIONS = {}
 
 
 class PatientOptionsDataSourceRelative:

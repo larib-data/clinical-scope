@@ -1,5 +1,7 @@
 import clinical_data_visualizer.constants as cst
 
+EXPECTED_FOLDER_NAME = "syringe"
+FOLDER_KEYWORDS = ["syringe"]
 KEYWORD_FILE = "syringe"
 FILE_NAME_DATAFRAME_LOADED = "syringe.parquet"
 ORDERED_PREFERED_RAW_FILES_EXTENSION = [".parquet", ".csv"]
@@ -20,6 +22,9 @@ source_options = {
         "fill_pattern": None,
     }
 }
+
+
+DEFAULT_DATABASE_OPTIONS = {}
 
 
 class DatabaseOptionsAdditionalInformations:
