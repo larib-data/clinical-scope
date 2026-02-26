@@ -28,7 +28,31 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # --- Testing tools ---
+        "pytest", "pluggy", "iniconfig",
+
+        # --- Dev / linting tools ---
+        "ruff", "editorconfig",
+
+        # --- Build tools (only needed to produce the bundle, not to run it) ---
+        "altgraph", "macholib",
+
+        # --- Jupyter notebook ecosystem ---
+        # dash_daq pulls in traitlets/comm/ipywidgets/IPython at import time, so those
+        # cannot be excluded.  The packages below are the Jupyter *UI* layer on top
+        # (notebook widgets, lab widgets) which are never exercised in a Dash app.
+        "jupyterlab_widgets", "widgetsnbextension", "matplotlib_inline",
+
+        # --- Installed but not imported anywhere in this project ---
+        "dash_extensions",       # installed, but our app does not use it
+        "dataclass_wizard",      # installed, but our app does not use it
+        "functional",            # installed, but our app does not use it
+        "more_itertools",        # installed, but our app does not use it
+
+        # --- Pydantic stack (not used by our app or its runtime deps) ---
+        "pydantic", "pydantic_core", "annotated_types", "typing_inspection",
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
