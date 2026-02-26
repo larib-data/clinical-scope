@@ -4,13 +4,17 @@ import logging
 from pathlib import Path
 from typing import Any
 
+# === Constants === #
+DEFAULT_FONT_SIZE = 16
+
 # ==================================================================================================
 logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def save_json(data_json: dict[str, Any], json_path: Path):
+def save_json(data_json: dict[str, Any], json_path: Path) -> None:
     try:
+        Path(json_path).parent.mkdir(parents=True, exist_ok=True)
         with Path.open(json_path, "w") as f:
             json.dump(data_json, f, indent=4, default=str)
     except Exception:
@@ -26,7 +30,7 @@ def format_path(path: str) -> Path:
 
 
 # ==================================================================================================
-def load_annotations(folder_visu_path):
+def load_annotations(folder_visu_path: str | Path) -> dict[str, Any]:
     path = Path(folder_visu_path) / "annotations.json"
     if path.exists():
         with path.open() as f:
@@ -36,15 +40,13 @@ def load_annotations(folder_visu_path):
 
 # ==================================================================================================
 def is_user_annotation(ann: dict) -> bool:
-    """
-    Heuristic to detect user-created annotation vs system annotation (subplot titles).
-    """
+    """Heuristic to detect user-created annotation vs system annotation (subplot titles)."""
     # User annotations have x and y in data coordinates (numbers), not 'paper'
     if (
         ann.get("xref") == "paper"
         and ann.get("yref") == "paper"
         and not ann.get("showarrow")
-        and ann.get("font", {}).get("size") == 16
+        and ann.get("font", {}).get("size") == DEFAULT_FONT_SIZE
     ):
         return False
     return not ("x" not in ann or "y" not in ann)

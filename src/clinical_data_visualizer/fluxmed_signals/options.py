@@ -1,10 +1,15 @@
 import clinical_data_visualizer.constants as cst
 
+EXPECTED_FOLDER_NAME = "fluxmed_signals"
+FOLDER_KEYWORDS = ["fluxmed", "signals"]
 KEYWORD_FOLDER = "fluxmed"
 KEYWORD_FILE = "signals"
 
 FILE_NAME_DATAFRAME_LOADED = "fluxmed_signals.parquet"
 DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
+
+
+DEFAULT_DATABASE_OPTIONS = {}
 
 
 class DatabaseOptionsAdditionalInformations:

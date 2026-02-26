@@ -3,17 +3,16 @@ import logging
 import sys
 from pathlib import Path
 
-from clinical_data_visualizer import logger_config
-from clinical_data_visualizer import helper, wrapper
+from clinical_data_visualizer import helper, logger_config, wrapper
 from clinical_data_visualizer.signal_container import (
     PlotModel,
 )
 
 logger = logging.getLogger(__name__)
 
+
 # ==================================================================================================
 def main(option_dict):
-
     patient_options = helper.load_options(Path(option_dict["path_patient_options"]))
     database_options = helper.load_options(Path(option_dict["path_database_options"]))
 
@@ -26,23 +25,17 @@ def main(option_dict):
 
     logger.info("Script finished sucessfully")
 
-    return
 
 # ==================================================================================================
 def args_parser(args):
     parser = argparse.ArgumentParser(description="Time series visualization tool")
     parser.add_argument(
-        'path_patient_options', type=str,
-        help='Path to the patient options json file'
+        "path_patient_options", type=str, help="Path to the patient options json file"
     )
     parser.add_argument(
-        'path_database_options', type=str,
-        help='Path to the database options json file'
+        "path_database_options", type=str, help="Path to the database options json file"
     )
-    parser.add_argument(
-        '--debug', action=argparse.BooleanOptionalAction, default=False,
-        help=""
-    )
+    parser.add_argument("--debug", action=argparse.BooleanOptionalAction, default=False, help="")
 
     args_namespace = parser.parse_args(args)
     options = vars(args_namespace)
@@ -53,9 +46,10 @@ def args_parser(args):
     logs_path = library_dir / "scripts" / f"{script_name}.log"
 
     logger_config.setup_logging(logs_path, options["debug"])
-    logger.info(f"Starting script: {script_name}")
+    logger.info("Starting script: %s", script_name)
 
     main(options)
+
 
 # ==================================================================================================
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def add_main_module(cls):
+def add_main_module(cls: type) -> type:
     module_path = f"clinical_data_visualizer.{cls.NAME}.find_load_format"
     module = importlib.import_module(module_path)
 
@@ -81,6 +81,13 @@ class DataSource:
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
+    @add_main_module
+    class Other:
+        NAME = "other"
+        DESCRIPTION = "Other (generic)"
+        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        OPTIONS: object
+
     # This order is the "default" order of plot, so try to choose it a bit carefully
     # Maybe the order should be from the order in database_options, but it's easy to do that there with the global priority honestly  # noqa: E501
     AVAILABLE = (
@@ -92,10 +99,11 @@ class DataSource:
         FluxmedSignals,
         ServoU,
         MindRay,
+        Other,
     )
 
     @classmethod
-    def get_subclass_by_name(cls, name):
+    def get_subclass_by_name(cls, name: str) -> type | None:
         nested_classes = get_nested_classes(cls)
         for nested_class in nested_classes:
             if name == nested_class.NAME:
@@ -103,7 +111,16 @@ class DataSource:
         return None
 
 
-def get_nested_classes(cls):
+def generate_default_database_options() -> dict:
+    """Generate database options with all available datasources using their defaults."""
+    db_options = {}
+    for data_source in DataSource.AVAILABLE:
+        default = getattr(data_source.OPTIONS, "DEFAULT_DATABASE_OPTIONS", {})
+        db_options[data_source.NAME] = dict(default)
+    return db_options
+
+
+def get_nested_classes(cls: type) -> list[type]:
     return [
         value
         for name, value in vars(cls).items()

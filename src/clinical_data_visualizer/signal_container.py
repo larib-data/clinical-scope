@@ -2,6 +2,7 @@ import logging
 import time
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,28 +14,38 @@ from clinical_data_visualizer import helper
 
 logger = logging.getLogger(__name__)
 
+MAX_ALLOWED_UNITS = 2
 
-def get_unique_or_raise(values: list, attribute_name: str, context: str = ""):
+
+def get_unique_or_raise(
+    values: list[Any],
+    attribute_name: str,
+    context: str = "",
+) -> Any:
     """
     Ensure all values are identical in a list.
-    Raise ValueError if not.
-    Returns the unique value (or None if list empty).
+
+    Raise ValueError if not. Returns the unique value (or None if list empty).
     """
     unique_values = list(set(values))
     if len(unique_values) > 1:
-        raise ValueError(
+        msg = (
             f"We can't combine {context} with different '{attribute_name}' attributes. "
             f"Given: {unique_values}"
         )
+        raise ValueError(msg)
     return unique_values[0] if unique_values else None
 
 
-def compute_average_priority(items: list):
+def compute_average_priority(items: list[Any]) -> float:
     """Compute average plot_priority, defaulting missing to 10000."""
     return float(np.mean([getattr(item, "plot_priority", 10000) or 10000 for item in items]))
 
 
-def merge_y_ranges(signals: list["Signal"], unit_name: str):
+def merge_y_ranges(
+    signals: list["Signal"],
+    unit_name: str,
+) -> list[float] | None:
     """Merge y_axis_range for signals with the same unit."""
     ranges = [
         sig.trace_options.plot_options.y_axis_range
@@ -80,7 +91,8 @@ class PlotOptions:
     plot_type: str | None = None
     plot_priority: float | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Initialize PlotOptions with default values."""
         if self.y_unit_name is None:
             self.y_unit_name = (
                 cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO
@@ -92,9 +104,7 @@ class PlotOptions:
 
     @staticmethod
     def combine_from_signals(signals: list["Signal"], group_name: str) -> "PlotOptions":
-        """
-        Combine the plot options from a list of signals.
-        """
+        """Combine the plot options from a list of signals."""
         start = time.perf_counter()
 
         if not signals:
@@ -110,10 +120,11 @@ class PlotOptions:
         primary_unit = y_unit_list[0] if y_unit_list else None
         secondary_unit = y_unit_list[1] if len(y_unit_list) > 1 else None
 
-        if len(y_unit_list) > 2:
+        if len(y_unit_list) > MAX_ALLOWED_UNITS:
             logger.warning(
-                "⚠️ Signals %s can't be plotted on one plot: more than 2 units: %s",
+                "⚠️ Signals %s can't be plotted on one plot: more than %d units: %s",
                 [sig.name for sig in signals],
+                MAX_ALLOWED_UNITS,
                 y_unit_list,
             )
 
@@ -175,7 +186,8 @@ class TraceOptions:
     marker_size: float | None = None
     plot_options: PlotOptions = field(default_factory=PlotOptions)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Initialize TraceOptions with default values."""
         # I believe default params are better left here rather than in constants.py file ?
         if self.mode is None:
             self.mode = "lines"
@@ -216,7 +228,13 @@ class Signal:
     timing: dict = field(default_factory=dict, init=False)
 
     @staticmethod
-    def _build_trace_options(raw_signal_name, database_options_specific, source_options, plot_type):
+    def _build_trace_options(
+        raw_signal_name: str,
+        database_options_specific: dict[str, Any],
+        source_options: dict[str, Any],
+        plot_type: str,
+    ) -> "TraceOptions":
+        """Build trace options from database and source options."""
         data_opts = database_options_specific.get(cst.DatabaseOptions.DATA, {})
         data_numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
         # PlotOptions fields
@@ -226,7 +244,7 @@ class Signal:
             k: v for k, v in plot_options_dict.items() if k in valid_keys_plot_options
         }
         name_signal = data_opts.get(cst.DatabaseOptions.Data.LABEL_CORRESPONDENCE, {}).get(
-            raw_signal_name
+            raw_signal_name, raw_signal_name
         )
         range_signal_plot = data_opts.get(cst.DatabaseOptions.Data.UNIT_RANGE, {}).get(
             raw_signal_name
@@ -256,14 +274,13 @@ class Signal:
             # Any ohter field
             **additional_plot_options,
         )
-        trace_options = TraceOptions(
+        return TraceOptions(
             plot_options=plot_options,
             line_color=color,
             marker_color=color,
             # Any ohter field
             **additional_trace_options,
         )
-        return trace_options
 
     # ---------------- Initialization Methods ----------------
     @classmethod
@@ -284,7 +301,7 @@ class Signal:
         data_opts = database_options_specific.get(cst.DatabaseOptions.DATA, {})
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
         name_signal = data_opts.get(cst.DatabaseOptions.Data.LABEL_CORRESPONDENCE, {}).get(
-            raw_signal_name
+            raw_signal_name, raw_signal_name
         )
         unit_conversion_factor = data_opts.get(cst.DatabaseOptions.Data.UNIT_CONVERSION, {}).get(
             raw_signal_name, cst.DatabaseOptions.DEFAULT_UNIT_FACTOR
@@ -370,7 +387,8 @@ class Signal:
             signal_x.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES
             or signal_y.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES
         ):
-            raise ValueError("Both input signals must be of type 'time_series'.")
+            msg = "Both input signals must be of type 'time_series'."
+            raise ValueError(msg)
 
         x_x = helper.to_float_seconds(signal_x.data.x)
         x_y = helper.to_float_seconds(signal_y.data.x)
@@ -379,7 +397,8 @@ class Signal:
         t_max = min(x_x[-1], x_y[-1])
 
         if t_min >= t_max:
-            raise ValueError("Signals do not have overlapping time intervals.")
+            msg = "Signals do not have overlapping time intervals."
+            raise ValueError(msg)
 
         start = time.perf_counter()
         x_common = np.union1d(
@@ -429,7 +448,7 @@ class Signal:
         return obj
 
     # ---------------- Regular Methods ----------------
-    def to_plotly_trace(self):
+    def to_plotly_trace(self) -> go.Scatter:
         start = time.perf_counter()
         if self.trace is not None:
             logger.warning("Trace of %s will be overwritten", self.name)
@@ -442,21 +461,21 @@ class Signal:
         x = self.data.x
         # Prepare line dict only if mode includes lines
         line_dict = (
-            dict(
-                color=self.trace_options.line_color,
-                width=self.trace_options.line_width,
-                dash=self.trace_options.line_dash,
-            )
+            {
+                "color": self.trace_options.line_color,
+                "width": self.trace_options.line_width,
+                "dash": self.trace_options.line_dash,
+            }
             if "lines" in self.trace_options.mode
             else None
         )
         # Prepare marker dict only if mode includes markers
         marker_dict = (
-            dict(
-                color=self.trace_options.marker_color,
-                symbol=self.trace_options.marker_symbol,
-                size=self.trace_options.marker_size,
-            )
+            {
+                "color": self.trace_options.marker_color,
+                "symbol": self.trace_options.marker_symbol,
+                "size": self.trace_options.marker_size,
+            }
             if "markers" in self.trace_options.mode
             else None
         )
@@ -464,25 +483,25 @@ class Signal:
         if self.trace_options.plot_options.plot_type == cst.PlotType.TIME_SERIES:
             hovertemplate = (
                 f"<b>{self.name}</b><br>"
-                + "%{x|%H:%M:%S.%f} | %{y}"
-                + f" {
+                "%{x|%H:%M:%S.%f} | %{y}"
+                f" {
                     y_unit_name if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
                 }<br>"
-                + "<extra></extra>"
+                "<extra></extra>"
             )
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
             hovertemplate = (
                 f"<b>{self.name}</b><br>"
-                + "%{x}"
-                + f" {
+                "%{x}"
+                f" {
                     x_unit_name if x_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
                 }"
-                + " | %{y}"
-                + f" {
+                " | %{y}"
+                f" {
                     y_unit_name if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
                 }<br>"
-                + "<extra></extra>"
+                "<extra></extra>"
             )
         else:
             hovertemplate = None
@@ -501,7 +520,8 @@ class Signal:
         logger.debug("⏳ %.4fs for to_plotly_trace for signal '%s'", elapsed, self.name)
         return trace
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Initialize Signal by creating its Plotly trace."""
         self.trace = self.to_plotly_trace()
 
 
@@ -521,7 +541,8 @@ class PlotGroup:
         plot_group.timing["from_single_signal"] = elapsed
         return plot_group
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Initialize PlotGroup with plot options."""
         start = time.perf_counter()
         # Derive group-level plot options
         if isinstance(self.signals, Signal):
@@ -555,22 +576,21 @@ class PlotModel:
     square_plot: bool = False
     plot_type: str | None = None
     figure: go.Figure | None = None
-    timing: dict = field(default_factory=dict)  # Add timing dictionary
+    computed_height: float | None = None
+    timing: dict = field(default_factory=dict)
+    name: str | None = None
 
-    def to_figure(self, base_spacing=0.05, min_spacing=0.005) -> go.Figure:
+    def to_figure(self, base_spacing: float = 0.05, min_spacing: float = 0.005) -> go.Figure:
         start = time.perf_counter()
         n_rows = len(self.groups)
         total_fig_height = np.sum(
             [plot_group.plot_options.plot_height for plot_group in self.groups]
         )
+        self.computed_height = total_fig_height
         proportions = [
             plot_group.plot_options.plot_height / total_fig_height for plot_group in self.groups
         ]
-        subplot_title = (
-            [plot_group.name for plot_group in self.groups]
-            if self.plot_type != cst.PlotType.TIME_SERIES
-            else None
-        )
+        subplot_title = [plot_group.name for plot_group in self.groups]
         vertical_spacing = max(min_spacing, base_spacing / n_rows)
 
         fig = make_subplots(
@@ -598,7 +618,7 @@ class PlotModel:
                 secondary_y=False,
             )
             # Add secondary y-axis title if exists
-            if group.allow_secondary_y and len(group.assign_axes()) > 1:
+            if group.allow_secondary_y and len(traces_with_axes) > 1:
                 second_y_title = group.plot_options.y2_axis_title or ""
                 fig.update_yaxes(
                     title_text=second_y_title,
@@ -622,15 +642,28 @@ class PlotModel:
                 fig.update_xaxes(matches=f"x{master_row}", row=row_idx, col=1)
             else:
                 x_type_to_master_row[x_data_type] = row_idx
+
+            if self.name == cst.PlotType.TIME_SERIES:
+                fig.update_yaxes(modebardisable="zoominout", row=row_idx)
+
         fig.update_layout(
             title_text=self.name,
             height=total_fig_height,
             width=total_fig_height / n_rows if self.square_plot else None,
             showlegend=True,
-            hoverlabel=dict(
-                namelength=-1  # Show full curve name
-            ),
+            hoverlabel={
+                "namelength": -1  # Show full curve name
+            },
         )
+
+        fig.update_layout(
+            modebar_remove=[
+                "select2d",
+                "lasso2d",
+                "autoScale2d",
+            ]
+        )
+
         elapsed = time.perf_counter() - start
         self.timing["to_figure"] = elapsed
         logger.debug(
@@ -640,12 +673,12 @@ class PlotModel:
         )
         return fig
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """
-        Initialize PlotGroup object:
-        - Validate plot_type and square_plot consistency
-        - Sort groups by plot_priority
-        - Build figure
+        Initialize PlotModel object.
+
+        Validates plot_type and square_plot consistency,
+        sorts groups by plot_priority, and builds the figure.
         """
         plot_group = self.groups
 
@@ -671,6 +704,7 @@ class PlotModel:
 
     @staticmethod
     def assign_plot_model(plot_group_list: list[PlotGroup]) -> list["PlotModel"]:
+        """Assign plot groups to plot models by plot type."""
         groups = {}
         for plot_group in plot_group_list:
             plot_type = plot_group.plot_options.plot_type
@@ -678,13 +712,12 @@ class PlotModel:
                 groups[plot_type] = [plot_group]
             else:
                 groups[plot_type].append(plot_group)
-        plot_model_list = [
+        return [
             PlotModel(groups=common_plot_group_list) for common_plot_group_list in groups.values()
         ]
-        return plot_model_list
 
     @staticmethod
-    def to_html(plot_models: list["PlotModel"], patient_options: dict) -> None:
+    def to_html(plot_models: list["PlotModel"], patient_options: dict[str, Any]) -> None:
         if not plot_models:
             logger.warning("⚠️ PlotModel figure generation to html was called with empty list")
         data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])

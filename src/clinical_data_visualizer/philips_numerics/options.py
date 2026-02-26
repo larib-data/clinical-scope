@@ -1,5 +1,7 @@
 import clinical_data_visualizer.constants as cst
 
+EXPECTED_FOLDER_NAME = "philips_numerics"
+FOLDER_KEYWORDS = ["philips", "numerics"]
 KEYWORD_FILE = "numerics"
 
 FILE_NAME_DATAFRAME_LOADED = "philips_numerics_loaded.parquet"
@@ -18,6 +20,9 @@ source_options = {
         "fill_pattern": None,
     },
 }
+
+
+DEFAULT_DATABASE_OPTIONS = {}
 
 
 class PatientOptionsDataSourceRelative:

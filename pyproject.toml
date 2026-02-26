@@ -4,31 +4,31 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clinical_data_visualizer"
-version = "1.0.0"
-dependencies = [
-  "pandas",
-  "numpy",
-  "plotly==5.24.1",
-  "voila",
-  "ipywidgets",
-  "ipyfilechooser",
-  "ipykernel",
-  "ipydatagrid",
-  "anywidget",
-  "pyarrow",
-  "dash_bootstrap_components",
-  "dash_daq"
-]
-requires-python = ">=3.8"
+version = "0.1.0"
+description = "Interactive visualization dashboard for clinical physiological signals"
+readme = "README.md"
+requires-python = ">=3.9"
 authors = [
   {name = "Alexis Janin", email = "alexis.janin@inria.fr"}
 ]
-description = "todo"
-readme = "readme.md"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: Copyright Inria",
-    "Operating System :: mac OS, windows arm (maybe Linux, to be tested)"
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
+dependencies = [
+  "dash",
+  "dash_bootstrap_components",
+  "dash_daq",
+  "pandas",
+  "numpy",
+  "plotly>=5.24",
+  "plotly-resampler",
+  "pyarrow",
 ]
 
 [tool.setuptools.packages.find]

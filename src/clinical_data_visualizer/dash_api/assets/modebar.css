@@ -1,0 +1,73 @@
+/* =============================================================================
+   MODEBAR BUTTON STYLING
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   Base Button Sizing & Structure
+   ----------------------------------------------------------------------------- */
+
+.modebar-btn {
+  width: 44px !important;
+  height: 44px !important;
+  padding: 6px !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px !important;
+}
+
+.modebar-btn svg {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+/* -----------------------------------------------------------------------------
+   Default Button Colors (fallback for ungrouped buttons)
+   ----------------------------------------------------------------------------- */
+
+.modebar-btn svg path {
+  fill: #1976d2 !important;  /* blue */
+}
+
+/* -----------------------------------------------------------------------------
+   Group-Specific Button Colors
+   ----------------------------------------------------------------------------- */
+
+/* Group 1: Zoom/Pan basic tools */
+.modebar-group:nth-child(1) .modebar-btn svg path {
+  fill: #4caf50 !important;  /* green */
+}
+
+/* Group 2: Zoom box/select + annotation tools */
+.modebar-group:nth-child(2) .modebar-btn svg path {
+  fill: #ff9800 !important;  /* orange */
+}
+
+/* Group 2 - Annotation subgroup: Draw line & rectangle */
+.modebar-group:nth-child(2) .modebar-btn[data-val="drawline"] svg path,
+.modebar-group:nth-child(2) .modebar-btn[data-val="drawrect"] svg path {
+  fill: #9c27b0 !important;  /* purple */
+}
+
+/* Group 3: Reset, autoscale */
+.modebar-group:nth-child(3) .modebar-btn svg path {
+  fill: #2196f3 !important;  /* blue */
+}
+
+/* -----------------------------------------------------------------------------
+   Button States: Hover
+   ----------------------------------------------------------------------------- */
+
+.modebar-btn:hover {
+  background-color: rgba(25, 118, 210, 0.448) !important;
+}
+
+.modebar-btn:hover svg path {
+  fill: #1565c0 !important;  /* darker shade */
+}
+
+/* -----------------------------------------------------------------------------
+   Button States: Active/Selected
+   ----------------------------------------------------------------------------- */
+
+.modebar-btn.active {
+  background-color: rgba(237, 134, 134, 0.701) !important;  /* red background */
+}

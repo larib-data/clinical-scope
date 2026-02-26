@@ -1,5 +1,7 @@
 import clinical_data_visualizer.constants as cst
 
+EXPECTED_FOLDER_NAME = "fluxmed_parameters"
+FOLDER_KEYWORDS = ["fluxmed", "parameters"]
 KEYWORD_FOLDER = "fluxmed"
 KEYWORD_FILE = "parameters"
 
@@ -21,6 +23,9 @@ source_options = {
         "fill_pattern": None,
     },
 }
+
+
+DEFAULT_DATABASE_OPTIONS = {}
 
 
 class DatabaseOptionsAdditionalInformations:

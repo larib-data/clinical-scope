@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
@@ -11,22 +10,6 @@ from clinical_data_visualizer.signal_container import (
 
 # ==================================================================================================
 logger = logging.getLogger(__name__)
-
-
-# ==================================================================================================
-def process_data_source(
-    data_folder: Path,
-    source_name: str,
-    main_func,
-    patient_options: dict,
-    database_options_global: dict,
-) -> list:
-    """Process a data source and return its trace list."""
-    return main_func(
-        data_folder,
-        patient_options=patient_options.get(source_name, {}),
-        database_options_global=database_options_global,
-    )
 
 
 # ==================================================================================================
@@ -45,6 +28,17 @@ def main(
     for global_grouped_field_list in global_groups.values():
         already_used_in_group.extend(global_grouped_field_list)
 
+    requested_sources = [
+        ds.NAME
+        for ds in datasource_list.DataSource.AVAILABLE
+        if ds.NAME in database_options_global
+    ]
+    logger.info(
+        "🚀 Starting visualization for %d datasource(s): %s",
+        len(requested_sources),
+        requested_sources,
+    )
+
     # Loop through data sources
     for data_source in datasource_list.DataSource.AVAILABLE:
         name = data_source.NAME
@@ -55,19 +49,21 @@ def main(
         database_options_specific = database_options_global[name]
 
         try:
+            # (1) Create signals
+            try:
+                list_signal = data_source.MAIN_MODULE(patient_options, database_options_specific)
+                all_signal_list.extend(list_signal)
+                logger.info("✅ [%s] %d signal(s) loaded.", name, len(list_signal))
+            except Exception:
+                logger.exception("❌ Failed to create signals for datasource '%s'. Skipping.", name)
+                continue
+
+            # Read grouped/loop fields after MAIN_MODULE (datasource may populate dynamically)
             local_group = database_options_specific.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
             for grouped_field_list in local_group.values():
                 already_used_in_group.extend(grouped_field_list)
 
             local_loop_group = database_options_specific.get(cst.DatabaseOptions.LOOP, {})
-
-            # (1) Create signals
-            try:
-                list_signal = data_source.MAIN_MODULE(patient_options, database_options_specific)
-                all_signal_list.extend(list_signal)
-            except Exception:
-                logger.exception("❌ Failed to create signals for datasource '%s'. Skipping.", name)
-                continue
 
             # (2) Add default groups (one signal = one group)
             for signal in list_signal:
@@ -90,7 +86,7 @@ def main(
                     if signals:
                         pg = PlotGroup(name=group_name, signals=signals)
                         plot_group_list.append(pg)
-                except Exception:  # noqa: PERF203
+                except Exception:
                     logger.exception(
                         "⚠️ Failed to create grouped PlotGroup '%s' in datasource '%s'.",
                         group_name,
@@ -116,6 +112,7 @@ def main(
                             name,
                             missing,
                         )
+                        continue
 
                     try:
                         loop_signal = Signal.loop_from_signals(signal_x, signal_y, name=loop_name)
@@ -157,7 +154,7 @@ def main(
             signals = [sig for sig in all_signal_list if sig.raw_name in grouped_field_list]
             if signals:
                 plot_group_list.append(PlotGroup(name=group_name, signals=signals))
-        except Exception:  # noqa: PERF203
+        except Exception:
             logger.exception("⚠️ Failed to create global PlotGroup '%s'.", group_name)
 
     # Handle global loop not implemented
@@ -171,4 +168,10 @@ def main(
         logger.exception("❌ Failed to assign PlotModel list.")
         return []
 
+    logger.info(
+        "📊 Visualization complete: %d signal(s), %d plot group(s), %d plot model(s).",
+        len(all_signal_list),
+        len(plot_group_list),
+        len(plot_model_list),
+    )
     return plot_model_list
