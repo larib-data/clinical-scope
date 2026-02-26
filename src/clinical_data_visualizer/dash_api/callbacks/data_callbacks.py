@@ -20,6 +20,7 @@ import clinical_data_visualizer.datasource_list as datasource
 from clinical_data_visualizer import wrapper
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
 from clinical_data_visualizer.dash_api import ui_components, validation
+from clinical_data_visualizer.database_options_parser import validate_database_options_structure
 from clinical_data_visualizer.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,10 @@ def load_db_options(
         decoded = base64.b64decode(content_string)
         database_options_dict = _validate_json_file(decoded, filename)
         logger.debug("loaded database_options_dict: %r", database_options_dict)
+
+        structure_warnings = validate_database_options_structure(database_options_dict)
+        for w in structure_warnings:
+            logger.warning("database_options validation: %s", w)
 
         return (
             database_options_dict,

@@ -163,7 +163,9 @@ class DataSourceBase(ABC):
                 }
                 if cls.SOURCE_OPTIONS is not None:
                     kwargs["source_options"] = cls.SOURCE_OPTIONS
-                list_signal_container.append(Signal.time_series_from_dataframe(**kwargs))
+                sig = Signal.time_series_from_dataframe(**kwargs)
+                sig.metadata.datasource_name = cls.DATASOURCE_NAME
+                list_signal_container.append(sig)
             except Exception:
                 logger.exception("Could not process the signal '%s' as Signal object", signal)
 

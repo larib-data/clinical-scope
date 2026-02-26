@@ -184,6 +184,7 @@ class TraceOptions:
     marker_color: str | None = None
     marker_symbol: str | None = None
     marker_size: float | None = None
+    visible: bool = True
     plot_options: PlotOptions = field(default_factory=PlotOptions)
 
     def __post_init__(self) -> None:
@@ -201,7 +202,7 @@ class TraceOptions:
 
 @dataclass
 class Metadata:
-    device_name: str | None = None
+    datasource_name: str | None = None
     is_derived: bool = False
     parent_signal_name: str | None = None
     period_resampling: float | None = None
@@ -265,6 +266,8 @@ class Signal:
         plot_priority = data_opts.get(cst.DatabaseOptions.Data.PRIORITY, {}).get(
             raw_signal_name, plot_priority_default_db
         )
+        visible = data_opts.get(cst.DatabaseOptions.Data.VISIBLE, {}).get(raw_signal_name, True)
+        line_dash_db = data_opts.get(cst.DatabaseOptions.Data.LINE_DASH, {}).get(raw_signal_name)
         plot_options = PlotOptions(
             y_axis_range=range_signal_plot,
             y_axis_title=y_axis_title,
@@ -274,10 +277,14 @@ class Signal:
             # Any ohter field
             **additional_plot_options,
         )
+        # line_dash from database_options takes precedence over source_options
+        if line_dash_db is not None:
+            additional_trace_options["line_dash"] = line_dash_db
         return TraceOptions(
             plot_options=plot_options,
             line_color=color,
             marker_color=color,
+            visible=visible,
             # Any ohter field
             **additional_trace_options,
         )
@@ -514,6 +521,7 @@ class Signal:
             marker=marker_dict,
             opacity=self.trace_options.opacity,
             hovertemplate=hovertemplate,
+            visible="legendonly" if not self.trace_options.visible else True,
         )
         elapsed = time.perf_counter() - start
         self.timing["to_plotly_trace"] = elapsed

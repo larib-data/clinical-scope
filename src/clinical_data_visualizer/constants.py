@@ -85,6 +85,8 @@ class DatabaseOptions:
         COLOR = "color"
         PRIORITY = "priority"
         PERIOD_RESAMPLING = "period_resampling"
+        VISIBLE = "visible"
+        LINE_DASH = "line_dash"
 
     NUMERICS = "numerics"
 

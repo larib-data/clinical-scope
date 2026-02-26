@@ -2,6 +2,10 @@ import logging
 
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
+from clinical_data_visualizer.database_options_parser import (
+    normalize_datasource_options,
+    warn_redundant_entries,
+)
 from clinical_data_visualizer.signal_container import (
     PlotGroup,
     PlotModel,
@@ -13,6 +17,49 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
+def _resolve_signal_references(field_list: list[str], all_signals: list[Signal]) -> list[Signal]:
+    """
+    Resolve signal references using a three-mode fallback chain.
+
+    1. Qualified name ``"datasource::raw_name"`` -- explicit, unambiguous.
+    2. Display name -- matches ``sig.name``. Warns if ambiguous.
+    3. Raw name -- current behaviour, backward compatible.
+    """
+    matched: list[Signal] = []
+
+    for ref in field_list:
+        # Mode 1: qualified "datasource::raw_name"
+        if "::" in ref:
+            sig = next(
+                (s for s in all_signals if f"{s.metadata.datasource_name}::{s.raw_name}" == ref),
+                None,
+            )
+            if sig:
+                matched.append(sig)
+            else:
+                logger.warning("Qualified reference '%s' did not match any signal.", ref)
+            continue
+
+        # Mode 2: display name
+        by_name = [s for s in all_signals if s.name == ref]
+        if len(by_name) == 1:
+            matched.append(by_name[0])
+            continue
+        if len(by_name) > 1:
+            logger.warning(
+                "Ambiguous display name '%s' matched %d signals -- "
+                "use 'datasource::raw_name' to disambiguate.",
+                ref,
+                len(by_name),
+            )
+
+        # Mode 3: raw name fallback
+        by_raw = [s for s in all_signals if s.raw_name == ref]
+        matched.extend(by_raw)
+
+    return matched
+
+
 def main(
     patient_options: dict,
     database_options_global: dict,
@@ -29,9 +76,7 @@ def main(
         already_used_in_group.extend(global_grouped_field_list)
 
     requested_sources = [
-        ds.NAME
-        for ds in datasource_list.DataSource.AVAILABLE
-        if ds.NAME in database_options_global
+        ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
     ]
     logger.info(
         "🚀 Starting visualization for %d datasource(s): %s",
@@ -46,7 +91,10 @@ def main(
         if name not in database_options_global:
             continue
 
-        database_options_specific = database_options_global[name]
+        raw_db_opts = database_options_global[name]
+        warn_redundant_entries(raw_db_opts, name)
+        database_options_specific = normalize_datasource_options(raw_db_opts)
+        database_options_global[name] = database_options_specific
 
         try:
             # (1) Create signals
@@ -151,7 +199,7 @@ def main(
 
     for group_name, grouped_field_list in grouped_fields_global.items():
         try:
-            signals = [sig for sig in all_signal_list if sig.raw_name in grouped_field_list]
+            signals = _resolve_signal_references(grouped_field_list, all_signal_list)
             if signals:
                 plot_group_list.append(PlotGroup(name=group_name, signals=signals))
         except Exception:

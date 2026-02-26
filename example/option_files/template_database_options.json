@@ -1,0 +1,49 @@
+{
+    "_doc": "Template for database_options.json — delete _doc keys before use.",
+
+    "global": {
+        "_doc": "Cross-datasource settings. grouped_fields groups signals from different sources onto a single subplot.",
+        "grouped_fields": {
+            "My combined plot": ["signal_from_source_A", "signal_from_source_B"]
+        }
+    },
+
+    "my_datasource": {
+        "_doc_field_display": "List of raw signal names to visualize (omit to show all columns).",
+        "field_display": ["signal_A", "signal_B"],
+
+        "_doc_signals": "Per-signal metadata. Only non-default values need to be specified. Keys: label, unit, unit_conversion, range, period_resampling, priority, color, visible, line_dash.",
+        "signals": {
+            "signal_A": {
+                "label": "Human-readable name",
+                "unit": "mmHg",
+                "color": "red"
+            },
+            "signal_B": {
+                "label": "Another signal",
+                "unit": "cmH2O",
+                "unit_conversion": 1.35951,
+                "range": [-5, 60],
+                "priority": 2,
+                "visible": true,
+                "line_dash": "dash"
+            }
+        },
+
+        "_doc_numerics": "Default numeric settings applied to all signals in this datasource unless overridden per-signal.",
+        "numerics": {
+            "period_resampling": 0.2,
+            "priority": 1
+        },
+
+        "_doc_grouped_fields": "Local signal grouping within this datasource (signals plotted on the same subplot).",
+        "grouped_fields": {
+            "Group name": ["signal_A", "signal_B"]
+        },
+
+        "_doc_loop": "PV-loop definitions: pairs of [x_signal, y_signal].",
+        "loop": {
+            "my_loop": ["signal_A", "signal_B"]
+        }
+    }
+}

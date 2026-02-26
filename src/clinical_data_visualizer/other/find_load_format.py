@@ -273,6 +273,7 @@ class OtherDataSource(DataSourceBase):
                         )
                         # Override raw_name for global uniqueness
                         sig.raw_name = raw_name
+                        sig.metadata.datasource_name = cls.DATASOURCE_NAME
                         all_signals.append(sig)
                         file_signal_raw_names.append(raw_name)
                     except Exception:
