@@ -29,6 +29,7 @@ dependencies = [
   "plotly>=5.24",
   "plotly-resampler",
   "pyarrow",
+  "openpyxl",
 ]
 
 [tool.setuptools.packages.find]

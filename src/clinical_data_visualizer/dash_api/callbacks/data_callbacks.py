@@ -21,6 +21,7 @@ from clinical_data_visualizer import wrapper
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
 from clinical_data_visualizer.dash_api import ui_components, validation
 from clinical_data_visualizer.database_options_parser import validate_database_options_structure
+from clinical_data_visualizer.database_options_xlsx import xlsx_bytes_to_database_options
 from clinical_data_visualizer.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,18 @@ logger = logging.getLogger(__name__)
 FIGURE_RESAMPLER_CACHE = {}
 
 
-def _validate_json_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
-    """Validate and parse JSON file."""
-    if not filename.endswith(".json"):
-        msg = "Invalid file type"
-        raise ValueError(msg)
-    return json.loads(decoded_content.decode("utf-8"))
+def _parse_database_options_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
+    """
+    Parse database options from decoded file bytes.
+
+    Supports ``.json`` and ``.xlsx`` formats.
+    """
+    if filename.lower().endswith(".json"):
+        return json.loads(decoded_content.decode("utf-8"))
+    if filename.lower().endswith(".xlsx"):
+        return xlsx_bytes_to_database_options(decoded_content)
+    msg = f"Unsupported file type '{Path(filename).suffix}'. Expected .json or .xlsx."
+    raise ValueError(msg)
 
 
 @callback(
@@ -69,7 +76,7 @@ def load_db_options(
     try:
         _, content_string = contents.split(",")
         decoded = base64.b64decode(content_string)
-        database_options_dict = _validate_json_file(decoded, filename)
+        database_options_dict = _parse_database_options_file(decoded, filename)
         logger.debug("loaded database_options_dict: %r", database_options_dict)
 
         structure_warnings = validate_database_options_structure(database_options_dict)
@@ -236,6 +243,12 @@ def process_visualization(
     name_folder_visu = str(Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_VISU)
     annotations_data = ui_helper.load_annotations(name_folder_visu)
     ui_helper.save_json(validated_dict, patient_options_path)
+    db_options_path = (
+        Path(validated_dict["data_folder"])
+        / cst.FOLDER_NAME_VISU
+        / cst.DEFAULT_NAME_DATABASE_OPTIONS
+    )
+    ui_helper.save_json(db_options, db_options_path)
 
     FIGURE_RESAMPLER_CACHE.clear()
 

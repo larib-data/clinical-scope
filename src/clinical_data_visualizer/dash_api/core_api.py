@@ -91,6 +91,7 @@ app.layout = html.Div(
                         },
                     ),
                     multiple=False,
+                    accept=".json,.xlsx",
                 ),
                 html.Span(" or ", style={"margin": "0 10px", "fontSize": "14px"}),
                 html.Button(
