@@ -3,10 +3,13 @@ import clinical_data_visualizer.constants as cst
 EXPECTED_FOLDER_NAME = "philips_waves"
 FOLDER_KEYWORDS = ["philips", "waves"]
 KEYWORD_FILE = "waves"
+FILE_EXTENSION_LIST = [".parquet", ".csv"]
 
 FILE_NAME_DATAFRAME_LOADED = "philips_waves.parquet"
 
 ALLOW_LOADED_DATAFRAME_SAVING = False
+
+DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 
 
 DEFAULT_DATABASE_OPTIONS = {}

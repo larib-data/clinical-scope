@@ -24,6 +24,7 @@ class PhilipsWavesDataSource(DataSourceBase):
             folder_path,
             options_naming.KEYWORD_FILE,
             "philips waves file",
+            options_naming.FILE_EXTENSION_LIST,
         )
 
     @classmethod
@@ -31,8 +32,10 @@ class PhilipsWavesDataSource(DataSourceBase):
     def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
+        elif file_path.suffix.lower() == ".csv":
+            df = pd.read_csv(file_path, index_col=0, parse_dates=True)
         else:
-            msg = f"file_path extension was neither '.csv' or '.parquet'. Input: '{file_path}'"
+            msg = f"file_path extension was neither '.csv' nor '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(msg)
         df = df[~df.index.duplicated(keep="first")]
 
@@ -52,9 +55,12 @@ class PhilipsWavesDataSource(DataSourceBase):
         cls,
         df: pd.DataFrame,
         patient_options: dict,
-        database_options_specific: dict,  # noqa: ARG003
+        database_options_specific: dict,
     ) -> pd.DataFrame:
-        # Philips waves doesn't need timezone handling (already has it)
+        # Apply timezone only if missing (parquet already has it; CSV may not)
+        df = cls._apply_timezone(
+            df, database_options_specific, options_naming.DATA_SOURCE_DEFAULT_TIMEZONE
+        )
         df = cls._apply_time_shift(df, patient_options)
         return cls._filter_by_datetime(df, patient_options)
 

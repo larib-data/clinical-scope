@@ -24,7 +24,7 @@ class PhilipsNumericsDataSource(DataSourceBase):
             folder_path,
             options_naming.KEYWORD_FILE,
             "philips numerics file",
-            [".parquet", ".csv"],
+            options_naming.FILE_EXTENSION_LIST,
         )
 
     @classmethod
@@ -45,9 +45,12 @@ class PhilipsNumericsDataSource(DataSourceBase):
         cls,
         df: pd.DataFrame,
         patient_options: dict,
-        database_options_specific: dict,  # noqa: ARG003
+        database_options_specific: dict,
     ) -> pd.DataFrame:
-        # Philips numerics doesn't need timezone handling (already has it)
+        # Apply timezone only if missing (parquet already has it; CSV may not)
+        df = cls._apply_timezone(
+            df, database_options_specific, options_naming.DATA_SOURCE_DEFAULT_TIMEZONE
+        )
         df = cls._apply_time_shift(df, patient_options)
         return cls._filter_by_datetime(df, patient_options)
 

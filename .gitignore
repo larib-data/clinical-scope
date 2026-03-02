@@ -32,3 +32,6 @@ logs/
 
 # Ruff
 .ruff_cache/
+
+# IA
+.claude/skills/*
