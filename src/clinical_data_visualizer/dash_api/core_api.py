@@ -12,6 +12,7 @@ from clinical_data_visualizer import logger_config
 
 # Import callbacks to register them with the app
 from clinical_data_visualizer.dash_api import callbacks  # noqa: F401
+from clinical_data_visualizer.dash_api.helper_api import get_cached_db_options_path
 
 # === API Version === #
 try:
@@ -46,6 +47,19 @@ if getattr(sys, "frozen", False):
     _assets_folder = str(Path(sys._MEIPASS) / "clinical_data_visualizer" / "dash_api" / "assets")
 else:
     _assets_folder = str(Path(__file__).parent / "assets")
+
+# Show "Reload last config" button only when a cached config exists at layout render time.
+_reload_btn_style = {
+    "backgroundColor": "#6c757d",
+    "color": "white",
+    "border": "none",
+    "padding": "6px 16px",
+    "borderRadius": "4px",
+    "cursor": "pointer",
+    "display": "inline-block" if get_cached_db_options_path().exists() else "none",
+    "margin-right": "10px",
+    "margin-left": "10px",
+}
 
 app = Dash(
     __name__,
@@ -88,12 +102,17 @@ app.layout = html.Div(
                             "padding": "6px 16px",
                             "borderRadius": "4px",
                             "cursor": "pointer",
+                            "margin-right": "10px",
                         },
                     ),
                     multiple=False,
                     accept=".json,.xlsx",
                 ),
-                html.Span(" or ", style={"margin": "0 10px", "fontSize": "14px"}),
+                html.Button(
+                    "Reload last config",
+                    id="reload-cached-db-button",
+                    style=_reload_btn_style,
+                ),
                 html.Button(
                     "Default visualization (all sources)",
                     id="default-viz-button",
@@ -104,6 +123,7 @@ app.layout = html.Div(
                         "padding": "6px 16px",
                         "borderRadius": "4px",
                         "cursor": "pointer",
+                        "margin-left": "10px",
                     },
                 ),
             ],

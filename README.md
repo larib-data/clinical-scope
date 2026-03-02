@@ -47,13 +47,30 @@ The application will open in your browser at `http://127.0.0.1:8050`.
 3. Click "Process visualization" to generate the interactive plots
 4. Use the drawing tools to annotate time points or regions of interest
 
-**Option 2: Custom Configuration**
-1. Upload a `database_options.json` file specifying which data sources to use and their display settings
+**Option 2: Reload Last Config (Daily Workflow)**
+1. If a custom config was previously uploaded, a grey **"Reload last config"** button appears automatically on startup
+2. Click it to instantly restore the last used configuration — no file browsing needed
+3. Configure patient options and click "Process visualization"
+
+**Option 3: Custom Configuration**
+1. Upload a `database_options.json` (or `.xlsx`) file specifying which data sources to use and their display settings
 2. Configure patient options (data folder, time range, signals to display, etc.)
 3. Click "Process visualization" to generate the interactive plots
 4. Use the drawing tools to annotate time points or regions of interest
 
-**Note:** The "Default visualization" mode enables all available data sources (philips_waves, philips_numerics, eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray, syringe, other) with their default display configurations. You can still upload a custom `database_options.json` later to override this.
+> **Note:** The "Default visualization" mode enables all available data sources (philips_waves, philips_numerics, eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray, syringe, other) with their default display configurations. You can still upload a custom `database_options.json` later to override this.
+
+### Local Config Cache — Privacy Note
+
+When a custom configuration file is uploaded successfully, it is automatically saved to:
+
+```
+~/.clinical_data_visualizer/last_database_options.json
+```
+
+**What this file should contains:** signal metadata only — display names, units, colors, field mappings, and groupings. **DO NOT include any patient data, file paths.**
+
+To delete the cache, simply remove the file or the `~/.clinical_data_visualizer/` folder.
 
 ## Patient Data Folder Organization
 

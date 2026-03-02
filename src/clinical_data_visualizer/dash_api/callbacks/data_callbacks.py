@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from dash import ALL, Input, Output, State, callback, ctx, dcc, html
+from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
 from plotly_resampler import FigureResampler
 
 import clinical_data_visualizer.constants as cst
@@ -29,6 +29,16 @@ logger = logging.getLogger(__name__)
 # Server-side cache for FigureResampler objects, keyed by UUID.
 # Suitable for single-user desktop app.
 FIGURE_RESAMPLER_CACHE = {}
+
+_RELOAD_BTN_SHOWN = {
+    "backgroundColor": "#6c757d",
+    "color": "white",
+    "border": "none",
+    "padding": "6px 16px",
+    "borderRadius": "4px",
+    "cursor": "pointer",
+    "display": "inline-block",
+}
 
 
 def _parse_database_options_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
@@ -50,15 +60,18 @@ def _parse_database_options_file(decoded_content: bytes, filename: str) -> dict[
     Output("db-options-status", "children"),
     Input("db-options-upload", "contents"),
     Input("default-viz-button", "n_clicks"),
+    Input("reload-cached-db-button", "n_clicks"),
     State("db-options-upload", "filename"),
     prevent_initial_call=True,
 )
 def load_db_options(
     contents: str | None,
     n_clicks: int | None,  # noqa: ARG001
+    n_clicks_reload: int | None,  # noqa: ARG001
     filename: str,
 ) -> tuple[dict[str, Any] | None, html.Div | None]:
-    """Load database options from uploaded file or generate defaults."""
+    """Load database options from uploaded file, cache, or generate defaults."""
+
     triggered = ctx.triggered_id
 
     if triggered == "default-viz-button":
@@ -68,6 +81,18 @@ def load_db_options(
                 "Using default visualization (all sources)",
                 style={"color": "green", "fontWeight": "bold"},
             ),
+        )
+
+    if triggered == "reload-cached-db-button":
+        cached = ui_helper.load_cached_db_options()
+        if cached is None:
+            return (
+                None,
+                html.Div("No cached config found.", style={"color": "red", "fontWeight": "bold"}),
+            )
+        return (
+            cached,
+            html.Div("Reloaded last config", style={"color": "green", "fontWeight": "bold"}),
         )
 
     if not contents:
@@ -82,6 +107,8 @@ def load_db_options(
         structure_warnings = validate_database_options_structure(database_options_dict)
         for w in structure_warnings:
             logger.warning("database_options validation: %s", w)
+
+        ui_helper.save_cached_db_options(database_options_dict)
 
         return (
             database_options_dict,

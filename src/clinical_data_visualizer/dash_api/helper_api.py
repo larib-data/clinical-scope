@@ -7,8 +7,33 @@ from typing import Any
 # === Constants === #
 DEFAULT_FONT_SIZE = 16
 
+# Cache path — contains only signal metadata (labels, colors, units, field mappings), no PHI.
+_CACHED_DB_OPTIONS_PATH = Path.home() / ".clinical_data_visualizer" / "last_database_options.json"
+
 # ==================================================================================================
 logger = logging.getLogger(__name__)
+
+
+# ==================================================================================================
+def get_cached_db_options_path() -> Path:
+    return _CACHED_DB_OPTIONS_PATH
+
+
+def save_cached_db_options(data: dict[str, Any]) -> None:
+    try:
+        save_json(data, _CACHED_DB_OPTIONS_PATH)
+    except PermissionError:
+        logger.exception("Could not save for cache the DB options")
+
+
+def load_cached_db_options() -> dict[str, Any] | None:
+    if _CACHED_DB_OPTIONS_PATH.exists():
+        try:
+            with _CACHED_DB_OPTIONS_PATH.open() as f:
+                return json.load(f)
+        except Exception:
+            logger.exception("Failed to load cached database options:")
+    return None
 
 
 # ==================================================================================================

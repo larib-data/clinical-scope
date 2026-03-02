@@ -79,6 +79,15 @@ Data source configuration:
 
 See `example/option_files/` for reference configurations.
 
+### Local Config Cache
+When a custom `database_options` file (JSON or XLSX) is successfully uploaded via the UI, it is automatically saved to:
+```
+~/.clinical_data_visualizer/last_database_options.json
+```
+On next app start, a **"Reload last config"** button (grey) appears in the Database Options section, allowing one-click restore.
+
+**Privacy**: this file contains only signal metadata (labels, colors, units, field mappings) — no patient data or PHI. Safe to store in the home directory.
+
 ## Code Style
 
 - **Linter/Formatter**: Ruff (`ruff check`, `ruff format`)
@@ -98,7 +107,7 @@ ruff format src/
 ### Layout Structure (`core_api.py`)
 The Dash app layout follows this hierarchy:
 - Root container: centered, max-width 1400px, 20px/32px padding
-- Database options section: upload button (blue) or "Default visualization" button (green)
+- Database options section: upload button (blue), "Reload last config" button (grey, hidden when no cache), or "Default visualization" button (green)
 - Patient options section: dynamically generated based on loaded database options
 - Process button: orange, prominent, triggers visualization
 - Shape controls: dropdown + Modify/Delete buttons (hidden until visualization succeeds)
@@ -114,6 +123,7 @@ The Dash app layout follows this hierarchy:
 ### Styling Patterns
 **Button Colors:**
 - Blue `#007bff`: Secondary actions (Upload config file)
+- Grey `#6c757d`: Secondary actions (Reload last config)
 - Green `#28a745`: Secondary actions (Default visualization)
 - Orange `#fd7e14`: Primary action (Process visualization, larger/bold)
 
