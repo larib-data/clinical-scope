@@ -47,7 +47,7 @@ EDIT_SHAPE_POPUP_STYLE = {
 
 # Resolve assets folder: PyInstaller bundles files under sys._MEIPASS
 if getattr(sys, "frozen", False):
-    _assets_folder = str(Path(sys._MEIPASS) / "clinical_data_visualizer" / "dash_api" / "assets")
+    _assets_folder = str(Path(sys._MEIPASS) / "clinical_data_visualizer" / "dash_api" / "assets")  # noqa: SLF001
 else:
     _assets_folder = str(Path(__file__).parent / "assets")
 
@@ -180,6 +180,10 @@ app.layout = html.Div(
         dcc.Loading(
             type="default",
             children=html.Div(id="process-status"),
+        ),
+        dcc.Loading(
+            type="default",
+            children=html.Div(id="inspect-status"),
         ),
         html.Div(
             id="shape-controls",

@@ -472,6 +472,7 @@ def _build_inspection_content(results: list) -> list:
     Output("inspection-modal", "style"),
     Output("inspection-modal-content", "children"),
     Output("inspection-results-store", "data"),
+    Output("inspect-status", "children"),
     Input("inspect-button", "n_clicks"),
     State("db-options-store", "data"),
     State("schema-registry", "data"),
@@ -485,13 +486,14 @@ def inspect_data(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
-) -> tuple[dict, Any, list | None]:
+) -> tuple[dict, Any, list | None, None]:
     """Run data inspection for all enabled datasources and display results in modal."""
 
     if not db_options:
         return (
             INSPECTION_MODAL_STYLE_SHOWN,
             html.Div("Database options not loaded.", style={"color": "red"}),
+            None,
             None,
         )
 
@@ -503,6 +505,7 @@ def inspect_data(
         return (
             INSPECTION_MODAL_STYLE_SHOWN,
             html.Ul([html.Li(e) for e in errors]),
+            None,
             None,
         )
 
@@ -518,10 +521,11 @@ def inspect_data(
             INSPECTION_MODAL_STYLE_SHOWN,
             html.Div(f"Inspection failed: {e}", style={"color": "red"}),
             None,
+            None,
         )
 
     content = _build_inspection_content(results)
-    return INSPECTION_MODAL_STYLE_SHOWN, content, results_to_json(results)
+    return INSPECTION_MODAL_STYLE_SHOWN, content, results_to_json(results), None
 
 
 @callback(

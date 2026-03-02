@@ -50,7 +50,7 @@ class TestIsTimestamp:
         assert is_timestamp(None) is False
 
     @pytest.mark.xfail(
-        reason="pd.Timestamp('') returns NaT instead of raising, so '' is incorrectly treated as valid"
+        reason="pd.Timestamp('') returns NaT instead of raising, so '' is incorrectly treated as valid"  # noqa: E501
     )
     def test_empty_string(self):
         assert is_timestamp("") is False

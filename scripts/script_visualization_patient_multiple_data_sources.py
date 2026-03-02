@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 # ==================================================================================================
 def main(option_dict):
     patient_options = helper.load_options(Path(option_dict["path_patient_options"]))
-    database_options = helper.load_options(Path(option_dict["path_database_options"]))
+    database_options = helper.load_database_options_from_path(
+        Path(option_dict["path_database_options"])
+    )
 
     model = wrapper.main(
         patient_options=patient_options,

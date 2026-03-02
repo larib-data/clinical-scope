@@ -35,3 +35,7 @@ logs/
 
 # IA
 .claude/skills/*
+PLANS/*
+
+# Local testing and example
+LOCAL_SCRIPT/*
