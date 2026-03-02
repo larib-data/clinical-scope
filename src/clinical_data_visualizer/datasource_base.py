@@ -13,9 +13,65 @@ import pandas as pd
 
 import clinical_data_visualizer.constants as cst
 from clinical_data_visualizer import helper
+from clinical_data_visualizer.inspection import ColumnInfo, DataSourceInspection
 from clinical_data_visualizer.signal_container import Signal
 
 logger = logging.getLogger(__name__)
+
+
+_TS_FMT = "%y-%m-%d %H:%M:%S"  # compact, no milliseconds, 2-digit year
+
+
+def fmt_ts(ts: object) -> str:
+    """Format a pandas Timestamp (or datetime-like) to a compact, human-readable string."""
+    try:
+        return ts.strftime(_TS_FMT)
+    except Exception:  # noqa: BLE001
+        return str(ts)
+
+
+def _date_range(df: pd.DataFrame) -> tuple[str, str] | None:
+    """Return (compact_min, compact_max) of the DataFrame index, or None if empty."""
+    if df.empty:
+        return None
+    try:
+        return (fmt_ts(df.index.min()), fmt_ts(df.index.max()))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _first_last_timestamp(df: pd.DataFrame, col: str) -> tuple[str | None, str | None]:
+    """Return (first, last) compact timestamp strings for valid (non-NaN) values in a column."""
+    if col not in df.columns:
+        return None, None
+    valid_index = df.index[df[col].notna()]
+    if valid_index.empty:
+        return None, None
+    return fmt_ts(valid_index.min()), fmt_ts(valid_index.max())
+
+
+def _column_infos(
+    df_raw: pd.DataFrame,
+    df_filtered: pd.DataFrame,
+    configured_fields: set[str],
+) -> list:
+    """Build a list of ColumnInfo objects from raw and filtered DataFrames."""
+    infos = []
+    for col in df_raw.columns:
+        first_ts, last_ts = _first_last_timestamp(df_filtered, col)
+        infos.append(
+            ColumnInfo(
+                raw_name=col,
+                is_configured=col in configured_fields,
+                raw_point_count=int(df_raw[col].notna().sum()),
+                filtered_point_count=(
+                    int(df_filtered[col].notna().sum()) if col in df_filtered.columns else 0
+                ),
+                first_filtered_timestamp=first_ts,
+                last_filtered_timestamp=last_ts,
+            )
+        )
+    return infos
 
 
 class DataSourceBase(ABC):
@@ -74,6 +130,47 @@ class DataSourceBase(ABC):
     def _quick_load(cls, path_dataframe: Path) -> pd.DataFrame:
         """Load previously saved DataFrame from parquet file."""
         return pd.read_parquet(path_dataframe)
+
+    @classmethod
+    def _load_raw_dataframe(
+        cls,
+        patient_options: dict,
+        database_options: dict,
+    ) -> tuple[pd.DataFrame | None, str | None]:
+        """
+        Find, locate, and load the raw DataFrame for this datasource.
+
+        Returns:
+            (df, file_path_str) on success, (None, None) if file not found.
+            Raises exceptions for actual load errors.
+
+        """
+        folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
+        dataframe_path = folder_path / cst.FOLDER_NAME_VISU / cls.FILE_NAME_DATAFRAME_LOADED
+        quick_load_enabled = patient_options.get(cst.PatientOptions.QuickLoad.NAME, False)
+
+        if cls.ALLOW_QUICK_LOAD and quick_load_enabled and dataframe_path.is_file():
+            logger.info("[%s] Quick loading from cache.", cls.DATASOURCE_NAME)
+            return cls._quick_load(dataframe_path), str(dataframe_path)
+
+        search_folder = cls._find_folder(folder_path)
+        if search_folder is None:
+            return None, None
+
+        file_path = cls._find(search_folder)
+        if file_path is None:
+            return None, None
+
+        file_path_str = str(file_path[0]) if isinstance(file_path, list) else str(file_path)
+        logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
+        df = cls._load(file_path, dataframe_path, database_options_specific=database_options)
+        logger.info(
+            "📥 [%s] Loaded: %d rows x %d columns.",
+            cls.DATASOURCE_NAME,
+            df.shape[0],
+            df.shape[1],
+        )
+        return df, file_path_str
 
     @classmethod
     def _save_dataframe(cls, df: pd.DataFrame, path_output: Path) -> None:
@@ -255,37 +352,9 @@ class DataSourceBase(ABC):
         )
         patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
 
-        folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        dataframe_path = folder_path / cst.FOLDER_NAME_VISU / cls.FILE_NAME_DATAFRAME_LOADED
-
-        # Try quick load if enabled
-        quick_load_enabled = patient_options.get(
-            cst.PatientOptions.QuickLoad.NAME, getattr(cst, "DEFAULT_QUICK_LOAD", False)
-        )
-
-        if cls.ALLOW_QUICK_LOAD and quick_load_enabled and dataframe_path.is_file():
-            logger.info("[%s] Quick loading from cache.", cls.DATASOURCE_NAME)
-            df = cls._quick_load(dataframe_path)
-        else:
-            # Find folder (if datasource uses subfolder)
-            search_folder = cls._find_folder(folder_path)
-            if search_folder is None:
-                return []
-
-            # Find file(s)
-            file_path = cls._find(search_folder)
-            if file_path is None:
-                return []
-
-            # Load data
-            logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
-            df = cls._load(file_path, dataframe_path, database_options_specific=database_options)
-            logger.info(
-                "📥 [%s] Loaded: %d rows x %d columns.",
-                cls.DATASOURCE_NAME,
-                df.shape[0],
-                df.shape[1],
-            )
+        df, _ = cls._load_raw_dataframe(patient_options, database_options)
+        if df is None:
+            return []
 
         # Format data
         df = cls._format(df, patient_options, database_options)
@@ -296,3 +365,74 @@ class DataSourceBase(ABC):
         )
         logger.info("🔬 [%s] Extracted %d signal(s).", cls.DATASOURCE_NAME, len(signals))
         return signals
+
+    @classmethod
+    def inspect(
+        cls,
+        patient_options: dict,
+        database_options_specific: dict | None,
+    ) -> DataSourceInspection:
+        """
+        Run find → load → format for this datasource and return inspection metadata.
+
+        Does NOT call _extract_signals(). Returns statistics on every raw column
+        in the loaded DataFrame, including columns not listed in field_display.
+
+        Args:
+            patient_options: Patient-specific options (same as main())
+            database_options_specific: Database options for this datasource
+
+        Returns:
+            DataSourceInspection with status, file info, date ranges, and column stats
+
+        """
+        database_options = (
+            database_options_specific if database_options_specific is not None else {}
+        )
+
+        # Remove field_display so _load() returns ALL columns (handles EIT pre-filtering)
+        db_opts_for_load = {
+            k: v for k, v in database_options.items() if k != cst.DatabaseOptions.FIELD_DISPLAY
+        }
+        configured_fields = set(database_options.get(cst.DatabaseOptions.FIELD_DISPLAY, []))
+
+        file_path_str = None
+        try:
+            df_raw, file_path_str = cls._load_raw_dataframe(patient_options, db_opts_for_load)
+        except Exception as exc:
+            logger.exception("[%s] inspect: load failed.", cls.DATASOURCE_NAME)
+            return DataSourceInspection(
+                datasource_name=cls.DATASOURCE_NAME,
+                status="load_error",
+                error_message=str(exc),
+                file_path=file_path_str,
+            )
+
+        if df_raw is None:
+            return DataSourceInspection(
+                datasource_name=cls.DATASOURCE_NAME, status="file_not_found"
+            )
+
+        raw_date_range = _date_range(df_raw)
+
+        try:
+            df_filtered = cls._format(df_raw, patient_options, database_options)
+        except Exception as exc:
+            logger.exception("[%s] inspect: format failed.", cls.DATASOURCE_NAME)
+            return DataSourceInspection(
+                datasource_name=cls.DATASOURCE_NAME,
+                status="format_error",
+                error_message=str(exc),
+                file_path=file_path_str,
+                raw_date_range=raw_date_range,
+                columns=_column_infos(df_raw, df_raw, configured_fields),
+            )
+
+        return DataSourceInspection(
+            datasource_name=cls.DATASOURCE_NAME,
+            status="ok",
+            file_path=file_path_str,
+            raw_date_range=raw_date_range,
+            filtered_date_range=_date_range(df_filtered),
+            columns=_column_infos(df_raw, df_filtered, configured_fields),
+        )

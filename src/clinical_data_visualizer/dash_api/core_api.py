@@ -13,6 +13,9 @@ from clinical_data_visualizer import logger_config
 # Import callbacks to register them with the app
 from clinical_data_visualizer.dash_api import callbacks  # noqa: F401
 from clinical_data_visualizer.dash_api.helper_api import get_cached_db_options_path
+from clinical_data_visualizer.dash_api.styles import (
+    INSPECTION_MODAL_STYLE_HIDDEN,
+)
 
 # === API Version === #
 try:
@@ -134,18 +137,41 @@ app.layout = html.Div(
         html.Hr(),
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
-        html.Button(
-            "Process visualization",
-            id="process-button",
+        html.Div(
+            [
+                html.Button(
+                    "Process visualization",
+                    id="process-button",
+                    style={
+                        "backgroundColor": "#fd7e14",
+                        "color": "white",
+                        "border": "none",
+                        "padding": "10px 28px",
+                        "borderRadius": "4px",
+                        "cursor": "pointer",
+                        "fontSize": "16px",
+                        "fontWeight": "bold",
+                    },
+                ),
+                html.Button(
+                    "Inspect data",
+                    id="inspect-button",
+                    style={
+                        "backgroundColor": "#17a2b8",
+                        "color": "white",
+                        "border": "none",
+                        "padding": "10px 22px",
+                        "borderRadius": "4px",
+                        "cursor": "pointer",
+                        "fontSize": "15px",
+                        "fontWeight": "bold",
+                        "marginLeft": "12px",
+                    },
+                ),
+            ],
             style={
-                "backgroundColor": "#fd7e14",
-                "color": "white",
-                "border": "none",
-                "padding": "10px 28px",
-                "borderRadius": "4px",
-                "cursor": "pointer",
-                "fontSize": "16px",
-                "fontWeight": "bold",
+                "display": "flex",
+                "alignItems": "center",
                 "marginTop": "16px",
                 "marginBottom": "8px",
             },
@@ -255,9 +281,81 @@ app.layout = html.Div(
                 )
             ],
         ),
+        # Inspection modal
+        html.Div(
+            id="inspection-modal",
+            style=INSPECTION_MODAL_STYLE_HIDDEN,
+            children=[
+                html.Div(
+                    [
+                        # Header row
+                        html.Div(
+                            [
+                                html.H3("Data Inspection", style={"margin": 0}),
+                                html.Div(
+                                    [
+                                        html.Button(
+                                            "Download CSV",
+                                            id="inspect-download-btn",
+                                            style={
+                                                "backgroundColor": "#17a2b8",
+                                                "color": "white",
+                                                "border": "none",
+                                                "padding": "6px 14px",
+                                                "borderRadius": "4px",
+                                                "cursor": "pointer",
+                                                "fontSize": "14px",
+                                            },
+                                        ),
+                                        html.Button(
+                                            "Close",
+                                            id="inspection-modal-close",
+                                            style={
+                                                "backgroundColor": "#6c757d",
+                                                "color": "white",
+                                                "border": "none",
+                                                "padding": "6px 14px",
+                                                "borderRadius": "4px",
+                                                "cursor": "pointer",
+                                                "fontSize": "14px",
+                                            },
+                                        ),
+                                    ],
+                                    style={"display": "flex", "gap": "8px"},
+                                ),
+                            ],
+                            style={
+                                "display": "flex",
+                                "justifyContent": "space-between",
+                                "alignItems": "center",
+                                "marginBottom": "16px",
+                                "borderBottom": "2px solid #dee2e6",
+                                "paddingBottom": "12px",
+                            },
+                        ),
+                        dcc.Loading(
+                            type="default",
+                            children=html.Div(id="inspection-modal-content"),
+                        ),
+                        dcc.Download(id="inspection-download"),
+                    ],
+                    style={
+                        "background": "white",
+                        "borderRadius": "8px",
+                        "padding": "24px",
+                        "width": "90vw",
+                        "maxWidth": "1700px",
+                        "maxHeight": "80vh",
+                        "overflowY": "auto",
+                        "boxShadow": "0 8px 32px rgba(0,0,0,0.25)",
+                    },
+                )
+            ],
+        ),
         html.Hr(),
         html.Div(id="visualization-container"),
         dcc.Store(id="annotations-store", data={}),
+        dcc.Store(id="inspection-results-store", data=None),
     ],
     style={"padding": "20px 32px", "maxWidth": "1400px", "margin": "0 auto"},
 )

@@ -7,7 +7,8 @@ import pandas as pd
 
 import clinical_data_visualizer.constants as cst
 import clinical_data_visualizer.other.options as options_naming
-from clinical_data_visualizer.datasource_base import DataSourceBase
+from clinical_data_visualizer.datasource_base import DataSourceBase, fmt_ts
+from clinical_data_visualizer.inspection import ColumnInfo, DataSourceInspection
 from clinical_data_visualizer.signal_container import (
     Data,
     Metadata,
@@ -298,6 +299,132 @@ class OtherDataSource(DataSourceBase):
             database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
 
         return all_signals
+
+    @classmethod
+    def inspect(
+        cls,
+        patient_options: dict,
+        database_options_specific: dict | None,
+    ) -> DataSourceInspection:
+        """
+        Inspect all CSV/parquet files in the other datasource folder.
+
+        Overrides DataSourceBase.inspect() because OtherDataSource._load() raises
+        NotImplementedError (files are processed individually in main()).
+        """
+        database_options = (
+            database_options_specific if database_options_specific is not None else {}
+        )
+        configured_fields = set(database_options.get(cst.DatabaseOptions.FIELD_DISPLAY, []))
+
+        folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
+        search_folder = cls._find_folder(folder_path)
+        if search_folder is None:
+            return DataSourceInspection(
+                datasource_name=cls.DATASOURCE_NAME, status="file_not_found"
+            )
+
+        file_paths = cls._find(search_folder)
+        if not file_paths:
+            return DataSourceInspection(
+                datasource_name=cls.DATASOURCE_NAME, status="file_not_found"
+            )
+
+        # Aggregate column stats across all files.
+        # Keys use the same "{stem}::{col}" format as main() for consistency.
+        all_raw_counts: dict[str, int] = {}
+        all_filtered_counts: dict[str, int] = {}
+        col_first_ts: dict[str, object] = {}  # per-column earliest filtered Timestamp object
+        col_last_ts: dict[str, object] = {}  # per-column latest filtered Timestamp object
+        min_raw, max_raw = None, None
+        min_flt, max_flt = None, None
+
+        for fp in file_paths:
+            try:
+                df = _load_single_file(fp)
+                df = _detect_and_set_datetime_index(df)
+                if df is None:
+                    logger.warning("inspect: no datetime index in '%s', skipping", fp.name)
+                    continue
+
+                for col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                df = df.dropna(axis=1, how="all")
+                if df.empty or len(df.columns) == 0:
+                    continue
+
+                df = df[~df.index.duplicated(keep="first")].sort_index()
+
+                if not df.empty:
+                    lo, hi = df.index.min(), df.index.max()
+                    min_raw = lo if min_raw is None else min(min_raw, lo)
+                    max_raw = hi if max_raw is None else max(max_raw, hi)
+
+                for col in df.columns:
+                    raw_name = f"{fp.stem}::{col}"
+                    all_raw_counts[raw_name] = all_raw_counts.get(raw_name, 0) + int(
+                        df[col].notna().sum()
+                    )
+
+                try:
+                    df_flt = cls._format(df, patient_options, database_options)
+                    if not df_flt.empty:
+                        lo, hi = df_flt.index.min(), df_flt.index.max()
+                        min_flt = lo if min_flt is None else min(min_flt, lo)
+                        max_flt = hi if max_flt is None else max(max_flt, hi)
+                    for col in df_flt.columns:
+                        raw_name = f"{fp.stem}::{col}"
+                        all_filtered_counts[raw_name] = all_filtered_counts.get(raw_name, 0) + int(
+                            df_flt[col].notna().sum()
+                        )
+                        valid_idx = df_flt.index[df_flt[col].notna()]
+                        if not valid_idx.empty:
+                            first_ts = valid_idx.min()
+                            last_ts = valid_idx.max()
+                            if raw_name not in col_first_ts or first_ts < col_first_ts[raw_name]:
+                                col_first_ts[raw_name] = first_ts
+                            if raw_name not in col_last_ts or last_ts > col_last_ts[raw_name]:
+                                col_last_ts[raw_name] = last_ts
+                except Exception:
+                    logger.exception("inspect: format failed for '%s'", fp.name)
+
+            except Exception:
+                logger.exception("inspect: failed to load '%s'", fp.name)
+
+        if not all_raw_counts:
+            return DataSourceInspection(
+                datasource_name=cls.DATASOURCE_NAME,
+                status="load_error",
+                error_message="No readable files found in folder",
+                file_path=str(search_folder),
+            )
+
+        columns = [
+            ColumnInfo(
+                raw_name=raw_name,
+                is_configured=raw_name in configured_fields,
+                raw_point_count=raw_count,
+                filtered_point_count=all_filtered_counts.get(raw_name, 0),
+                first_filtered_timestamp=(
+                    fmt_ts(col_first_ts[raw_name]) if raw_name in col_first_ts else None
+                ),
+                last_filtered_timestamp=(
+                    fmt_ts(col_last_ts[raw_name]) if raw_name in col_last_ts else None
+                ),
+            )
+            for raw_name, raw_count in all_raw_counts.items()
+        ]
+        raw_date_range = (fmt_ts(min_raw), fmt_ts(max_raw)) if min_raw is not None else None
+        filtered_date_range = (fmt_ts(min_flt), fmt_ts(max_flt)) if min_flt is not None else None
+
+        return DataSourceInspection(
+            datasource_name=cls.DATASOURCE_NAME,
+            status="ok",
+            file_path=str(search_folder),
+            raw_date_range=raw_date_range,
+            filtered_date_range=filtered_date_range,
+            columns=columns,
+        )
 
 
 def main(patient_options: dict, database_options_specific: dict | None) -> list[Signal]:

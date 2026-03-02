@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
+from dash import ALL, Input, Output, State, callback, ctx, dcc, html
+from dash.exceptions import PreventUpdate
 from plotly_resampler import FigureResampler
 
 import clinical_data_visualizer.constants as cst
@@ -20,8 +21,18 @@ import clinical_data_visualizer.datasource_list as datasource
 from clinical_data_visualizer import wrapper
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
 from clinical_data_visualizer.dash_api import ui_components, validation
+from clinical_data_visualizer.dash_api.styles import (
+    INSPECTION_MODAL_STYLE_HIDDEN,
+    INSPECTION_MODAL_STYLE_SHOWN,
+)
 from clinical_data_visualizer.database_options_parser import validate_database_options_structure
 from clinical_data_visualizer.database_options_xlsx import xlsx_bytes_to_database_options
+from clinical_data_visualizer.inspection import (
+    ColumnInfo,
+    results_from_json,
+    results_to_json,
+    to_csv_string,
+)
 from clinical_data_visualizer.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
@@ -319,6 +330,227 @@ def process_visualization(
         name_folder_visu,
         {"display": "block"},
     )
+
+
+def _status_badge(status: str) -> html.Span:
+    """Return a coloured inline badge for a datasource status."""
+    color = {
+        "ok": "#28a745",
+        "file_not_found": "#fd7e14",
+        "load_error": "#dc3545",
+        "format_error": "#dc3545",
+    }.get(status, "#6c757d")
+    return html.Span(
+        status,
+        style={
+            "backgroundColor": color,
+            "color": "white",
+            "padding": "2px 8px",
+            "borderRadius": "4px",
+            "fontSize": "12px",
+            "marginLeft": "8px",
+            "verticalAlign": "middle",
+        },
+    )
+
+
+# Table column definitions: (header, cell_content_fn, header_style, cell_style_fn)
+# Adding a new ColumnInfo field: add one entry here + update ColumnInfo + _column_infos + _TABLE_HEADERS.  # noqa: E501
+def _col_cell(col: "ColumnInfo") -> list[html.Td]:
+    """Return the list of <td> cells for one ColumnInfo row."""
+    percent_retained = (
+        f"{col.filtered_point_count / col.raw_point_count * 100:.1f}%"
+        if col.raw_point_count > 0
+        else "—"
+    )
+    return [
+        html.Td(col.raw_name, style={"fontFamily": "monospace", "fontSize": "13px"}),
+        html.Td(
+            "✓" if col.is_configured else "✗",
+            style={"textAlign": "center", "color": "#28a745" if col.is_configured else "#aaa"},
+        ),
+        html.Td(f"{col.raw_point_count:,}", style={"textAlign": "right"}),
+        html.Td(f"{col.filtered_point_count:,}", style={"textAlign": "right"}),
+        html.Td(percent_retained, style={"textAlign": "right"}),
+        html.Td(
+            col.first_filtered_timestamp or "—", style={"textAlign": "left", "fontSize": "11px"}
+        ),
+        html.Td(
+            col.last_filtered_timestamp or "—", style={"textAlign": "left", "fontSize": "11px"}
+        ),
+    ]
+
+
+_TABLE_HEADERS = [
+    ("Column", "left"),
+    ("Configured", "center"),
+    ("Raw pts", "right"),
+    ("Filtered pts", "right"),
+    ("% retained", "right"),
+    ("First (filtered)", "left"),
+    ("Last (filtered)", "left"),
+]
+
+
+def _build_inspection_content(results: list) -> list:
+    """Build modal content from a list of DataSourceInspection objects."""
+    sections = []
+    for r in results:
+        meta_parts = []
+        if r.file_path:
+            meta_parts.append(
+                html.Div(f"File: {r.file_path}", style={"fontSize": "12px", "color": "#666"})
+            )
+        if r.raw_date_range:
+            meta_parts.append(
+                html.Div(
+                    f"Date range in file: {r.raw_date_range[0]}  →  {r.raw_date_range[1]}",
+                    style={"fontSize": "12px", "color": "#666"},
+                )
+            )
+        if r.filtered_date_range:
+            meta_parts.append(
+                html.Div(
+                    f"After filter:        "
+                    f"{r.filtered_date_range[0]}  →  {r.filtered_date_range[1]}",
+                    style={"fontSize": "12px", "color": "#666"},
+                )
+            )
+        if r.error_message:
+            meta_parts.append(
+                html.Div(
+                    f"Error: {r.error_message}",
+                    style={"fontSize": "12px", "color": "#dc3545"},
+                )
+            )
+
+        table_rows = [html.Tr(_col_cell(col)) for col in r.columns]
+
+        table = (
+            html.Table(
+                [
+                    html.Thead(
+                        html.Tr(
+                            [
+                                html.Th(header, style={"textAlign": align})
+                                for header, align in _TABLE_HEADERS
+                            ]
+                        )
+                    ),
+                    html.Tbody(table_rows),
+                ],
+                className="table table-sm table-hover",
+                style={"marginTop": "8px"},
+            )
+            if table_rows
+            else html.Div(
+                "No columns found.", style={"color": "#999", "fontSize": "13px", "marginTop": "8px"}
+            )
+        )
+
+        sections.append(
+            html.Div(
+                [
+                    html.H4(
+                        [r.datasource_name, _status_badge(r.status)],
+                        style={"marginBottom": "6px"},
+                    ),
+                    *meta_parts,
+                    table,
+                ],
+                style={
+                    "marginBottom": "24px",
+                    "paddingBottom": "16px",
+                    "borderBottom": "1px solid #dee2e6",
+                },
+            )
+        )
+    return sections
+
+
+@callback(
+    Output("inspection-modal", "style"),
+    Output("inspection-modal-content", "children"),
+    Output("inspection-results-store", "data"),
+    Input("inspect-button", "n_clicks"),
+    State("db-options-store", "data"),
+    State("schema-registry", "data"),
+    State({"type": "patient-option", "name": ALL}, "value"),
+    State({"type": "patient-option", "name": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def inspect_data(
+    n_clicks: int,  # noqa: ARG001
+    db_options: dict[str, Any] | None,
+    schema_data: dict[str, str],
+    values: list[Any],
+    ids: list[dict[str, str]],
+) -> tuple[dict, Any, list | None]:
+    """Run data inspection for all enabled datasources and display results in modal."""
+
+    if not db_options:
+        return (
+            INSPECTION_MODAL_STYLE_SHOWN,
+            html.Div("Database options not loaded.", style={"color": "red"}),
+            None,
+        )
+
+    schema_class_lookup = _rehydrate_schema_classes(schema_data)
+    values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
+    validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
+
+    if errors:
+        return (
+            INSPECTION_MODAL_STYLE_SHOWN,
+            html.Ul([html.Li(e) for e in errors]),
+            None,
+        )
+
+    logger.info("Running inspection for: %s", validated_dict.get("data_folder", "?"))
+    try:
+        results = wrapper.inspect(
+            patient_options=validated_dict,
+            database_options_global=db_options,
+        )
+    except Exception as e:
+        logger.exception("Inspection failed: ")
+        return (
+            INSPECTION_MODAL_STYLE_SHOWN,
+            html.Div(f"Inspection failed: {e}", style={"color": "red"}),
+            None,
+        )
+
+    content = _build_inspection_content(results)
+    return INSPECTION_MODAL_STYLE_SHOWN, content, results_to_json(results)
+
+
+@callback(
+    Output("inspection-modal", "style", allow_duplicate=True),
+    Input("inspection-modal-close", "n_clicks"),
+    prevent_initial_call=True,
+)
+def close_inspection_modal(n_clicks: int) -> dict:  # noqa: ARG001
+    """Hide the inspection modal when the Close button is clicked."""
+    return INSPECTION_MODAL_STYLE_HIDDEN
+
+
+@callback(
+    Output("inspection-download", "data"),
+    Input("inspect-download-btn", "n_clicks"),
+    State("inspection-results-store", "data"),
+    prevent_initial_call=True,
+)
+def download_inspection_csv(n_clicks: int, stored: list | None) -> dict:  # noqa: ARG001
+    """Trigger a CSV download of the latest inspection results."""
+
+    if not stored:
+        raise PreventUpdate
+    results = results_from_json(stored)
+    return {
+        "content": to_csv_string(results),
+        "filename": "data_inspection.csv",
+        "type": "text/csv",
+    }
 
 
 def _build_graphs(

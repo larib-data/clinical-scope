@@ -3,6 +3,7 @@ import logging
 from collections.abc import Callable
 from typing import ClassVar
 
+from clinical_data_visualizer.datasource_base import DataSourceBase
 from clinical_data_visualizer.signal_container import Signal
 
 # ==================================================================================================
@@ -20,6 +21,17 @@ def add_main_module(cls: type) -> type:
     # Assign the actual main function directly to the class
     cls.MAIN_MODULE = module.main
     cls.OPTIONS = options
+
+    # Find the DataSourceBase subclass in the module for inspection
+
+    cls.DATASOURCE_CLASS = next(
+        (
+            v
+            for v in vars(module).values()
+            if isinstance(v, type) and issubclass(v, DataSourceBase) and v is not DataSourceBase
+        ),
+        None,
+    )
 
     return cls
 

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
+from clinical_data_visualizer.database_options_xlsx import xlsx_to_database_options
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,39 @@ def load_options(path: Path | None) -> dict:
         with path.open(encoding="utf-8") as file:
             return json.load(file)
     return {}
+
+
+# ==================================================================================================
+def load_database_options_from_path(path: Path) -> dict:
+    """
+    Load database options from a JSON or XLSX file.
+
+    This is the canonical entry point for loading database options from a file
+    path, supporting both formats accepted by the Dash UI file upload.
+
+    Args:
+        path: Path to a ``.json`` or ``.xlsx`` database options file.
+
+    Returns:
+        Parsed database options dictionary.
+
+    Raises:
+        ValueError: If the file extension is not supported.
+        FileNotFoundError: If the path does not exist.
+
+    """
+
+    if not path.exists():
+        msg = f"Database options file not found: {path}"
+        raise FileNotFoundError(msg)
+
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return load_options(path)
+    if suffix == ".xlsx":
+        return xlsx_to_database_options(path)
+    msg = f"Unsupported file extension '{suffix}'. Expected .json or .xlsx."
+    raise ValueError(msg)
 
 
 # ==================================================================================================

@@ -6,6 +6,7 @@ from clinical_data_visualizer.database_options_parser import (
     normalize_datasource_options,
     warn_redundant_entries,
 )
+from clinical_data_visualizer.inspection import DataSourceInspection
 from clinical_data_visualizer.signal_container import (
     PlotGroup,
     PlotModel,
@@ -223,3 +224,60 @@ def main(
         len(plot_model_list),
     )
     return plot_model_list
+
+
+def inspect(
+    patient_options: dict,
+    database_options_global: dict,
+) -> list[DataSourceInspection]:
+    """
+    Run find → load → format for each enabled datasource and return inspection results.
+
+    Does NOT call _extract_signals() or build PlotModels.
+    Returns one DataSourceInspection per datasource present in database_options_global.
+    """
+    requested_sources = [
+        ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
+    ]
+    logger.info(
+        "🔎 Starting inspection for %d datasource(s): %s",
+        len(requested_sources),
+        requested_sources,
+    )
+
+    results = []
+    for data_source in datasource_list.DataSource.AVAILABLE:
+        name = data_source.NAME
+        if name not in database_options_global:
+            continue
+
+        raw_db_opts = database_options_global[name]
+        warn_redundant_entries(raw_db_opts, name)
+        db_opts = normalize_datasource_options(raw_db_opts)
+
+        datasource_cls = data_source.DATASOURCE_CLASS
+        if datasource_cls is None:
+            logger.error("No DataSourceBase subclass found for '%s', skipping inspection.", name)
+            results.append(
+                DataSourceInspection(
+                    datasource_name=name,
+                    status="load_error",
+                    error_message="DataSource class not found",
+                )
+            )
+            continue
+
+        try:
+            inspection = datasource_cls.inspect(patient_options, db_opts)
+        except Exception as exc:
+            logger.exception("❌ Inspection failed for datasource '%s'.", name)
+            inspection = DataSourceInspection(
+                datasource_name=name,
+                status="load_error",
+                error_message=str(exc),
+            )
+
+        results.append(inspection)
+
+    logger.info("🔎 Inspection complete: %d datasource(s) inspected.", len(results))
+    return results
