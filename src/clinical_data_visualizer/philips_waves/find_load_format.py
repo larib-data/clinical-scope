@@ -37,6 +37,7 @@ class PhilipsWavesDataSource(DataSourceBase):
         else:
             msg = f"file_path extension was neither '.csv' nor '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(msg)
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
 
         if options_naming.ALLOW_LOADED_DATAFRAME_SAVING:

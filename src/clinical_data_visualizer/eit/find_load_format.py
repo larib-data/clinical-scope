@@ -286,6 +286,7 @@ class EITDataSource(DataSourceBase):
             file_path_list, database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
         )
 
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
         cls._save_dataframe(df, path_output)
         return df

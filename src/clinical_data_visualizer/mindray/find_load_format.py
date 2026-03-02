@@ -288,6 +288,7 @@ class MindRayDataSource(DataSourceBase):
         df_list = [df.sort_index() for df in df_list]
         df = pd.concat(df_list, axis=1)
         df = df.sort_index()
+        df = df[~df.index.duplicated(keep="first")]
         if optimize_storage_dtypes:
             df = _optimize_df_types(df)
 

@@ -99,6 +99,7 @@ class FluxmedSignalsDataSource(DataSourceBase):
             )
             raise NotImplementedError(msg)
 
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
         cls._save_dataframe(df, path_output)
         return df

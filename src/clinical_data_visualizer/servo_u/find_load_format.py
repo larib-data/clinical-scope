@@ -173,6 +173,7 @@ class ServoUDataSource(DataSourceBase):
             all_dfs.append(df_local)
 
         df = pd.concat(all_dfs)
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
         cls._save_dataframe(df, path_output)
         return df

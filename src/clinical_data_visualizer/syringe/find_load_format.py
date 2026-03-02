@@ -73,6 +73,7 @@ class SyringeDataSource(DataSourceBase):
             msg = f"Invalid file format: {file_path.name}. Only .csv or .parquet supported."
             raise NotImplementedError(msg)
 
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
         cls._save_dataframe(df, path_output)
         return df
