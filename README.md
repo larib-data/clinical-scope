@@ -152,6 +152,80 @@ If you only have Philips waves and EIT data:
     └── eit.parquet
 ```
 
+## Standalone Data Processing
+
+The library provides three layered functions for preprocessing patient data (running
+find → load → format) without opening the Dash UI.  Raw parquet caches are always
+written to `<data_folder>/tdv_visu/` automatically.  Pass `save_folder` to also save
+the formatted output.
+
+### Python API
+
+```python
+from pathlib import Path
+from clinical_data_visualizer import extract_datasource, extract_patient, batch_extract
+from clinical_data_visualizer.helper import load_database_options_from_path
+
+db_options = load_database_options_from_path(Path("example/option_files/database_options.json"))
+
+# 1. Single datasource subfolder (auto-detects type from folder name)
+df = extract_datasource(
+    Path("/data/Patient01/philips_waves"),
+    database_options_specific=db_options.get("philips_waves"),
+    patient_options={"datetime_start": "2024-01-15 08:00:00"},
+    save_path="/output/philips_waves.parquet",   # optional
+)
+
+# 2. All datasources for one patient
+results = extract_patient(
+    Path("/data/Patient01"),
+    db_options,
+    patient_options={"datetime_start": "2024-01-15 08:00:00"},
+    save_folder="/output/Patient01",             # optional
+)
+# results = {"philips_waves": DataFrame | None, "eit": DataFrame | None, ...}
+
+# 3. Multiple patients — pass a root directory or an explicit list
+batch = batch_extract(
+    Path("/data"),                               # root whose subdirs are patients
+    db_options,
+    save_folder="/output",                       # optional; each patient gets a subfolder
+)
+# batch = {"Patient01": {"philips_waves": DataFrame, ...}, "Patient02": {...}, ...}
+
+# Explicit list variant
+batch = batch_extract(
+    ["/data/Patient01", "/data/Patient02"],
+    db_options,
+)
+```
+
+Set `"quick_load": true` in `patient_options` to reuse previously cached parquet files
+on subsequent runs.
+
+### Scripts
+
+All three scripts share the same CLI pattern: a required `patient_folder` positional
+argument, with optional `--database-options`, `--patient-options` and `--verbose` flags.
+
+```bash
+# Extract (find + load + format) without plots
+python scripts/process_patient_data.py patient /data/Patient01 --verbose
+python scripts/process_patient_data.py patient /data/Patient01 --database-options db.json
+python scripts/process_patient_data.py batch /data/patients --output-folder /out
+
+# Inspect available columns per datasource
+python scripts/inspect_patient_data.py /data/Patient01 --verbose
+python scripts/inspect_patient_data.py /data/Patient01 --database-options db.json --output-csv out.csv
+
+# Visualize (generates HTML)
+python scripts/visualization_patient_data.py /data/Patient01 --verbose
+python scripts/visualization_patient_data.py /data/Patient01 --database-options db.json --debug --verbose
+```
+
+Omit `--database-options` to use all available datasources with their defaults.
+Use `--patient-options opts.json` to pass datetime range, time shift, quick_load, etc.
+
 ## Project Structure
 
 ```

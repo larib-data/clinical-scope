@@ -603,7 +603,7 @@ class PlotModel:
         # Loop plots with multiple subplots use a multi-column grid so square subplots
         # sit side-by-side instead of stacking vertically.
         if is_loop and n_groups > 1:
-            n_cols = 2 # Flexible, TODO: remove the magic number
+            n_cols = 2  # Flexible, TODO: remove the magic number
             n_rows = int(np.ceil(n_groups / n_cols))
             subplot_height = self.groups[0].plot_options.plot_height
             total_fig_height = n_rows * subplot_height
@@ -619,7 +619,7 @@ class PlotModel:
             fig_width = n_cols * subplot_height
             extra_subplot_kwargs = {"horizontal_spacing": 0.05}
         else:
-            n_cols = 1 # Fixed
+            n_cols = 1  # Fixed
             n_rows = n_groups
             total_fig_height = np.sum([g.plot_options.plot_height for g in self.groups])
             row_heights = [g.plot_options.plot_height / total_fig_height for g in self.groups]

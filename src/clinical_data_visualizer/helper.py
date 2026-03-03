@@ -38,6 +38,32 @@ def time_it(func: Callable) -> Callable:
 
 
 # ==================================================================================================
+def save_df(df: pd.DataFrame, path: str | Path) -> None:
+    """
+    Save *df* to *path* as CSV (``.csv``) or parquet (any other recognised extension).
+
+    Args:
+        df: DataFrame to save.
+        path: Destination path.  Extension must be ``.csv`` or ``.parquet``.
+
+    Raises:
+        ValueError: If *path* has an unsupported extension.
+
+    """
+    path = Path(path)
+    if path.suffix == ".csv":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(path)
+    elif path.suffix == ".parquet":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path)
+    else:
+        msg = f"Unsupported file format '{path.suffix}'. Use '.csv' or '.parquet'."
+        raise ValueError(msg)
+    logger.info("Saved %d rows to %s", len(df), path)
+
+
+# ==================================================================================================
 def find_folder(folder_path: Path, keyword: str, description: str = "folder") -> Path | None:
     """
     Find a subfolder in `folder_path` whose name contains `keyword`.
@@ -162,6 +188,21 @@ def load_options(path: Path | None) -> dict:
         with path.open(encoding="utf-8") as file:
             return json.load(file)
     return {}
+
+
+def build_patient_options(
+    patient_folder: str | Path,
+    path_patient_options: str | Path | None = None,
+) -> dict:
+    """
+    Build a patient_options dict from a folder path and an optional JSON file.
+
+    ``data_folder`` is always set from *patient_folder*.
+    Any other keys present in the JSON file are preserved.
+    """
+    opts = load_options(Path(path_patient_options)) if path_patient_options else {}
+    opts["data_folder"] = str(patient_folder)
+    return opts
 
 
 # ==================================================================================================

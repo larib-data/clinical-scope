@@ -367,6 +367,64 @@ class DataSourceBase(ABC):
         return signals
 
     @classmethod
+    def extract(
+        cls,
+        patient_options: dict,
+        database_options_specific: dict | None,
+        save_path: str | Path | None = None,
+    ) -> pd.DataFrame | None:
+        """
+        Run find → load → format and return the formatted DataFrame.
+
+        Analogous to :meth:`inspect` (same pipeline level — stops after ``_format``,
+        never calls ``_extract_signals``), but returns the data itself rather than
+        inspection metadata.
+
+        Parquet caching inside ``tdv_visu/`` is always created automatically by
+        ``_load()`` inside ``_load_raw_dataframe()``.
+
+        Args:
+            patient_options: Patient-specific options (same as :meth:`main`).
+            database_options_specific: Database options for this datasource.
+            save_path: If given, save the formatted DataFrame to this path using
+                :func:`helper.save_df` (supports ``.csv`` and ``.parquet``).
+
+        Returns:
+            Formatted ``pd.DataFrame``, or ``None`` if the file was not found or
+            an error occurred.
+
+        """
+        database_options = (
+            database_options_specific if database_options_specific is not None else {}
+        )
+
+        try:
+            df, _ = cls._load_raw_dataframe(patient_options, database_options)
+        except Exception:
+            logger.exception("[%s] extract: load failed.", cls.DATASOURCE_NAME)
+            return None
+
+        if df is None:
+            logger.info("[%s] No data file found.", cls.DATASOURCE_NAME)
+            return None
+
+        try:
+            df = cls._format(df, patient_options, database_options)
+        except Exception:
+            logger.exception(
+                "[%s] extract: format failed. Saving un-formated data", cls.DATASOURCE_NAME
+            )
+
+        logger.info(
+            "[%s] Extracted: %d rows x %d columns.", cls.DATASOURCE_NAME, df.shape[0], df.shape[1]
+        )
+
+        if save_path is not None:
+            helper.save_df(df, Path(save_path))
+
+        return df
+
+    @classmethod
     def inspect(
         cls,
         patient_options: dict,

@@ -187,10 +187,30 @@ class OtherDataSource(DataSourceBase):
         return sorted(files)
 
     @classmethod
-    def _load(cls, file_path_list: list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path_list: Path | list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
         """Not used — main() processes each file independently."""
         msg = "OtherDataSource._load should not be called directly; use main() instead"
         raise NotImplementedError(msg)
+
+    @classmethod
+    def extract(
+        cls,
+        patient_options: dict,  # noqa: ARG003
+        database_options_specific: dict | None = None,  # noqa: ARG003
+        save_path: str | Path | None = None,  # noqa: ARG003
+    ) -> pd.DataFrame | None:
+        """
+        Not supported for the 'other' datasource.
+
+        The 'other' datasource processes multiple files independently (each file
+        becomes its own signal group), so a single-DataFrame extraction is not
+        meaningful. Use main() for visualization or inspect() for metadata.
+        """
+        logger.debug(
+            "[%s] extract() is not supported — each file is processed independently. Skipping.",
+            cls.DATASOURCE_NAME,
+        )
+        return None
 
     @classmethod
     def main(

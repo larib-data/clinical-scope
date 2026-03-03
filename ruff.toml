@@ -6,6 +6,7 @@ exclude = [
     ".ruff_cache",
     ".venv",
     ".vscode",
+    "tests"
 ]
 
 line-length = 100

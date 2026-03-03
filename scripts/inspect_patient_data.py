@@ -6,7 +6,9 @@ point counts, and load status — without generating any plots.
 
 Usage
 -----
-    python scripts/inspect_patient_data.py patient_options.json database_options.json
+    python scripts/inspect_patient_data.py /data/Patient01
+    python scripts/inspect_patient_data.py /data/Patient01 --database-options db.json
+    python scripts/inspect_patient_data.py /data/Patient01 --patient-options opts.json
     python scripts/inspect_patient_data.py ... --output-csv out.csv
 """
 
@@ -22,18 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def main(option_dict: dict) -> None:
-    patient_options = helper.load_options(Path(option_dict["path_patient_options"]))
-    database_options = helper.load_database_options_from_path(
-        Path(option_dict["path_database_options"])
-    )
-
-    results = wrapper.inspect(
-        patient_options=patient_options,
-        database_options_global=database_options,
-    )
-
-    # --- stdout summary ---
+def _print_inspection(results: list) -> None:
+    """Print inspection summary to stdout."""
     for r in results:
         status_marker = "OK  " if r.status == "ok" else "FAIL"
         print(f"[{status_marker}]  {r.datasource_name}  ({r.status})")  # noqa: T201
@@ -60,6 +52,24 @@ def main(option_dict: dict) -> None:
                 )
         print()  # noqa: T201
 
+
+def main(option_dict: dict) -> None:
+    patient_options = helper.build_patient_options(
+        option_dict["patient_folder"], option_dict.get("path_patient_options")
+    )
+    path_db = option_dict.get("path_database_options")
+    database_options = helper.load_database_options_from_path(Path(path_db)) if path_db else None
+
+    results = wrapper.inspect(
+        patient_options=patient_options,
+        database_options_global=database_options,
+    )
+
+    verbose = option_dict["verbose"]
+
+    if verbose:
+        _print_inspection(results)
+
     # --- optional CSV output ---
     output_csv = option_dict.get("output_csv")
     if output_csv:
@@ -67,7 +77,8 @@ def main(option_dict: dict) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(to_csv_string(results), encoding="utf-8")
         logger.info("Inspection CSV written to: %s", output_path)
-        print(f"CSV written to: {output_path}")  # noqa: T201
+        if verbose:
+            print(f"CSV written to: {output_path}")  # noqa: T201
 
     logger.info("Script finished successfully.")
 
@@ -77,20 +88,36 @@ def args_parser(args: list[str]) -> None:
     parser = argparse.ArgumentParser(
         description="Inspect available columns per datasource without generating plots."
     )
+    parser.add_argument("patient_folder", type=str, help="Path to the patient data folder.")
     parser.add_argument(
-        "path_patient_options", type=str, help="Path to the patient options JSON file"
+        "--patient-options",
+        type=str,
+        default=None,
+        dest="path_patient_options",
+        help="Path to a patient options JSON file (datetime range, quick_load, etc.).",
     )
     parser.add_argument(
-        "path_database_options", type=str, help="Path to the database options file (.json or .xlsx)"
+        "--database-options",
+        type=str,
+        default=None,
+        dest="path_database_options",
+        help="Path to the database options file (.json or .xlsx). "
+        "Omit to use all available datasources with their defaults.",
     )
     parser.add_argument(
         "--output-csv",
         type=str,
         default=None,
         dest="output_csv",
-        help="Optional path to write inspection results as CSV",
+        help="Optional path to write inspection results as CSV.",
     )
     parser.add_argument("--debug", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--verbose",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Print summary to stdout (default: off). Use --verbose to print.",
+    )
 
     args_namespace = parser.parse_args(args)
     options = vars(args_namespace)

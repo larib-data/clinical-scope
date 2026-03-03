@@ -1,6 +1,7 @@
 import importlib
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import ClassVar
 
 from clinical_data_visualizer.datasource_base import DataSourceBase
@@ -121,6 +122,30 @@ class DataSource:
             if name == nested_class.NAME:
                 return nested_class
         return None
+
+
+def detect_datasource_from_folder(folder: str | Path) -> type | None:
+    """
+    Return the DataSource registry entry whose ``FOLDER_KEYWORDS`` all appear in *folder*'s name.
+
+    Matching is case-insensitive.  Returns ``None`` if no datasource matches.
+
+    Args:
+        folder: Path to a datasource subfolder (only the *name* component is inspected).
+
+    Returns:
+        The matching DataSource registry entry (with ``.NAME``, ``.DATASOURCE_CLASS``,
+        ``.OPTIONS`` …), or ``None``.
+
+    """
+    folder_name_lower = Path(folder).name.lower()
+    for ds in DataSource.AVAILABLE:
+        keywords = getattr(ds.OPTIONS, "FOLDER_KEYWORDS", None)
+        if not keywords:
+            continue
+        if all(kw.lower() in folder_name_lower for kw in keywords):
+            return ds
+    return None
 
 
 def generate_default_database_options() -> dict:

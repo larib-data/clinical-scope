@@ -1,4 +1,7 @@
 import logging
+from pathlib import Path
+
+import pandas as pd
 
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
@@ -15,6 +18,13 @@ from clinical_data_visualizer.signal_container import (
 
 # ==================================================================================================
 logger = logging.getLogger(__name__)
+
+
+# ==================================================================================================
+def _resolve_database_options(database_options_global: dict | None) -> dict:
+    if database_options_global is None:
+        return datasource_list.generate_default_database_options()
+    return database_options_global
 
 
 # ==================================================================================================
@@ -63,8 +73,9 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
 
 def main(
     patient_options: dict,
-    database_options_global: dict,
+    database_options_global: dict | None = None,
 ) -> list[PlotModel]:
+    database_options_global = _resolve_database_options(database_options_global)
     all_signal_list = []
     already_used_in_group = []
     plot_group_list = []
@@ -228,7 +239,7 @@ def main(
 
 def inspect(
     patient_options: dict,
-    database_options_global: dict,
+    database_options_global: dict | None = None,
 ) -> list[DataSourceInspection]:
     """
     Run find → load → format for each enabled datasource and return inspection results.
@@ -236,6 +247,7 @@ def inspect(
     Does NOT call _extract_signals() or build PlotModels.
     Returns one DataSourceInspection per datasource present in database_options_global.
     """
+    database_options_global = _resolve_database_options(database_options_global)
     requested_sources = [
         ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
     ]
@@ -281,3 +293,175 @@ def inspect(
 
     logger.info("🔎 Inspection complete: %d datasource(s) inspected.", len(results))
     return results
+
+
+def extract_datasource(
+    datasource_folder: str | Path,
+    database_options_specific: dict | None = None,
+    patient_options: dict | None = None,
+    datasource_cls: type | None = None,
+    save_path: str | Path | None = None,
+) -> pd.DataFrame | None:
+    """
+    Load and format a single datasource folder, returning the formatted DataFrame.
+
+    The datasource type is auto-detected from the folder name via
+    :func:`~clinical_data_visualizer.datasource_list.detect_datasource_from_folder`
+    unless *datasource_cls* is supplied explicitly.
+
+    ``data_folder`` in *patient_options* is always set to ``datasource_folder.parent``
+    so the pipeline's ``_find_folder`` logic can locate the correct subfolder.
+
+    Args:
+        datasource_folder: Path to the datasource subfolder
+            (e.g. ``/data/Patient01/philips_waves``).
+        database_options_specific: Per-datasource database options (optional).
+        patient_options: Patient-level options (``datetime_start``, ``datetime_end``, …).
+            ``data_folder`` is always overridden.
+        datasource_cls: Explicit ``DataSourceBase`` subclass.  When provided,
+            folder-name auto-detection is skipped.
+        save_path: If given, the formatted DataFrame is saved to this path.
+            Extension must be ``.csv`` or ``.parquet``.
+
+    Returns:
+        Formatted ``pd.DataFrame``, or ``None`` if no data was found or an error occurred.
+
+    """
+    datasource_folder = Path(datasource_folder)
+
+    if datasource_cls is None:
+        ds = datasource_list.detect_datasource_from_folder(datasource_folder)
+        if ds is None:
+            logger.warning(
+                "No datasource matched folder name '%s' — skipping.", datasource_folder.name
+            )
+            return None
+        datasource_cls = ds.DATASOURCE_CLASS
+        if datasource_cls is None:
+            logger.error("No DataSourceBase subclass for '%s' — skipping.", ds.NAME)
+            return None
+
+    opts = dict(patient_options or {})
+    opts["data_folder"] = str(datasource_folder.parent)
+    db_opts = normalize_datasource_options(database_options_specific or {})
+
+    return datasource_cls.extract(opts, db_opts, save_path=save_path)
+
+
+def extract_patient(
+    patient_folder: str | Path,
+    database_options_global: dict | None = None,
+    patient_options: dict | None = None,
+    save_folder: str | Path | None = None,
+) -> dict[str, pd.DataFrame | None]:
+    """
+    Run find → load → format for each datasource present in *database_options_global*.
+
+    Args:
+        patient_folder: Path to the patient data folder.
+        database_options_global: Full database options dict (all datasource sections + global).
+            Defaults to all available datasources with their default options.
+        patient_options: Optional overrides for patient-level options (``datetime_start``,
+            ``datetime_end``, ``quick_load``, …).  ``data_folder`` is always set from
+            *patient_folder* and cannot be overridden here.
+        save_folder: If given, each formatted DataFrame is saved as
+            ``<save_folder>/<datasource_name>.parquet``.
+
+    Returns:
+        Mapping ``{datasource_name: DataFrame | None}``.
+
+    """
+    database_options_global = _resolve_database_options(database_options_global)
+
+    patient_options = dict(patient_options or {})
+    patient_options["data_folder"] = str(patient_folder)
+
+    requested_sources = [
+        ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
+    ]
+    logger.info(
+        "📤 Starting extraction for %d datasource(s): %s",
+        len(requested_sources),
+        requested_sources,
+    )
+
+    results: dict[str, pd.DataFrame | None] = {}
+
+    for data_source in datasource_list.DataSource.AVAILABLE:
+        name = data_source.NAME
+        if name not in database_options_global:
+            continue
+
+        raw_db_opts = database_options_global[name]
+        warn_redundant_entries(raw_db_opts, name)
+        db_opts = normalize_datasource_options(raw_db_opts)
+
+        datasource_cls = data_source.DATASOURCE_CLASS
+        if datasource_cls is None:
+            logger.error("No DataSourceBase subclass found for '%s', skipping.", name)
+            results[name] = None
+            continue
+
+        save_path = Path(save_folder) / f"{name}.parquet" if save_folder is not None else None
+        results[name] = datasource_cls.extract(patient_options, db_opts, save_path=save_path)
+
+    success = sum(1 for v in results.values() if v is not None)
+    logger.info("📤 Extraction complete: %d/%d datasource(s) succeeded.", success, len(results))
+    return results
+
+
+def batch_extract(
+    patient_folders_or_root: str | Path | list[str | Path],
+    database_options_global: dict | None = None,
+    patient_options: dict | None = None,
+    save_folder: str | Path | None = None,
+) -> dict[str, dict[str, pd.DataFrame | None]]:
+    """
+    Run :func:`extract_patient` for multiple patient folders.
+
+    Args:
+        patient_folders_or_root: Either a single directory whose immediate
+            subdirectories are patient folders, or a list of patient folder paths.
+        database_options_global: Full database options dict shared across all patients.
+            Defaults to all available datasources with their default options.
+        patient_options: Base patient-level options applied to every patient.
+            ``data_folder`` is always overridden per patient.
+        save_folder: If given, each patient's DataFrames are saved under
+            ``<save_folder>/<patient_name>/<datasource_name>.parquet``.
+
+    Returns:
+        Mapping ``{patient_folder_name: {datasource_name: DataFrame | None}}``.
+        A patient that raises an unexpected exception is stored as ``{}``.
+
+    """
+    database_options_global = _resolve_database_options(database_options_global)
+
+    if isinstance(patient_folders_or_root, (str, Path)):
+        root = Path(patient_folders_or_root)
+        folders = sorted(f for f in root.iterdir() if f.is_dir())
+    else:
+        folders = [Path(f) for f in patient_folders_or_root]
+
+    logger.info("📦 Batch extraction: %d folder(s).", len(folders))
+    batch_results: dict[str, dict[str, pd.DataFrame | None]] = {}
+
+    for folder in folders:
+        logger.info("── Folder: %s", folder)
+
+        per_patient_save = Path(save_folder) / folder.name if save_folder is not None else None
+
+        try:
+            folder_results = extract_patient(
+                folder,
+                database_options_global,
+                patient_options=patient_options,
+                save_folder=per_patient_save,
+            )
+        except Exception:
+            logger.exception("❌ Unexpected error processing folder '%s'.", folder)
+            folder_results = {}
+
+        batch_results[folder.name] = folder_results
+
+    logger.info("📦 Batch complete: %d folder(s) processed.", len(batch_results))
+    return batch_results
