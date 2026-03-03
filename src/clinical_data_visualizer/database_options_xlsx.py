@@ -62,6 +62,10 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
+_TRUTHY_VALUES = {"yes", "1", "true", "oui", "vrai"}
+_FALSY_VALUES = {"no", "0", "false", "non", "faux"}
+
+
 def _is_truthy(value: Any) -> bool:
     """
     Interpret a yes/no cell.
@@ -69,10 +73,16 @@ def _is_truthy(value: Any) -> bool:
     - Empty / absent → ``True`` (default = shown / visible)
     - ``"yes"``, ``"1"``, ``"true"``, ``"oui"``, ``"vrai"`` (case-insensitive) → ``True``
     - ``"no"``,  ``"0"``, ``"false"`` → ``False``
+    - Anything else → ``False`` with a warning
     """
     if _is_empty(value):
         return True
-    return str(value).strip().lower() in {"yes", "1", "true", "oui", "vrai"}
+    normalized = str(value).strip().lower()
+    if normalized in _TRUTHY_VALUES:
+        return True
+    if normalized not in _FALSY_VALUES:
+        logger.warning("Unrecognized yes/no value %r, treating as 'no'.", value)
+    return False
 
 
 def _parse_groups(value: Any) -> list[str]:

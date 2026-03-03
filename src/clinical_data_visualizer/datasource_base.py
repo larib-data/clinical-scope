@@ -408,12 +408,15 @@ class DataSourceBase(ABC):
             logger.info("[%s] No data file found.", cls.DATASOURCE_NAME)
             return None
 
+        df_raw = df
         try:
             df = cls._format(df, patient_options, database_options)
         except Exception:
             logger.exception(
-                "[%s] extract: format failed. Saving un-formated data", cls.DATASOURCE_NAME
+                "[%s] extract: format failed. Falling back to unformatted data.",
+                cls.DATASOURCE_NAME,
             )
+            df = df_raw
 
         logger.info(
             "[%s] Extracted: %d rows x %d columns.", cls.DATASOURCE_NAME, df.shape[0], df.shape[1]

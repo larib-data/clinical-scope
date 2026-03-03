@@ -407,8 +407,8 @@ class Signal:
             msg = "One or both input signals have no data points."
             raise ValueError(msg)
 
-        t_min = max(x_x[0], x_y[0])
-        t_max = min(x_x[-1], x_y[-1])
+        t_min = max(x_x.min(), x_y.min())
+        t_max = min(x_x.max(), x_y.max())
 
         if t_min >= t_max:
             msg = "Signals do not have overlapping time intervals."

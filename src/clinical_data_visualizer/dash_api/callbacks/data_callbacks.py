@@ -103,7 +103,7 @@ def load_db_options(
         return None, None
 
     try:
-        _, content_string = contents.split(",")
+        _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
         database_options_dict = _parse_database_options_file(decoded, filename)
         logger.debug("loaded database_options_dict: %r", database_options_dict)
@@ -655,14 +655,19 @@ def _build_graphs(
         if mod.plot_type == cst.PlotType.LOOP:
             loop_uid = str(uuid4())
 
-            # Cache full data arrays for each trace
+            # Cache full data arrays for each trace.
+            # Skip traces with missing data to keep cache indices aligned
+            # with the Plotly figure traces that are actually filterable.
             trace_data = []
             t_min_global = np.inf
             t_max_global = -np.inf
             for group in mod.groups:
                 for sig in group.signals:
                     time_array = sig.data.loop_time_axis
-                    if time_array is not None and len(time_array) > 0:
+                    if time_array is None or sig.data.x is None or sig.data.y is None:
+                        trace_data.append({"x": None, "y": None, "time_axis": None})
+                        continue
+                    if len(time_array) > 0:
                         t_min_global = min(t_min_global, time_array[0])
                         t_max_global = max(t_max_global, time_array[-1])
                     trace_data.append(

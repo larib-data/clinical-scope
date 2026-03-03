@@ -72,7 +72,7 @@ The interface is organized top-to-bottom in the following order:
 
 1. **Database Options** -- Load or select a visualization configuration.
 2. **Patient Options** -- Configure data folder, time range, and per-source settings.
-3. **Process Button** -- Start the visualization.
+3. **Process / Inspect Buttons** -- Start the visualization or inspect available data.
 4. **Annotations Controls** -- Manage annotations (visible after processing).
 5. **Visualization Area** -- Interactive plots.
 
@@ -150,7 +150,16 @@ This is the recommended starting point for new users.
 
 ![Default visualization button](images/DefaultVisuButton.png){ width=100% }
 
-## Option 2: Custom Configuration File
+## Option 2: Reload Last Config (Daily Workflow)
+
+If a custom configuration was previously uploaded, a grey **"Reload last config"** button appears
+automatically on startup. Click it to instantly restore the last used configuration without browsing
+for files.
+
+The cached configuration is stored locally at `~/.clinical_data_visualizer/last_database_options.json`
+and contains only signal metadata (labels, colors, units, field mappings) — no patient data.
+
+## Option 3: Custom Configuration File
 
 Click the blue **"Upload config file"** button to load a custom configuration file.
 Two formats are accepted:
@@ -219,6 +228,25 @@ A success message appears when processing completes. If no data is found for a s
 silently skipped.
 
 ![Processing visualization](images/ProcessVisuButton.png){ width=100% }
+
+## Inspecting Data Before Visualization
+
+Next to the "Process visualization" button, a teal **"Inspect data"** button allows you to
+examine available columns and data ranges **before** running the full visualization.
+
+Clicking it opens an inspection modal that shows, for each data source:
+
+- **Status**: Whether the source was found and loaded successfully.
+- **File path**: The detected data file or folder.
+- **Date ranges**: Both the raw (unfiltered) and filtered time ranges.
+- **Columns**: A table listing each signal with its raw name, whether it is configured in the
+  database options, and the number of data points (raw and filtered).
+
+This is useful for verifying that data files are correctly detected, checking which signals are
+available, and confirming the time range before committing to a full processing run.
+
+A **"Download CSV"** button in the modal header lets you export the inspection results as a CSV
+file for further analysis.
 
 \newpage
 

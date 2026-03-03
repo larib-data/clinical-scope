@@ -233,8 +233,9 @@ src/clinical_data_visualizer/
 ├── dash_api/               # Dash web application
 │   ├── core_api.py         # Main entry point, layout definition
 │   ├── ui_components.py    # UI component builders
-│   ├── callbacks/          # Dash callbacks (data & shape handling)
+│   ├── callbacks/          # Dash callbacks (data, shape & loop handling)
 │   ├── shape_manager.py    # Annotation shape management
+│   ├── styles.py           # Shared style constants (modal styles, etc.)
 │   ├── validation.py       # Input validation
 │   ├── helper_api.py       # API helper functions
 │   └── datetime_utils.py   # Datetime utilities
@@ -244,6 +245,9 @@ src/clinical_data_visualizer/
 │   └── find_load_format.py # Data loading & processing logic
 ├── datasource_base.py      # Abstract base class for datasources
 ├── datasource_list.py      # Registry of available datasources
+├── database_options_parser.py  # Normalize new/legacy JSON formats
+├── database_options_xlsx.py    # XLSX → dict conversion
+├── inspection.py           # Data inspection models & CSV export
 ├── signal_container.py     # Data model for signals and plots
 ├── wrapper.py              # Main processing logic
 ├── constants.py            # Configuration constants
