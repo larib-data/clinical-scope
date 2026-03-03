@@ -8,10 +8,13 @@ and processing visualizations.
 import base64
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
+import numpy as np
 from dash import ALL, Input, Output, State, callback, ctx, dcc, html
 from dash.exceptions import PreventUpdate
 from plotly_resampler import FigureResampler
@@ -37,19 +40,9 @@ from clinical_data_visualizer.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
 
-# Server-side cache for FigureResampler objects, keyed by UUID.
-# Suitable for single-user desktop app.
-FIGURE_RESAMPLER_CACHE = {}
-
-_RELOAD_BTN_SHOWN = {
-    "backgroundColor": "#6c757d",
-    "color": "white",
-    "border": "none",
-    "padding": "6px 16px",
-    "borderRadius": "4px",
-    "cursor": "pointer",
-    "display": "inline-block",
-}
+# Server-side caches keyed by UUID — suitable for single-user desktop app.
+FIGURE_RESAMPLER_CACHE = {}  # FigureResampler objects for time-series zoom/pan
+LOOP_DATA_CACHE = {}  # Loop trace data (x, y, time arrays) for slider filtering
 
 
 def _parse_database_options_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
@@ -289,6 +282,7 @@ def process_visualization(
     ui_helper.save_json(db_options, db_options_path)
 
     FIGURE_RESAMPLER_CACHE.clear()
+    LOOP_DATA_CACHE.clear()
 
     logger.info("Processing visualization request for: %s", validated_dict.get("data_folder", "?"))
     try:
@@ -557,6 +551,36 @@ def download_inspection_csv(n_clicks: int, stored: list | None) -> dict:  # noqa
     }
 
 
+_ONE_DAY_SECONDS = 86400
+
+
+def _build_slider_marks(t_min: float, duration: float, n_marks: int = 5) -> dict[float, str]:
+    """
+    Build evenly-spaced marks for a RangeSlider using relative-second keys.
+
+    Keys are seconds offset from t_min (0 … duration).
+    Labels are absolute clock times in DISPLAY_TIMEZONE so the user sees
+    human-readable timestamps, not raw numbers.
+    """
+    display_tz = ZoneInfo(cst.DISPLAY_TIMEZONE)
+    fmt = "%m/%d %H:%M" if duration > _ONE_DAY_SECONDS else "%H:%M:%S"
+    marks = {}
+    for i in range(n_marks + 1):
+        offset = duration * i / n_marks
+        dt = datetime.fromtimestamp(t_min + offset, tz=UTC).astimezone(display_tz)
+        marks[float(offset)] = dt.strftime(fmt)
+    return marks
+
+
+def format_time_range(t_start: float, t_end: float) -> str:
+    """Format a time range as a human-readable string in DISPLAY_TIMEZONE."""
+    display_tz = ZoneInfo(cst.DISPLAY_TIMEZONE)
+    dt_start = datetime.fromtimestamp(t_start, tz=UTC).astimezone(display_tz)
+    dt_end = datetime.fromtimestamp(t_end, tz=UTC).astimezone(display_tz)
+    fmt = "%Y-%m-%d %H:%M:%S"
+    return f"{dt_start.strftime(fmt)}  —  {dt_end.strftime(fmt)}"
+
+
 def _build_graphs(
     model: Any,
     annotations_data: dict[str, Any],
@@ -567,6 +591,8 @@ def _build_graphs(
     Time-series figures are wrapped with FigureResampler for dynamic
     downsampling on zoom/pan. A companion dcc.Store holds the cache UUID
     so the resample_on_zoom callback can retrieve the server-side object.
+
+    Loop figures get a time-range slider for interactive time filtering.
     """
     graphs = []
 
@@ -609,24 +635,99 @@ def _build_graphs(
         if graph_height:
             graph_style["height"] = f"{graph_height}px"
 
-        graphs.append(
-            html.Div(
-                [
-                    dcc.Graph(
-                        id={"type": "graph", "name": mod.name},
-                        figure=fig,
-                        config={
-                            "displayModeBar": True,
-                            "modeBarButtonsToAdd": [
-                                "drawline",  # time point
-                                "drawrect",  # time range
-                            ],
+        children = [
+            dcc.Graph(
+                id={"type": "graph", "name": mod.name},
+                figure=fig,
+                config={
+                    "displayModeBar": True,
+                    "modeBarButtonsToAdd": [
+                        "drawline",  # time point
+                        "drawrect",  # time range
+                    ],
+                },
+                style=graph_style,
+            ),
+            dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
+        ]
+
+        # --- Loop time-range slider ---
+        if mod.plot_type == cst.PlotType.LOOP:
+            loop_uid = str(uuid4())
+
+            # Cache full data arrays for each trace
+            trace_data = []
+            t_min_global = np.inf
+            t_max_global = -np.inf
+            for group in mod.groups:
+                for sig in group.signals:
+                    time_array = sig.data.loop_time_axis
+                    if time_array is not None and len(time_array) > 0:
+                        t_min_global = min(t_min_global, time_array[0])
+                        t_max_global = max(t_max_global, time_array[-1])
+                    trace_data.append(
+                        {
+                            "x": sig.data.x,
+                            "y": sig.data.y,
+                            "time_axis": time_array,
+                        }
+                    )
+
+            # Store t_min alongside traces so callbacks can convert relative
+            # offsets back to absolute epoch seconds for display/masking.
+            # Convert to native Python float for orjson serialization safety.
+            t_min_f = float(t_min_global) if np.isfinite(t_min_global) else 0.0
+            LOOP_DATA_CACHE[loop_uid] = {"traces": trace_data, "t_min": t_min_f}
+            children.append(dcc.Store(id={"type": "loop-store", "name": mod.name}, data=loop_uid))
+
+            if np.isfinite(t_min_global) and t_min_global < t_max_global:
+                duration = float(t_max_global) - t_min_f
+                step = duration / 1000
+                marks = _build_slider_marks(t_min_f, duration)
+
+                children.append(
+                    html.Div(
+                        [
+                            html.Label(
+                                "Time range",
+                                style={
+                                    "fontWeight": "bold",
+                                    "marginBottom": "4px",
+                                    "display": "block",
+                                },
+                            ),
+                            dcc.RangeSlider(
+                                id={"type": "loop-time-slider", "name": mod.name},
+                                min=0.0,
+                                max=duration,
+                                value=[0.0, duration],
+                                marks=marks,
+                                step=step,
+                                updatemode="mouseup",
+                                # No tooltip: raw offset seconds are not meaningful to the user.
+                                tooltip=None,
+                            ),
+                            html.Div(
+                                format_time_range(t_min_f, t_min_f + duration),
+                                id={"type": "loop-time-display", "name": mod.name},
+                                style={
+                                    "textAlign": "center",
+                                    "color": "#555",
+                                    "fontSize": "13px",
+                                    "marginTop": "4px",
+                                },
+                            ),
+                        ],
+                        style={
+                            "padding": "12px 16px",
+                            "border": "1px solid #dee2e6",
+                            "borderRadius": "6px",
+                            "backgroundColor": "#f8f9fa",
+                            "marginTop": "8px",
                         },
-                        style=graph_style,
-                    ),
-                    dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
-                ]
-            )
-        )
+                    )
+                )
+
+        graphs.append(html.Div(children))
 
     return graphs

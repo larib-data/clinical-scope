@@ -62,7 +62,10 @@ def merge_y_ranges(
 class Data:
     x: np.ndarray | None = None
     y: np.ndarray | None = None
-    timezone: str | None = None  # New attribute to store timezone information
+    timezone: str | None = (
+        None  # New attribute to store timezone information, more efficient than storing in x values  # noqa: E501
+    )
+    loop_time_axis: np.ndarray | None = None  # UTC epoch seconds (float64), only for loops
 
 
 @dataclass
@@ -400,6 +403,10 @@ class Signal:
         x_x = helper.to_float_seconds(signal_x.data.x)
         x_y = helper.to_float_seconds(signal_y.data.x)
 
+        if len(x_x) == 0 or len(x_y) == 0:
+            msg = "One or both input signals have no data points."
+            raise ValueError(msg)
+
         t_min = max(x_x[0], x_y[0])
         t_max = min(x_x[-1], x_y[-1])
 
@@ -420,7 +427,7 @@ class Signal:
 
         timing["interpolation"] = time.perf_counter() - start
         start = time.perf_counter()
-        data = Data(x=y_x, y=y_y, timezone=None)
+        data = Data(x=y_x, y=y_y, timezone=None, loop_time_axis=x_common)
         plot_options = PlotOptions(
             plot_type=cst.PlotType.LOOP,
             x_unit_name=signal_x.trace_options.plot_options.y_unit_name,
@@ -590,74 +597,103 @@ class PlotModel:
 
     def to_figure(self, base_spacing: float = 0.05, min_spacing: float = 0.005) -> go.Figure:
         start = time.perf_counter()
-        n_rows = len(self.groups)
-        total_fig_height = np.sum(
-            [plot_group.plot_options.plot_height for plot_group in self.groups]
-        )
+        n_groups = len(self.groups)
+        is_loop = self.plot_type == cst.PlotType.LOOP
+
+        # Loop plots with multiple subplots use a multi-column grid so square subplots
+        # sit side-by-side instead of stacking vertically.
+        if is_loop and n_groups > 1:
+            n_cols = 2 # Flexible, TODO: remove the magic number
+            n_rows = int(np.ceil(n_groups / n_cols))
+            subplot_height = self.groups[0].plot_options.plot_height
+            total_fig_height = n_rows * subplot_height
+            row_heights = [1.0] * n_rows
+            specs = [
+                [
+                    {"secondary_y": True} if r * n_cols + c < n_groups else None
+                    for c in range(n_cols)
+                ]
+                for r in range(n_rows)
+            ]
+            subplot_titles = [g.name for g in self.groups]
+            fig_width = n_cols * subplot_height
+            extra_subplot_kwargs = {"horizontal_spacing": 0.05}
+        else:
+            n_cols = 1 # Fixed
+            n_rows = n_groups
+            total_fig_height = np.sum([g.plot_options.plot_height for g in self.groups])
+            row_heights = [g.plot_options.plot_height / total_fig_height for g in self.groups]
+            specs = [[{"secondary_y": True}] for _ in range(n_rows)]
+            subplot_titles = [g.name for g in self.groups]
+            fig_width = total_fig_height / n_rows if self.square_plot else None
+            extra_subplot_kwargs = {}
+
         self.computed_height = total_fig_height
-        proportions = [
-            plot_group.plot_options.plot_height / total_fig_height for plot_group in self.groups
-        ]
-        subplot_title = [plot_group.name for plot_group in self.groups]
         vertical_spacing = max(min_spacing, base_spacing / n_rows)
 
         fig = make_subplots(
             rows=n_rows,
-            cols=1,
+            cols=n_cols,
             shared_xaxes=False,
             vertical_spacing=vertical_spacing,
-            specs=[[{"secondary_y": True}] for _ in range(n_rows)],
-            row_heights=proportions,
-            subplot_titles=subplot_title,
+            specs=specs,
+            row_heights=row_heights,
+            subplot_titles=subplot_titles,
+            **extra_subplot_kwargs,
         )
-        # Map x-data type → master row for automatic shared x-axis
+
+        # Map x-data type → master row for automatic shared x-axis (time-series only)
         x_type_to_master_row = {}
-        for row_idx, group in enumerate(self.groups, start=1):
-            traces_with_axes = group.assign_axes()  # Use the new method
+        for group_idx, group in enumerate(self.groups):
+            plotly_row = group_idx // n_cols + 1
+            plotly_col = group_idx % n_cols + 1
+
+            traces_with_axes = group.assign_axes()
             for trace, secondary_y in traces_with_axes:
-                fig.add_trace(trace, row=row_idx, col=1, secondary_y=secondary_y)
-            # Update y-axis titles from plot_options
+                fig.add_trace(trace, row=plotly_row, col=plotly_col, secondary_y=secondary_y)
+
             y_title = group.plot_options.y_axis_title or ""
             fig.update_yaxes(
                 title_text=y_title,
-                row=row_idx,
-                col=1,
+                row=plotly_row,
+                col=plotly_col,
                 range=group.plot_options.y_axis_range,
                 secondary_y=False,
             )
-            # Add secondary y-axis title if exists
             if group.allow_secondary_y and len(traces_with_axes) > 1:
                 second_y_title = group.plot_options.y2_axis_title or ""
                 fig.update_yaxes(
                     title_text=second_y_title,
-                    row=row_idx,
-                    col=1,
+                    row=plotly_row,
+                    col=plotly_col,
                     range=group.plot_options.y2_axis_range,
                     secondary_y=True,
                 )
-            # Update x-axis title
             x_title = group.plot_options.x_axis_title
             fig.update_xaxes(
                 title_text=x_title,
-                row=row_idx,
-                col=1,
+                row=plotly_row,
+                col=plotly_col,
                 range=group.plot_options.x_axis_range,
             )
-            # --- Automatic shared x-axis based on x-data type ---
-            x_data_type = type(group.signals[0].data.x)
-            if x_data_type in x_type_to_master_row:
-                master_row = x_type_to_master_row[x_data_type]
-                fig.update_xaxes(matches=f"x{master_row}", row=row_idx, col=1)
-            else:
-                x_type_to_master_row[x_data_type] = row_idx
 
-            if self.name == cst.PlotType.TIME_SERIES:
-                fig.update_yaxes(modebardisable="zoominout", row=row_idx)
+            # Shared x-axis only applies to time-series (loop subplots each have
+            # an independent x-axis representing a different signal).
+            if not is_loop:
+                x_data_type = type(group.signals[0].data.x)
+                if x_data_type in x_type_to_master_row:
+                    master_row = x_type_to_master_row[x_data_type]
+                    fig.update_xaxes(matches=f"x{master_row}", row=plotly_row, col=plotly_col)
+                else:
+                    x_type_to_master_row[x_data_type] = plotly_row
+
+            if self.plot_type == cst.PlotType.TIME_SERIES:
+                fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
         fig.update_layout(
             title_text=self.name,
             height=total_fig_height,
-            width=total_fig_height / n_rows if self.square_plot else None,
+            width=fig_width,
             showlegend=True,
             hoverlabel={
                 "namelength": -1  # Show full curve name
@@ -702,6 +738,7 @@ class PlotModel:
         )
 
         self.name = plot_type
+        self.plot_type = plot_type
         self.square_plot = square_plot
 
         # Sort groups by plot_priority
