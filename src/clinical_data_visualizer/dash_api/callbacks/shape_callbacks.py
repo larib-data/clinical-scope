@@ -27,20 +27,7 @@ from dash import (
 from clinical_data_visualizer.dash_api import datetime_utils, shape_manager, ui_components
 from clinical_data_visualizer.dash_api.callbacks.data_callbacks import FIGURE_RESAMPLER_CACHE
 from clinical_data_visualizer.dash_api.helper_api import is_user_annotation
-
-# Style constant for the shape edit popup modal
-EDIT_SHAPE_POPUP_STYLE = {
-    "display": "none",
-    "position": "fixed",
-    "top": "30%",
-    "left": "70%",
-    "transform": "translate(-50%, -50%)",
-    "zIndex": 1000,
-    "background": "white",
-    "padding": "16px",
-    "borderRadius": "8px",
-    "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
-}
+from clinical_data_visualizer.dash_api.styles import EDIT_SHAPE_POPUP_STYLE
 
 logger = logging.getLogger(__name__)
 

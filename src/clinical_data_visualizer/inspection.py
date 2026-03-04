@@ -10,6 +10,7 @@ import csv
 import dataclasses
 import io
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 
 @dataclass
@@ -22,6 +23,35 @@ class ColumnInfo:
     filtered_point_count: int  # Non-null rows after datetime filter
     first_filtered_timestamp: str | None = None  # ISO timestamp of first valid filtered point
     last_filtered_timestamp: str | None = None  # ISO timestamp of last valid filtered point
+
+    # Display headers for the inspection table (header_text, alignment).
+    # Shared between Dash modal and CLI script.
+    DISPLAY_HEADERS: ClassVar[list[tuple[str, str]]] = [
+        ("Column", "left"),
+        ("Configured", "center"),
+        ("Raw pts", "right"),
+        ("Filtered pts", "right"),
+        ("% retained", "right"),
+        ("First (filtered)", "left"),
+        ("Last (filtered)", "left"),
+    ]
+
+    def display_values(self) -> list[str]:
+        """Return display-ready string values, matching ``DISPLAY_HEADERS`` order."""
+        percent = (
+            f"{self.filtered_point_count / self.raw_point_count * 100:.1f}%"
+            if self.raw_point_count > 0
+            else "—"
+        )
+        return [
+            self.raw_name,
+            "✓" if self.is_configured else "✗",
+            f"{self.raw_point_count:,}",
+            f"{self.filtered_point_count:,}",
+            percent,
+            self.first_filtered_timestamp or "—",
+            self.last_filtered_timestamp or "—",
+        ]
 
 
 @dataclass
@@ -90,6 +120,45 @@ def to_csv_string(results: list[DataSourceInspection]) -> str:
     return output.getvalue()
 
 
+def to_text_summary(results: list[DataSourceInspection]) -> str:
+    """
+    Format inspection results as a plain-text summary.
+
+    Column values match the app's inspection modal table
+    (driven by ``ColumnInfo.DISPLAY_HEADERS`` / ``ColumnInfo.display_values``).
+    """
+    lines: list[str] = []
+    col_headers = [h for h, _ in ColumnInfo.DISPLAY_HEADERS]
+
+    for r in results:
+        status_marker = "OK  " if r.status == "ok" else "FAIL"
+        lines.append(f"[{status_marker}]  {r.datasource_name}  ({r.status})")
+        if r.error_message:
+            lines.append(f"         Error: {r.error_message}")
+        if r.file_path:
+            lines.append(f"         File:  {r.file_path}")
+        if r.raw_date_range:
+            lines.append(
+                f"         Raw dates:      {r.raw_date_range[0]}  →  {r.raw_date_range[1]}"
+            )
+        if r.filtered_date_range:
+            lines.append(
+                f"         Filtered dates: "
+                f"{r.filtered_date_range[0]}  →  {r.filtered_date_range[1]}"
+            )
+        if r.columns:
+            lines.append(f"         Columns ({len(r.columns)}):")
+            for col in r.columns:
+                vals = col.display_values()
+                parts = [f"{h}: {v}" for h, v in zip(col_headers, vals, strict=True)]
+                lines.append(f"           {' | '.join(parts)}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Serialization helpers
+# ---------------------------------------------------------------------------
 def results_to_json(results: list[DataSourceInspection]) -> list[dict]:
     """Serialize inspection results to a JSON-compatible list for dcc.Store."""
     return [dataclasses.asdict(r) for r in results]

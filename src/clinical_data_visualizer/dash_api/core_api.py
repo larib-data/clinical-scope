@@ -14,7 +14,21 @@ from clinical_data_visualizer import logger_config
 from clinical_data_visualizer.dash_api import callbacks  # noqa: F401
 from clinical_data_visualizer.dash_api.helper_api import get_cached_db_options_path
 from clinical_data_visualizer.dash_api.styles import (
+    ACTION_BUTTONS_ROW,
+    BUTTON_DEFAULT_VIZ,
+    BUTTON_DOWNLOAD_CSV,
+    BUTTON_INSPECT,
+    BUTTON_MODAL_CLOSE,
+    BUTTON_PROCESS,
+    BUTTON_RELOAD,
+    BUTTON_UPLOAD,
+    EDIT_SHAPE_POPUP_PANEL,
+    EDIT_SHAPE_POPUP_STYLE,
+    INSPECTION_MODAL_HEADER_ROW,
+    INSPECTION_MODAL_PANEL,
     INSPECTION_MODAL_STYLE_HIDDEN,
+    ROOT_CONTAINER,
+    VERSION_BADGE,
 )
 
 # === API Version === #
@@ -31,20 +45,6 @@ logger.info("========================================")
 logger.info("New app run - Version %s", __version__)
 logger.info("========================================")
 
-
-EDIT_SHAPE_POPUP_STYLE = {
-    "display": "none",
-    "position": "fixed",
-    "top": "30%",
-    "left": "70%",
-    "transform": "translate(-50%, -50%)",
-    "zIndex": 1000,
-    "background": "white",
-    "padding": "16px",
-    "borderRadius": "8px",
-    "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
-}
-
 # Resolve assets folder: PyInstaller bundles files under sys._MEIPASS
 if getattr(sys, "frozen", False):
     _assets_folder = str(Path(sys._MEIPASS) / "clinical_data_visualizer" / "dash_api" / "assets")  # noqa: SLF001
@@ -53,15 +53,8 @@ else:
 
 # Show "Reload last config" button only when a cached config exists at layout render time.
 _reload_btn_style = {
-    "backgroundColor": "#6c757d",
-    "color": "white",
-    "border": "none",
-    "padding": "6px 16px",
-    "borderRadius": "4px",
-    "cursor": "pointer",
+    **BUTTON_RELOAD,
     "display": "inline-block" if get_cached_db_options_path().exists() else "none",
-    "margin-right": "10px",
-    "margin-left": "10px",
 }
 
 app = Dash(
@@ -74,21 +67,7 @@ app = Dash(
 app.layout = html.Div(
     [
         # Version display in top right corner
-        html.Div(
-            f"API Version: {__version__}",
-            style={
-                "position": "absolute",
-                "top": "10px",
-                "right": "10px",
-                "color": "#666",
-                "fontSize": "12px",
-                "fontFamily": "monospace",
-                "backgroundColor": "#f0f0f0",
-                "padding": "4px 8px",
-                "borderRadius": "4px",
-                "border": "1px solid #ddd",
-            },
-        ),
+        html.Div(f"API Version: {__version__}", style=VERSION_BADGE),
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
@@ -96,18 +75,7 @@ app.layout = html.Div(
             [
                 dcc.Upload(
                     id="db-options-upload",
-                    children=html.Button(
-                        "Upload config file",
-                        style={
-                            "backgroundColor": "#007bff",
-                            "color": "white",
-                            "border": "none",
-                            "padding": "6px 16px",
-                            "borderRadius": "4px",
-                            "cursor": "pointer",
-                            "margin-right": "10px",
-                        },
-                    ),
+                    children=html.Button("Upload config file", style=BUTTON_UPLOAD),
                     multiple=False,
                     accept=".json,.xlsx",
                 ),
@@ -119,15 +87,7 @@ app.layout = html.Div(
                 html.Button(
                     "Default visualization (all sources)",
                     id="default-viz-button",
-                    style={
-                        "backgroundColor": "#28a745",
-                        "color": "white",
-                        "border": "none",
-                        "padding": "6px 16px",
-                        "borderRadius": "4px",
-                        "cursor": "pointer",
-                        "margin-left": "10px",
-                    },
+                    style=BUTTON_DEFAULT_VIZ,
                 ),
             ],
             style={"display": "flex", "alignItems": "center"},
@@ -142,39 +102,15 @@ app.layout = html.Div(
                 html.Button(
                     "Process visualization",
                     id="process-button",
-                    style={
-                        "backgroundColor": "#fd7e14",
-                        "color": "white",
-                        "border": "none",
-                        "padding": "10px 28px",
-                        "borderRadius": "4px",
-                        "cursor": "pointer",
-                        "fontSize": "16px",
-                        "fontWeight": "bold",
-                    },
+                    style=BUTTON_PROCESS,
                 ),
                 html.Button(
                     "Inspect data",
                     id="inspect-button",
-                    style={
-                        "backgroundColor": "#17a2b8",
-                        "color": "white",
-                        "border": "none",
-                        "padding": "10px 22px",
-                        "borderRadius": "4px",
-                        "cursor": "pointer",
-                        "fontSize": "15px",
-                        "fontWeight": "bold",
-                        "marginLeft": "12px",
-                    },
+                    style=BUTTON_INSPECT,
                 ),
             ],
-            style={
-                "display": "flex",
-                "alignItems": "center",
-                "marginTop": "16px",
-                "marginBottom": "8px",
-            },
+            style=ACTION_BUTTONS_ROW,
         ),
         html.Div(id="validation-errors"),
         dcc.Loading(
@@ -275,13 +211,7 @@ app.layout = html.Div(
                             style={"margin-top": "20px", "textAlign": "left"},
                         ),
                     ],
-                    style={
-                        "background": "white",
-                        "padding": "20px",
-                        "border-radius": "10px",
-                        "width": "500px",
-                        "max-width": "90vw",
-                    },
+                    style=EDIT_SHAPE_POPUP_PANEL,
                 )
             ],
         ),
@@ -301,41 +231,18 @@ app.layout = html.Div(
                                         html.Button(
                                             "Download CSV",
                                             id="inspect-download-btn",
-                                            style={
-                                                "backgroundColor": "#17a2b8",
-                                                "color": "white",
-                                                "border": "none",
-                                                "padding": "6px 14px",
-                                                "borderRadius": "4px",
-                                                "cursor": "pointer",
-                                                "fontSize": "14px",
-                                            },
+                                            style=BUTTON_DOWNLOAD_CSV,
                                         ),
                                         html.Button(
                                             "Close",
                                             id="inspection-modal-close",
-                                            style={
-                                                "backgroundColor": "#6c757d",
-                                                "color": "white",
-                                                "border": "none",
-                                                "padding": "6px 14px",
-                                                "borderRadius": "4px",
-                                                "cursor": "pointer",
-                                                "fontSize": "14px",
-                                            },
+                                            style=BUTTON_MODAL_CLOSE,
                                         ),
                                     ],
                                     style={"display": "flex", "gap": "8px"},
                                 ),
                             ],
-                            style={
-                                "display": "flex",
-                                "justifyContent": "space-between",
-                                "alignItems": "center",
-                                "marginBottom": "16px",
-                                "borderBottom": "2px solid #dee2e6",
-                                "paddingBottom": "12px",
-                            },
+                            style=INSPECTION_MODAL_HEADER_ROW,
                         ),
                         dcc.Loading(
                             type="default",
@@ -343,16 +250,7 @@ app.layout = html.Div(
                         ),
                         dcc.Download(id="inspection-download"),
                     ],
-                    style={
-                        "background": "white",
-                        "borderRadius": "8px",
-                        "padding": "24px",
-                        "width": "90vw",
-                        "maxWidth": "1700px",
-                        "maxHeight": "80vh",
-                        "overflowY": "auto",
-                        "boxShadow": "0 8px 32px rgba(0,0,0,0.25)",
-                    },
+                    style=INSPECTION_MODAL_PANEL,
                 )
             ],
         ),
@@ -361,7 +259,7 @@ app.layout = html.Div(
         dcc.Store(id="annotations-store", data={}),
         dcc.Store(id="inspection-results-store", data=None),
     ],
-    style={"padding": "20px 32px", "maxWidth": "1400px", "margin": "0 auto"},
+    style=ROOT_CONTAINER,
 )
 
 HOST = "127.0.0.1"

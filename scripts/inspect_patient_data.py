@@ -18,41 +18,12 @@ import sys
 from pathlib import Path
 
 from clinical_data_visualizer import helper, logger_config, wrapper
-from clinical_data_visualizer.inspection import to_csv_string
+from clinical_data_visualizer.inspection import to_csv_string, to_text_summary
 
 logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def _print_inspection(results: list) -> None:
-    """Print inspection summary to stdout."""
-    for r in results:
-        status_marker = "OK  " if r.status == "ok" else "FAIL"
-        print(f"[{status_marker}]  {r.datasource_name}  ({r.status})")  # noqa: T201
-        if r.error_message:
-            print(f"         Error: {r.error_message}")  # noqa: T201
-        if r.file_path:
-            print(f"         File:  {r.file_path}")  # noqa: T201
-        if r.raw_date_range:
-            print(  # noqa: T201
-                f"         Raw dates:      {r.raw_date_range[0]}  →  {r.raw_date_range[1]}"
-            )
-        if r.filtered_date_range:
-            print(  # noqa: T201
-                f"         Filtered dates: "
-                f"{r.filtered_date_range[0]}  →  {r.filtered_date_range[1]}"
-            )
-        if r.columns:
-            print(f"         Columns ({len(r.columns)}):")  # noqa: T201
-            for col in r.columns:
-                cfg = "[configured]  " if col.is_configured else "[unconfigured]"
-                print(  # noqa: T201
-                    f"           {col.raw_name:<40s}  {cfg}  "
-                    f"raw={col.raw_point_count:>8,}  filtered={col.filtered_point_count:>8,}"
-                )
-        print()  # noqa: T201
-
-
 def main(option_dict: dict) -> None:
     patient_options = helper.build_patient_options(
         option_dict["patient_folder"], option_dict.get("path_patient_options")
@@ -68,7 +39,7 @@ def main(option_dict: dict) -> None:
     verbose = option_dict["verbose"]
 
     if verbose:
-        _print_inspection(results)
+        print(to_text_summary(results))  # noqa: T201
 
     # --- optional CSV output ---
     output_csv = option_dict.get("output_csv")

@@ -25,8 +25,11 @@ from clinical_data_visualizer import wrapper
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
 from clinical_data_visualizer.dash_api import ui_components, validation
 from clinical_data_visualizer.dash_api.styles import (
+    CARD_STYLE,
+    DATASOURCE_CARD_STYLE,
     INSPECTION_MODAL_STYLE_HIDDEN,
     INSPECTION_MODAL_STYLE_SHOWN,
+    SECTION_HEADER_STYLE,
 )
 from clinical_data_visualizer.database_options_parser import validate_database_options_structure
 from clinical_data_visualizer.database_options_xlsx import xlsx_bytes_to_database_options
@@ -145,29 +148,16 @@ def build_patient_options_ui(
     components = []
     schema_lookup = {}
 
-    header_style = {
-        "borderBottom": "2px solid #dee2e6",
-        "paddingBottom": "8px",
-        "marginBottom": "12px",
-    }
-    card_style = {
-        "border": "1px solid #dee2e6",
-        "borderRadius": "6px",
-        "padding": "12px 16px",
-        "backgroundColor": "#f8f9fa",
-        "marginBottom": "16px",
-    }
-
     # Global options
-    components.append(html.H3("Global Patient Options", style=header_style))
+    components.append(html.H3("Global Patient Options", style=SECTION_HEADER_STYLE))
     component, schema = ui_components.build_ui_and_schema_registry(
         cst.PatientOptions, prefix="global"
     )
-    components.append(html.Div(component, style=card_style))
+    components.append(html.Div(component, style=CARD_STYLE))
     schema_lookup = schema_lookup | schema
 
     # Per-datasource options
-    components.append(html.H3("Specific Options", style=header_style))
+    components.append(html.H3("Specific Options", style=SECTION_HEADER_STYLE))
 
     datasource_cards = []
     requested_data_sources = database_options.keys()
@@ -182,12 +172,7 @@ def build_patient_options_ui(
         datasource_cards.append(
             html.Div(
                 [html.H5(data_source.DESCRIPTION), component],
-                style={
-                    "border": "1px solid #dee2e6",
-                    "borderRadius": "6px",
-                    "padding": "12px",
-                    "backgroundColor": "#f8f9fa",
-                },
+                style=DATASOURCE_CARD_STYLE,
             )
         )
         schema_lookup = schema_lookup | schema
@@ -348,42 +333,45 @@ def _status_badge(status: str) -> html.Span:
     )
 
 
-# Table column definitions: (header, cell_content_fn, header_style, cell_style_fn)
-# Adding a new ColumnInfo field: add one entry here + update ColumnInfo + _column_infos + _TABLE_HEADERS.  # noqa: E501
-def _col_cell(col: "ColumnInfo") -> list[html.Td]:
-    """Return the list of <td> cells for one ColumnInfo row."""
-    percent_retained = (
-        f"{col.filtered_point_count / col.raw_point_count * 100:.1f}%"
-        if col.raw_point_count > 0
-        else "—"
-    )
-    return [
-        html.Td(col.raw_name, style={"fontFamily": "monospace", "fontSize": "13px"}),
-        html.Td(
-            "✓" if col.is_configured else "✗",
-            style={"textAlign": "center", "color": "#28a745" if col.is_configured else "#aaa"},
-        ),
-        html.Td(f"{col.raw_point_count:,}", style={"textAlign": "right"}),
-        html.Td(f"{col.filtered_point_count:,}", style={"textAlign": "right"}),
-        html.Td(percent_retained, style={"textAlign": "right"}),
-        html.Td(
-            col.first_filtered_timestamp or "—", style={"textAlign": "left", "fontSize": "11px"}
-        ),
-        html.Td(
-            col.last_filtered_timestamp or "—", style={"textAlign": "left", "fontSize": "11px"}
-        ),
-    ]
-
-
-_TABLE_HEADERS = [
-    ("Column", "left"),
-    ("Configured", "center"),
-    ("Raw pts", "right"),
-    ("Filtered pts", "right"),
-    ("% retained", "right"),
-    ("First (filtered)", "left"),
-    ("Last (filtered)", "left"),
+# Per-column Dash styles, indexed to match ColumnInfo.DISPLAY_HEADERS order.
+# Adding a new ColumnInfo field: update ColumnInfo, _column_infos (datasource_base),
+# ColumnInfo.DISPLAY_HEADERS + column_display_values (inspection), and this list.
+_COL_CELL_STYLES: list[dict | None] = [
+    {"fontFamily": "monospace", "fontSize": "13px"},  # Column
+    None,  # Configured — style computed dynamically below
+    {"textAlign": "right"},  # Raw pts
+    {"textAlign": "right"},  # Filtered pts
+    {"textAlign": "right"},  # % retained
+    {"textAlign": "left", "fontSize": "11px"},  # First (filtered)
+    {"textAlign": "left", "fontSize": "11px"},  # Last (filtered)
 ]
+
+
+def _col_cell(col: ColumnInfo) -> list[html.Td]:
+    """
+    Return <td> cells for one ColumnInfo row.
+
+    Text content comes from ``column_display_values`` (shared with CLI);
+    Dash-specific styling is applied per-column via ``_COL_CELL_STYLES``.
+    """
+    values = col.display_values()
+    cells = []
+    for (_, align), val, extra in zip(
+        ColumnInfo.DISPLAY_HEADERS, values, _COL_CELL_STYLES, strict=True
+    ):
+        style: dict = {"textAlign": align}
+        if extra:
+            style |= extra
+        cells.append(html.Td(val, style=style))
+    # Override "Configured" column color based on actual value
+    cells[1] = html.Td(
+        values[1],
+        style={
+            "textAlign": "center",
+            "color": "#28a745" if col.is_configured else "#aaa",
+        },
+    )
+    return cells
 
 
 def _build_inspection_content(results: list) -> list:
@@ -427,7 +415,7 @@ def _build_inspection_content(results: list) -> list:
                         html.Tr(
                             [
                                 html.Th(header, style={"textAlign": align})
-                                for header, align in _TABLE_HEADERS
+                                for header, align in ColumnInfo.DISPLAY_HEADERS
                             ]
                         )
                     ),
