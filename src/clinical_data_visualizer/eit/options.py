@@ -19,12 +19,68 @@ p_crete = "P_crete"
 
 
 DEFAULT_DATABASE_OPTIONS = {
-    "field_display": ["Local 1*", "Local 2*", "Local 3*", "Local 4*"],
+    "data": {
+        "label_correspondence": {
+            "Global": "Global",
+            "Local 1*": "Local 1",
+            "Local 2*": "Local 2",
+            "Local 3*": "Local 3",
+            "Local 4*": "Local 4",
+            "%Local 1*": "Local 1 %",
+            "%Local 2*": "Local 2 %",
+            "%Local 3*": "Local 3 %",
+            "%Local 4*": "Local 4 %",
+        },
+        "unit_conversion": {
+            "Global": 1.0,
+            "Local 1*": 1.0,
+            "Local 2*": 1.0,
+            "Local 3*": 1.0,
+            "Local 4*": 1.0,
+        },
+        "unit_info": {
+            "Global": "Ohms",
+            "Local 1*": "Ohms",
+            "Local 2*": "Ohms",
+            "Local 3*": "Ohms",
+            "Local 4*": "Ohms",
+            "%Local 1*": "Proportion",
+            "%Local 2*": "Proportion",
+            "%Local 3*": "Proportion",
+            "%Local 4*": "Proportion",
+        },
+        "color": {
+            "Global": "black",
+            "Local 1*": "red",
+            "Local 2*": "blue",
+            "Local 3*": "green",
+            "Local 4*": "purple",
+            "%Local 1*": "red",
+            "%Local 2*": "blue",
+            "%Local 3*": "green",
+            "%Local 4*": "purple",
+        },
+        "unit_range": {"%Local 1*": [-0.05, 1.05]},
+    },
+    "field_display": [
+        "Global",
+        "Local 1*",
+        "Local 2*",
+        "Local 3*",
+        "Local 4*",
+        "%Local 1*",
+        "%Local 2*",
+        "%Local 3*",
+        "%Local 4*",
+    ],
+    "grouped_fields": {
+        "Impedance value": ["Global", "Local 1*", "Local 2*", "Local 3*", "Local 4*"],
+        "Impedance": ["Global", "%Local 1*", "%Local 2*", "%Local 3*", "%Local 4*"],
+    },
 }
 
 
 class DatabaseOptionsAdditionalInformations:
-    PERCENTAGE_REF_COLUMN = "percentage_reference_column"
     TIMEZONE = "timezone"
 
 
