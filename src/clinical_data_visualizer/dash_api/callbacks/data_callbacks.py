@@ -595,11 +595,7 @@ def _build_graphs(
             uirevision=mod.name,  # preserve shapes across updates
         )
 
-        # Determine dragmode per figure type
-        default_dragmode = "drawline" if mod.name == "time_series" else "drawrect"
-
         fig.update_layout(
-            dragmode=default_dragmode,
             newshape={
                 "fillcolor": "rgba(0,255,0,0.25)",
                 "line": {"color": "green", "width": 2},
