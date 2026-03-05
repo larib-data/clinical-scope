@@ -56,6 +56,7 @@ class MindRayRespiWavesDataSource(DataSourceBase):
             raise NotImplementedError(msg)
 
         base_timestamps = pd.to_datetime(df["event_timestamp"])
+        tz = base_timestamps.dt.tz
         full_label_names = df["waveform_label"] + "-" + df["waveform_unit"]
 
         # Expand waveform blocks to per-sample rows.
@@ -108,7 +109,7 @@ class MindRayRespiWavesDataSource(DataSourceBase):
         # Build expanded DataFrame from concatenated arrays (avoids list-of-dicts overhead)
         df_expanded = pd.DataFrame(
             {
-                "event_timestamp": pd.DatetimeIndex(np.concatenate(timestamps_chunks)),
+                "event_timestamp": pd.DatetimeIndex(np.concatenate(timestamps_chunks), tz=tz),
                 "full_label_name": np.concatenate(labels_chunks),
                 "waveform_value": np.concatenate(values_chunks),
             }
