@@ -71,7 +71,9 @@ src/clinical_data_visualizer/
 - `fluxmed_signals` - FluxMed waveforms
 - `fluxmed_parameters` - FluxMed parameters
 - `servo_u` - Servo-U ventilator data
-- `mindray` - Mindray scope data
+- `mindray_scope` - Mindray scope data (.xml or .csv waveforms); folder keyword: `mindray`
+- `mindray_respi_waves` - Mindray respiratory high-frequency waveforms (.parquet or .csv)
+- `mindray_respi_numerics` - Mindray respiratory numeric parameters (.parquet or .csv)
 - `syringe` - Syringe pump data
 - `other` - Generic data source (auto-discovers CSV/parquet files)
 

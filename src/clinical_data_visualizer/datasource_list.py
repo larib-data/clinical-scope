@@ -88,8 +88,8 @@ class DataSource:
         OPTIONS: object
 
     @add_main_module
-    class MindRay:
-        NAME = "mindray"
+    class MindRayScope:
+        NAME = "mindray_scope"
         DESCRIPTION = "Mindray scope"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
@@ -127,7 +127,7 @@ class DataSource:
         ServoU,
         MindRayRespiNumerics,
         MindRayRespiWaves,
-        MindRay,
+        MindRayScope,
         Other,
     )
 

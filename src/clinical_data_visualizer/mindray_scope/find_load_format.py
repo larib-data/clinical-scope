@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from defusedxml.ElementTree import parse as parse_xml
 
-import clinical_data_visualizer.mindray.options as options_naming
+import clinical_data_visualizer.mindray_scope.options as options_naming
 from clinical_data_visualizer import helper
 from clinical_data_visualizer.datasource_base import DataSourceBase
 
@@ -194,17 +194,17 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame({f"{wf_type}({wf_unit})": df["Value"].to_numpy()}, index=df["Time"])
 
 
-class MindRayDataSource(DataSourceBase):
-    """MindRay datasource processor."""
+class MindRayScopeDataSource(DataSourceBase):
+    """MindRay scope datasource processor."""
 
-    DATASOURCE_NAME = "mindray"
+    DATASOURCE_NAME = "mindray_scope"
     FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
 
     @classmethod
     def _find(cls, folder_path: Path) -> list[Path] | None:
         return helper.find_file_list(
-            folder_path, options_naming.KEYWORD_EXTENSION, "Mindray files file"
+            folder_path, options_naming.KEYWORD_EXTENSION, "Mindray scope files"
         )
 
     @classmethod
@@ -298,5 +298,5 @@ class MindRayDataSource(DataSourceBase):
 
 # Module-level main function for backward compatibility
 def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
-    """Load and process MindRay data."""
-    return MindRayDataSource.main(patient_options, database_options_specific)
+    """Load and process MindRay scope data."""
+    return MindRayScopeDataSource.main(patient_options, database_options_specific)

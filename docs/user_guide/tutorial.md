@@ -43,7 +43,9 @@ from multiple medical devices in a single unified interface.
 | FluxMed Signals | Waveform data from FluxMed respiratory monitors |
 | FluxMed Parameters | Parameter data from FluxMed monitors |
 | Servo-U | Ventilator data from Getinge Servo-U |
-| Mindray | Patient monitor data from Mindray scopes |
+| Mindray Scope | Patient monitor waveform data from Mindray scopes (.xml or .csv) |
+| Mindray Respi Waves | High-frequency respiratory waveforms from Mindray respiratory monitors |
+| Mindray Respi Numerics | Numeric respiratory parameters from Mindray respiratory monitors |
 | Syringe | Syringe pump infusion data |
 | Other (Generic) | Auto-discovers CSV or Parquet files with datetime columns |
 
@@ -95,7 +97,9 @@ Patient1/
   fluxmed_signals/        FluxMed waveform data
   fluxmed_parameters/     FluxMed parameter data
   servo_u/                Servo-U ventilator data (.sta)
-  mindray/                Mindray scope data (.xml or .csv)
+  mindray_scope/          Mindray scope data (.xml or .csv)
+  mindray_respi_waves/    Mindray respiratory waveforms (.parquet or .csv)
+  mindray_respi_numerics/ Mindray respiratory parameters (.parquet or .csv)
   syringe/                Syringe pump data
   other/                  Generic data (.csv or .parquet)
   tdv_visu/               Auto-created: cached data and outputs
@@ -117,7 +121,9 @@ Folder names are **flexible** -- they just need to contain the required keywords
 | FluxMed Signals | `fluxmed` + `signals` | `fluxmed_signals`, `FluxMed-Signals` |
 | FluxMed Parameters | `fluxmed` + `parameters` | `fluxmed_parameters`, `FluxMed_Parameters` |
 | Servo-U | `servo` | `servo_u`, `Servo-U`, `SERVO` |
-| Mindray | `mindray` | `mindray`, `Mindray` |
+| Mindray Scope | `mindray` | `mindray_scope`, `mindray`, `Mindray` |
+| Mindray Respi Waves | `mindray` + `resp` + `wave` | `mindray_respi_waves`, `mindray_resp_waves` |
+| Mindray Respi Numerics | `mindray` + `resp` + `numeric` | `mindray_respi_numerics`, `mindray_resp_numerics` |
 | Syringe | `syringe` | `syringe`, `Syringe`, `syringe_pumps` |
 | Other | `other` | `other`, `Other` |
 
@@ -128,7 +134,9 @@ Folder names are **flexible** -- they just need to contain the required keywords
 - **EIT**: `.asc` files
 - **FluxMed**: Files containing "signals" or "parameters" in the filename
 - **Servo-U**: `.sta` files
-- **Mindray**: `.xml` or `.csv` files
+- **Mindray Scope**: `.xml` or `.csv` files
+- **Mindray Respi Waves**: `.parquet` or `.csv` files
+- **Mindray Respi Numerics**: `.parquet` or `.csv` files
 - **Syringe**: Files containing "syringe" in the filename
 - **Other**: `.csv` or `.parquet` files (auto-discovers columns with datetime values)
 
@@ -144,7 +152,7 @@ Database options define **which data sources to enable** and **how signals shoul
 ## Option 1: Default Visualization (Quick Start)
 
 Click the green **"Default visualization (all sources)"** button. This automatically enables all
-9 data sources with their default display settings. No configuration file is needed.
+11 data sources with their default display settings. No configuration file is needed.
 
 This is the recommended starting point for new users.
 
@@ -546,6 +554,8 @@ If signals from different sources appear misaligned in time:
 | FluxMed Signals | `fluxmed_signals` | `fluxmed`, `signals` | signals in name | Respiratory waveforms |
 | FluxMed Parameters | `fluxmed_parameters` | `fluxmed`, `parameters` | parameters in name | Respiratory parameters |
 | Servo-U | `servo_u` | `servo` | `.sta` | Ventilator waveforms and settings |
-| Mindray | `mindray` | `mindray` | `.xml`, `.csv` | Monitor waveforms and parameters |
+| Mindray Scope | `mindray_scope` | `mindray` | `.xml`, `.csv` | Monitor waveforms (ECG, SpO2, pressure) |
+| Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | High-frequency respiratory waveforms |
+| Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Respiratory parameters (Vt, RR, PEEP, etc.) |
 | Syringe | `syringe` | `syringe` | syringe in name | Infusion rates and volumes |
 | Other | `other` | `other` | `.csv`, `.parquet` | Any time-series with datetime columns |

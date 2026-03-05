@@ -58,7 +58,7 @@ The application will open in your browser at `http://127.0.0.1:8050`.
 3. Click "Process visualization" to generate the interactive plots
 4. Use the drawing tools to annotate time points or regions of interest
 
-> **Note:** The "Default visualization" mode enables all available data sources (philips_waves, philips_numerics, eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray, syringe, other) with their default display configurations. You can still upload a custom `database_options.json` later to override this.
+> **Note:** The "Default visualization" mode enables all available data sources (philips_waves, philips_numerics, eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray_scope, mindray_respi_waves, mindray_respi_numerics, syringe, other) with their default display configurations. You can still upload a custom `database_options.json` later to override this.
 
 ### Local Config Cache — Privacy Note
 
@@ -86,7 +86,9 @@ Patient1/                        # Root patient folder (configure in patient_opt
 ├── fluxmed_signals/             # FluxMed waveform data
 ├── fluxmed_parameters/          # FluxMed parameter data
 ├── servo_u/                     # Servo-U ventilator data (.sta files)
-├── mindray/                     # Mindray scope data (.xml or .csv files)
+├── mindray_scope/               # Mindray scope data (.xml or .csv files)
+├── mindray_respi_waves/         # Mindray respiratory waveforms (.parquet or .csv)
+├── mindray_respi_numerics/      # Mindray respiratory parameters (.parquet or .csv)
 ├── syringe/                     # Syringe pump data
 ├── other/                       # Generic data (.csv or .parquet files)
 └── tdv_visu/                    # Auto-generated: cached data and outputs
@@ -104,7 +106,9 @@ Folder names are **flexible** - they just need to contain the required keywords 
 | **FluxMed Signals** | `fluxmed`, `signals` | `fluxmed_signals` | `FluxMed-Signals`, `signals_fluxmed` |
 | **FluxMed Parameters** | `fluxmed`, `parameters` | `fluxmed_parameters` | `FluxMed_Parameters`, `parameters-fluxmed` |
 | **Servo-U** | `servo` | `servo_u` | `Servo-U`, `SERVO`, `servo_data` |
-| **Mindray** | `mindray` | `mindray` | `Mindray`, `MINDRAY` |
+| **Mindray Scope** | `mindray` | `mindray_scope` | `mindray`, `Mindray`, `MINDRAY` |
+| **Mindray Respi Waves** | `mindray`, `resp`, `wave` | `mindray_respi_waves` | `mindray_resp_waves` |
+| **Mindray Respi Numerics** | `mindray`, `resp`, `numeric` | `mindray_respi_numerics` | `mindray_resp_numerics` |
 | **Syringe Pumps** | `syringe` | `syringe` | `Syringe`, `syringe_pumps` |
 | **Other (Generic)** | `other` | `other` | `Other`, `OTHER` |
 
@@ -114,7 +118,9 @@ Folder names are **flexible** - they just need to contain the required keywords 
 - EIT: `.asc` files
 - FluxMed: Files with "signals" or "parameters" in filename
 - Servo-U: `.sta` files
-- Mindray: `.xml` or `.csv` files
+- Mindray Scope: `.xml` or `.csv` files
+- Mindray Respi Waves: `.parquet` or `.csv` files
+- Mindray Respi Numerics: `.parquet` or `.csv` files
 - Syringe: Files with "syringe" in filename
 - Other: `.csv` or `.parquet` files (auto-discovers with datetime column detection)
 
