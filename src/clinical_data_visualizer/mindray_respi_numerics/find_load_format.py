@@ -18,7 +18,6 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
     FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
     SOURCE_OPTIONS = options_naming.source_options
-    ALLOW_QUICK_LOAD = options_naming.ALLOW_LOADED_DATAFRAME_SAVING
 
     @classmethod
     def _find(cls, folder_path: Path) -> Path | None:
@@ -30,6 +29,7 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         )
 
     @classmethod
+    @helper.time_it
     def _load(cls, file_path: Path, path_output: Path, **kwargs: Any) -> pd.DataFrame:
         """
         Load and parse MindRay Respi Numerics data.

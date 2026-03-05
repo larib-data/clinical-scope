@@ -1,18 +1,18 @@
 import clinical_data_visualizer.constants as cst
 
-# Options for folder and file naming of the MindRay Respi Numerics datasource
-EXPECTED_FOLDER_NAME = "mindray_respi_numerics"
-FOLDER_KEYWORDS = ["mindray", "resp", "numeric"]
+# Options for folder and file naming of the MindRay Respi Waves datasource
+EXPECTED_FOLDER_NAME = "mindray_respi_waves"
+FOLDER_KEYWORDS = ["mindray", "resp", "wave"]
 KEYWORD_FILE = ""  # TODO: legacy options that should be defined but only used when ambiguous case
 FILE_EXTENSION_LIST = [".parquet", ".csv"]
 
-FILE_NAME_DATAFRAME_LOADED = "mindray_respi_numerics_loaded.parquet"
+FILE_NAME_DATAFRAME_LOADED = "mindray_respi_waves_loaded.parquet"
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
 source_options = {
     cst.SourceOptions.TRACE_OPTIONS: {
-        "mode": "lines+markers",
-        "line_width": 2.0,
+        "mode": "lines",
+        "line_width": 1.0,
         "line_dash": "solid",
         "opacity": 1.0,
         "marker_symbol": None,

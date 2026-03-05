@@ -102,6 +102,13 @@ class DataSource:
         OPTIONS: object
 
     @add_main_module
+    class MindRayRespiWaves:
+        NAME = "mindray_respi_waves"
+        DESCRIPTION = "Mindray Respi - waves"
+        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        OPTIONS: object
+
+    @add_main_module
     class Other:
         NAME = "other"
         DESCRIPTION = "Other (generic)"
@@ -119,6 +126,7 @@ class DataSource:
         FluxmedSignals,
         ServoU,
         MindRayRespiNumerics,
+        MindRayRespiWaves,
         MindRay,
         Other,
     )
