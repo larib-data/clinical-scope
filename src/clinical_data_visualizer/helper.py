@@ -433,3 +433,51 @@ def apply_timezone_to_dataframe(
         df.index = df.index.tz_localize(timezone)
 
     return df
+
+def find_datetime_col(columns: list[str]) -> str | None:
+    """Find the best datetime column by priority: exact matches, then partial matches."""
+    lower_map = {c.lower(): c for c in columns}
+
+    # Priority 1: exact matches (highest to lowest priority)
+    for name in ["datetime", "date_datetime", "time_datetime", "timestamp", "date"]:
+        if name in lower_map:
+            return lower_map[name]
+
+    # Priority 2: contains "datetime"
+    for col in columns:
+        if "datetime" in col.lower():
+            return col
+
+    # Priority 3: contains "timestamp"
+    for col in columns:
+        if "timestamp" in col.lower():
+            return col
+
+    # Priority 4: contains "date"
+    for col in columns:
+        if "date" in col.lower():
+            return col
+
+    # Priority 5: contains "time" (but not "timeout", "timer", etc.)
+    for col in columns:
+        if re.search(r"time(?!out|r|stamp)", col.lower()):
+            return col
+
+    return None
+
+def load_csv_with_datetime_index(
+    file_path: str | Path, dt_col: str | None = None, **kwargs
+) -> pd.DataFrame:
+    # First pass: peek at columns
+    df = pd.read_csv(file_path, nrows=0)
+
+    if dt_col is None:
+        dt_col = find_datetime_col(df.columns.tolist())
+
+    if dt_col is not None:
+        df = pd.read_csv(file_path, index_col=dt_col, parse_dates=True, **kwargs)
+    else:
+        # Fall back to first column and hope for the best
+        df = pd.read_csv(file_path, index_col=0, parse_dates=True, **kwargs)
+
+    return df

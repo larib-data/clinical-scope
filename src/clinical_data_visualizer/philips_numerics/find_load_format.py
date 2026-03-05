@@ -32,6 +32,8 @@ class PhilipsNumericsDataSource(DataSourceBase):
     def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
+        elif file_path.suffix.lower() == ".csv":
+            df = helper.load_csv_with_datetime_index(file_path)
         else:
             msg = f"file_path extension was neither '.csv' or '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(msg)

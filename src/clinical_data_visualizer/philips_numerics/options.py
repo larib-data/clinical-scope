@@ -7,7 +7,7 @@ FILE_EXTENSION_LIST = [".parquet", ".csv"]
 
 FILE_NAME_DATAFRAME_LOADED = "philips_numerics_loaded.parquet"
 
-DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
+DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
 source_options = {
     cst.SourceOptions.TRACE_OPTIONS: {
