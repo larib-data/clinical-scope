@@ -1,8 +1,11 @@
 from clinical_data_visualizer import constants as cst
 
+DATASOURCE_NAME = "eit"
 EXPECTED_FOLDER_NAME = "eit"
 FOLDER_KEYWORDS = ["eit"]
-KEYWORD_FILE_EXTENSION = ".asc"
+FILE_KEYWORDS = []
+FILE_EXTENSIONS = [".asc"]
+MULTI_FILE = True
 FILE_NAME_DATAFRAME_LOADED = "eit.parquet"
 
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"

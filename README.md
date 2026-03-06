@@ -112,17 +112,29 @@ Folder names are **flexible** - they just need to contain the required keywords 
 | **Syringe Pumps** | `syringe` | `syringe` | `Syringe`, `syringe_pumps` |
 | **Other (Generic)** | `other` | `other` | `Other`, `OTHER` |
 
-**File Types:**
-- Philips Waves: `.parquet` files
-- Philips Numerics: Files with "numerics" in filename
-- EIT: `.asc` files
-- FluxMed: Files with "signals" or "parameters" in filename
-- Servo-U: `.sta` files
-- Mindray Scope: `.xml` or `.csv` files
-- Mindray Respi Waves: `.parquet` or `.csv` files
-- Mindray Respi Numerics: `.parquet` or `.csv` files
-- Syringe: Files with "syringe" in filename
-- Other: `.csv` or `.parquet` files (auto-discovers with datetime column detection)
+**File Types** (listed in order of preference when multiple formats exist for the same data):
+
+| Data Source | Accepted Extensions | Mode |
+|---|---|---|
+| **Philips Waves** | `.parquet`, `.csv` | Single file |
+| **Philips Numerics** | `.parquet`, `.csv` | Single file |
+| **EIT** | `.asc` | All files |
+| **FluxMed Signals** | `.parquet`, `.txt`, `.csv` | Single file |
+| **FluxMed Parameters** | `.parquet`, `.txt`, `.csv` | Single file |
+| **Servo-U** | `.sta` | All files |
+| **Mindray Scope** | `.xml`, `.csv` | All files |
+| **Mindray Respi Waves** | `.parquet`, `.csv` | Single file |
+| **Mindray Respi Numerics** | `.parquet`, `.csv` | Single file |
+| **Syringe** | `.parquet`, `.csv` | Single file |
+| **Other** | `.csv`, `.parquet` | All files |
+
+**Single file** sources expect exactly one data file per folder. When multiple files are present, the application resolves ambiguity automatically:
+
+1. Only files with accepted extensions are considered (other files are ignored).
+2. If the same stem exists in multiple formats (e.g., `data.csv` + `data.parquet`), the most preferred extension is kept (first in the list above).
+3. If multiple stems remain, the application returns no match and logs a warning.
+
+**All files** sources load every matching file in the folder and concatenate them.
 
 ### Folder Naming Rules
 

@@ -12,15 +12,6 @@ from clinical_data_visualizer.datasource_base import DataSourceBase
 
 logger = logging.getLogger(__name__)
 
-# Safety check
-if options_naming.KEYWORD_FILE_EXTENSION in options_naming.FILE_NAME_DATAFRAME_LOADED:
-    msg = (
-        f"'KEYWORD_FILE_EXTENSION'({options_naming.KEYWORD_FILE_EXTENSION}) is in "
-        f"'FILE_NAME_DATAFRAME_LOADED'({options_naming.FILE_NAME_DATAFRAME_LOADED}). "
-        "This dangerous since we might override the raw data, or read the wrong one"
-    )
-    raise ValueError(msg)
-
 
 def _add_index_timestamp_to_eit_dataframe(
     df: pd.DataFrame,
@@ -308,17 +299,7 @@ def _add_columns_percentage_for_eit(df: pd.DataFrame) -> pd.DataFrame:
 class EITDataSource(DataSourceBase):
     """EIT datasource processor."""
 
-    DATASOURCE_NAME = "eit"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> list[Path] | None:
-        return helper.find_file_list(
-            folder_path,
-            options_naming.KEYWORD_FILE_EXTENSION,
-            "eit file",
-        )
 
     @classmethod
     @helper.time_it

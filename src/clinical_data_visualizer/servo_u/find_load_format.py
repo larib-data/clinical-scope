@@ -141,13 +141,7 @@ def parse_file(
 class ServoUDataSource(DataSourceBase):
     """Servo U datasource processor."""
 
-    DATASOURCE_NAME = "servo_u"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> list[Path] | None:
-        return helper.find_file_list(folder_path, options_naming.KEYWORD_EXTENSION, "Servo U file")
 
     @classmethod
     @helper.time_it

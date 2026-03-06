@@ -1,9 +1,11 @@
 import clinical_data_visualizer.constants as cst
 
+DATASOURCE_NAME = "servo_u"
 EXPECTED_FOLDER_NAME = "servo_u"
 FOLDER_KEYWORDS = ["servo"]
-KEYWORD_FOLDER = "servo u"
-KEYWORD_EXTENSION = ".sta"
+FILE_KEYWORDS = []
+FILE_EXTENSIONS = [".sta"]
+MULTI_FILE = True
 
 FILE_NAME_DATAFRAME_LOADED = "servo_u.parquet"
 

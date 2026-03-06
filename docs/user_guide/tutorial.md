@@ -129,16 +129,29 @@ Folder names are **flexible** -- they just need to contain the required keywords
 
 ## Expected File Types
 
-- **Philips Waves**: `.parquet` files
-- **Philips Numerics**: Files containing "numerics" in the filename
-- **EIT**: `.asc` files
-- **FluxMed**: Files containing "signals" or "parameters" in the filename
-- **Servo-U**: `.sta` files
-- **Mindray Scope**: `.xml` or `.csv` files
-- **Mindray Respi Waves**: `.parquet` or `.csv` files
-- **Mindray Respi Numerics**: `.parquet` or `.csv` files
-- **Syringe**: Files containing "syringe" in the filename
-- **Other**: `.csv` or `.parquet` files (auto-discovers columns with datetime values)
+Each data source only considers files with specific extensions. When multiple formats are
+accepted, they are listed below in order of preference (most preferred first):
+
+| Data Source | Accepted Extensions | Discovery Mode |
+|---|---|---|
+| Philips Waves | `.parquet`, `.csv` | Single file |
+| Philips Numerics | `.parquet`, `.csv` | Single file |
+| EIT | `.asc` | All files |
+| FluxMed Signals | `.parquet`, `.txt`, `.csv` | Single file |
+| FluxMed Parameters | `.parquet`, `.txt`, `.csv` | Single file |
+| Servo-U | `.sta` | All files |
+| Mindray Scope | `.xml`, `.csv` | All files |
+| Mindray Respi Waves | `.parquet`, `.csv` | Single file |
+| Mindray Respi Numerics | `.parquet`, `.csv` | Single file |
+| Syringe | `.parquet`, `.csv` | Single file |
+| Other | `.csv`, `.parquet` | All files |
+
+**Single file** sources expect exactly one data file per folder. Files with unrecognized
+extensions are ignored. When the same data exists in multiple formats (e.g., `data.csv` and
+`data.parquet`), the most preferred format is automatically selected. If multiple unrelated
+files remain, the source is skipped and a warning is logged.
+
+**All files** sources load every matching file in the folder and concatenate them.
 
 ![Patient folder structure example](images/PatientFolderStructure.png){ width=100% }
 
@@ -518,7 +531,12 @@ If the visualization is empty or a data source shows no signals:
 
 - Verify that the **data folder path** is correct and accessible.
 - Check that subfolders follow the **naming conventions** (see Section 3).
-- Ensure the subfolder contains files in the **expected format** for that data source.
+- Ensure the subfolder contains files with one of the **accepted extensions** for that data
+  source (see Section 3). Files with unrecognized extensions are silently ignored.
+- For **single-file** sources: if the folder contains multiple unrelated data files (different
+  stems), the source is skipped. Keep only one data file per folder, or provide the same data
+  in multiple formats (e.g., `data.csv` + `data.parquet`) and the preferred format will be
+  selected automatically.
 - Check that the data source is **enabled** in your database options (or use "Default
   visualization" to enable all).
 
@@ -546,16 +564,16 @@ If signals from different sources appear misaligned in time:
 
 # Appendix: Supported Data Sources
 
-| Source | Module Name | Keywords | File Types | Typical Signals |
-|---|---|---|---|---|
-| Philips Waves | `philips_waves` | `philips`, `waves` | `.parquet` | ART, PAP, CO2, respiratory pressure/volume |
-| Philips Numerics | `philips_numerics` | `philips`, `numerics` | numerics in name | Heart rate, SpO2, FiO2, blood pressure |
-| EIT | `eit` | `eit` | `.asc` | Global/local impedance, impedance percentages |
-| FluxMed Signals | `fluxmed_signals` | `fluxmed`, `signals` | signals in name | Respiratory waveforms |
-| FluxMed Parameters | `fluxmed_parameters` | `fluxmed`, `parameters` | parameters in name | Respiratory parameters |
-| Servo-U | `servo_u` | `servo` | `.sta` | Ventilator waveforms and settings |
-| Mindray Scope | `mindray_scope` | `mindray` | `.xml`, `.csv` | Monitor waveforms (ECG, SpO2, pressure) |
-| Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | High-frequency respiratory waveforms |
-| Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Respiratory parameters (Vt, RR, PEEP, etc.) |
-| Syringe | `syringe` | `syringe` | syringe in name | Infusion rates and volumes |
-| Other | `other` | `other` | `.csv`, `.parquet` | Any time-series with datetime columns |
+| Source | Module Name | Keywords | Accepted Extensions | Mode | Typical Signals |
+|---|---|---|---|---|---|
+| Philips Waves | `philips_waves` | `philips`, `waves` | `.parquet`, `.csv` | Single | ART, PAP, CO2, respiratory pressure/volume |
+| Philips Numerics | `philips_numerics` | `philips`, `numerics` | `.parquet`, `.csv` | Single | Heart rate, SpO2, FiO2, blood pressure |
+| EIT | `eit` | `eit` | `.asc` | All | Global/local impedance, impedance percentages |
+| FluxMed Signals | `fluxmed_signals` | `fluxmed`, `signals` | `.parquet`, `.txt`, `.csv` | Single | Respiratory waveforms |
+| FluxMed Parameters | `fluxmed_parameters` | `fluxmed`, `parameters` | `.parquet`, `.txt`, `.csv` | Single | Respiratory parameters |
+| Servo-U | `servo_u` | `servo` | `.sta` | All | Ventilator waveforms and settings |
+| Mindray Scope | `mindray_scope` | `mindray` | `.xml`, `.csv` | All | Monitor waveforms (ECG, SpO2, pressure) |
+| Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single | High-frequency respiratory waveforms |
+| Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single | Respiratory parameters (Vt, RR, PEEP, etc.) |
+| Syringe | `syringe` | `syringe` | `.parquet`, `.csv` | Single | Infusion rates and volumes |
+| Other | `other` | `other` | `.csv`, `.parquet` | All | Any time-series with datetime columns |

@@ -1,10 +1,12 @@
 import clinical_data_visualizer.constants as cst
 
+DATASOURCE_NAME = "syringe"
 EXPECTED_FOLDER_NAME = "syringe"
 FOLDER_KEYWORDS = ["syringe"]
-KEYWORD_FILE = "syringe"
+FILE_KEYWORDS = ["syringe", "seringues", "syr", "sringe", "srynge", "sr"]
+FILE_EXTENSIONS = [".parquet", ".csv"]
+MULTI_FILE = False
 FILE_NAME_DATAFRAME_LOADED = "syringe.parquet"
-ORDERED_PREFERED_RAW_FILES_EXTENSION = [".parquet", ".csv"]
 
 CANDIDATE_LIST_DATETIME_COLUMN = ["time", "datetime", "date_time", "date"]
 

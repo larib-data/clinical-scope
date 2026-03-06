@@ -197,21 +197,13 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
 class MindRayScopeDataSource(DataSourceBase):
     """MindRay scope datasource processor."""
 
-    DATASOURCE_NAME = "mindray_scope"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> list[Path] | None:
-        return helper.find_file_list(
-            folder_path, options_naming.KEYWORD_EXTENSION, "Mindray scope files"
-        )
 
     @classmethod
     @helper.time_it
     def _load(cls, file_path_list: list[Path], path_output: Path, **kwargs: Any) -> pd.DataFrame:
         database_options_specific = kwargs.get("database_options_specific", {})
-        extension_preference = options_naming.PREFERED_FILE_EXTENSION
+        extension_preference = options_naming.FILE_EXTENSIONS
 
         file_dict = {}
         for file_path in file_path_list:

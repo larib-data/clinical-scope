@@ -14,19 +14,7 @@ logger = logging.getLogger(__name__)
 class SyringeDataSource(DataSourceBase):
     """Syringe datasource processor."""
 
-    DATASOURCE_NAME = "syringe"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-    SOURCE_OPTIONS = options_naming.source_options
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> Path | None:
-        return helper.find_file(
-            folder_path,
-            options_naming.KEYWORD_FILE,
-            "syringe file",
-            options_naming.ORDERED_PREFERED_RAW_FILES_EXTENSION,
-        )
 
     @classmethod
     @helper.time_it

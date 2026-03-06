@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from clinical_data_visualizer.datasource_base import DataSourceBase
+from clinical_data_visualizer.helper import folder_name_matches_keywords
 from clinical_data_visualizer.signal_container import Signal
 
 # ==================================================================================================
@@ -18,6 +19,15 @@ def add_main_module(cls: type) -> type:
 
     options_path = f"clinical_data_visualizer.{cls.NAME}.options"
     options = importlib.import_module(options_path)
+
+    # Safety check: Validate NAME matches options.DATASOURCE_NAME
+    ds_name = getattr(options, "DATASOURCE_NAME", None)
+    if ds_name is not None and ds_name != cls.NAME:
+        msg = (
+            f"DataSource registry NAME={cls.NAME!r} does not match "
+            f"options.DATASOURCE_NAME={ds_name!r}"
+        )
+        raise ValueError(msg)
 
     # Assign the actual main function directly to the class
     cls.MAIN_MODULE = module.main
@@ -144,6 +154,7 @@ def detect_datasource_from_folder(folder: str | Path) -> type | None:
     """
     Return the DataSource registry entry whose ``FOLDER_KEYWORDS`` all appear in *folder*'s name.
 
+    When multiple datasources match, the one with the most keywords wins (best-match).
     Matching is case-insensitive.  Returns ``None`` if no datasource matches.
 
     Args:
@@ -154,14 +165,19 @@ def detect_datasource_from_folder(folder: str | Path) -> type | None:
         ``.OPTIONS`` …), or ``None``.
 
     """
-    folder_name_lower = Path(folder).name.lower()
+    folder_name = Path(folder).name
+    best_match = None
+    best_score = 0
     for ds in DataSource.AVAILABLE:
         keywords = getattr(ds.OPTIONS, "FOLDER_KEYWORDS", None)
         if not keywords:
             continue
-        if all(kw.lower() in folder_name_lower for kw in keywords):
-            return ds
-    return None
+        if folder_name_matches_keywords(folder_name, keywords):
+            score = len(keywords)
+            if score > best_score:
+                best_score = score
+                best_match = ds
+    return best_match
 
 
 def generate_default_database_options() -> dict:

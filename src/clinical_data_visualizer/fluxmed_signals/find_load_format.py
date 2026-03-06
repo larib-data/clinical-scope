@@ -15,18 +15,7 @@ logger = logging.getLogger(__name__)
 class FluxmedSignalsDataSource(DataSourceBase):
     """Fluxmed Signals datasource processor."""
 
-    DATASOURCE_NAME = "fluxmed_signals"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> Path | None:
-        return helper.find_file(
-            folder_path,
-            options_naming.KEYWORD_FILE,
-            "paramsignals",
-            [".txt", ".csv", ".parquet"],
-        )
 
     @classmethod
     @helper.time_it

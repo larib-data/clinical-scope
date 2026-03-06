@@ -1,9 +1,11 @@
 import clinical_data_visualizer.constants as cst
 
+DATASOURCE_NAME = "philips_numerics"
 EXPECTED_FOLDER_NAME = "philips_numerics"
 FOLDER_KEYWORDS = ["philips", "numerics"]
-KEYWORD_FILE = "numerics"
-FILE_EXTENSION_LIST = [".parquet", ".csv"]
+FILE_KEYWORDS = ["philips_numeric", "numeric", "philips", "num"]
+FILE_EXTENSIONS = [".parquet", ".csv"]
+MULTI_FILE = False
 
 FILE_NAME_DATAFRAME_LOADED = "philips_numerics_loaded.parquet"
 

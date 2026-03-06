@@ -1,12 +1,14 @@
 import clinical_data_visualizer.constants as cst
 
-# Options for folder and file naming of the MindRay Respi Waves datasource
+DATASOURCE_NAME = "mindray_respi_waves"
 EXPECTED_FOLDER_NAME = "mindray_respi_waves"
 FOLDER_KEYWORDS = ["mindray", "resp", "wave"]
-KEYWORD_FILE = (
-    ""  # Empty string matches any file; extension filtering is done by FILE_EXTENSION_LIST
-)
-FILE_EXTENSION_LIST = [".parquet", ".csv"]
+FILE_KEYWORDS = [
+    "respi_wave", "resp_wave", "mindray_resp", "mndry_resp", "mndry_wave", "resp",
+    "wave", "mindray", "mndry"
+]
+FILE_EXTENSIONS = [".parquet", ".csv"]
+MULTI_FILE = False
 
 FILE_NAME_DATAFRAME_LOADED = "mindray_respi_waves_loaded.parquet"
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"

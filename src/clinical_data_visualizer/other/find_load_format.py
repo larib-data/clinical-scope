@@ -165,26 +165,7 @@ def _create_signal(
 class OtherDataSource(DataSourceBase):
     """Generic datasource processor for CSV and parquet files."""
 
-    DATASOURCE_NAME = "other"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-    SOURCE_OPTIONS = options_naming.source_options
-    ALLOW_QUICK_LOAD = False
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> list[Path] | None:
-        """Find all CSV and parquet files in the folder."""
-        extensions = options_naming.SUPPORTED_EXTENSIONS
-        files = []
-        for ext in extensions:
-            files.extend(folder_path.glob(f"*{ext}"))
-
-        if not files:
-            logger.warning("No CSV or parquet files found in '%s'", folder_path)
-            return None
-
-        logger.info("Found %d file(s) in '%s'", len(files), folder_path)
-        return sorted(files)
 
     @classmethod
     def _load(cls, file_path_list: Path | list[Path], path_output: Path, **kwargs) -> pd.DataFrame:

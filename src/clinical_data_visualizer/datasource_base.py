@@ -97,11 +97,28 @@ class DataSourceBase(ABC):
     # Optional source_options for Signal creation
     SOURCE_OPTIONS: dict = None
 
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        opts = cls.OPTIONS_MODULE
+        if opts is None:
+            return
+        if cls.DATASOURCE_NAME is None:
+            cls.DATASOURCE_NAME = getattr(opts, "DATASOURCE_NAME", None)
+        if cls.FILE_NAME_DATAFRAME_LOADED is None:
+            cls.FILE_NAME_DATAFRAME_LOADED = getattr(opts, "FILE_NAME_DATAFRAME_LOADED", None)
+        if cls.SOURCE_OPTIONS is None:
+            cls.SOURCE_OPTIONS = getattr(opts, "source_options", None)
+        allow = getattr(opts, "ALLOW_QUICK_LOAD", None)
+        if allow is not None:
+            cls.ALLOW_QUICK_LOAD = allow
+
     @classmethod
-    @abstractmethod
     def _find(cls, folder_path: Path) -> list[Path] | Path | None:
         """
         Find the data file(s) in the given folder.
+
+        Uses the OPTIONS_MODULE constants (FILE_KEYWORDS, FILE_EXTENSIONS, MULTI_FILE)
+        for default file discovery. Override in subclasses that need custom logic.
 
         Args:
             folder_path: Path to search for data files
@@ -110,6 +127,14 @@ class DataSourceBase(ABC):
             Path or list[Path] or None: Found file(s), or None if not found
 
         """
+        opts = cls.OPTIONS_MODULE
+        return helper.find_files(
+            folder_path,
+            extensions=getattr(opts, "FILE_EXTENSIONS", []),
+            datasource_name=cls.DATASOURCE_NAME,
+            multi=getattr(opts, "MULTI_FILE", False),
+            keywords=getattr(opts, "FILE_KEYWORDS", None),
+        )
 
     @classmethod
     @abstractmethod
@@ -308,9 +333,7 @@ class DataSourceBase(ABC):
             if not subfolder.is_dir():
                 continue
 
-            # Check if folder name contains all required keywords (case-insensitive)
-            folder_name_lower = subfolder.name.lower()
-            if all(keyword.lower() in folder_name_lower for keyword in folder_keywords):
+            if helper.folder_name_matches_keywords(subfolder.name, folder_keywords):
                 if subfolder.name != expected_folder_name:
                     logger.info(
                         "Found %s folder '%s' matching keywords %s (recommended name: '%s')",

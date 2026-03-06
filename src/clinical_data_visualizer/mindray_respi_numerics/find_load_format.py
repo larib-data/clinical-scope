@@ -14,19 +14,7 @@ logger = logging.getLogger(__name__)
 class MindRayRespiNumericsDataSource(DataSourceBase):
     """MindRay Respi Numerics datasource processor."""
 
-    DATASOURCE_NAME = "mindray_respi_numerics"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-    SOURCE_OPTIONS = options_naming.source_options
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> Path | None:
-        return helper.find_file(
-            folder_path,
-            options_naming.KEYWORD_FILE,
-            "MindRay Respi Numerics files",
-            options_naming.FILE_EXTENSION_LIST,
-        )
 
     @classmethod
     @helper.time_it

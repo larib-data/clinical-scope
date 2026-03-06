@@ -170,9 +170,17 @@ The `build_patient_options_ui` callback creates the patient options form:
 
 ### Adding a New Data Source
 1. Create a new module under `src/clinical_data_visualizer/<source_name>/`
-2. Implement `options.py` with source-specific constants
+2. Implement `options.py` with:
+   - `DATASOURCE_NAME`: Unique identifier (e.g., `"my_source"`)
+   - `EXPECTED_FOLDER_NAME` / `FOLDER_KEYWORDS`: For folder discovery
+   - `FILE_KEYWORDS: list[str]`: Ordered stem keywords for disambiguation tie-breaking (e.g., `["numerics"]`), or `[]`
+   - `FILE_EXTENSIONS: list[str]`: Accepted extensions **ordered by preference** (first = most preferred)
+   - `MULTI_FILE: bool`: `True` = load all matching files, `False` = pick one file (with tiered disambiguation: extension filter → stem dedup by preference → keyword filter)
+   - `FILE_NAME_DATAFRAME_LOADED`: Cache filename (e.g., `"my_source.parquet"`)
+   - Other source-specific constants (timezone, `source_options`, etc.)
 3. Create `find_load_format.py` inheriting from `DataSourceBase`:
-   - Implement `_find()`: Locate data files
+   - Set `OPTIONS_MODULE = options_naming` (class attributes auto-derived via `__init_subclass__`)
+   - Default `_find()` uses `FILE_KEYWORDS`, `FILE_EXTENSIONS`, `MULTI_FILE` — override only if needed
    - Implement `_load()`: Parse raw data to DataFrame
    - Optionally override `_format()` and `_extract_signals()`
 4. Register in `datasource_list.py` with `@add_main_module` decorator

@@ -13,19 +13,7 @@ logger = logging.getLogger(__name__)
 class PhilipsWavesDataSource(DataSourceBase):
     """Philips Waves datasource processor."""
 
-    DATASOURCE_NAME = "philips_waves"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-    ALLOW_QUICK_LOAD = options_naming.ALLOW_LOADED_DATAFRAME_SAVING
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> Path | None:
-        return helper.find_file(
-            folder_path,
-            options_naming.KEYWORD_FILE,
-            "philips waves file",
-            options_naming.FILE_EXTENSION_LIST,
-        )
 
     @classmethod
     @helper.time_it
@@ -40,7 +28,7 @@ class PhilipsWavesDataSource(DataSourceBase):
         df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
 
-        if options_naming.ALLOW_LOADED_DATAFRAME_SAVING:
+        if cls.ALLOW_QUICK_LOAD:
             cls._save_dataframe(df, path_output)
         else:
             logger.info(

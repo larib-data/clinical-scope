@@ -1,12 +1,14 @@
 import clinical_data_visualizer.constants as cst
 
-# Options for folder and file naming of the MindRay Respi Numerics datasource
+DATASOURCE_NAME = "mindray_respi_numerics"
 EXPECTED_FOLDER_NAME = "mindray_respi_numerics"
 FOLDER_KEYWORDS = ["mindray", "resp", "numeric"]
-KEYWORD_FILE = (
-    ""  # Empty string matches any file; extension filtering is done by FILE_EXTENSION_LIST
-)
-FILE_EXTENSION_LIST = [".parquet", ".csv"]
+FILE_KEYWORDS = [
+    "respi_numeric", "resp_numeric", "mindray_resp", "mndry_resp", "mndry_numeric", "resp",
+    "numeric", "mindray", "mndry"
+]
+FILE_EXTENSIONS = [".parquet", ".csv"]
+MULTI_FILE = False
 
 FILE_NAME_DATAFRAME_LOADED = "mindray_respi_numerics_loaded.parquet"
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"

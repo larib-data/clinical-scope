@@ -13,19 +13,7 @@ logger = logging.getLogger(__name__)
 class PhilipsNumericsDataSource(DataSourceBase):
     """Philips Numerics datasource processor."""
 
-    DATASOURCE_NAME = "philips_numerics"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-    SOURCE_OPTIONS = options_naming.source_options
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> Path | None:
-        return helper.find_file(
-            folder_path,
-            options_naming.KEYWORD_FILE,
-            "philips numerics file",
-            options_naming.FILE_EXTENSION_LIST,
-        )
 
     @classmethod
     @helper.time_it

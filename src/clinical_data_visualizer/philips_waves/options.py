@@ -1,13 +1,15 @@
 import clinical_data_visualizer.constants as cst
 
+DATASOURCE_NAME = "philips_waves"
 EXPECTED_FOLDER_NAME = "philips_waves"
 FOLDER_KEYWORDS = ["philips", "waves"]
-KEYWORD_FILE = "waves"
-FILE_EXTENSION_LIST = [".parquet", ".csv"]
+FILE_KEYWORDS = ["philips_wave", "waveform", "wave", "timeseries", "data", "signal", "philips"]
+FILE_EXTENSIONS = [".parquet", ".csv"]
+MULTI_FILE = False
 
 FILE_NAME_DATAFRAME_LOADED = "philips_waves.parquet"
 
-ALLOW_LOADED_DATAFRAME_SAVING = False
+ALLOW_QUICK_LOAD = False
 
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
