@@ -168,7 +168,7 @@ class OtherDataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    def _load(cls, file_path_list: Path | list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path_list: Path | list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:
         """Not used — main() processes each file independently."""
         msg = "OtherDataSource._load should not be called directly; use main() instead"
         raise NotImplementedError(msg)

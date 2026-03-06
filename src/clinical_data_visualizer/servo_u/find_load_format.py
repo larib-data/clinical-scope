@@ -148,7 +148,7 @@ class ServoUDataSource(DataSourceBase):
     def _load(
         cls,
         file_path_list: list[Path],
-        path_output: Path,
+        path_output: Path | None,
         **kwargs: Any,  # noqa: ARG003
     ) -> pd.DataFrame:
         all_dfs = []
@@ -169,7 +169,8 @@ class ServoUDataSource(DataSourceBase):
         df = pd.concat(all_dfs)
         df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
-        cls._save_dataframe(df, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df, path_output)
         return df
 
     @classmethod

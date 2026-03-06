@@ -9,7 +9,7 @@ MULTI_FILE = False
 
 FILE_NAME_DATAFRAME_LOADED = "philips_numerics_loaded.parquet"
 
-DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
+DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 
 source_options = {
     cst.SourceOptions.TRACE_OPTIONS: {

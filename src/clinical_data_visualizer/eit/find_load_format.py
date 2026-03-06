@@ -303,7 +303,7 @@ class EITDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:
         database_options_specific = kwargs.get("database_options_specific", {})
         (
             _list_metadata,
@@ -317,7 +317,8 @@ class EITDataSource(DataSourceBase):
 
         df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
-        cls._save_dataframe(df, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df, path_output)
         return df
 
     @classmethod

@@ -20,7 +20,7 @@ class MindRayRespiWavesDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path: Path, path_output: Path, **kwargs: Any) -> pd.DataFrame:
+    def _load(cls, file_path: Path, path_output: Path | None, **kwargs: Any) -> pd.DataFrame:
         """
         Load and parse MindRay Respi Waves data.
 
@@ -123,7 +123,8 @@ class MindRayRespiWavesDataSource(DataSourceBase):
             options_naming,
         )
 
-        cls._save_dataframe(df_pivoted, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df_pivoted, path_output)
         return df_pivoted
 
 

@@ -138,13 +138,13 @@ class DataSourceBase(ABC):
 
     @classmethod
     @abstractmethod
-    def _load(cls, file_path: Path | list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path: Path | list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:
         """
         Load and parse raw data file(s) into a DataFrame.
 
         Args:
             file_path: Path or list of paths to data files
-            path_output: Path to save loaded DataFrame for quick loading
+            path_output: Path to save loaded DataFrame for quick loading, or none if no saving needed
 
         Returns:
             pd.DataFrame: Loaded data with datetime index
@@ -188,7 +188,11 @@ class DataSourceBase(ABC):
 
         file_path_str = str(file_path[0]) if isinstance(file_path, list) else str(file_path)
         logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
-        df = cls._load(file_path, dataframe_path, database_options_specific=database_options)
+        df = cls._load(
+            file_path,
+            dataframe_path if cls.ALLOW_QUICK_LOAD else None,
+            database_options_specific=database_options
+        )
         logger.info(
             "📥 [%s] Loaded: %d rows x %d columns.",
             cls.DATASOURCE_NAME,
