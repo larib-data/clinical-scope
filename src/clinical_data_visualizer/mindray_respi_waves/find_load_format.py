@@ -43,6 +43,12 @@ class MindRayRespiWavesDataSource(DataSourceBase):
             msg = f"Unsupported extension: '{file_path}'"
             raise NotImplementedError(msg)
 
+        if df.empty:
+            logger.warning("[%s] Empty data file: %s", cls.DATASOURCE_NAME, file_path)
+            return pd.DataFrame(
+                index=pd.DatetimeIndex([], tz=options_naming.DATA_SOURCE_DEFAULT_TIMEZONE)
+            )
+
         base_timestamps = pd.to_datetime(df["event_timestamp"])
         tz = base_timestamps.dt.tz
         full_label_names = df["waveform_label"] + "-" + df["waveform_unit"]
@@ -92,7 +98,8 @@ class MindRayRespiWavesDataSource(DataSourceBase):
 
         if not timestamps_chunks:
             logger.warning("[%s] No data rows expanded.", cls.DATASOURCE_NAME)
-            return pd.DataFrame()
+            tz_str = str(tz) if tz is not None else options_naming.DATA_SOURCE_DEFAULT_TIMEZONE
+            return pd.DataFrame(index=pd.DatetimeIndex([], tz=tz_str))
 
         # Build expanded DataFrame from concatenated arrays (avoids list-of-dicts overhead)
         df_expanded = pd.DataFrame(

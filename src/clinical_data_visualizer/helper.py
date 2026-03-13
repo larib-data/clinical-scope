@@ -410,6 +410,13 @@ def apply_timezone_to_dataframe(
                 default_timezone,
             )
 
+    if not isinstance(df.index, pd.DatetimeIndex):
+        logger.warning(
+            "apply_timezone_to_dataframe: index is not a DatetimeIndex (%s), skipping.",
+            type(df.index).__name__,
+        )
+        return df
+
     if df.index.tz is None:
         df.index = df.index.tz_localize(timezone)
 
