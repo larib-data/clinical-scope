@@ -138,7 +138,9 @@ class DataSourceBase(ABC):
 
     @classmethod
     @abstractmethod
-    def _load(cls, file_path: Path | list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:
+    def _load(
+        cls, file_path: Path | list[Path], path_output: Path | None, **kwargs
+    ) -> pd.DataFrame:
         """
         Load and parse raw data file(s) into a DataFrame.
 
@@ -173,8 +175,9 @@ class DataSourceBase(ABC):
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
         dataframe_path = folder_path / cst.FOLDER_NAME_VISU / cls.FILE_NAME_DATAFRAME_LOADED
         quick_load_enabled = patient_options.get(cst.PatientOptions.QuickLoad.NAME, False)
+        should_cache = cls.ALLOW_QUICK_LOAD and quick_load_enabled
 
-        if cls.ALLOW_QUICK_LOAD and quick_load_enabled and dataframe_path.is_file():
+        if should_cache and dataframe_path.is_file():
             logger.info("[%s] Quick loading from cache.", cls.DATASOURCE_NAME)
             return cls._quick_load(dataframe_path), str(dataframe_path)
 
@@ -190,8 +193,8 @@ class DataSourceBase(ABC):
         logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
         df = cls._load(
             file_path,
-            dataframe_path if cls.ALLOW_QUICK_LOAD else None,
-            database_options_specific=database_options
+            dataframe_path if should_cache else None,
+            database_options_specific=database_options,
         )
         logger.info(
             "📥 [%s] Loaded: %d rows x %d columns.",
