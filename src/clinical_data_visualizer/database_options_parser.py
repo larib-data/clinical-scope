@@ -24,6 +24,7 @@ _SIGNAL_KEYS = {
     "color",
     "visible",
     "line_dash",
+    "hover_template",
 }
 
 # Mapping: new per-signal key -> old flat sub-dict key
@@ -35,6 +36,7 @@ _KEY_TO_FLAT = {
     "period_resampling": cst.DatabaseOptions.Data.PERIOD_RESAMPLING,
     "priority": cst.DatabaseOptions.Data.PRIORITY,
     "color": cst.DatabaseOptions.Data.COLOR,
+    "hover_template": cst.DatabaseOptions.Data.HOVER_TEMPLATE,
 }
 
 # Default values -- entries matching these are redundant and can be omitted

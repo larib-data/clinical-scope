@@ -88,6 +88,7 @@ class DatabaseOptions:
         PERIOD_RESAMPLING = "period_resampling"
         VISIBLE = "visible"
         LINE_DASH = "line_dash"
+        HOVER_TEMPLATE = "hover_template"
 
     NUMERICS = "numerics"
 

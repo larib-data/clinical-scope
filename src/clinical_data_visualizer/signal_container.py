@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import clinical_data_visualizer.constants as cst
-from clinical_data_visualizer import helper
+from clinical_data_visualizer import helper, hover_formatters
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +188,7 @@ class TraceOptions:
     marker_symbol: str | None = None
     marker_size: float | None = None
     visible: bool = True
+    hover_template: str | None = None  # Plotly hovertemplate, or "fraction" for 1/n display
     plot_options: PlotOptions = field(default_factory=PlotOptions)
 
     def __post_init__(self) -> None:
@@ -271,6 +272,9 @@ class Signal:
         )
         visible = data_opts.get(cst.DatabaseOptions.Data.VISIBLE, {}).get(raw_signal_name, True)
         line_dash_db = data_opts.get(cst.DatabaseOptions.Data.LINE_DASH, {}).get(raw_signal_name)
+        hover_template = data_opts.get(cst.DatabaseOptions.Data.HOVER_TEMPLATE, {}).get(
+            raw_signal_name
+        )
         plot_options = PlotOptions(
             y_axis_range=range_signal_plot,
             y_axis_title=y_axis_title,
@@ -288,6 +292,7 @@ class Signal:
             line_color=color,
             marker_color=color,
             visible=visible,
+            hover_template=hover_template,
             # Any ohter field
             **additional_trace_options,
         )
@@ -494,27 +499,36 @@ class Signal:
             else None
         )
         y_unit_name = self.trace_options.plot_options.y_unit_name
-        if self.trace_options.plot_options.plot_type == cst.PlotType.TIME_SERIES:
-            hovertemplate = (
-                f"<b>{self.name}</b><br>"
-                "%{x|%H:%M:%S.%f} | %{y}"
-                f" {
-                    y_unit_name if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
-                }<br>"
-                "<extra></extra>"
-            )
+        y_unit_suffix = (
+            f" {y_unit_name}" if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ""
+        )
+
+        # Magic keyword in hover_template → pre-compute customdata strings
+        _template = self.trace_options.hover_template
+        _is_keyword = hover_formatters.is_keyword(_template)
+        customdata = (
+            hover_formatters.compute_customdata(self.data.y, _template) if _is_keyword else None
+        )
+        _y_fmt = "%{customdata}" if _is_keyword else "%{y:.4g}"
+
+        if _template is not None and not _is_keyword:
+            hovertemplate = _template
+        elif self.trace_options.plot_options.plot_type == cst.PlotType.TIME_SERIES:
+            # Compact single-line template: time is shown once in the "x unified"
+            # header, so each trace only needs name + value.
+            hovertemplate = f"<b>{self.name}</b>: {_y_fmt}{y_unit_suffix}<extra></extra>"
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
+            _x_unit_suffix = (
+                f" {x_unit_name}"
+                if x_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO
+                else ""
+            )
+            # Keyword formatters (fraction, percentage, …) only cover one axis,
+            # so they are intentionally ignored for loops to avoid asymmetric display.
             hovertemplate = (
                 f"<b>{self.name}</b><br>"
-                "%{x}"
-                f" {
-                    x_unit_name if x_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
-                }"
-                " | %{y}"
-                f" {
-                    y_unit_name if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
-                }<br>"
+                f"%{{x:.4g}}{_x_unit_suffix} | %{{y:.4g}}{y_unit_suffix}<br>"
                 "<extra></extra>"
             )
         else:
@@ -527,6 +541,7 @@ class Signal:
             line=line_dict,
             marker=marker_dict,
             opacity=self.trace_options.opacity,
+            customdata=customdata,
             hovertemplate=hovertemplate,
             visible="legendonly" if not self.trace_options.visible else True,
         )
@@ -595,7 +610,7 @@ class PlotModel:
     timing: dict = field(default_factory=dict)
     name: str | None = None
 
-    def to_figure(self, base_spacing: float = 0.05, min_spacing: float = 0.005) -> go.Figure:
+    def to_figure(self, min_spacing: float = 0.005) -> go.Figure:
         start = time.perf_counter()
         n_groups = len(self.groups)
         is_loop = self.plot_type == cst.PlotType.LOOP
@@ -629,7 +644,13 @@ class PlotModel:
             extra_subplot_kwargs = {}
 
         self.computed_height = total_fig_height
-        vertical_spacing = max(min_spacing, base_spacing / n_rows)
+        # Aim for ~30 px between subplots to leave room for subplot titles.
+        # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
+        title_gap_px = 30.0
+        spacing_from_height = (
+            title_gap_px / total_fig_height if total_fig_height > 0 else min_spacing
+        )
+        vertical_spacing = max(min_spacing, spacing_from_height)
 
         fig = make_subplots(
             rows=n_rows,
@@ -690,14 +711,20 @@ class PlotModel:
             if self.plot_type == cst.PlotType.TIME_SERIES:
                 fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
+        # Time-series figures use "x unified": one compact tooltip with a single time header
+        # and one line per trace.  Format the x-axis header as HH:MM:SS (milliseconds would
+        # clutter the header; they're available per trace via a custom hover_template if needed).
+        # Loop figures keep Plotly's default ("closest"): each point is independent.
+        if self.plot_type == cst.PlotType.TIME_SERIES:
+            fig.update_xaxes(hoverformat="%H:%M:%S.%3f")
+            fig.update_layout(hovermode="x unified")
+
         fig.update_layout(
             title_text=self.name,
             height=total_fig_height,
             width=fig_width,
             showlegend=True,
-            hoverlabel={
-                "namelength": -1  # Show full curve name
-            },
+            hoverlabel={"namelength": -1},
         )
 
         fig.update_layout(
