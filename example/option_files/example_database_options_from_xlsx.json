@@ -63,13 +63,6 @@
                 "label": "Fréquence Cardiaque",
                 "unit": "Hz"
             },
-            "FiO₂": {
-                "unit": "%"
-            },
-            "Perf": {},
-            "rQinMx": {
-                "unit": "l/m"
-            },
             "PNId": {
                 "label": "Pressure diastolic",
                 "unit": "mmHg",
@@ -88,9 +81,6 @@
         },
         "field_display": [
             "FC",
-            "FiO₂",
-            "Perf",
-            "rQinMx",
             "PNId",
             "PNIm",
             "PNIs"
@@ -111,6 +101,9 @@
         "numerics": {
             "period_resampling": 0.2,
             "priority": 2.5
+        },
+        "additional_informations": {
+            "timezone": "Europe/Paris"
         },
         "signals": {
             "Global": {
@@ -139,11 +132,13 @@
                     -0.05,
                     1.05
                 ],
-                "color": "red"
+                "color": "red",
+                "hover_template": "fraction"
             },
             "%Local 2*": {
                 "unit": "Proportion",
-                "color": "blue"
+                "color": "blue",
+                "hover_template": "percentage"
             },
             "%Local 3*": {
                 "unit": "Proportion",

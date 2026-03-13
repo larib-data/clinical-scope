@@ -144,6 +144,12 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
         loops_df = pd.DataFrame(columns=list(_LOOPS_REQUIRED_COLS))
 
     # ------------------------------------------------------------------
+    # Normalize column names (case-insensitive, strip whitespace)
+    # ------------------------------------------------------------------
+    signals_df.columns = [c.strip().lower() for c in signals_df.columns]
+    loops_df.columns = [c.strip().lower() for c in loops_df.columns]
+
+    # ------------------------------------------------------------------
     # Validate required columns
     # ------------------------------------------------------------------
     missing_signal_cols = _SIGNALS_REQUIRED_COLS - set(signals_df.columns)
@@ -179,7 +185,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 result[ds] = {}
 
             # ----------------------------------------------------------
-            # Sentinel row: datasource-level defaults → "numerics"
+            # Sentinel row: datasource-level defaults → "numerics" / "additional_informations"
             # ----------------------------------------------------------
             if signal == _SENTINEL_DATASOURCE_DEFAULT:
                 numerics = {}
@@ -191,6 +197,11 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                     numerics["priority"] = prio
                 if numerics:
                     result[ds].setdefault("numerics", {}).update(numerics)
+
+                timezone = str(row.get("timezone", "")).strip()
+                if timezone:
+                    result[ds].setdefault("additional_informations", {})["timezone"] = timezone
+
                 continue
 
             # ----------------------------------------------------------
@@ -234,6 +245,21 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             pr = _to_float(row.get("period_resampling", ""))
             if pr is not None:
                 sig_opts["period_resampling"] = pr
+
+            hover_template = str(row.get("hover_template", "")).strip()
+            if hover_template:
+                sig_opts["hover_template"] = hover_template
+
+            # Warn about fields that are only meaningful in the sentinel (*) row
+            timezone_val = str(row.get("timezone", "")).strip()
+            if timezone_val:
+                logger.warning(
+                    "Row %s (datasource=%r, signal=%r): 'timezone' is only valid in the "
+                    "sentinel ('*') row — ignored for per-signal rows.",
+                    row_idx,
+                    ds,
+                    signal,
+                )
 
             result[ds].setdefault(_SIGNALS_SHEET_NAME, {})[signal] = sig_opts
 

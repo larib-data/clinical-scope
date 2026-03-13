@@ -415,7 +415,8 @@ source key in this file is what activates that source; removing it disables it e
             "color": "red",
             "visible": true,
             "line_dash": "solid",
-            "period_resampling": 0.2
+            "period_resampling": 0.2,
+            "hover_template": null
         }
     },
     "grouped_fields": {
@@ -427,6 +428,9 @@ source key in this file is what activates that source; removing it disables it e
     "numerics": {
         "period_resampling": 0.5,
         "priority": 1.0
+    },
+    "additional_informations": {
+        "timezone": "Europe/Paris"
     }
 }
 ```
@@ -441,6 +445,7 @@ source key in this file is what activates that source; removing it disables it e
 | `loop` | object | `{}` | PV-loop definitions: `{"loop_name": ["x_signal", "y_signal"]}`. |
 | `numerics.period_resampling` | float | source default | Resampling period in seconds applied to all numeric parameters of this datasource. |
 | `numerics.priority` | float | source default | Plot ordering priority for numerics (lower value = higher on page). |
+| `additional_informations.timezone` | string | source default | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only supported by compatible datasources (e.g., EIT, Mindray). |
 
 ### Per-Signal Fields Reference (`signals.<signal_name>`)
 
@@ -455,6 +460,7 @@ source key in this file is what activates that source; removing it disables it e
 | `visible` | boolean | `true` | Set to `false` to load the signal but hide it from the plot by default. |
 | `line_dash` | string | `"solid"` | Line style: `"solid"`, `"dash"`, `"dot"`, `"dashdot"`. |
 | `period_resampling` | float | source default | Resampling period in seconds for this specific signal. |
+| `hover_template` | string | `null` | Custom hover tooltip. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is passed directly to Plotly as a `hovertemplate`. Leave empty for the default compact display. |
 
 ### Global Fields
 
@@ -481,22 +487,34 @@ spreadsheet. The file must contain a sheet named **`signals`** and optionally a 
 One row per signal. The columns `datasource` and `signal` are mandatory; all others are optional
 and fall back to the defaults listed in the per-signal table above.
 
-| Column | Required | Description |
-|---|---|---|
-| `datasource` | Yes | Data source name (e.g., `philips_waves`, `eit`). |
-| `signal` | Yes | Raw signal name as it appears in the data. Use `*` to set datasource-level defaults (`period_resampling`, `priority`) without defining a specific signal. |
-| `label` | No | Display label. If empty or identical to `signal`, no label override is applied. |
-| `unit` | No | Unit string (e.g., `mmHg`). |
-| `unit_conversion` | No | Numeric multiplier for unit conversion. |
-| `range_min` | No | Minimum Y-axis value. |
-| `range_max` | No | Maximum Y-axis value. |
-| `priority` | No | Plot priority (float). |
-| `color` | No | CSS color string. |
-| `visible` | No | `yes` / `no` (default: `yes`). Accepts `yes`, `1`, `true`, `oui`, `vrai` (case-insensitive). |
-| `line_dash` | No | `solid`, `dash`, `dot`, `dashdot`. |
-| `period_resampling` | No | Resampling period in seconds. |
-| `display` | No | `yes` / `no` — whether to add this signal to `field_display`. Default: `yes`. |
-| `groups` | No | Semicolon-separated list of group names this signal belongs to (e.g., `Respiratory;Pressure`). Groups spanning a single datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
+Use `*` in the `signal` column to write a **sentinel row** that sets datasource-level defaults
+(e.g., a common `period_resampling` or `timezone`) without defining a specific signal.
+Column names are case-insensitive (e.g., `Label`, `UNIT`, `Hover_Template` all work).
+
+The **Scope** column below indicates where each field is meaningful:
+
+- **Both** — valid in sentinel (`*`) and per-signal rows
+- **Signal** — per-signal rows only; ignored in sentinel rows
+- **Sentinel** — sentinel (`*`) rows only; a warning is logged if set in a per-signal row
+
+| Column | Required | Scope | Description |
+|---|---|---|---|
+| `datasource` | Yes | Both | Data source name (e.g., `philips_waves`, `eit`). |
+| `signal` | Yes | Both | Raw signal name. Use `*` for a sentinel row that sets datasource-level defaults. |
+| `label` | No | Signal | Display label. Defaults to the signal name if empty or identical. |
+| `unit` | No | Signal | Unit string (e.g., `mmHg`). |
+| `unit_conversion` | No | Signal | Numeric multiplier for unit conversion. |
+| `range_min` | No | Signal | Minimum Y-axis value. |
+| `range_max` | No | Signal | Maximum Y-axis value. |
+| `priority` | No | Both | Plot priority (float). In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. |
+| `color` | No | Signal | CSS color string. |
+| `visible` | No | Signal | `yes` / `no` (default: `yes`). Accepts `yes`, `1`, `true`, `oui`, `vrai` (case-insensitive). |
+| `line_dash` | No | Signal | `solid`, `dash`, `dot`, `dashdot`. |
+| `period_resampling` | No | Both | Resampling period in seconds. In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. |
+| `hover_template` | No | Signal | Hover tooltip format. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is forwarded directly to Plotly as a `hovertemplate`. |
+| `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. |
+| `groups` | No | Signal | Semicolon-separated group names (e.g., `Respiratory;Pressure`). Groups within one datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
+| `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. |
 
 ### `loops` sheet (optional)
 

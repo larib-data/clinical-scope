@@ -12,7 +12,7 @@
         "_doc_field_display": "List of raw signal names to visualize (omit to show all columns).",
         "field_display": ["signal_A", "signal_B"],
 
-        "_doc_signals": "Per-signal metadata. Only non-default values need to be specified. Keys: label, unit, unit_conversion, range, period_resampling, priority, color, visible, line_dash.",
+        "_doc_signals": "Per-signal metadata. Only non-default values need to be specified. Keys: label, unit, unit_conversion, range, period_resampling, priority, color, visible, line_dash, hover_template.",
         "signals": {
             "signal_A": {
                 "label": "Human-readable name",
@@ -26,7 +26,9 @@
                 "range": [-5, 60],
                 "priority": 2,
                 "visible": true,
-                "line_dash": "dash"
+                "line_dash": "dash",
+                "_doc_hover_template": "Optional. 'fraction' shows values in (0,1) as 1/n. 'percentage' shows as 33.3%. Any other string is a raw Plotly hovertemplate.",
+                "hover_template": null
             }
         },
 
@@ -44,6 +46,12 @@
         "_doc_loop": "PV-loop definitions: pairs of [x_signal, y_signal].",
         "loop": {
             "my_loop": ["signal_A", "signal_B"]
+        },
+
+        "_doc_additional_informations": "Datasource-level settings not tied to a specific signal.",
+        "additional_informations": {
+            "_doc_timezone": "Override the timezone for this datasource (e.g. 'Europe/Paris', 'UTC'). Only supported by compatible sources.",
+            "timezone": null
         }
     }
 }
