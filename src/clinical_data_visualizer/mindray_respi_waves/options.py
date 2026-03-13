@@ -4,8 +4,15 @@ DATASOURCE_NAME = "mindray_respi_waves"
 EXPECTED_FOLDER_NAME = "mindray_respi_waves"
 FOLDER_KEYWORDS = ["mindray", "resp", "wave"]
 FILE_KEYWORDS = [
-    "respi_wave", "resp_wave", "mindray_resp", "mndry_resp", "mndry_wave", "resp",
-    "wave", "mindray", "mndry"
+    "respi_wave",
+    "resp_wave",
+    "mindray_resp",
+    "mndry_resp",
+    "mndry_wave",
+    "resp",
+    "wave",
+    "mindray",
+    "mndry",
 ]
 FILE_EXTENSIONS = [".parquet", ".csv"]
 MULTI_FILE = False

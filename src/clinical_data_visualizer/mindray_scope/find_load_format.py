@@ -201,7 +201,9 @@ class MindRayScopeDataSource(DataSourceBase):
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs: Any) -> pd.DataFrame:
+    def _load(
+        cls, file_path_list: list[Path], path_output: Path | None, **kwargs: Any
+    ) -> pd.DataFrame:
         database_options_specific = kwargs.get("database_options_specific", {})
         extension_preference = options_naming.FILE_EXTENSIONS
 

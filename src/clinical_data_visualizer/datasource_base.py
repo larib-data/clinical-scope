@@ -146,7 +146,8 @@ class DataSourceBase(ABC):
 
         Args:
             file_path: Path or list of paths to data files
-            path_output: Path to save loaded DataFrame for quick loading, or none if no saving needed
+            path_output: Path to save loaded DataFrame for quick loading, or none if no saving
+                         needed
 
         Returns:
             pd.DataFrame: Loaded data with datetime index

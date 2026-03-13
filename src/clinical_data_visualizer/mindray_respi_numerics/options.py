@@ -4,8 +4,15 @@ DATASOURCE_NAME = "mindray_respi_numerics"
 EXPECTED_FOLDER_NAME = "mindray_respi_numerics"
 FOLDER_KEYWORDS = ["mindray", "resp", "numeric"]
 FILE_KEYWORDS = [
-    "respi_numeric", "resp_numeric", "mindray_resp", "mndry_resp", "mndry_numeric", "resp",
-    "numeric", "mindray", "mndry"
+    "respi_numeric",
+    "resp_numeric",
+    "mindray_resp",
+    "mndry_resp",
+    "mndry_numeric",
+    "resp",
+    "numeric",
+    "mindray",
+    "mndry",
 ]
 FILE_EXTENSIONS = [".parquet", ".csv"]
 MULTI_FILE = False
