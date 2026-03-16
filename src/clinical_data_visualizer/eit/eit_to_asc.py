@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Convert Draeger .eit files to .asc format.
+"""
+Convert Draeger .eit files to .asc format.
 
 Self-contained script that reads raw EIT voltage data from Draeger .eit files
 (Format 51), performs linearized image reconstruction, and writes a Draeger-
@@ -14,15 +15,14 @@ from __future__ import annotations
 import argparse
 import struct
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.spatial import Delaunay
 from scipy.sparse import csr_matrix, lil_matrix
 from scipy.sparse.linalg import spsolve
-
+from scipy.spatial import Delaunay
 
 # ---------------------------------------------------------------------------
 # 1. EIT File Parser
@@ -158,8 +158,11 @@ def calibrate_voltages(voltages: NDArray) -> NDArray:
 # ---------------------------------------------------------------------------
 
 
-def _generate_mesh(n_points_per_ring: int = 8, n_rings: int = 6) -> tuple[NDArray, NDArray, NDArray]:
-    """Generate a 2D circular mesh with electrode nodes.
+def _generate_mesh(
+    n_points_per_ring: int = 8, n_rings: int = 6
+) -> tuple[NDArray, NDArray, NDArray]:
+    """
+    Generate a 2D circular mesh with electrode nodes.
 
     Returns (nodes, elements, electrode_indices).
     """
@@ -280,7 +283,8 @@ def _solve_forward(
 
 
 def _compute_measurements(u: NDArray, electrode_indices: NDArray) -> NDArray:
-    """Extract adjacent-pair voltage measurements from potential field.
+    """
+    Extract adjacent-pair voltage measurements from potential field.
 
     Returns 13 measurements (16 adjacent pairs minus 3 excluded).
     """
@@ -296,7 +300,8 @@ def _compute_measurements(u: NDArray, electrode_indices: NDArray) -> NDArray:
 def build_reconstruction_matrix(
     regularization: float = 0.01,
 ) -> tuple[NDArray, NDArray, NDArray, NDArray]:
-    """Build the complete reconstruction pipeline.
+    """
+    Build the complete reconstruction pipeline.
 
     Returns (recon_matrix, pixel_map, nodes, elements).
     recon_matrix: (n_elements, 208) maps calibrated voltages to element conductivities
@@ -391,7 +396,8 @@ def build_reconstruction_matrix(
 
 
 def _build_pixel_map(nodes: NDArray, elements: NDArray) -> NDArray:
-    """Map mesh elements to 32x32 pixel grid.
+    """
+    Map mesh elements to 32x32 pixel grid.
 
     Returns (1024, n_elements) matrix.
     """
@@ -426,7 +432,8 @@ def _build_pixel_map(nodes: NDArray, elements: NDArray) -> NDArray:
 
 
 def _build_untwist() -> tuple[NDArray, NDArray]:
-    """Build the EIDORS untwist permutation.
+    """
+    Build the EIDORS untwist permutation.
 
     Returns (valid_indices, twist_indices) both 0-indexed.
     valid_indices: which of the 256 positions are valid measurements (208 of them)
@@ -479,7 +486,8 @@ _VALID_INDICES, _TWIST_INDICES = _build_untwist()
 
 
 def untwist_voltages(v_cal: NDArray) -> NDArray:
-    """Reorder 208 calibrated voltages from Draeger order to model order.
+    """
+    Reorder 208 calibrated voltages from Draeger order to model order.
 
     Input: (n_frames, 208) calibrated voltages in Draeger device order
     Output: (n_frames, 208) reordered voltages
@@ -493,21 +501,29 @@ def reconstruct_images(
     v_cal: NDArray,
     R: NDArray,
     pixel_map: NDArray,
+    ref_range: tuple[int, int] | None = None,
 ) -> NDArray:
-    """Reconstruct 32x32 images for all frames.
+    """
+    Reconstruct 32x32 images for all frames.
 
     Args:
         v_cal: (n_frames, 208) calibrated voltages
         R: (n_elements, 208) reconstruction matrix
         pixel_map: (1024, n_elements) element-to-pixel mapping
+        ref_range: (start, end) 0-based slice indices for reference frames.
+            If None, use all frames.
 
     Returns:
         (n_frames, 32, 32) pixel impedance images
+
     """
     n_frames = v_cal.shape[0]
 
-    # Reference: temporal mean
-    v_ref = v_cal.mean(axis=0)
+    # Reference: temporal mean of selected range (or all frames)
+    if ref_range is not None:
+        v_ref = v_cal[ref_range[0] : ref_range[1]].mean(axis=0)
+    else:
+        v_ref = v_cal.mean(axis=0)
 
     # Untwist
     v_reordered = untwist_voltages(v_cal)
@@ -545,7 +561,8 @@ def compute_roi_impedance(
     images: NDArray,
     rois: list[tuple[str, int, int]] | None = None,
 ) -> NDArray:
-    """Compute ROI impedance for each frame.
+    """
+    Compute ROI impedance for each frame.
 
     Returns (n_frames, n_rois) array.
     """
@@ -571,7 +588,8 @@ def detect_breaths(
     framerate: float,
     min_breath_seconds: float = 1.0,
 ) -> NDArray:
-    """Detect breathing cycles and assign MinMax flags.
+    """
+    Detect breathing cycles and assign MinMax flags.
 
     Returns (n_frames,) array with -1 (min), +1 (max), 0 (neither).
     """
@@ -594,6 +612,7 @@ def detect_breaths(
 @dataclass
 class TidalVariation:
     frame_idx: int  # frame index of the end-inspiration peak
+    valley_idx: int  # frame index of the preceding end-expiration valley
     time: float
     global_var: float
     local_vars: list[float]
@@ -635,6 +654,7 @@ def compute_tidal_variations(
         variations.append(
             TidalVariation(
                 frame_idx=max_idx,
+                valley_idx=min_idx,
                 time=timestamps[max_idx],
                 global_var=g_var,
                 local_vars=l_vars,
@@ -661,6 +681,13 @@ def _fmt_time(t: float) -> str:
     return f"{t:.10f}".replace(".", ",")
 
 
+def _seconds_to_hms(seconds: int) -> str:
+    """Format seconds as HH:MM:SS."""
+    mm, ss = divmod(seconds, 60)
+    hh, mm = divmod(mm, 60)
+    return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+
 def write_asc(
     path: Path,
     header: EITHeader,
@@ -672,34 +699,37 @@ def write_asc(
     minmax_flags: NDArray,
     tidal_vars: list[TidalVariation],
     rois: list[tuple[str, int, int]] | None = None,
+    ref_range: tuple[int, int] | None = None,
+    framerate: float = 30.0,
 ) -> None:
     """Write complete .asc file."""
     if rois is None:
         rois = ROI_DEFAULTS
 
     duration_s = (timestamps[-1] - timestamps[0]) * 24 * 60 * 60
-    baseline_end = int(duration_s)
-    baseline_mm = baseline_end // 60
-    baseline_ss = baseline_end % 60
-    baseline_hh = baseline_mm // 60
-    baseline_mm = baseline_mm % 60
+
+    # Baseline period: matches the reference range used for reconstruction
+    if ref_range is not None:
+        baseline_start_s = int(ref_range[0] / framerate)
+        baseline_end_s = int((ref_range[1] - 1) / framerate)
+    else:
+        baseline_start_s = 0
+        baseline_end_s = int(duration_s)
 
     with open(path, "w", encoding="latin-1") as f:
         # Header
-        f.write("---DraegerEIT Software V1.30---\n")
+        f.write("---eit_to_asc.py (NOT Draeger software)---\n")
         f.write("- Images, Tidal Variations & Waveforms -\n")
         f.write("\n")
         f.write(f"File:\t\t{header.filename}\n")
-        f.write(
-            f"Length:\t{n_frames} Images (1...{n_frames}) = {int(duration_s)} s\n"
-        )
+        f.write(f"Length:\t{n_frames} Images (1...{n_frames}) = {int(duration_s)} s\n")
         f.write("Artef.-Filter: \tOff\n")
         f.write("LP/BP-Filter: \tOff\n")
         f.write("Filter Cut-Off Frequ:\t- bpm\n")
         f.write("Rotation Angle:\t0\xb0\n")
         f.write(
-            f"Baseline-Data:\tPeriod: {baseline_hh:02d}:{baseline_mm:02d}:{baseline_ss:02d}  -  "
-            f"{baseline_hh:02d}:{baseline_mm:02d}:{baseline_ss:02d}\n"
+            f"Baseline-Data:\tPeriod: {_seconds_to_hms(baseline_start_s)}  -  "
+            f"{_seconds_to_hms(baseline_end_s)}\n"
         )
         f.write(f"ROI Size:\t{ROI_SIZE}x{ROI_SIZE} Pixels\n")
         f.write("Medibus Shift:\t0 msec\n")
@@ -715,27 +745,27 @@ def write_asc(
         _write_image_grid(f, images[dyn_idx])
         f.write("\n")
 
-        # Tidal Image (difference between first two tidal frames)
-        if len(tidal_vars) >= 2:
-            t_start = tidal_vars[0].frame_idx
-            t_end = tidal_vars[1].frame_idx
-            tidal_img = images[t_end] - images[t_start]
+        # Tidal Image (valley→peak of first breath = ventilation distribution)
+        if len(tidal_vars) >= 1:
+            valley_idx = tidal_vars[0].valley_idx
+            peak_idx = tidal_vars[0].frame_idx
+            tidal_img = images[peak_idx] - images[valley_idx]
             f.write(
-                f"Tidal Image, time:\t{_fmt_time(timestamps[t_start])}"
-                f"\t=>\t{_fmt_time(timestamps[t_end])}\n"
+                f"Tidal Image, time:\t{_fmt_time(timestamps[valley_idx])}"
+                f"\t=>\t{_fmt_time(timestamps[peak_idx])}\n"
             )
         else:
             tidal_img = np.zeros((32, 32))
-            f.write(f"Tidal Image, time:\t{_fmt_time(timestamps[0])}\t=>\t{_fmt_time(timestamps[0])}\n")
+            f.write(
+                f"Tidal Image, time:\t{_fmt_time(timestamps[0])}\t=>\t{_fmt_time(timestamps[0])}\n"
+            )
         f.write("\n")
         _write_image_grid(f, tidal_img)
         f.write("\n")
 
         # Tidal Variations table
         f.write("Tidal Variations\n")
-        roi_header = "\t".join(
-            [f"{name} (X:{cx} Y:{cy})" for name, cx, cy in rois]
-        )
+        roi_header = "\t".join([f"{name} (X:{cx} Y:{cy})" for name, cx, cy in rois])
         pct_header = "\t".join([f"{name} %" for name, _, _ in rois])
         f.write(f"Image\tTime\tGlobal\t{roi_header}\t{pct_header}\n")
         for tv in tidal_vars:
@@ -748,12 +778,8 @@ def write_asc(
         f.write("\n")
 
         # Waveform table
-        roi_col_header = "\t".join(
-            [f"{name} (X:{cx} Y:{cy})" for name, cx, cy in rois]
-        )
-        f.write(
-            f"Image\tTime\tGlobal\t{roi_col_header}\tMinMax\tEvent\tEventText\n"
-        )
+        roi_col_header = "\t".join([f"{name} (X:{cx} Y:{cy})" for name, cx, cy in rois])
+        f.write(f"Image\tTime\tGlobal\t{roi_col_header}\tMinMax\tEvent\tEventText\n")
         for i in range(n_frames):
             local_vals = "\t".join(_fmt_value(roi_imp[i, r]) for r in range(roi_imp.shape[1]))
             f.write(
@@ -778,9 +804,7 @@ def _write_image_grid(f, image: NDArray) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Convert Draeger .eit files to .asc format"
-    )
+    parser = argparse.ArgumentParser(description="Convert Draeger .eit files to .asc format")
     parser.add_argument("inputs", nargs="+", type=Path, help="Input .eit file(s)")
     parser.add_argument("-o", "--output", type=Path, required=True, help="Output .asc file")
     parser.add_argument(
@@ -788,6 +812,20 @@ def main():
         type=float,
         default=0.01,
         help="Tikhonov regularization parameter (default: 0.01)",
+    )
+    parser.add_argument(
+        "--ref-start",
+        type=int,
+        default=None,
+        metavar="FRAME",
+        help="First frame for reference/baseline (1-based). Default: first frame.",
+    )
+    parser.add_argument(
+        "--ref-end",
+        type=int,
+        default=None,
+        metavar="FRAME",
+        help="Last frame for reference/baseline (1-based, inclusive). Default: last frame.",
     )
     args = parser.parse_args()
 
@@ -797,34 +835,52 @@ def main():
     n_frames = len(data.timestamps)
     print(f"  Total: {n_frames} frames", file=sys.stderr)
 
-    # 2. Calibrate voltages
+    # 2. Compute reference range (convert 1-based inclusive to 0-based slice)
+    ref_range = None
+    if args.ref_start is not None or args.ref_end is not None:
+        ref_start = (args.ref_start - 1) if args.ref_start is not None else 0
+        ref_end = args.ref_end if args.ref_end is not None else n_frames
+        if ref_start < 0 or ref_end > n_frames or ref_start >= ref_end:
+            print(
+                f"Error: invalid reference range {ref_start + 1}-{ref_end} "
+                f"(recording has {n_frames} frames)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        ref_range = (ref_start, ref_end)
+        ref_duration_s = (ref_end - ref_start) / data.header.framerate
+        print(
+            f"  Reference: frames {ref_start + 1}-{ref_end} "
+            f"({ref_end - ref_start} frames, {ref_duration_s:.1f}s)",
+            file=sys.stderr,
+        )
+    else:
+        print(f"  Reference: all {n_frames} frames", file=sys.stderr)
+
+    # 3. Calibrate voltages
     print("Calibrating voltages...", file=sys.stderr)
     v_cal = calibrate_voltages(data.voltages)
 
-    # 3. Build reconstruction matrix
+    # 4. Build reconstruction matrix
     print("Building reconstruction model...", file=sys.stderr)
-    R, pixel_map, _, _ = build_reconstruction_matrix(
-        regularization=args.regularization
-    )
+    R, pixel_map, _, _ = build_reconstruction_matrix(regularization=args.regularization)
 
-    # 4. Reconstruct images
+    # 5. Reconstruct images
     print("Reconstructing images...", file=sys.stderr)
-    images = reconstruct_images(v_cal, R, pixel_map)
+    images = reconstruct_images(v_cal, R, pixel_map, ref_range=ref_range)
 
-    # 5. Compute impedance values
+    # 6. Compute impedance values
     print("Computing impedance...", file=sys.stderr)
     global_imp = compute_global_impedance(images)
     roi_imp = compute_roi_impedance(images)
 
-    # 6. Detect breaths and compute tidal variations
+    # 7. Detect breaths and compute tidal variations
     print("Detecting breaths...", file=sys.stderr)
     minmax_flags = detect_breaths(global_imp, data.header.framerate)
-    tidal_vars = compute_tidal_variations(
-        global_imp, roi_imp, data.timestamps, minmax_flags
-    )
+    tidal_vars = compute_tidal_variations(global_imp, roi_imp, data.timestamps, minmax_flags)
     print(f"  Detected {len(tidal_vars)} breath cycles", file=sys.stderr)
 
-    # 7. Write ASC
+    # 8. Write ASC
     print("Writing ASC file...", file=sys.stderr)
     write_asc(
         args.output,
@@ -836,6 +892,8 @@ def main():
         roi_imp,
         minmax_flags,
         tidal_vars,
+        ref_range=ref_range,
+        framerate=data.header.framerate,
     )
 
     print("Done.", file=sys.stderr)
