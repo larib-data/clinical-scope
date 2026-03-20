@@ -145,7 +145,7 @@ def _create_signal(
 
     plot_options = PlotOptions(
         plot_type=cst.PlotType.TIME_SERIES,
-        y_unit_name=cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO,
+        y_unit_name=cst.DatabaseOptions.Signal.DEFAULT_UNIT,
     )
 
     trace_options = TraceOptions(

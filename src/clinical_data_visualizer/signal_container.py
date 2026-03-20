@@ -98,7 +98,7 @@ class PlotOptions:
         """Initialize PlotOptions with default values."""
         if self.y_unit_name is None:
             self.y_unit_name = (
-                cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO
+                cst.DatabaseOptions.Signal.DEFAULT_UNIT
             )  # authorizing None here produce terrible results later
         if self.plot_type is None:
             logger.warning("PlotOptions.plot_type should not be initialized to None")
@@ -240,41 +240,36 @@ class Signal:
         plot_type: str,
     ) -> "TraceOptions":
         """Build trace options from database and source options."""
-        data_opts = database_options_specific.get(cst.DatabaseOptions.DATA, {})
-        data_numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
+        signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
+        sig = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
+        numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
+
         # PlotOptions fields
         plot_options_dict = source_options.get("plot_options", {})
         valid_keys_plot_options = {f.name for f in fields(PlotOptions)}
         additional_plot_options = {
             k: v for k, v in plot_options_dict.items() if k in valid_keys_plot_options
         }
-        name_signal = data_opts.get(cst.DatabaseOptions.Data.LABEL_CORRESPONDENCE, {}).get(
-            raw_signal_name, raw_signal_name
-        )
-        range_signal_plot = data_opts.get(cst.DatabaseOptions.Data.UNIT_RANGE, {}).get(
-            raw_signal_name
-        )
-        y_unit_name = data_opts.get(cst.DatabaseOptions.Data.UNIT_INFO, {}).get(
-            raw_signal_name, cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO
-        )
+        sig_cst = cst.DatabaseOptions.Signal
+        name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
+        range_signal_plot = sig.get(sig_cst.RANGE)
+        y_unit_name = sig.get(sig_cst.UNIT, sig_cst.DEFAULT_UNIT)
         y_axis_title_raw = f"{name_signal} ({y_unit_name or ''})"
         y_axis_title = helper.wrap_label(y_axis_title_raw, max_line_length=12)
+
         # TraceOptions fields
         trace_options_dict = source_options.get(cst.SourceOptions.TRACE_OPTIONS, {})
         valid_keys_trace_options = {f.name for f in fields(TraceOptions)}
         additional_trace_options = {
             k: v for k, v in trace_options_dict.items() if k in valid_keys_trace_options
         }
-        color = data_opts.get(cst.DatabaseOptions.Data.COLOR, {}).get(raw_signal_name)
-        plot_priority_default_db = data_numerics.get(cst.DatabaseOptions.Numerics.PRIORITY)
-        plot_priority = data_opts.get(cst.DatabaseOptions.Data.PRIORITY, {}).get(
-            raw_signal_name, plot_priority_default_db
-        )
-        visible = data_opts.get(cst.DatabaseOptions.Data.VISIBLE, {}).get(raw_signal_name, True)
-        line_dash_db = data_opts.get(cst.DatabaseOptions.Data.LINE_DASH, {}).get(raw_signal_name)
-        hover_template = data_opts.get(cst.DatabaseOptions.Data.HOVER_TEMPLATE, {}).get(
-            raw_signal_name
-        )
+        color = sig.get(sig_cst.COLOR)
+        plot_priority_default_db = numerics.get(cst.DatabaseOptions.Numerics.PRIORITY)
+        plot_priority = sig.get(sig_cst.PRIORITY, plot_priority_default_db)
+        visible = sig.get(sig_cst.VISIBLE, True)
+        line_dash_db = sig.get(sig_cst.LINE_DASH)
+        hover_template = sig.get(sig_cst.HOVER_TEMPLATE)
+
         plot_options = PlotOptions(
             y_axis_range=range_signal_plot,
             y_axis_title=y_axis_title,
@@ -313,21 +308,17 @@ class Signal:
         database_options_specific = database_options_specific or {}
         timing = {}
         # ---- Step 1: metadata extraction ---------------------------------------
-        data_opts = database_options_specific.get(cst.DatabaseOptions.DATA, {})
+        signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
+        sig = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
-        name_signal = data_opts.get(cst.DatabaseOptions.Data.LABEL_CORRESPONDENCE, {}).get(
-            raw_signal_name, raw_signal_name
-        )
-        unit_conversion_factor = data_opts.get(cst.DatabaseOptions.Data.UNIT_CONVERSION, {}).get(
-            raw_signal_name, cst.DatabaseOptions.DEFAULT_UNIT_FACTOR
-        )
+        sig_cst = cst.DatabaseOptions.Signal
+        name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
+        unit_conversion_factor = sig.get(sig_cst.UNIT_CONVERSION, sig_cst.DEFAULT_UNIT_CONVERSION)
         p_global = numerics.get(
             cst.DatabaseOptions.Numerics.PERIOD_RESAMPLING,
-            cst.DatabaseOptions.DEFAULT_PERIOD_RESAMPLING,
+            cst.DatabaseOptions.Numerics.DEFAULT_PERIOD_RESAMPLING,
         )
-        p = data_opts.get(cst.DatabaseOptions.Data.PERIOD_RESAMPLING, {}).get(
-            raw_signal_name, p_global
-        )
+        p = sig.get(sig_cst.PERIOD_RESAMPLING, p_global)
         # ---- Step 2-3: extract, prune, convert, resample ------------------------
         start = time.perf_counter()
         y_full = (
@@ -500,7 +491,7 @@ class Signal:
         )
         y_unit_name = self.trace_options.plot_options.y_unit_name
         y_unit_suffix = (
-            f" {y_unit_name}" if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ""
+            f" {y_unit_name}" if y_unit_name != cst.DatabaseOptions.Signal.DEFAULT_UNIT else ""
         )
 
         # Magic keyword in hover_template → pre-compute customdata strings
@@ -520,9 +511,7 @@ class Signal:
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
             _x_unit_suffix = (
-                f" {x_unit_name}"
-                if x_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO
-                else ""
+                f" {x_unit_name}" if x_unit_name != cst.DatabaseOptions.Signal.DEFAULT_UNIT else ""
             )
             # Keyword formatters (fraction, percentage, …) only cover one axis,
             # so they are intentionally ignored for loops to avoid asymmetric display.
