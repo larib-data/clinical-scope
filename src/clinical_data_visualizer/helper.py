@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
+from clinical_data_visualizer.database_options_parser import validate_database_options_structure
 from clinical_data_visualizer.database_options_xlsx import xlsx_to_database_options
 
 logger = logging.getLogger(__name__)
@@ -212,11 +213,17 @@ def load_database_options_from_path(path: Path) -> dict:
 
     suffix = path.suffix.lower()
     if suffix == ".json":
-        return load_options(path)
-    if suffix == ".xlsx":
-        return xlsx_to_database_options(path)
-    msg = f"Unsupported file extension '{suffix}'. Expected .json or .xlsx."
-    raise ValueError(msg)
+        db_options = load_options(path)
+    elif suffix == ".xlsx":
+        db_options = xlsx_to_database_options(path)
+    else:
+        msg = f"Unsupported file extension '{suffix}'. Expected .json or .xlsx."
+        raise ValueError(msg)
+
+    for w in validate_database_options_structure(db_options):
+        logger.warning("database_options validation: %s", w)
+
+    return db_options
 
 
 # ==================================================================================================
@@ -458,16 +465,19 @@ def find_datetime_col(columns: list[str]) -> str | None:
 def load_csv_with_datetime_index(
     file_path: str | Path, dt_col: str | None = None, **kwargs
 ) -> pd.DataFrame:
-    # First pass: peek at columns
-    df = pd.read_csv(file_path, nrows=0)
+    """
+    Load a CSV file and set a datetime column as the index.
 
-    if dt_col is None:
-        dt_col = find_datetime_col(df.columns.tolist())
-
+    When *dt_col* is ``None``, auto-detects the best datetime column from
+    headers (single pass: reads full file, then sets the index in-memory).
+    """
     if dt_col is not None:
-        df = pd.read_csv(file_path, index_col=dt_col, parse_dates=True, **kwargs)
-    else:
-        # Fall back to first column and hope for the best
-        df = pd.read_csv(file_path, index_col=0, parse_dates=True, **kwargs)
+        return pd.read_csv(file_path, index_col=dt_col, parse_dates=True, **kwargs)
 
-    return df
+    # Single-pass: read everything, then detect and set index in-memory
+    df = pd.read_csv(file_path, **kwargs)
+    detected = find_datetime_col(df.columns.tolist())
+    idx_col = detected if detected is not None else df.columns[0]
+
+    df[idx_col] = pd.to_datetime(df[idx_col])
+    return df.set_index(idx_col)

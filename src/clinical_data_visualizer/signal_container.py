@@ -281,7 +281,7 @@ class Signal:
             y_unit_name=y_unit_name,
             plot_type=plot_type,
             plot_priority=plot_priority,
-            # Any ohter field
+            # Any other field
             **additional_plot_options,
         )
         # line_dash from database_options takes precedence over source_options
@@ -293,7 +293,7 @@ class Signal:
             marker_color=color,
             visible=visible,
             hover_template=hover_template,
-            # Any ohter field
+            # Any other field
             **additional_trace_options,
         )
 

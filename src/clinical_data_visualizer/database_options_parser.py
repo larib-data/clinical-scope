@@ -36,6 +36,8 @@ _KEY_TO_FLAT = {
     "period_resampling": cst.DatabaseOptions.Data.PERIOD_RESAMPLING,
     "priority": cst.DatabaseOptions.Data.PRIORITY,
     "color": cst.DatabaseOptions.Data.COLOR,
+    "visible": cst.DatabaseOptions.Data.VISIBLE,
+    "line_dash": cst.DatabaseOptions.Data.LINE_DASH,
     "hover_template": cst.DatabaseOptions.Data.HOVER_TEMPLATE,
 }
 
@@ -71,10 +73,6 @@ def _signals_to_flat_data(signals: dict) -> dict:
             if key in _KEY_TO_FLAT:
                 flat_key = _KEY_TO_FLAT[key]
                 flat.setdefault(flat_key, {})[raw_name] = value
-            elif key == "visible":
-                flat.setdefault(cst.DatabaseOptions.Data.VISIBLE, {})[raw_name] = value
-            elif key == "line_dash":
-                flat.setdefault(cst.DatabaseOptions.Data.LINE_DASH, {})[raw_name] = value
             else:
                 logger.warning(
                     "Unknown key '%s' in signal '%s'. Known keys: %s",

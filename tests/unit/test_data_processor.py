@@ -1,4 +1,3 @@
-# TODO: review this file
 """
 Unit tests for the data-extraction layer.
 

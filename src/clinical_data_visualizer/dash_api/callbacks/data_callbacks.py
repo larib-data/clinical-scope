@@ -44,22 +44,39 @@ from clinical_data_visualizer.signal_container import PlotModel
 logger = logging.getLogger(__name__)
 
 # Server-side caches keyed by UUID — suitable for single-user desktop app.
+# Both caches grow during a session and are cleared on each process_visualization call.
+# Not bounded by size — acceptable for a single-user desktop app.
+# NOTE: these are distinct from the on-disk parquet cache (tdv_visu/ inside the patient folder)
+# which persists across sessions for quick_load. These are ephemeral, in-memory only.
 FIGURE_RESAMPLER_CACHE = {}  # FigureResampler objects for time-series zoom/pan
 LOOP_DATA_CACHE = {}  # Loop trace data (x, y, time arrays) for slider filtering
 
 
+def clear_visualization_caches() -> None:
+    """Clear all in-memory visualization caches (resampler + loop data)."""
+    FIGURE_RESAMPLER_CACHE.clear()
+    LOOP_DATA_CACHE.clear()
+
+
 def _parse_database_options_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
     """
-    Parse database options from decoded file bytes.
+    Parse database options from decoded file bytes and validate structure.
 
     Supports ``.json`` and ``.xlsx`` formats.
+    Runs ``validate_database_options_structure`` on the result regardless of source format.
     """
     if filename.lower().endswith(".json"):
-        return json.loads(decoded_content.decode("utf-8"))
-    if filename.lower().endswith(".xlsx"):
-        return xlsx_bytes_to_database_options(decoded_content)
-    msg = f"Unsupported file type '{Path(filename).suffix}'. Expected .json or .xlsx."
-    raise ValueError(msg)
+        db_options = json.loads(decoded_content.decode("utf-8"))
+    elif filename.lower().endswith(".xlsx"):
+        db_options = xlsx_bytes_to_database_options(decoded_content)
+    else:
+        msg = f"Unsupported file type '{Path(filename).suffix}'. Expected .json or .xlsx."
+        raise ValueError(msg)
+
+    for w in validate_database_options_structure(db_options):
+        logger.warning("database_options validation: %s", w)
+
+    return db_options
 
 
 @callback(
@@ -110,10 +127,6 @@ def load_db_options(
         decoded = base64.b64decode(content_string)
         database_options_dict = _parse_database_options_file(decoded, filename)
         logger.debug("loaded database_options_dict: %r", database_options_dict)
-
-        structure_warnings = validate_database_options_structure(database_options_dict)
-        for w in structure_warnings:
-            logger.warning("database_options validation: %s", w)
 
         ui_helper.save_cached_db_options(database_options_dict)
 
@@ -266,8 +279,7 @@ def process_visualization(
     )
     ui_helper.save_json(db_options, db_options_path)
 
-    FIGURE_RESAMPLER_CACHE.clear()
-    LOOP_DATA_CACHE.clear()
+    clear_visualization_caches()
 
     logger.info("Processing visualization request for: %s", validated_dict.get("data_folder", "?"))
     try:
