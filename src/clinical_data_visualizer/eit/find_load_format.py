@@ -12,15 +12,6 @@ from clinical_data_visualizer.datasource_base import DataSourceBase
 
 logger = logging.getLogger(__name__)
 
-# Safety check
-if options_naming.KEYWORD_FILE_EXTENSION in options_naming.FILE_NAME_DATAFRAME_LOADED:
-    msg = (
-        f"'KEYWORD_FILE_EXTENSION'({options_naming.KEYWORD_FILE_EXTENSION}) is in "
-        f"'FILE_NAME_DATAFRAME_LOADED'({options_naming.FILE_NAME_DATAFRAME_LOADED}). "
-        "This dangerous since we might override the raw data, or read the wrong one"
-    )
-    raise ValueError(msg)
-
 
 def _add_index_timestamp_to_eit_dataframe(
     df: pd.DataFrame,
@@ -249,32 +240,70 @@ def _parse_eit_asc_file_list(
     )
 
 
-def _add_columns_percentage(df: pd.DataFrame, percentage_reference_column: str) -> pd.DataFrame:
+def _add_columns_percentage(df: pd.DataFrame, reference_column: str) -> pd.DataFrame:
     """Add percentage columns relative to a reference column."""
     for column in df.columns:
-        if column != percentage_reference_column and is_numeric_dtype(df[column]):
-            df[f"%{column}"] = df[column] / df[percentage_reference_column]
+        if column != reference_column and is_numeric_dtype(df[column]):
+            df[f"%{column}"] = df[column] / df[reference_column]
+    return df
+
+
+def _add_columns_percentage_for_eit(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add percentage columns for EIT local* columns relative to global column.
+
+    This is a hardcoded implementation specific to EIT data processing.
+    Looks for columns starting with 'local' (case-insensitive) and creates
+    percentage columns relative to 'global' column (case-insensitive).
+    """
+    try:
+        # Check if we have a global column (case-insensitive)
+        global_col = next((col for col in df.columns if col.lower() == "global"), None)
+        if global_col is None:
+            logger.debug("No 'global' column found in EIT data - skipping percentage calculation")
+            return df
+
+        # Find all columns that start with 'local' (case-insensitive)
+        local_columns = [col for col in df.columns if col.lower().startswith("local")]
+
+        if not local_columns:
+            logger.debug("No columns starting with 'local' found in EIT data")
+            return df
+
+        # Create percentage columns for each local column
+        for local_col in local_columns:
+            if is_numeric_dtype(df[local_col]):
+                percentage_col = f"%{local_col}"
+                if percentage_col not in df.columns:
+                    try:
+                        df[percentage_col] = df[local_col] / df[global_col]
+                        logger.debug(
+                            "Created percentage column %s = %s / %s",
+                            percentage_col,
+                            local_col,
+                            global_col,
+                        )
+                    except Exception:
+                        logger.exception("Failed to create percentage column %s", percentage_col)
+                else:
+                    logger.debug("Percentage column %s already exists, skipping", percentage_col)
+            else:
+                logger.debug("Column %s is not numeric, skipping percentage calculation", local_col)
+
+    except Exception:
+        logger.exception("Error in EIT percentage calculation")
+
     return df
 
 
 class EITDataSource(DataSourceBase):
     """EIT datasource processor."""
 
-    DATASOURCE_NAME = "eit"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    def _find(cls, folder_path: Path) -> list[Path] | None:
-        return helper.find_file_list(
-            folder_path,
-            options_naming.KEYWORD_FILE_EXTENSION,
-            "eit file",
-        )
-
-    @classmethod
     @helper.time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path, **kwargs) -> pd.DataFrame:
+    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:
         database_options_specific = kwargs.get("database_options_specific", {})
         (
             _list_metadata,
@@ -286,8 +315,10 @@ class EITDataSource(DataSourceBase):
             file_path_list, database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
         )
 
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
-        cls._save_dataframe(df, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df, path_output)
         return df
 
     @classmethod
@@ -319,14 +350,8 @@ class EITDataSource(DataSourceBase):
         # Filter by datetime (filter_date=False for EIT)
         df = cls._filter_by_datetime(df, patient_options, filter_date=False)
 
-        # Add percentage columns if configured
-        reference_percentage_column = database_options_specific.get(
-            cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
-        ).get(options_naming.DatabaseOptionsAdditionalInformations.PERCENTAGE_REF_COLUMN)
-        if reference_percentage_column is not None:
-            df = _add_columns_percentage(df, reference_percentage_column)
-
-        return df
+        # Add percentage columns for local* columns relative to global (hardcoded for EIT)
+        return _add_columns_percentage_for_eit(df)
 
 
 # Module-level main function for backward compatibility

@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
+from clinical_data_visualizer.database_options_parser import validate_database_options_structure
+from clinical_data_visualizer.database_options_xlsx import xlsx_to_database_options
 
 logger = logging.getLogger(__name__)
 
@@ -37,121 +39,128 @@ def time_it(func: Callable) -> Callable:
 
 
 # ==================================================================================================
-def find_folder(folder_path: Path, keyword: str, description: str = "folder") -> Path | None:
+def save_df(df: pd.DataFrame, path: str | Path) -> None:
     """
-    Find a subfolder in `folder_path` whose name contains `keyword`.
+    Save *df* to *path* as CSV (``.csv``) or parquet (any other recognised extension).
 
-    Returns the folder path if exactly one match is found.
-    Returns None and logs warnings if not found or ambiguous.
+    Args:
+        df: DataFrame to save.
+        path: Destination path.  Extension must be ``.csv`` or ``.parquet``.
+
+    Raises:
+        ValueError: If *path* has an unsupported extension.
+
     """
-    matches = [f for f in folder_path.iterdir() if f.is_dir() and keyword in f.name.lower()]
-
-    if not matches:
-        logger.warning(
-            "⚠️ No %s with keyword '%s' found in folder '%s'.", description, keyword, folder_path
-        )
-        return None
-
-    if len(matches) > 1:
-        logger.warning(
-            "⚠️ Multiple %s with keyword '%s' found in folder '%s'. Cannot determine which to use.",
-            description,
-            keyword,
-            folder_path,
-        )
-        return None
-
-    selected = matches[0]
-    logger.info("📁 Selected %s: %s", description, selected)
-    return selected
+    path = Path(path)
+    if path.suffix == ".csv":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(path)
+    elif path.suffix == ".parquet":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path)
+    else:
+        msg = f"Unsupported file format '{path.suffix}'. Use '.csv' or '.parquet'."
+        raise ValueError(msg)
+    logger.info("Saved %d rows to %s", len(df), path)
 
 
 # ==================================================================================================
-def find_file(
-    folder_path: Path,
-    keyword: str,
-    data_source_name: str,
-    preferred_suffixes: list[str] | None = None,
-) -> Path | None:
-    """
-    Find a file in `folder_path` matching `keyword`.
+def folder_name_matches_keywords(folder_name: str, keywords: list[str]) -> bool:
+    """Check if *folder_name* contains every keyword (case-insensitive)."""
+    name_lower = folder_name.lower()
+    return all(kw.lower() in name_lower for kw in keywords)
 
-    Returns selected Path or None, and logs warnings if not found or ambiguous.
+
+# ==================================================================================================
+def find_files(
+    folder_path: Path,
+    extensions: list[str],
+    datasource_name: str,
+    *,
+    multi: bool = False,
+    keywords: list[str] | None = None,
+) -> list[Path] | Path | None:
     """
-    matches = [f for f in folder_path.iterdir() if keyword in f.name.lower()]
+    Find data files in *folder_path*.
+
+    When *multi* is ``True``, return **all** files matching *extensions*
+    (sorted alphabetically), or ``None`` if none found.
+
+    When *multi* is ``False``, return a **single** file (tiered disambiguation):
+
+    1. Collect files matching *extensions* (or all files if none given).
+    2. If one match, return it.
+    3. Deduplicate by stem: when multiple extensions exist for the same stem,
+       keep the most preferred one (earliest in *extensions*).
+    4. If one stem remains, return it.
+    5. If *keywords* is given, try each keyword in order to narrow the set;
+       return immediately if exactly one match remains.
+    6. Warn and return ``None`` if still ambiguous.
+    """
+    if multi:
+        ext_set = {e.lower() for e in extensions}
+        files = sorted(
+            f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in ext_set
+        )
+        if not files:
+            logger.debug("Could not find any %s files in folder '%s'", datasource_name, folder_path)
+            return None
+        logger.debug("Found %s: %s in folder %s", datasource_name, files, folder_path)
+        return files
+
+    # --- single-file mode ---
+    if extensions:
+        suffix_set = {s.lower() for s in extensions}
+        matches = [
+            f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in suffix_set
+        ]
+    else:
+        matches = [f for f in folder_path.iterdir() if f.is_file()]
 
     if not matches:
-        logger.warning(
-            "⚠️ No file for '%s' found in folder '%s' (keyword='%s').",
-            data_source_name,
-            folder_path,
-            keyword,
-        )
+        logger.warning("No file for '%s' found in folder '%s'.", datasource_name, folder_path)
         return None
 
     if len(matches) == 1:
-        selected_path = matches[0]
-    elif preferred_suffixes:
-        selected_path = None
-        for suffix in preferred_suffixes:
-            filtered = [f for f in matches if f.suffix.lower() == suffix.lower()]
-            if len(filtered) == 1:
-                selected_path = filtered[0]
-                break
+        logger.info("Selected file for '%s': %s", datasource_name, matches[0])
+        return matches[0]
 
-        if selected_path is None:
-            logger.warning(
-                "⚠️ Multiple '%s' files found in '%s' (keyword='%s'), "
-                "and suffix preferences could not resolve a unique match.",
-                data_source_name,
-                folder_path,
-                keyword,
-            )
-            return None
-    else:
-        logger.warning(
-            "⚠️ Multiple '%s' files found in '%s' (keyword='%s'), "
-            "and no suffix preference provided.",
-            data_source_name,
-            folder_path,
-            keyword,
-        )
-        return None
+    # Deduplicate by stem: keep most preferred extension per stem
+    if extensions:
+        suffix_rank = {s.lower(): i for i, s in enumerate(extensions)}
+        max_rank = len(extensions)
+        by_stem: dict[str, Path] = {}
+        for f in matches:
+            stem = f.stem.lower()
+            rank = suffix_rank.get(f.suffix.lower(), max_rank)
+            if stem not in by_stem or rank < suffix_rank.get(
+                by_stem[stem].suffix.lower(), max_rank
+            ):
+                by_stem[stem] = f
+        matches = list(by_stem.values())
 
-    logger.info("📄 Selected file for '%s': %s", data_source_name, selected_path)
-    return selected_path
+    if len(matches) == 1:
+        logger.info("Selected file for '%s': %s", datasource_name, matches[0])
+        return matches[0]
 
+    # Keyword filtering on stem (ordered by preference)
+    if keywords:
+        for kw in keywords:
+            kw_lower = kw.lower()
+            kw_matches = [f for f in matches if kw_lower in f.stem.lower()]
+            if len(kw_matches) == 1:
+                logger.info("Selected file for '%s': %s", datasource_name, kw_matches[0])
+                return kw_matches[0]
+            if kw_matches:
+                matches = kw_matches
 
-# ==================================================================================================
-def find_file_list(
-    folder_path: Path, extension: str | list[str], description: str
-) -> list[Path] | None:
-    """
-    Find and return all files in `folder_path` ending with `extension`, sorted alphabetically. Logs results using `description`.
-
-    folder_path: Folder to search in.
-    extension: File extension pattern (e.g., ".csv") or list of extensions (e.g., [".csv", ".parquet"])
-    description: Human-readable description for logging.
-
-    Return: Sorted list of matching Path objects, or None if none found.
-
-    """  # noqa: E501
-    # Normalize extension to always be a list
-    extensions = [extension] if isinstance(extension, str) else extension
-
-    # Collect all matching files across all extensions
-    files = []
-    for ext in extensions:
-        files.extend(folder_path.glob(f"*{ext}"))
-
-    # Sort alphabetically
-    files = sorted(files)
-
-    if not files:
-        logger.debug("Could not find any %s in folder '%s'", description, folder_path)
-        return None
-    logger.debug("Found %s: %s in folder %s", description, files, folder_path)
-    return files
+    logger.warning(
+        "Multiple '%s' files found in '%s', could not resolve a unique match: %s",
+        datasource_name,
+        folder_path,
+        [f.name for f in matches],
+    )
+    return None
 
 
 # ==================================================================================================
@@ -161,6 +170,60 @@ def load_options(path: Path | None) -> dict:
         with path.open(encoding="utf-8") as file:
             return json.load(file)
     return {}
+
+
+def build_patient_options(
+    patient_folder: str | Path,
+    path_patient_options: str | Path | None = None,
+) -> dict:
+    """
+    Build a patient_options dict from a folder path and an optional JSON file.
+
+    ``data_folder`` is always set from *patient_folder*.
+    Any other keys present in the JSON file are preserved.
+    """
+    opts = load_options(Path(path_patient_options)) if path_patient_options else {}
+    opts["data_folder"] = str(patient_folder)
+    return opts
+
+
+# ==================================================================================================
+def load_database_options_from_path(path: Path) -> dict:
+    """
+    Load database options from a JSON or XLSX file.
+
+    This is the canonical entry point for loading database options from a file
+    path, supporting both formats accepted by the Dash UI file upload.
+
+    Args:
+        path: Path to a ``.json`` or ``.xlsx`` database options file.
+
+    Returns:
+        Parsed database options dictionary.
+
+    Raises:
+        ValueError: If the file extension is not supported.
+        FileNotFoundError: If the path does not exist.
+
+    """
+
+    if not path.exists():
+        msg = f"Database options file not found: {path}"
+        raise FileNotFoundError(msg)
+
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        db_options = load_options(path)
+    elif suffix == ".xlsx":
+        db_options = xlsx_to_database_options(path)
+    else:
+        msg = f"Unsupported file extension '{suffix}'. Expected .json or .xlsx."
+        raise ValueError(msg)
+
+    for w in validate_database_options_structure(db_options):
+        logger.warning("database_options validation: %s", w)
+
+    return db_options
 
 
 # ==================================================================================================
@@ -354,7 +417,67 @@ def apply_timezone_to_dataframe(
                 default_timezone,
             )
 
+    if not isinstance(df.index, pd.DatetimeIndex):
+        logger.warning(
+            "apply_timezone_to_dataframe: index is not a DatetimeIndex (%s), skipping.",
+            type(df.index).__name__,
+        )
+        return df
+
     if df.index.tz is None:
         df.index = df.index.tz_localize(timezone)
 
     return df
+
+
+def find_datetime_col(columns: list[str]) -> str | None:
+    """Find the best datetime column by priority: exact matches, then partial matches."""
+    lower_map = {c.lower(): c for c in columns}
+
+    # Priority 1: exact matches (highest to lowest priority)
+    for name in ["datetime", "date_datetime", "time_datetime", "timestamp", "date"]:
+        if name in lower_map:
+            return lower_map[name]
+
+    # Priority 2: contains "datetime"
+    for col in columns:
+        if "datetime" in col.lower():
+            return col
+
+    # Priority 3: contains "timestamp"
+    for col in columns:
+        if "timestamp" in col.lower():
+            return col
+
+    # Priority 4: contains "date"
+    for col in columns:
+        if "date" in col.lower():
+            return col
+
+    # Priority 5: contains "time" (but not "timeout", "timer", etc.)
+    for col in columns:
+        if re.search(r"time(?!out|r|stamp)", col.lower()):
+            return col
+
+    return None
+
+
+def load_csv_with_datetime_index(
+    file_path: str | Path, dt_col: str | None = None, **kwargs
+) -> pd.DataFrame:
+    """
+    Load a CSV file and set a datetime column as the index.
+
+    When *dt_col* is ``None``, auto-detects the best datetime column from
+    headers (single pass: reads full file, then sets the index in-memory).
+    """
+    if dt_col is not None:
+        return pd.read_csv(file_path, index_col=dt_col, parse_dates=True, **kwargs)
+
+    # Single-pass: read everything, then detect and set index in-memory
+    df = pd.read_csv(file_path, **kwargs)
+    detected = find_datetime_col(df.columns.tolist())
+    idx_col = detected if detected is not None else df.columns[0]
+
+    df[idx_col] = pd.to_datetime(df[idx_col])
+    return df.set_index(idx_col)

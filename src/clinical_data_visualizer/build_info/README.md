@@ -125,4 +125,4 @@ exe = EXE(
 
 ## Version Info
 
-The app displays its version from `pyproject.toml` in the top-right corner. This is embedded at build time.
+The app displays its version from `pyproject.toml` in the top-right corner.

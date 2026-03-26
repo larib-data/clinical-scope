@@ -20,9 +20,17 @@ python src/clinical_data_visualizer/dash_api/core_api.py
 ```
 Opens at http://127.0.0.1:8050
 
-### Script Mode (HTML Export)
+### Scripts
 ```bash
-python scripts/script_visualization_patient_multiple_data_sources.py <patient_options.json> <database_options.json> [--debug]
+# Extract data without plots
+python scripts/process_patient_data.py patient /data/Patient01 --database-options db.json
+python scripts/process_patient_data.py batch /data/patients --output-folder /out
+
+# Inspect available columns per datasource
+python scripts/inspect_patient_data.py /data/Patient01 --database-options db.json --output-csv out.csv
+
+# Visualize (generates HTML)
+python scripts/visualization_patient_data.py /data/Patient01 --database-options db.json
 ```
 
 ## Project Structure
@@ -32,8 +40,9 @@ src/clinical_data_visualizer/
 ├── dash_api/               # Dash web application
 │   ├── core_api.py         # Main entry point, layout definition
 │   ├── ui_components.py    # UI component builders
-│   ├── callbacks/          # Dash callbacks (data & shape handling)
+│   ├── callbacks/          # Dash callbacks (data, shape & loop handling)
 │   ├── shape_manager.py    # Annotation shape management
+│   ├── styles.py           # Shared style constants (modal styles, etc.)
 │   ├── validation.py       # Input validation
 │   ├── helper_api.py       # API helper functions
 │   └── datetime_utils.py   # Datetime utilities
@@ -43,8 +52,11 @@ src/clinical_data_visualizer/
 │   └── find_load_format.py # Data loading & processing logic
 ├── datasource_base.py      # Abstract base class for datasources
 ├── datasource_list.py      # Registry of available datasources
+├── database_options_parser.py  # Normalize new/legacy JSON formats
+├── database_options_xlsx.py    # XLSX → dict conversion
+├── inspection.py           # Data inspection models & CSV export
 ├── signal_container.py     # Signal, PlotGroup, PlotModel data models
-├── wrapper.py              # Main processing logic
+├── wrapper.py              # Main processing logic (visualization, extraction, inspection)
 ├── constants.py            # Global constants and option classes
 ├── helper.py               # Utility functions
 ├── utilities.py            # Additional utilities
@@ -59,7 +71,9 @@ src/clinical_data_visualizer/
 - `fluxmed_signals` - FluxMed waveforms
 - `fluxmed_parameters` - FluxMed parameters
 - `servo_u` - Servo-U ventilator data
-- `mindray` - Mindray scope data
+- `mindray_scope` - Mindray scope data (.xml or .csv waveforms); folder keyword: `mindray`
+- `mindray_respi_waves` - Mindray respiratory high-frequency waveforms (.parquet or .csv)
+- `mindray_respi_numerics` - Mindray respiratory numeric parameters (.parquet or .csv)
 - `syringe` - Syringe pump data
 - `other` - Generic data source (auto-discovers CSV/parquet files)
 
@@ -78,6 +92,15 @@ Data source configuration:
 - Per-datasource: `field_display`, `data` (labels, units, colors), `grouped_fields`, `loop`
 
 See `example/option_files/` for reference configurations.
+
+### Local Config Cache
+When a custom `database_options` file (JSON or XLSX) is successfully uploaded via the UI, it is automatically saved to:
+```
+~/.clinical_data_visualizer/last_database_options.json
+```
+On next app start, a **"Reload last config"** button (grey) appears in the Database Options section, allowing one-click restore.
+
+**Privacy**: this file contains only signal metadata (labels, colors, units, field mappings) — no patient data or PHI. Safe to store in the home directory.
 
 ## Code Style
 
@@ -98,7 +121,7 @@ ruff format src/
 ### Layout Structure (`core_api.py`)
 The Dash app layout follows this hierarchy:
 - Root container: centered, max-width 1400px, 20px/32px padding
-- Database options section: upload button (blue) or "Default visualization" button (green)
+- Database options section: upload button (blue), "Reload last config" button (grey, hidden when no cache), or "Default visualization" button (green)
 - Patient options section: dynamically generated based on loaded database options
 - Process button: orange, prominent, triggers visualization
 - Shape controls: dropdown + Modify/Delete buttons (hidden until visualization succeeds)
@@ -114,8 +137,10 @@ The Dash app layout follows this hierarchy:
 ### Styling Patterns
 **Button Colors:**
 - Blue `#007bff`: Secondary actions (Upload config file)
+- Grey `#6c757d`: Secondary actions (Reload last config)
 - Green `#28a745`: Secondary actions (Default visualization)
 - Orange `#fd7e14`: Primary action (Process visualization, larger/bold)
+- Teal `#17a2b8`: Inspect data
 
 **Card Components:**
 - Border: `1px solid #dee2e6`
@@ -145,20 +170,33 @@ The `build_patient_options_ui` callback creates the patient options form:
 
 ### Adding a New Data Source
 1. Create a new module under `src/clinical_data_visualizer/<source_name>/`
-2. Implement `options.py` with source-specific constants
+2. Implement `options.py` with:
+   - `DATASOURCE_NAME`: Unique identifier (e.g., `"my_source"`)
+   - `EXPECTED_FOLDER_NAME` / `FOLDER_KEYWORDS`: For folder discovery
+   - `FILE_KEYWORDS: list[str]`: Ordered stem keywords for disambiguation tie-breaking (e.g., `["numerics"]`), or `[]`
+   - `FILE_EXTENSIONS: list[str]`: Accepted extensions **ordered by preference** (first = most preferred)
+   - `MULTI_FILE: bool`: `True` = load all matching files, `False` = pick one file (with tiered disambiguation: extension filter → stem dedup by preference → keyword filter)
+   - `FILE_NAME_DATAFRAME_LOADED`: Cache filename (e.g., `"my_source.parquet"`)
+   - Other source-specific constants (timezone, `source_options`, etc.)
 3. Create `find_load_format.py` inheriting from `DataSourceBase`:
-   - Implement `_find()`: Locate data files
+   - Set `OPTIONS_MODULE = options_naming` (class attributes auto-derived via `__init_subclass__`)
+   - Default `_find()` uses `FILE_KEYWORDS`, `FILE_EXTENSIONS`, `MULTI_FILE` — override only if needed
    - Implement `_load()`: Parse raw data to DataFrame
    - Optionally override `_format()` and `_extract_signals()`
 4. Register in `datasource_list.py` with `@add_main_module` decorator
 
 ### Data Flow
-1. User uploads `database_options.json` in Dash UI
+1. User uploads `database_options.json` (or `.xlsx`) in Dash UI
 2. User configures `patient_options` (folder, time range, etc.)
 3. `wrapper.main()` processes each enabled datasource
 4. Each datasource: find → load → format → extract signals
 5. Signals grouped into `PlotGroup` → assigned to `PlotModel`
 6. Plotly figures rendered in Dash or exported to HTML
+
+### Alternative Pipelines
+- **Extraction only** (`wrapper.extract_patient` / `batch_extract`): find → load → format, returns DataFrames without visualization
+- **Inspection** (`wrapper.inspect`): find → load → format, returns column metadata (`DataSourceInspection`) for each datasource
+- **Python API**: `from clinical_data_visualizer import extract_datasource, extract_patient, batch_extract`
 
 ## Building / Deployment
 

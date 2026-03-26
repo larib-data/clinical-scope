@@ -1,8 +1,11 @@
 from clinical_data_visualizer import constants as cst
 
+DATASOURCE_NAME = "eit"
 EXPECTED_FOLDER_NAME = "eit"
 FOLDER_KEYWORDS = ["eit"]
-KEYWORD_FILE_EXTENSION = ".asc"
+FILE_KEYWORDS = []
+FILE_EXTENSIONS = [".asc"]
+MULTI_FILE = True
 FILE_NAME_DATAFRAME_LOADED = "eit.parquet"
 
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
@@ -19,12 +22,30 @@ p_crete = "P_crete"
 
 
 DEFAULT_DATABASE_OPTIONS = {
-    "field_display": ["Local 1*", "Local 2*", "Local 3*", "Local 4*"],
+    "signals": {
+        "Global": {"label": "Global", "unit": "Ohms", "color": "black"},
+        "Local 1*": {"label": "Local 1", "unit": "Ohms", "color": "red"},
+        "Local 2*": {"label": "Local 2", "unit": "Ohms", "color": "blue"},
+        "Local 3*": {"label": "Local 3", "unit": "Ohms", "color": "green"},
+        "Local 4*": {"label": "Local 4", "unit": "Ohms", "color": "purple"},
+        "%Local 1*": {
+            "label": "Local 1 %",
+            "unit": "Proportion",
+            "color": "red",
+            "range": [-0.05, 1.05],
+        },
+        "%Local 2*": {"label": "Local 2 %", "unit": "Proportion", "color": "blue"},
+        "%Local 3*": {"label": "Local 3 %", "unit": "Proportion", "color": "green"},
+        "%Local 4*": {"label": "Local 4 %", "unit": "Proportion", "color": "purple"},
+    },
+    "grouped_fields": {
+        "Impedance value": ["Global", "Local 1*", "Local 2*", "Local 3*", "Local 4*"],
+        "Impedance": ["Global", "%Local 1*", "%Local 2*", "%Local 3*", "%Local 4*"],
+    },
 }
 
 
 class DatabaseOptionsAdditionalInformations:
-    PERCENTAGE_REF_COLUMN = "percentage_reference_column"
     TIMEZONE = "timezone"
 
 

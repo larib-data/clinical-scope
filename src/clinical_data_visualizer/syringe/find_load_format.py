@@ -14,23 +14,11 @@ logger = logging.getLogger(__name__)
 class SyringeDataSource(DataSourceBase):
     """Syringe datasource processor."""
 
-    DATASOURCE_NAME = "syringe"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-    SOURCE_OPTIONS = options_naming.source_options
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> Path | None:
-        return helper.find_file(
-            folder_path,
-            options_naming.KEYWORD_FILE,
-            "syringe file",
-            options_naming.ORDERED_PREFERED_RAW_FILES_EXTENSION,
-        )
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() == ".csv":
@@ -73,8 +61,10 @@ class SyringeDataSource(DataSourceBase):
             msg = f"Invalid file format: {file_path.name}. Only .csv or .parquet supported."
             raise NotImplementedError(msg)
 
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
-        cls._save_dataframe(df, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df, path_output)
         return df
 
 

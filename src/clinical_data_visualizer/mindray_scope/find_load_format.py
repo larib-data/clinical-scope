@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from defusedxml.ElementTree import parse as parse_xml
 
-import clinical_data_visualizer.mindray.options as options_naming
+import clinical_data_visualizer.mindray_scope.options as options_naming
 from clinical_data_visualizer import helper
 from clinical_data_visualizer.datasource_base import DataSourceBase
 
@@ -194,24 +194,18 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame({f"{wf_type}({wf_unit})": df["Value"].to_numpy()}, index=df["Time"])
 
 
-class MindRayDataSource(DataSourceBase):
-    """MindRay datasource processor."""
+class MindRayScopeDataSource(DataSourceBase):
+    """MindRay scope datasource processor."""
 
-    DATASOURCE_NAME = "mindray"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    def _find(cls, folder_path: Path) -> list[Path] | None:
-        return helper.find_file_list(
-            folder_path, options_naming.KEYWORD_EXTENSION, "Mindray files file"
-        )
-
-    @classmethod
     @helper.time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path, **kwargs: Any) -> pd.DataFrame:
+    def _load(
+        cls, file_path_list: list[Path], path_output: Path | None, **kwargs: Any
+    ) -> pd.DataFrame:
         database_options_specific = kwargs.get("database_options_specific", {})
-        extension_preference = options_naming.PREFERED_FILE_EXTENSION
+        extension_preference = options_naming.FILE_EXTENSIONS
 
         file_dict = {}
         for file_path in file_path_list:
@@ -288,14 +282,16 @@ class MindRayDataSource(DataSourceBase):
         df_list = [df.sort_index() for df in df_list]
         df = pd.concat(df_list, axis=1)
         df = df.sort_index()
+        df = df[~df.index.duplicated(keep="first")]
         if optimize_storage_dtypes:
             df = _optimize_df_types(df)
 
-        cls._save_dataframe(df, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df, path_output)
         return df
 
 
 # Module-level main function for backward compatibility
 def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
-    """Load and process MindRay data."""
-    return MindRayDataSource.main(patient_options, database_options_specific)
+    """Load and process MindRay scope data."""
+    return MindRayScopeDataSource.main(patient_options, database_options_specific)

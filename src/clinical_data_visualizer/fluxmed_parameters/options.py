@@ -1,9 +1,11 @@
 import clinical_data_visualizer.constants as cst
 
+DATASOURCE_NAME = "fluxmed_parameters"
 EXPECTED_FOLDER_NAME = "fluxmed_parameters"
 FOLDER_KEYWORDS = ["fluxmed", "parameters"]
-KEYWORD_FOLDER = "fluxmed"
-KEYWORD_FILE = "parameters"
+FILE_KEYWORDS = ["parameters"]
+FILE_EXTENSIONS = [".parquet", ".txt", ".csv"]
+MULTI_FILE = False
 
 FILE_NAME_DATAFRAME_LOADED = "fluxmed_param.parquet"
 

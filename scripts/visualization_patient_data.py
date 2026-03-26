@@ -13,8 +13,11 @@ logger = logging.getLogger(__name__)
 
 # ==================================================================================================
 def main(option_dict):
-    patient_options = helper.load_options(Path(option_dict["path_patient_options"]))
-    database_options = helper.load_options(Path(option_dict["path_database_options"]))
+    patient_options = helper.build_patient_options(
+        option_dict["patient_folder"], option_dict.get("path_patient_options")
+    )
+    path_db = option_dict.get("path_database_options")
+    database_options = helper.load_database_options_from_path(Path(path_db)) if path_db else None
 
     model = wrapper.main(
         patient_options=patient_options,
@@ -29,13 +32,29 @@ def main(option_dict):
 # ==================================================================================================
 def args_parser(args):
     parser = argparse.ArgumentParser(description="Time series visualization tool")
+    parser.add_argument("patient_folder", type=str, help="Path to the patient data folder.")
     parser.add_argument(
-        "path_patient_options", type=str, help="Path to the patient options json file"
+        "--patient-options",
+        type=str,
+        default=None,
+        dest="path_patient_options",
+        help="Path to a patient options JSON file (datetime range, quick_load, etc.).",
     )
     parser.add_argument(
-        "path_database_options", type=str, help="Path to the database options json file"
+        "--database-options",
+        type=str,
+        default=None,
+        dest="path_database_options",
+        help="Path to the database options file (.json or .xlsx). "
+        "Omit to use all available datasources with their defaults.",
     )
     parser.add_argument("--debug", action=argparse.BooleanOptionalAction, default=False, help="")
+    parser.add_argument(
+        "--verbose",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Print summary to stdout (default: off). Use --verbose to print.",
+    )
 
     args_namespace = parser.parse_args(args)
     options = vars(args_namespace)
