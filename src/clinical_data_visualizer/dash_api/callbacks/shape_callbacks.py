@@ -163,7 +163,7 @@ def save_annotations_and_shapes(
     folder_visu_path: str | None,
 ) -> None:
     """Save annotations and shapes to JSON file."""
-    if folder_visu_path:
+    if folder_visu_path and store is not None:
         path = Path(folder_visu_path) / "annotations.json"
         with path.open("w") as f:
             json.dump(store, f, indent=2, default=str)
@@ -187,7 +187,7 @@ def update_shape_options(store: dict[str, Any] | None) -> list[dict[str, Any]]:
 
             label = html.Span(
                 [
-                    html.Span("■", style={"color": square_color, "margin-right": "6px"}),
+                    html.Span("■", style={"color": square_color, "marginRight": "6px"}),
                     display_label,
                 ]
             )

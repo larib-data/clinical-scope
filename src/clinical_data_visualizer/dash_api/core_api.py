@@ -142,7 +142,7 @@ app.layout = html.Div(
             children=[
                 html.Div(
                     [
-                        html.H4("Edit Shape", style={"margin-bottom": "20px"}),
+                        html.H4("Edit Shape", style={"marginBottom": "20px"}),
                         html.Div(
                             [
                                 # Left column: name + checkbox
@@ -157,7 +157,7 @@ app.layout = html.Div(
                                                     style={"width": "100%"},
                                                 ),
                                             ],
-                                            style={"margin-bottom": "15px"},
+                                            style={"marginBottom": "15px"},
                                         ),
                                         html.Div(
                                             [
@@ -170,7 +170,7 @@ app.layout = html.Div(
                                                     value=[],
                                                 ),
                                             ],
-                                            style={"margin-bottom": "0px"},
+                                            style={"marginBottom": "0px"},
                                         ),
                                     ],
                                     style={
@@ -208,7 +208,7 @@ app.layout = html.Div(
                                 html.Button("Save", id="shape-save-button"),
                                 html.Button("Cancel", id="shape-cancel-button"),
                             ],
-                            style={"margin-top": "20px", "textAlign": "left"},
+                            style={"marginTop": "20px", "textAlign": "left"},
                         ),
                     ],
                     style=EDIT_SHAPE_POPUP_PANEL,

@@ -55,18 +55,17 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
         by_name = [s for s in all_signals if s.name == ref]
         if len(by_name) == 1:
             matched.append(by_name[0])
-            continue
-        if len(by_name) > 1:
+        elif len(by_name) > 1:
             logger.warning(
                 "Ambiguous display name '%s' matched %d signals -- "
                 "use 'datasource::raw_name' to disambiguate.",
                 ref,
                 len(by_name),
             )
-
-        # Mode 3: raw name fallback
-        by_raw = [s for s in all_signals if s.raw_name == ref]
-        matched.extend(by_raw)
+        else:
+            # Mode 3: raw name fallback (no display name matched)
+            by_raw = [s for s in all_signals if s.raw_name == ref]
+            matched.extend(by_raw)
 
     return matched
 
@@ -79,13 +78,6 @@ def main(
     all_signal_list = []
     already_used_in_group = []
     plot_group_list = []
-
-    # Collect global grouped fields so we do not plot them twice
-    global_groups = database_options_global.get(cst.DatabaseOptions.GLOBAL, {}).get(
-        cst.DatabaseOptions.GROUPED_FIELDS, {}
-    )
-    for global_grouped_field_list in global_groups.values():
-        already_used_in_group.extend(global_grouped_field_list)
 
     requested_sources = [
         ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
@@ -208,13 +200,23 @@ def main(
         cst.DatabaseOptions.GROUPED_FIELDS, {}
     )
 
+    global_grouped_raw_names: set[str] = set()
     for group_name, grouped_field_list in grouped_fields_global.items():
         try:
             signals = _resolve_signal_references(grouped_field_list, all_signal_list)
             if signals:
                 plot_group_list.append(PlotGroup(name=group_name, signals=signals))
+                global_grouped_raw_names.update(s.raw_name for s in signals)
         except Exception:
             logger.exception("⚠️ Failed to create global PlotGroup '%s'.", group_name)
+
+    # Remove individual PlotGroups for signals that are now in a global group
+    if global_grouped_raw_names:
+        plot_group_list = [
+            pg
+            for pg in plot_group_list
+            if len(pg.signals) > 1 or pg.signals[0].raw_name not in global_grouped_raw_names
+        ]
 
     # Handle global loop not implemented
     if cst.DatabaseOptions.LOOP in database_options_global.get(cst.DatabaseOptions.GLOBAL, {}):

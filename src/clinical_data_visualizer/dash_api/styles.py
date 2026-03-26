@@ -36,22 +36,22 @@ BUTTON_UPLOAD: dict = {
     **_BUTTON_BASE,
     "backgroundColor": COLOR_BLUE,
     "padding": "6px 16px",
-    "margin-right": "10px",
+    "marginRight": "10px",
 }
 
 BUTTON_RELOAD: dict = {
     **_BUTTON_BASE,
     "backgroundColor": COLOR_GREY,
     "padding": "6px 16px",
-    "margin-right": "10px",
-    "margin-left": "10px",
+    "marginRight": "10px",
+    "marginLeft": "10px",
 }
 
 BUTTON_DEFAULT_VIZ: dict = {
     **_BUTTON_BASE,
     "backgroundColor": COLOR_GREEN,
     "padding": "6px 16px",
-    "margin-left": "10px",
+    "marginLeft": "10px",
 }
 
 BUTTON_PROCESS: dict = {
@@ -168,9 +168,9 @@ EDIT_SHAPE_POPUP_STYLE: dict = {
 EDIT_SHAPE_POPUP_PANEL: dict = {
     "background": "white",
     "padding": "20px",
-    "border-radius": "10px",
+    "borderRadius": "10px",
     "width": "500px",
-    "max-width": "90vw",
+    "maxWidth": "90vw",
 }
 
 # ---------------------------------------------------------------------------

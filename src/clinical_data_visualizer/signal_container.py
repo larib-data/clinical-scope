@@ -693,12 +693,13 @@ class PlotModel:
                 x_data_type = type(group.signals[0].data.x)
                 if x_data_type in x_type_to_master_row:
                     master_row = x_type_to_master_row[x_data_type]
-                    fig.update_xaxes(matches=f"x{master_row}", row=plotly_row, col=plotly_col)
+                    master_ref = "x" if master_row == 1 else f"x{master_row}"
+                    fig.update_xaxes(matches=master_ref, row=plotly_row, col=plotly_col)
                 else:
                     x_type_to_master_row[x_data_type] = plotly_row
 
             if self.plot_type == cst.PlotType.TIME_SERIES:
-                fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
+                fig.update_yaxes(fixedrange=True, row=plotly_row)
 
         # Time-series figures use "x unified": one compact tooltip with a single time header
         # and one line per trace.  Format the x-axis header as HH:MM:SS (milliseconds would

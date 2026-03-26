@@ -59,7 +59,8 @@ def load_annotations(folder_visu_path: str | Path) -> dict[str, Any]:
     path = Path(folder_visu_path) / "annotations.json"
     if path.exists():
         with path.open() as f:
-            return json.load(f)
+            data = json.load(f)
+            return data if isinstance(data, dict) else {"by_figure": {}}
     return {"by_figure": {}}
 
 

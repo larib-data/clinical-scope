@@ -256,6 +256,8 @@ class DataSourceBase(ABC):
 
         Override this method for datasource-specific formatting needs.
         """
+        df = df.copy()
+
         # Apply timezone if needed (most datasources need this)
         if hasattr(cls.OPTIONS_MODULE, "DATA_SOURCE_DEFAULT_TIMEZONE"):
             df = cls._apply_timezone(

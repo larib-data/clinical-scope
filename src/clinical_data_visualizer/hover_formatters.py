@@ -22,6 +22,8 @@ Adding a new formatter
 That's it — signal_container.py picks it up automatically.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 
 # ---------------------------------------------------------------------------
@@ -44,7 +46,10 @@ def _fraction_str(value: float) -> str:
         return "0"
     if value >= 1 or value < 0:
         return f"{value:.4g}"
-    n = round(1.0 / value)
+    inv = 1.0 / value
+    if not np.isfinite(inv):
+        return f"{value:.4g}"
+    n = round(inv)
     return f"1/{n}" if n > 0 else ""
 
 
@@ -58,7 +63,7 @@ def _percentage_str(value: float) -> str:
 # Registry  {keyword → formatter}
 # ---------------------------------------------------------------------------
 
-_FORMATTERS: dict[str, callable] = {
+_FORMATTERS: dict[str, Callable[[float], str]] = {
     FRACTION: _fraction_str,
     PERCENTAGE: _percentage_str,
 }

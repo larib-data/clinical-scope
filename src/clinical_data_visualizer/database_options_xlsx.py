@@ -267,10 +267,9 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             # display column → field_display list
             # ----------------------------------------------------------
             display_raw = str(row.get("display", "")).strip()
-            if _is_truthy(display_raw):
-                fd = result[ds].setdefault("field_display", [])
-                if signal not in fd:
-                    fd.append(signal)
+            fd = result[ds].setdefault("field_display", [])
+            if _is_truthy(display_raw) and signal not in fd:
+                fd.append(signal)
 
             # ----------------------------------------------------------
             # groups column → collect membership for later resolution

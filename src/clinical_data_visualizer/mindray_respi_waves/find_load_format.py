@@ -104,7 +104,10 @@ class MindRayRespiWavesDataSource(DataSourceBase):
         # Build expanded DataFrame from concatenated arrays (avoids list-of-dicts overhead)
         df_expanded = pd.DataFrame(
             {
-                "event_timestamp": pd.DatetimeIndex(np.concatenate(timestamps_chunks), tz=tz),
+                "event_timestamp": pd.DatetimeIndex(
+                    np.concatenate(timestamps_chunks),
+                    tz=str(tz) if tz is not None else options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,
+                ),
                 "full_label_name": np.concatenate(labels_chunks),
                 "waveform_value": np.concatenate(values_chunks),
             }

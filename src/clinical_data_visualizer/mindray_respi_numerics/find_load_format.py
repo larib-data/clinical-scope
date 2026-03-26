@@ -38,6 +38,12 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
             msg = f"Unsupported extension: '{file_path}'"
             raise NotImplementedError(msg)
 
+        if df.empty:
+            logger.warning("[%s] Empty data file: %s", cls.DATASOURCE_NAME, file_path)
+            return pd.DataFrame(
+                index=pd.DatetimeIndex([], tz=options_naming.DATA_SOURCE_DEFAULT_TIMEZONE)
+            )
+
         # Create composite column for label+unit
         df["full_label_name"] = df["measurement_label"] + "-" + df["measurement_unit"]
 
