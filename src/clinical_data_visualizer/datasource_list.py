@@ -1,124 +1,136 @@
-import importlib
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from types import ModuleType
 from typing import ClassVar
 
 from clinical_data_visualizer.datasource_base import DataSourceBase
+from clinical_data_visualizer.eit import find_load_format as _eit
+from clinical_data_visualizer.fluxmed_parameters import find_load_format as _fluxmed_parameters
+from clinical_data_visualizer.fluxmed_signals import find_load_format as _fluxmed_signals
 from clinical_data_visualizer.helper import folder_name_matches_keywords
+from clinical_data_visualizer.mindray_respi_numerics import find_load_format as _mindray_respi_num
+from clinical_data_visualizer.mindray_respi_waves import find_load_format as _mindray_respi_waves
+from clinical_data_visualizer.mindray_scope import find_load_format as _mindray_scope
+from clinical_data_visualizer.other import find_load_format as _other
+from clinical_data_visualizer.philips_numerics import find_load_format as _philips_numerics
+from clinical_data_visualizer.philips_waves import find_load_format as _philips_waves
+from clinical_data_visualizer.servo_u import find_load_format as _servo_u
 from clinical_data_visualizer.signal_container import Signal
+from clinical_data_visualizer.syringe import find_load_format as _syringe
 
 # ==================================================================================================
 logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def add_main_module(cls: type) -> type:
-    module_path = f"clinical_data_visualizer.{cls.NAME}.find_load_format"
-    module = importlib.import_module(module_path)
+def add_main_module(find_load_format_module: ModuleType) -> Callable[[type], type]:
+    """Decorator factory: registers a datasource from its find_load_format module."""
 
-    options_path = f"clinical_data_visualizer.{cls.NAME}.options"
-    options = importlib.import_module(options_path)
+    def decorator(cls: type) -> type:
+        module = find_load_format_module
 
-    # Safety check: Validate NAME matches options.DATASOURCE_NAME
-    ds_name = getattr(options, "DATASOURCE_NAME", None)
-    if ds_name is not None and ds_name != cls.NAME:
-        msg = (
-            f"DataSource registry NAME={cls.NAME!r} does not match "
-            f"options.DATASOURCE_NAME={ds_name!r}"
+        cls.DATASOURCE_CLASS = next(
+            (
+                v
+                for v in vars(module).values()
+                if isinstance(v, type) and issubclass(v, DataSourceBase) and v is not DataSourceBase
+            ),
+            None,
         )
-        raise ValueError(msg)
 
-    # Assign the actual main function directly to the class
-    cls.MAIN_MODULE = module.main
-    cls.OPTIONS = options
+        options = cls.DATASOURCE_CLASS.OPTIONS_MODULE if cls.DATASOURCE_CLASS else None
 
-    # Find the DataSourceBase subclass in the module for inspection
+        # Safety check: Validate NAME matches options.DATASOURCE_NAME
+        ds_name = getattr(options, "DATASOURCE_NAME", None)
+        if ds_name is not None and ds_name != cls.NAME:
+            msg = (
+                f"DataSource registry NAME={cls.NAME!r} does not match "
+                f"options.DATASOURCE_NAME={ds_name!r}"
+            )
+            raise ValueError(msg)
 
-    cls.DATASOURCE_CLASS = next(
-        (
-            v
-            for v in vars(module).values()
-            if isinstance(v, type) and issubclass(v, DataSourceBase) and v is not DataSourceBase
-        ),
-        None,
-    )
+        # Assign the actual main function directly to the class
+        cls.MAIN_MODULE = module.main
+        cls.OPTIONS = options
 
-    return cls
+        return cls
+
+    return decorator
 
 
 class DataSource:
-    @add_main_module
+    @add_main_module(_eit)
     class EIT:
         NAME = "eit"
         DESCRIPTION = "EIT - PulmoVista"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_philips_waves)
     class PhilipsWaves:
         NAME = "philips_waves"
         DESCRIPTION = "Philips scope - waves"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_philips_numerics)
     class PhilipsNumerics:
         NAME = "philips_numerics"
         DESCRIPTION = "Philips scope - numerics"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_syringe)
     class Syringe:
         NAME = "syringe"
         DESCRIPTION = "Syringe"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_fluxmed_parameters)
     class FluxmedParameters:
         NAME = "fluxmed_parameters"
         DESCRIPTION = "Fluxmed - numerics"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_fluxmed_signals)
     class FluxmedSignals:
         NAME = "fluxmed_signals"
         DESCRIPTION = "Fluxmed - waves"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_servo_u)
     class ServoU:
         NAME = "servo_u"
         DESCRIPTION = "Servo U"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_mindray_scope)
     class MindRayScope:
         NAME = "mindray_scope"
         DESCRIPTION = "Mindray scope"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_mindray_respi_num)
     class MindRayRespiNumerics:
         NAME = "mindray_respi_numerics"
         DESCRIPTION = "Mindray Respi - numerics"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_mindray_respi_waves)
     class MindRayRespiWaves:
         NAME = "mindray_respi_waves"
         DESCRIPTION = "Mindray Respi - waves"
         MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
         OPTIONS: object
 
-    @add_main_module
+    @add_main_module(_other)
     class Other:
         NAME = "other"
         DESCRIPTION = "Other (generic)"
