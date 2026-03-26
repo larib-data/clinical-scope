@@ -12,6 +12,24 @@ from clinical_data_visualizer import logger_config
 
 # Import callbacks to register them with the app
 from clinical_data_visualizer.dash_api import callbacks  # noqa: F401
+from clinical_data_visualizer.dash_api.helper_api import get_cached_db_options_path
+from clinical_data_visualizer.dash_api.styles import (
+    ACTION_BUTTONS_ROW,
+    BUTTON_DEFAULT_VIZ,
+    BUTTON_DOWNLOAD_CSV,
+    BUTTON_INSPECT,
+    BUTTON_MODAL_CLOSE,
+    BUTTON_PROCESS,
+    BUTTON_RELOAD,
+    BUTTON_UPLOAD,
+    EDIT_SHAPE_POPUP_PANEL,
+    EDIT_SHAPE_POPUP_STYLE,
+    INSPECTION_MODAL_HEADER_ROW,
+    INSPECTION_MODAL_PANEL,
+    INSPECTION_MODAL_STYLE_HIDDEN,
+    ROOT_CONTAINER,
+    VERSION_BADGE,
+)
 
 # === API Version === #
 try:
@@ -27,25 +45,17 @@ logger.info("========================================")
 logger.info("New app run - Version %s", __version__)
 logger.info("========================================")
 
-
-EDIT_SHAPE_POPUP_STYLE = {
-    "display": "none",
-    "position": "fixed",
-    "top": "30%",
-    "left": "70%",
-    "transform": "translate(-50%, -50%)",
-    "zIndex": 1000,
-    "background": "white",
-    "padding": "16px",
-    "borderRadius": "8px",
-    "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
-}
-
 # Resolve assets folder: PyInstaller bundles files under sys._MEIPASS
 if getattr(sys, "frozen", False):
-    _assets_folder = str(Path(sys._MEIPASS) / "clinical_data_visualizer" / "dash_api" / "assets")
+    _assets_folder = str(Path(sys._MEIPASS) / "clinical_data_visualizer" / "dash_api" / "assets")  # noqa: SLF001
 else:
     _assets_folder = str(Path(__file__).parent / "assets")
+
+# Show "Reload last config" button only when a cached config exists at layout render time.
+_reload_btn_style = {
+    **BUTTON_RELOAD,
+    "display": "inline-block" if get_cached_db_options_path().exists() else "none",
+}
 
 app = Dash(
     __name__,
@@ -57,21 +67,7 @@ app = Dash(
 app.layout = html.Div(
     [
         # Version display in top right corner
-        html.Div(
-            f"API Version: {__version__}",
-            style={
-                "position": "absolute",
-                "top": "10px",
-                "right": "10px",
-                "color": "#666",
-                "fontSize": "12px",
-                "fontFamily": "monospace",
-                "backgroundColor": "#f0f0f0",
-                "padding": "4px 8px",
-                "borderRadius": "4px",
-                "border": "1px solid #ddd",
-            },
-        ),
+        html.Div(f"API Version: {__version__}", style=VERSION_BADGE),
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
@@ -79,31 +75,19 @@ app.layout = html.Div(
             [
                 dcc.Upload(
                     id="db-options-upload",
-                    children=html.Button(
-                        "Upload config file",
-                        style={
-                            "backgroundColor": "#007bff",
-                            "color": "white",
-                            "border": "none",
-                            "padding": "6px 16px",
-                            "borderRadius": "4px",
-                            "cursor": "pointer",
-                        },
-                    ),
+                    children=html.Button("Upload config file", style=BUTTON_UPLOAD),
                     multiple=False,
+                    accept=".json,.xlsx",
                 ),
-                html.Span(" or ", style={"margin": "0 10px", "fontSize": "14px"}),
+                html.Button(
+                    "Reload last config",
+                    id="reload-cached-db-button",
+                    style=_reload_btn_style,
+                ),
                 html.Button(
                     "Default visualization (all sources)",
                     id="default-viz-button",
-                    style={
-                        "backgroundColor": "#28a745",
-                        "color": "white",
-                        "border": "none",
-                        "padding": "6px 16px",
-                        "borderRadius": "4px",
-                        "cursor": "pointer",
-                    },
+                    style=BUTTON_DEFAULT_VIZ,
                 ),
             ],
             style={"display": "flex", "alignItems": "center"},
@@ -113,26 +97,29 @@ app.layout = html.Div(
         html.Hr(),
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
-        html.Button(
-            "Process visualization",
-            id="process-button",
-            style={
-                "backgroundColor": "#fd7e14",
-                "color": "white",
-                "border": "none",
-                "padding": "10px 28px",
-                "borderRadius": "4px",
-                "cursor": "pointer",
-                "fontSize": "16px",
-                "fontWeight": "bold",
-                "marginTop": "16px",
-                "marginBottom": "8px",
-            },
+        html.Div(
+            [
+                html.Button(
+                    "Process visualization",
+                    id="process-button",
+                    style=BUTTON_PROCESS,
+                ),
+                html.Button(
+                    "Inspect data",
+                    id="inspect-button",
+                    style=BUTTON_INSPECT,
+                ),
+            ],
+            style=ACTION_BUTTONS_ROW,
         ),
         html.Div(id="validation-errors"),
         dcc.Loading(
             type="default",
             children=html.Div(id="process-status"),
+        ),
+        dcc.Loading(
+            type="default",
+            children=html.Div(id="inspect-status"),
         ),
         html.Div(
             id="shape-controls",
@@ -155,7 +142,7 @@ app.layout = html.Div(
             children=[
                 html.Div(
                     [
-                        html.H4("Edit Shape", style={"margin-bottom": "20px"}),
+                        html.H4("Edit Shape", style={"marginBottom": "20px"}),
                         html.Div(
                             [
                                 # Left column: name + checkbox
@@ -170,7 +157,7 @@ app.layout = html.Div(
                                                     style={"width": "100%"},
                                                 ),
                                             ],
-                                            style={"margin-bottom": "15px"},
+                                            style={"marginBottom": "15px"},
                                         ),
                                         html.Div(
                                             [
@@ -183,7 +170,7 @@ app.layout = html.Div(
                                                     value=[],
                                                 ),
                                             ],
-                                            style={"margin-bottom": "0px"},
+                                            style={"marginBottom": "0px"},
                                         ),
                                     ],
                                     style={
@@ -221,24 +208,58 @@ app.layout = html.Div(
                                 html.Button("Save", id="shape-save-button"),
                                 html.Button("Cancel", id="shape-cancel-button"),
                             ],
-                            style={"margin-top": "20px", "textAlign": "left"},
+                            style={"marginTop": "20px", "textAlign": "left"},
                         ),
                     ],
-                    style={
-                        "background": "white",
-                        "padding": "20px",
-                        "border-radius": "10px",
-                        "width": "500px",
-                        "max-width": "90vw",
-                    },
+                    style=EDIT_SHAPE_POPUP_PANEL,
+                )
+            ],
+        ),
+        # Inspection modal
+        html.Div(
+            id="inspection-modal",
+            style=INSPECTION_MODAL_STYLE_HIDDEN,
+            children=[
+                html.Div(
+                    [
+                        # Header row
+                        html.Div(
+                            [
+                                html.H3("Data Inspection", style={"margin": 0}),
+                                html.Div(
+                                    [
+                                        html.Button(
+                                            "Download CSV",
+                                            id="inspect-download-btn",
+                                            style=BUTTON_DOWNLOAD_CSV,
+                                        ),
+                                        html.Button(
+                                            "Close",
+                                            id="inspection-modal-close",
+                                            style=BUTTON_MODAL_CLOSE,
+                                        ),
+                                    ],
+                                    style={"display": "flex", "gap": "8px"},
+                                ),
+                            ],
+                            style=INSPECTION_MODAL_HEADER_ROW,
+                        ),
+                        dcc.Loading(
+                            type="default",
+                            children=html.Div(id="inspection-modal-content"),
+                        ),
+                        dcc.Download(id="inspection-download"),
+                    ],
+                    style=INSPECTION_MODAL_PANEL,
                 )
             ],
         ),
         html.Hr(),
         html.Div(id="visualization-container"),
         dcc.Store(id="annotations-store", data={}),
+        dcc.Store(id="inspection-results-store", data=None),
     ],
-    style={"padding": "20px 32px", "maxWidth": "1400px", "margin": "0 auto"},
+    style=ROOT_CONTAINER,
 )
 
 HOST = "127.0.0.1"

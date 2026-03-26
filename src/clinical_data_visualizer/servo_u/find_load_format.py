@@ -141,20 +141,14 @@ def parse_file(
 class ServoUDataSource(DataSourceBase):
     """Servo U datasource processor."""
 
-    DATASOURCE_NAME = "servo_u"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> list[Path] | None:
-        return helper.find_file_list(folder_path, options_naming.KEYWORD_EXTENSION, "Servo U file")
 
     @classmethod
     @helper.time_it
     def _load(
         cls,
         file_path_list: list[Path],
-        path_output: Path,
+        path_output: Path | None,
         **kwargs: Any,  # noqa: ARG003
     ) -> pd.DataFrame:
         all_dfs = []
@@ -173,8 +167,10 @@ class ServoUDataSource(DataSourceBase):
             all_dfs.append(df_local)
 
         df = pd.concat(all_dfs)
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
-        cls._save_dataframe(df, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df, path_output)
         return df
 
     @classmethod

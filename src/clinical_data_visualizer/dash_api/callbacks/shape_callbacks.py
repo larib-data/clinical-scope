@@ -27,20 +27,7 @@ from dash import (
 from clinical_data_visualizer.dash_api import datetime_utils, shape_manager, ui_components
 from clinical_data_visualizer.dash_api.callbacks.data_callbacks import FIGURE_RESAMPLER_CACHE
 from clinical_data_visualizer.dash_api.helper_api import is_user_annotation
-
-# Style constant for the shape edit popup modal
-EDIT_SHAPE_POPUP_STYLE = {
-    "display": "none",
-    "position": "fixed",
-    "top": "30%",
-    "left": "70%",
-    "transform": "translate(-50%, -50%)",
-    "zIndex": 1000,
-    "background": "white",
-    "padding": "16px",
-    "borderRadius": "8px",
-    "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
-}
+from clinical_data_visualizer.dash_api.styles import EDIT_SHAPE_POPUP_STYLE
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +163,7 @@ def save_annotations_and_shapes(
     folder_visu_path: str | None,
 ) -> None:
     """Save annotations and shapes to JSON file."""
-    if folder_visu_path:
+    if folder_visu_path and store is not None:
         path = Path(folder_visu_path) / "annotations.json"
         with path.open("w") as f:
             json.dump(store, f, indent=2, default=str)
@@ -200,7 +187,7 @@ def update_shape_options(store: dict[str, Any] | None) -> list[dict[str, Any]]:
 
             label = html.Span(
                 [
-                    html.Span("■", style={"color": square_color, "margin-right": "6px"}),
+                    html.Span("■", style={"color": square_color, "marginRight": "6px"}),
                     display_label,
                 ]
             )

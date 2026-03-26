@@ -43,7 +43,9 @@ from multiple medical devices in a single unified interface.
 | FluxMed Signals | Waveform data from FluxMed respiratory monitors |
 | FluxMed Parameters | Parameter data from FluxMed monitors |
 | Servo-U | Ventilator data from Getinge Servo-U |
-| Mindray | Patient monitor data from Mindray scopes |
+| Mindray Scope | Patient monitor waveform data from Mindray scopes (.xml or .csv) |
+| Mindray Respi Waves | High-frequency respiratory waveforms from Mindray respiratory monitors |
+| Mindray Respi Numerics | Numeric respiratory parameters from Mindray respiratory monitors |
 | Syringe | Syringe pump infusion data |
 | Other (Generic) | Auto-discovers CSV or Parquet files with datetime columns |
 
@@ -72,7 +74,7 @@ The interface is organized top-to-bottom in the following order:
 
 1. **Database Options** -- Load or select a visualization configuration.
 2. **Patient Options** -- Configure data folder, time range, and per-source settings.
-3. **Process Button** -- Start the visualization.
+3. **Process / Inspect Buttons** -- Start the visualization or inspect available data.
 4. **Annotations Controls** -- Manage annotations (visible after processing).
 5. **Visualization Area** -- Interactive plots.
 
@@ -95,7 +97,9 @@ Patient1/
   fluxmed_signals/        FluxMed waveform data
   fluxmed_parameters/     FluxMed parameter data
   servo_u/                Servo-U ventilator data (.sta)
-  mindray/                Mindray scope data (.xml or .csv)
+  mindray_scope/          Mindray scope data (.xml or .csv)
+  mindray_respi_waves/    Mindray respiratory waveforms (.parquet or .csv)
+  mindray_respi_numerics/ Mindray respiratory parameters (.parquet or .csv)
   syringe/                Syringe pump data
   other/                  Generic data (.csv or .parquet)
   tdv_visu/               Auto-created: cached data and outputs
@@ -117,20 +121,37 @@ Folder names are **flexible** -- they just need to contain the required keywords
 | FluxMed Signals | `fluxmed` + `signals` | `fluxmed_signals`, `FluxMed-Signals` |
 | FluxMed Parameters | `fluxmed` + `parameters` | `fluxmed_parameters`, `FluxMed_Parameters` |
 | Servo-U | `servo` | `servo_u`, `Servo-U`, `SERVO` |
-| Mindray | `mindray` | `mindray`, `Mindray` |
+| Mindray Scope | `mindray` | `mindray_scope`, `mindray`, `Mindray` |
+| Mindray Respi Waves | `mindray` + `resp` + `wave` | `mindray_respi_waves`, `mindray_resp_waves` |
+| Mindray Respi Numerics | `mindray` + `resp` + `numeric` | `mindray_respi_numerics`, `mindray_resp_numerics` |
 | Syringe | `syringe` | `syringe`, `Syringe`, `syringe_pumps` |
 | Other | `other` | `other`, `Other` |
 
 ## Expected File Types
 
-- **Philips Waves**: `.parquet` files
-- **Philips Numerics**: Files containing "numerics" in the filename
-- **EIT**: `.asc` files
-- **FluxMed**: Files containing "signals" or "parameters" in the filename
-- **Servo-U**: `.sta` files
-- **Mindray**: `.xml` or `.csv` files
-- **Syringe**: Files containing "syringe" in the filename
-- **Other**: `.csv` or `.parquet` files (auto-discovers columns with datetime values)
+Each data source only considers files with specific extensions. When multiple formats are
+accepted, they are listed below in order of preference (most preferred first):
+
+| Data Source | Accepted Extensions | Discovery Mode |
+|---|---|---|
+| Philips Waves | `.parquet`, `.csv` | Single file |
+| Philips Numerics | `.parquet`, `.csv` | Single file |
+| EIT | `.asc` | All files |
+| FluxMed Signals | `.parquet`, `.txt`, `.csv` | Single file |
+| FluxMed Parameters | `.parquet`, `.txt`, `.csv` | Single file |
+| Servo-U | `.sta` | All files |
+| Mindray Scope | `.xml`, `.csv` | All files |
+| Mindray Respi Waves | `.parquet`, `.csv` | Single file |
+| Mindray Respi Numerics | `.parquet`, `.csv` | Single file |
+| Syringe | `.parquet`, `.csv` | Single file |
+| Other | `.csv`, `.parquet` | All files |
+
+**Single file** sources expect exactly one data file per folder. Files with unrecognized
+extensions are ignored. When the same data exists in multiple formats (e.g., `data.csv` and
+`data.parquet`), the most preferred format is automatically selected. If multiple unrelated
+files remain, the source is skipped and a warning is logged.
+
+**All files** sources load every matching file in the folder and concatenate them.
 
 ![Patient folder structure example](images/PatientFolderStructure.png){ width=100% }
 
@@ -144,18 +165,31 @@ Database options define **which data sources to enable** and **how signals shoul
 ## Option 1: Default Visualization (Quick Start)
 
 Click the green **"Default visualization (all sources)"** button. This automatically enables all
-9 data sources with their default display settings. No configuration file is needed.
+11 data sources with their default display settings. No configuration file is needed.
 
 This is the recommended starting point for new users.
 
 ![Default visualization button](images/DefaultVisuButton.png){ width=100% }
 
-## Option 2: Custom Configuration File
+## Option 2: Reload Last Config (Daily Workflow)
 
-Click the blue **"Upload config file"** button to load a custom `database_options.json` file.
+If a custom configuration was previously uploaded, a grey **"Reload last config"** button appears
+automatically on startup. Click it to instantly restore the last used configuration without browsing
+for files.
+
+The cached configuration is stored locally at `~/.clinical_data_visualizer/last_database_options.json`
+and contains only signal metadata (labels, colors, units, field mappings) — no patient data.
+
+## Option 3: Custom Configuration File
+
+Click the blue **"Upload config file"** button to load a custom configuration file.
+Two formats are accepted:
+
+- **`database_options.json`** — a JSON file following the structure described in Section 9.
+- **`database_options.xlsx`** — an Excel spreadsheet following the column layout described in
+  Section 9. The spreadsheet is automatically converted to the equivalent JSON structure on load.
+
 This gives you full control over which sources are enabled and how each signal is displayed.
-
-See Section 9 for a detailed description of the configuration file format.
 
 \newpage
 
@@ -215,6 +249,25 @@ A success message appears when processing completes. If no data is found for a s
 silently skipped.
 
 ![Processing visualization](images/ProcessVisuButton.png){ width=100% }
+
+## Inspecting Data Before Visualization
+
+Next to the "Process visualization" button, a teal **"Inspect data"** button allows you to
+examine available columns and data ranges **before** running the full visualization.
+
+Clicking it opens an inspection modal that shows, for each data source:
+
+- **Status**: Whether the source was found and loaded successfully.
+- **File path**: The detected data file or folder.
+- **Date ranges**: Both the raw (unfiltered) and filtered time ranges.
+- **Columns**: A table listing each signal with its raw name, whether it is configured in the
+  database options, and the number of data points (raw and filtered).
+
+This is useful for verifying that data files are correctly detected, checking which signals are
+available, and confirming the time range before committing to a full processing run.
+
+A **"Download CSV"** button in the modal header lets you export the inspection results as a CSV
+file for further analysis.
 
 \newpage
 
@@ -299,7 +352,8 @@ patient data.
 
 ## patient_options.json
 
-This file defines patient-specific settings.
+This file defines patient-specific settings. It is automatically saved to the `tdv_visu/`
+subfolder each time you click "Process visualization".
 
 ```json
 {
@@ -316,24 +370,26 @@ This file defines patient-specific settings.
 }
 ```
 
-| Key | Type | Description |
-|---|---|---|
-| `data_folder` | string | Path to the patient's root data folder |
-| `datetime_start` | string or null | Start of the time window (`YYYY-MM-DD HH:MM:SS`) |
-| `datetime_end` | string or null | End of the time window |
-| `quick_load` | boolean | Reuse cached parquet files |
-| `<source_name>` | object | Per-source options (e.g., `time_shift`, `day`) |
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `data_folder` | string | — | Path to the patient's root data folder (required) |
+| `datetime_start` | string or null | null | Start of the time window (`YYYY-MM-DD HH:MM:SS`). Leave empty to use all available data. |
+| `datetime_end` | string or null | null | End of the time window. Leave empty to use all available data. |
+| `quick_load` | boolean | false | Reuse previously cached `.parquet` files in `tdv_visu/` |
+| `<source_name>` | object | — | Per-source options block (e.g., `time_shift`, `day`) |
 
 ## database_options.json
 
-This file controls which data sources are active and how signals are displayed.
+This file controls which data sources are active and how each signal is displayed. A snapshot is
+automatically saved to `tdv_visu/database_options.json` each time you click
+"Process visualization".
 
 ### Top-Level Structure
 
 ```json
 {
     "global": {
-        "grouped_fields": { "Group Name": ["signal1", "signal2"] }
+        "grouped_fields": { "Pressure": ["ART", "PNIs", "PNIm", "PNId"] }
     },
     "philips_waves": { ... },
     "philips_numerics": { ... },
@@ -341,32 +397,137 @@ This file controls which data sources are active and how signals are displayed.
 }
 ```
 
-Each data source key is optional -- only include the sources you want to enable.
+Each data source key is optional — only include the sources you want to enable. The presence of a
+source key in this file is what activates that source; removing it disables it entirely.
 
-### Per-Source Fields
+### Per-Source Block Structure
 
-| Key | Description |
-|---|---|
-| `field_display` | Array of signal names to show (others are hidden) |
-| `data.label_correspondence` | Map raw signal names to display labels |
-| `data.unit_conversion` | Multiplication factors for unit conversion |
-| `data.unit_info` | Display unit strings (e.g., "mmHg", "cmH2O") |
-| `data.unit_range` | Fixed Y-axis ranges as `[min, max]` |
-| `data.color` | Custom colors per signal |
-| `data.priority` | Plot ordering priority (lower = higher on page) |
-| `data.period_resampling` | Resampling period in seconds |
-| `grouped_fields` | Group signals onto the same subplot |
-| `loop` | Define PV-loop plots (e.g., `{"pv_loop": ["Pressure", "Volume"]}`) |
-| `numerics.period_resampling` | Resampling for numeric parameters |
-| `numerics.priority` | Plot priority for numerics |
+```json
+"philips_waves": {
+    "field_display": ["ART", "PAP", "P-aer"],
+    "signals": {
+        "ART": {
+            "label": "Arterial pressure",
+            "unit": "mmHg",
+            "unit_conversion": 1.0,
+            "range": [-10, 200],
+            "priority": 1.0,
+            "color": "red",
+            "visible": true,
+            "line_dash": "solid",
+            "period_resampling": 0.2,
+            "hover_template": null
+        }
+    },
+    "grouped_fields": {
+        "Respiratory": ["P-aer", "CrbVol"]
+    },
+    "loop": {
+        "pv_loop": ["P-aer", "CrbVol"]
+    },
+    "numerics": {
+        "period_resampling": 0.5,
+        "priority": 1.0
+    },
+    "additional_informations": {
+        "timezone": "Europe/Paris"
+    }
+}
+```
+
+### Per-Source Fields Reference
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `field_display` | list of strings | all signals | Signal names to display. Signals absent from this list are loaded but hidden. Omit to show all. |
+| `signals` | object | `{}` | Per-signal display options (see below). |
+| `grouped_fields` | object | `{}` | Groups of signals to overlay on the same subplot, within this datasource. |
+| `loop` | object | `{}` | PV-loop definitions: `{"loop_name": ["x_signal", "y_signal"]}`. |
+| `numerics.period_resampling` | float | source default | Resampling period in seconds applied to all numeric parameters of this datasource. |
+| `numerics.priority` | float | source default | Plot ordering priority for numerics (lower value = higher on page). |
+| `additional_informations.timezone` | string | source default | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only supported by compatible datasources (e.g., EIT, Mindray). |
+
+### Per-Signal Fields Reference (`signals.<signal_name>`)
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `label` | string | signal name | Display label shown on plot axes and legends. |
+| `unit` | string | `""` | Unit string shown on the Y-axis (e.g., `"mmHg"`, `"cmH2O"`). |
+| `unit_conversion` | float | `1.0` | Multiplication factor applied to raw values for unit conversion. |
+| `range` | `[min, max]` or null | auto | Fixed Y-axis range. Either bound can be `null` for auto-scaling. |
+| `priority` | float | source default | Plot ordering priority (lower = higher on page). Signals with the same priority share a subplot. |
+| `color` | string | auto | Line color (any CSS color string, e.g., `"red"`, `"#1f77b4"`). |
+| `visible` | boolean | `true` | Set to `false` to load the signal but hide it from the plot by default. |
+| `line_dash` | string | `"solid"` | Line style: `"solid"`, `"dash"`, `"dot"`, `"dashdot"`. |
+| `period_resampling` | float | source default | Resampling period in seconds for this specific signal. |
+| `hover_template` | string | `null` | Custom hover tooltip. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is passed directly to Plotly as a `hovertemplate`. Leave empty for the default compact display. |
 
 ### Global Fields
 
+```json
+"global": {
+    "grouped_fields": {
+        "Pressure": ["ART", "PNIs", "PNIm", "PNId"]
+    }
+}
+```
+
 | Key | Description |
 |---|---|
-| `global.grouped_fields` | Group signals from different data sources onto the same subplot |
+| `global.grouped_fields` | Groups signals from **different** datasources onto the same subplot. Signal names must be unique across the datasources involved. |
 
-See `example/option_files/` in the source repository for complete example files.
+## database_options.xlsx
+
+As an alternative to the JSON format, you can provide the same configuration as an Excel
+spreadsheet. The file must contain a sheet named **`signals`** and optionally a sheet named
+**`loops`**.
+
+### `signals` sheet
+
+One row per signal. The columns `datasource` and `signal` are mandatory; all others are optional
+and fall back to the defaults listed in the per-signal table above.
+
+Use `*` in the `signal` column to write a **sentinel row** that sets datasource-level defaults
+(e.g., a common `period_resampling` or `timezone`) without defining a specific signal.
+Column names are case-insensitive (e.g., `Label`, `UNIT`, `Hover_Template` all work).
+
+The **Scope** column below indicates where each field is meaningful:
+
+- **Both** — valid in sentinel (`*`) and per-signal rows
+- **Signal** — per-signal rows only; ignored in sentinel rows
+- **Sentinel** — sentinel (`*`) rows only; a warning is logged if set in a per-signal row
+
+| Column | Required | Scope | Description |
+|---|---|---|---|
+| `datasource` | Yes | Both | Data source name (e.g., `philips_waves`, `eit`). |
+| `signal` | Yes | Both | Raw signal name. Use `*` for a sentinel row that sets datasource-level defaults. |
+| `label` | No | Signal | Display label. Defaults to the signal name if empty or identical. |
+| `unit` | No | Signal | Unit string (e.g., `mmHg`). |
+| `unit_conversion` | No | Signal | Numeric multiplier for unit conversion. |
+| `range_min` | No | Signal | Minimum Y-axis value. |
+| `range_max` | No | Signal | Maximum Y-axis value. |
+| `priority` | No | Both | Plot priority (float). In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. |
+| `color` | No | Signal | CSS color string. |
+| `visible` | No | Signal | `yes` / `no` (default: `yes`). Accepts `yes`, `1`, `true`, `oui`, `vrai` (case-insensitive). |
+| `line_dash` | No | Signal | `solid`, `dash`, `dot`, `dashdot`. |
+| `period_resampling` | No | Both | Resampling period in seconds. In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. |
+| `hover_template` | No | Signal | Hover tooltip format. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is forwarded directly to Plotly as a `hovertemplate`. |
+| `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. |
+| `groups` | No | Signal | Semicolon-separated group names (e.g., `Respiratory;Pressure`). Groups within one datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
+| `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. |
+
+### `loops` sheet (optional)
+
+One row per PV-loop definition. If the sheet is absent or malformed it is silently skipped.
+
+| Column | Required | Description |
+|---|---|---|
+| `datasource` | Yes | Data source that owns both signals. |
+| `loop_name` | Yes | Name for the loop plot (e.g., `pv_loop`). |
+| `x_signal` | Yes | Signal name for the X axis. |
+| `y_signal` | Yes | Signal name for the Y axis. |
+
+See `example/option_files/` in the source repository for complete example files in both formats.
 
 \newpage
 
@@ -388,7 +549,12 @@ If the visualization is empty or a data source shows no signals:
 
 - Verify that the **data folder path** is correct and accessible.
 - Check that subfolders follow the **naming conventions** (see Section 3).
-- Ensure the subfolder contains files in the **expected format** for that data source.
+- Ensure the subfolder contains files with one of the **accepted extensions** for that data
+  source (see Section 3). Files with unrecognized extensions are silently ignored.
+- For **single-file** sources: if the folder contains multiple unrelated data files (different
+  stems), the source is skipped. Keep only one data file per folder, or provide the same data
+  in multiple formats (e.g., `data.csv` + `data.parquet`) and the preferred format will be
+  selected automatically.
 - Check that the data source is **enabled** in your database options (or use "Default
   visualization" to enable all).
 
@@ -416,14 +582,16 @@ If signals from different sources appear misaligned in time:
 
 # Appendix: Supported Data Sources
 
-| Source | Module Name | Keywords | File Types | Typical Signals |
-|---|---|---|---|---|
-| Philips Waves | `philips_waves` | `philips`, `waves` | `.parquet` | ART, PAP, CO2, respiratory pressure/volume |
-| Philips Numerics | `philips_numerics` | `philips`, `numerics` | numerics in name | Heart rate, SpO2, FiO2, blood pressure |
-| EIT | `eit` | `eit` | `.asc` | Global/local impedance, impedance percentages |
-| FluxMed Signals | `fluxmed_signals` | `fluxmed`, `signals` | signals in name | Respiratory waveforms |
-| FluxMed Parameters | `fluxmed_parameters` | `fluxmed`, `parameters` | parameters in name | Respiratory parameters |
-| Servo-U | `servo_u` | `servo` | `.sta` | Ventilator waveforms and settings |
-| Mindray | `mindray` | `mindray` | `.xml`, `.csv` | Monitor waveforms and parameters |
-| Syringe | `syringe` | `syringe` | syringe in name | Infusion rates and volumes |
-| Other | `other` | `other` | `.csv`, `.parquet` | Any time-series with datetime columns |
+| Source | Module Name | Keywords | Accepted Extensions | Mode | Typical Signals |
+|---|---|---|---|---|---|
+| Philips Waves | `philips_waves` | `philips`, `waves` | `.parquet`, `.csv` | Single | ART, PAP, CO2, respiratory pressure/volume |
+| Philips Numerics | `philips_numerics` | `philips`, `numerics` | `.parquet`, `.csv` | Single | Heart rate, SpO2, FiO2, blood pressure |
+| EIT | `eit` | `eit` | `.asc` | All | Global/local impedance, impedance percentages |
+| FluxMed Signals | `fluxmed_signals` | `fluxmed`, `signals` | `.parquet`, `.txt`, `.csv` | Single | Respiratory waveforms |
+| FluxMed Parameters | `fluxmed_parameters` | `fluxmed`, `parameters` | `.parquet`, `.txt`, `.csv` | Single | Respiratory parameters |
+| Servo-U | `servo_u` | `servo` | `.sta` | All | Ventilator waveforms and settings |
+| Mindray Scope | `mindray_scope` | `mindray` | `.xml`, `.csv` | All | Monitor waveforms (ECG, SpO2, pressure) |
+| Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single | High-frequency respiratory waveforms |
+| Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single | Respiratory parameters (Vt, RR, PEEP, etc.) |
+| Syringe | `syringe` | `syringe` | `.parquet`, `.csv` | Single | Infusion rates and volumes |
+| Other | `other` | `other` | `.csv`, `.parquet` | All | Any time-series with datetime columns |

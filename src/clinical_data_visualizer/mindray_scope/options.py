@@ -1,12 +1,13 @@
 import clinical_data_visualizer.constants as cst
 
-EXPECTED_FOLDER_NAME = "mindray"
-FOLDER_KEYWORDS = ["mindray"]
-KEYWORD_FOLDER = "mindray"
-KEYWORD_EXTENSION = [".xml", ".csv"]
-PREFERED_FILE_EXTENSION = [".xml", ".csv"]
+DATASOURCE_NAME = "mindray_scope"
+EXPECTED_FOLDER_NAME = "mindray_scope"
+FOLDER_KEYWORDS = ["mindray", "scope"]
+FILE_KEYWORDS = []
+FILE_EXTENSIONS = [".xml", ".csv"]
+MULTI_FILE = True
 
-FILE_NAME_DATAFRAME_LOADED = "mindray_waves.parquet"
+FILE_NAME_DATAFRAME_LOADED = "mindray_scope_waves.parquet"
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
 

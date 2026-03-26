@@ -4,6 +4,7 @@ LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"
 
 DEFAULT_NAME_VISUALIZATION = "visualization.html"
+DEFAULT_NAME_DATABASE_OPTIONS = "database_options.json"
 DEFAULT_QUICK_LOAD = False
 
 
@@ -58,8 +59,25 @@ class PatientOptions:
     # pass
 
 
-# From subfield of databse options, depending of datasource
 class DatabaseOptions:
+    """
+    Constants for the database_options dict structure.
+
+    Mirrors the JSON/XLSX schema::
+
+        {
+            "global": {"grouped_fields": {...}},
+            "<datasource_name>": {
+                "signals": {"<raw_name>": {"label": ..., "unit": ..., ...}},
+                "field_display": [...],
+                "numerics": {"period_resampling": ..., "priority": ...},
+                "grouped_fields": {...},
+                "loop": {...},
+                "additional_informations": {"timezone": ...},
+            },
+        }
+    """
+
     NAME = "database_options"
     API_TYPE = ApiType.PATH_FILE
     DEFAULT = ""
@@ -67,42 +85,63 @@ class DatabaseOptions:
     DESCRIPTION = "Path to database options (.json)"
     EXTENSION = ".json"
 
-    GLOBAL = "global"  # Only main field for database_options present here, others are directly the class name from datasource file  # noqa: E501
+    GLOBAL = "global"
 
-    DEFAULT_PERIOD_RESAMPLING = 1
-    DEFAULT_UNIT_FACTOR = 1.0
-
+    # --- Datasource section keys ---
+    SIGNALS = "signals"
     FIELD_DISPLAY = "field_display"
-
-    DATA = "data"
-
-    class Data:
-        LABEL_CORRESPONDENCE = "label_correspondence"
-        UNIT_CONVERSION = "unit_conversion"
-        UNIT_RANGE = "unit_range"
-        UNIT_INFO = "unit_info"
-        DEFAULT_UNIT_INFO = "-"
-        COLOR = "color"
-        PRIORITY = "priority"
-        PERIOD_RESAMPLING = "period_resampling"
-
     NUMERICS = "numerics"
+    ADDITIONAL_INFORMATIONS = "additional_informations"
+    GROUPED_FIELDS = "grouped_fields"
+    LOOP = "loop"
 
+    KNOWN_SECTION_KEYS = frozenset(
+        {SIGNALS, FIELD_DISPLAY, NUMERICS, ADDITIONAL_INFORMATIONS, GROUPED_FIELDS, LOOP}
+    )
+
+    # --- Per-signal configuration (inside "signals" → "<raw_name>" dict) ---
+    class Signal:
+        LABEL = "label"
+        UNIT = "unit"
+        UNIT_CONVERSION = "unit_conversion"
+        RANGE = "range"
+        PERIOD_RESAMPLING = "period_resampling"
+        PRIORITY = "priority"
+        COLOR = "color"
+        VISIBLE = "visible"
+        LINE_DASH = "line_dash"
+        HOVER_TEMPLATE = "hover_template"
+
+        DEFAULT_LABEL = None  # default = raw_name
+        DEFAULT_UNIT = "-"
+        DEFAULT_UNIT_CONVERSION = 1.0
+
+        KNOWN_KEYS = frozenset(
+            {
+                LABEL,
+                UNIT,
+                UNIT_CONVERSION,
+                RANGE,
+                PERIOD_RESAMPLING,
+                PRIORITY,
+                COLOR,
+                VISIBLE,
+                LINE_DASH,
+                HOVER_TEMPLATE,
+            }
+        )
+
+    # --- Datasource-level numerics defaults ---
     class Numerics:
         PRIORITY = "priority"
         PERIOD_RESAMPLING = "period_resampling"
 
-    ADDITIONAL_INFORMATIONS = "additional_informations"
+        DEFAULT_PERIOD_RESAMPLING = 1
 
+    # --- Additional informations (timezone, etc.) ---
     class AdditionalInformations:
-        # See local file 'src/clinical_data_visualizer/xxx/options.py'
-        # Field 'DatabaseOptionsAdditionalInformations'
-        # For each datasource possible additional informations
+        # Per-datasource keys defined in each datasource's options.py
         pass
-
-    GROUPED_FIELDS = "grouped_fields"
-
-    LOOP = "loop"
 
 
 class SourceOptions:
@@ -115,5 +154,5 @@ class PlotType:
 
 
 if PlotType.LOOP != DatabaseOptions.LOOP:
-    msg = "No idea it that would work. Error here to warn you"
+    msg = "No idea if that would work. Error here to warn you"
     raise NotImplementedError(msg)

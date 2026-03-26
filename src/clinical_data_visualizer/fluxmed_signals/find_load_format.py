@@ -15,22 +15,11 @@ logger = logging.getLogger(__name__)
 class FluxmedSignalsDataSource(DataSourceBase):
     """Fluxmed Signals datasource processor."""
 
-    DATASOURCE_NAME = "fluxmed_signals"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    def _find(cls, folder_path: Path) -> Path | None:
-        return helper.find_file(
-            folder_path,
-            options_naming.KEYWORD_FILE,
-            "paramsignals",
-            [".txt", ".csv", ".parquet"],
-        )
-
-    @classmethod
     @helper.time_it
-    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() in [".txt", ".csv"]:
@@ -99,8 +88,10 @@ class FluxmedSignalsDataSource(DataSourceBase):
             )
             raise NotImplementedError(msg)
 
+        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
-        cls._save_dataframe(df, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df, path_output)
         return df
 
 

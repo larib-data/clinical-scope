@@ -11,36 +11,15 @@ from clinical_data_visualizer.datasource_base import DataSourceBase
 
 logger = logging.getLogger(__name__)
 
-# Safety check
-if options_naming.KEYWORD_FILE in options_naming.FILE_NAME_DATAFRAME_LOADED:
-    msg = (
-        f"'KEYWORD_FILE'({options_naming.KEYWORD_FILE}) is in "
-        f"'FILE_NAME_DATAFRAME_LOADED'({options_naming.FILE_NAME_DATAFRAME_LOADED}). "
-        "This dangerous since we might override the raw data, or read the wrong one"
-    )
-    raise ValueError(msg)
-
 
 class FluxmedParametersDataSource(DataSourceBase):
     """Fluxmed Parameters datasource processor."""
 
-    DATASOURCE_NAME = "fluxmed_parameters"
-    FILE_NAME_DATAFRAME_LOADED = options_naming.FILE_NAME_DATAFRAME_LOADED
     OPTIONS_MODULE = options_naming
-    SOURCE_OPTIONS = options_naming.source_options
-
-    @classmethod
-    def _find(cls, folder_path: Path) -> Path | None:
-        return helper.find_file(
-            folder_path,
-            options_naming.KEYWORD_FILE,
-            "parameters file",
-            [".txt", ".csv", ".parquet"],
-        )
 
     @classmethod
     @helper.time_it
-    def _load(cls, file_path: Path, path_output: Path, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         time_col_name = "Time(sec)"
 
         if file_path.suffix.lower() == ".parquet":
@@ -119,7 +98,8 @@ class FluxmedParametersDataSource(DataSourceBase):
             raise NotImplementedError(msg)
 
         df = df[~df.index.duplicated(keep="first")]
-        cls._save_dataframe(df, path_output)
+        if path_output is not None:
+            cls._save_dataframe(df, path_output)
         return df
 
 

@@ -8,11 +8,15 @@ and processing visualizations.
 import base64
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
+import numpy as np
 from dash import ALL, Input, Output, State, callback, ctx, dcc, html
+from dash.exceptions import PreventUpdate
 from plotly_resampler import FigureResampler
 
 import clinical_data_visualizer.constants as cst
@@ -20,21 +24,59 @@ import clinical_data_visualizer.datasource_list as datasource
 from clinical_data_visualizer import wrapper
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
 from clinical_data_visualizer.dash_api import ui_components, validation
+from clinical_data_visualizer.dash_api.styles import (
+    CARD_STYLE,
+    DATASOURCE_CARD_STYLE,
+    INSPECTION_MODAL_STYLE_HIDDEN,
+    INSPECTION_MODAL_STYLE_SHOWN,
+    SECTION_HEADER_STYLE,
+)
+from clinical_data_visualizer.database_options_parser import validate_database_options_structure
+from clinical_data_visualizer.database_options_xlsx import xlsx_bytes_to_database_options
+from clinical_data_visualizer.inspection import (
+    ColumnInfo,
+    results_from_json,
+    results_to_json,
+    to_csv_string,
+)
 from clinical_data_visualizer.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
 
-# Server-side cache for FigureResampler objects, keyed by UUID.
-# Suitable for single-user desktop app.
-FIGURE_RESAMPLER_CACHE = {}
+# Server-side caches keyed by UUID — suitable for single-user desktop app.
+# Both caches grow during a session and are cleared on each process_visualization call.
+# Not bounded by size — acceptable for a single-user desktop app.
+# NOTE: these are distinct from the on-disk parquet cache (tdv_visu/ inside the patient folder)
+# which persists across sessions for quick_load. These are ephemeral, in-memory only.
+FIGURE_RESAMPLER_CACHE = {}  # FigureResampler objects for time-series zoom/pan
+LOOP_DATA_CACHE = {}  # Loop trace data (x, y, time arrays) for slider filtering
 
 
-def _validate_json_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
-    """Validate and parse JSON file."""
-    if not filename.endswith(".json"):
-        msg = "Invalid file type"
+def clear_visualization_caches() -> None:
+    """Clear all in-memory visualization caches (resampler + loop data)."""
+    FIGURE_RESAMPLER_CACHE.clear()
+    LOOP_DATA_CACHE.clear()
+
+
+def _parse_database_options_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
+    """
+    Parse database options from decoded file bytes and validate structure.
+
+    Supports ``.json`` and ``.xlsx`` formats.
+    Runs ``validate_database_options_structure`` on the result regardless of source format.
+    """
+    if filename.lower().endswith(".json"):
+        db_options = json.loads(decoded_content.decode("utf-8"))
+    elif filename.lower().endswith(".xlsx"):
+        db_options = xlsx_bytes_to_database_options(decoded_content)
+    else:
+        msg = f"Unsupported file type '{Path(filename).suffix}'. Expected .json or .xlsx."
         raise ValueError(msg)
-    return json.loads(decoded_content.decode("utf-8"))
+
+    for w in validate_database_options_structure(db_options):
+        logger.warning("database_options validation: %s", w)
+
+    return db_options
 
 
 @callback(
@@ -42,15 +84,18 @@ def _validate_json_file(decoded_content: bytes, filename: str) -> dict[str, Any]
     Output("db-options-status", "children"),
     Input("db-options-upload", "contents"),
     Input("default-viz-button", "n_clicks"),
+    Input("reload-cached-db-button", "n_clicks"),
     State("db-options-upload", "filename"),
     prevent_initial_call=True,
 )
 def load_db_options(
     contents: str | None,
     n_clicks: int | None,  # noqa: ARG001
+    n_clicks_reload: int | None,  # noqa: ARG001
     filename: str,
 ) -> tuple[dict[str, Any] | None, html.Div | None]:
-    """Load database options from uploaded file or generate defaults."""
+    """Load database options from uploaded file, cache, or generate defaults."""
+
     triggered = ctx.triggered_id
 
     if triggered == "default-viz-button":
@@ -62,14 +107,28 @@ def load_db_options(
             ),
         )
 
+    if triggered == "reload-cached-db-button":
+        cached = ui_helper.load_cached_db_options()
+        if cached is None:
+            return (
+                None,
+                html.Div("No cached config found.", style={"color": "red", "fontWeight": "bold"}),
+            )
+        return (
+            cached,
+            html.Div("Reloaded last config", style={"color": "green", "fontWeight": "bold"}),
+        )
+
     if not contents:
         return None, None
 
     try:
-        _, content_string = contents.split(",")
+        _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
-        database_options_dict = _validate_json_file(decoded, filename)
+        database_options_dict = _parse_database_options_file(decoded, filename)
         logger.debug("loaded database_options_dict: %r", database_options_dict)
+
+        ui_helper.save_cached_db_options(database_options_dict)
 
         return (
             database_options_dict,
@@ -102,29 +161,16 @@ def build_patient_options_ui(
     components = []
     schema_lookup = {}
 
-    header_style = {
-        "borderBottom": "2px solid #dee2e6",
-        "paddingBottom": "8px",
-        "marginBottom": "12px",
-    }
-    card_style = {
-        "border": "1px solid #dee2e6",
-        "borderRadius": "6px",
-        "padding": "12px 16px",
-        "backgroundColor": "#f8f9fa",
-        "marginBottom": "16px",
-    }
-
     # Global options
-    components.append(html.H3("Global Patient Options", style=header_style))
+    components.append(html.H3("Global Patient Options", style=SECTION_HEADER_STYLE))
     component, schema = ui_components.build_ui_and_schema_registry(
         cst.PatientOptions, prefix="global"
     )
-    components.append(html.Div(component, style=card_style))
+    components.append(html.Div(component, style=CARD_STYLE))
     schema_lookup = schema_lookup | schema
 
     # Per-datasource options
-    components.append(html.H3("Specific Options", style=header_style))
+    components.append(html.H3("Specific Options", style=SECTION_HEADER_STYLE))
 
     datasource_cards = []
     requested_data_sources = database_options.keys()
@@ -139,12 +185,7 @@ def build_patient_options_ui(
         datasource_cards.append(
             html.Div(
                 [html.H5(data_source.DESCRIPTION), component],
-                style={
-                    "border": "1px solid #dee2e6",
-                    "borderRadius": "6px",
-                    "padding": "12px",
-                    "backgroundColor": "#f8f9fa",
-                },
+                style=DATASOURCE_CARD_STYLE,
             )
         )
         schema_lookup = schema_lookup | schema
@@ -231,8 +272,14 @@ def process_visualization(
     name_folder_visu = str(Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_VISU)
     annotations_data = ui_helper.load_annotations(name_folder_visu)
     ui_helper.save_json(validated_dict, patient_options_path)
+    db_options_path = (
+        Path(validated_dict["data_folder"])
+        / cst.FOLDER_NAME_VISU
+        / cst.DEFAULT_NAME_DATABASE_OPTIONS
+    )
+    ui_helper.save_json(db_options, db_options_path)
 
-    FIGURE_RESAMPLER_CACHE.clear()
+    clear_visualization_caches()
 
     logger.info("Processing visualization request for: %s", validated_dict.get("data_folder", "?"))
     try:
@@ -276,6 +323,264 @@ def process_visualization(
     )
 
 
+def _status_badge(status: str) -> html.Span:
+    """Return a coloured inline badge for a datasource status."""
+    color = {
+        "ok": "#28a745",
+        "file_not_found": "#fd7e14",
+        "load_error": "#dc3545",
+        "format_error": "#dc3545",
+    }.get(status, "#6c757d")
+    return html.Span(
+        status,
+        style={
+            "backgroundColor": color,
+            "color": "white",
+            "padding": "2px 8px",
+            "borderRadius": "4px",
+            "fontSize": "12px",
+            "marginLeft": "8px",
+            "verticalAlign": "middle",
+        },
+    )
+
+
+# Per-column Dash styles, indexed to match ColumnInfo.DISPLAY_HEADERS order.
+# Adding a new ColumnInfo field: update ColumnInfo, _column_infos (datasource_base),
+# ColumnInfo.DISPLAY_HEADERS + column_display_values (inspection), and this list.
+_COL_CELL_STYLES: list[dict | None] = [
+    {"fontFamily": "monospace", "fontSize": "13px"},  # Column
+    None,  # Configured — style computed dynamically below
+    {"textAlign": "right"},  # Raw pts
+    {"textAlign": "right"},  # Filtered pts
+    {"textAlign": "right"},  # % retained
+    {"textAlign": "left", "fontSize": "11px"},  # First (filtered)
+    {"textAlign": "left", "fontSize": "11px"},  # Last (filtered)
+]
+
+
+def _col_cell(col: ColumnInfo) -> list[html.Td]:
+    """
+    Return <td> cells for one ColumnInfo row.
+
+    Text content comes from ``column_display_values`` (shared with CLI);
+    Dash-specific styling is applied per-column via ``_COL_CELL_STYLES``.
+    """
+    values = col.display_values()
+    cells = []
+    for (_, align), val, extra in zip(
+        ColumnInfo.DISPLAY_HEADERS, values, _COL_CELL_STYLES, strict=True
+    ):
+        style: dict = {"textAlign": align}
+        if extra:
+            style |= extra
+        cells.append(html.Td(val, style=style))
+    # Override "Configured" column color based on actual value
+    cells[1] = html.Td(
+        values[1],
+        style={
+            "textAlign": "center",
+            "color": "#28a745" if col.is_configured else "#aaa",
+        },
+    )
+    return cells
+
+
+def _build_inspection_content(results: list) -> list:
+    """Build modal content from a list of DataSourceInspection objects."""
+    sections = []
+    for r in results:
+        meta_parts = []
+        if r.file_path:
+            meta_parts.append(
+                html.Div(f"File: {r.file_path}", style={"fontSize": "12px", "color": "#666"})
+            )
+        if r.raw_date_range:
+            meta_parts.append(
+                html.Div(
+                    f"Date range in file: {r.raw_date_range[0]}  →  {r.raw_date_range[1]}",
+                    style={"fontSize": "12px", "color": "#666"},
+                )
+            )
+        if r.filtered_date_range:
+            meta_parts.append(
+                html.Div(
+                    f"After filter:        "
+                    f"{r.filtered_date_range[0]}  →  {r.filtered_date_range[1]}",
+                    style={"fontSize": "12px", "color": "#666"},
+                )
+            )
+        if r.error_message:
+            meta_parts.append(
+                html.Div(
+                    f"Error: {r.error_message}",
+                    style={"fontSize": "12px", "color": "#dc3545"},
+                )
+            )
+
+        table_rows = [html.Tr(_col_cell(col)) for col in r.columns]
+
+        table = (
+            html.Table(
+                [
+                    html.Thead(
+                        html.Tr(
+                            [
+                                html.Th(header, style={"textAlign": align})
+                                for header, align in ColumnInfo.DISPLAY_HEADERS
+                            ]
+                        )
+                    ),
+                    html.Tbody(table_rows),
+                ],
+                className="table table-sm table-hover",
+                style={"marginTop": "8px"},
+            )
+            if table_rows
+            else html.Div(
+                "No columns found.", style={"color": "#999", "fontSize": "13px", "marginTop": "8px"}
+            )
+        )
+
+        sections.append(
+            html.Div(
+                [
+                    html.H4(
+                        [r.datasource_name, _status_badge(r.status)],
+                        style={"marginBottom": "6px"},
+                    ),
+                    *meta_parts,
+                    table,
+                ],
+                style={
+                    "marginBottom": "24px",
+                    "paddingBottom": "16px",
+                    "borderBottom": "1px solid #dee2e6",
+                },
+            )
+        )
+    return sections
+
+
+@callback(
+    Output("inspection-modal", "style"),
+    Output("inspection-modal-content", "children"),
+    Output("inspection-results-store", "data"),
+    Output("inspect-status", "children"),
+    Input("inspect-button", "n_clicks"),
+    State("db-options-store", "data"),
+    State("schema-registry", "data"),
+    State({"type": "patient-option", "name": ALL}, "value"),
+    State({"type": "patient-option", "name": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def inspect_data(
+    n_clicks: int,  # noqa: ARG001
+    db_options: dict[str, Any] | None,
+    schema_data: dict[str, str],
+    values: list[Any],
+    ids: list[dict[str, str]],
+) -> tuple[dict, Any, list | None, None]:
+    """Run data inspection for all enabled datasources and display results in modal."""
+
+    if not db_options:
+        return (
+            INSPECTION_MODAL_STYLE_SHOWN,
+            html.Div("Database options not loaded.", style={"color": "red"}),
+            None,
+            None,
+        )
+
+    schema_class_lookup = _rehydrate_schema_classes(schema_data)
+    values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
+    validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
+
+    if errors:
+        return (
+            INSPECTION_MODAL_STYLE_SHOWN,
+            html.Ul([html.Li(e) for e in errors]),
+            None,
+            None,
+        )
+
+    logger.info("Running inspection for: %s", validated_dict.get("data_folder", "?"))
+    try:
+        results = wrapper.inspect(
+            patient_options=validated_dict,
+            database_options_global=db_options,
+        )
+    except Exception as e:
+        logger.exception("Inspection failed: ")
+        return (
+            INSPECTION_MODAL_STYLE_SHOWN,
+            html.Div(f"Inspection failed: {e}", style={"color": "red"}),
+            None,
+            None,
+        )
+
+    content = _build_inspection_content(results)
+    return INSPECTION_MODAL_STYLE_SHOWN, content, results_to_json(results), None
+
+
+@callback(
+    Output("inspection-modal", "style", allow_duplicate=True),
+    Input("inspection-modal-close", "n_clicks"),
+    prevent_initial_call=True,
+)
+def close_inspection_modal(n_clicks: int) -> dict:  # noqa: ARG001
+    """Hide the inspection modal when the Close button is clicked."""
+    return INSPECTION_MODAL_STYLE_HIDDEN
+
+
+@callback(
+    Output("inspection-download", "data"),
+    Input("inspect-download-btn", "n_clicks"),
+    State("inspection-results-store", "data"),
+    prevent_initial_call=True,
+)
+def download_inspection_csv(n_clicks: int, stored: list | None) -> dict:  # noqa: ARG001
+    """Trigger a CSV download of the latest inspection results."""
+
+    if not stored:
+        raise PreventUpdate
+    results = results_from_json(stored)
+    return {
+        "content": to_csv_string(results),
+        "filename": "data_inspection.csv",
+        "type": "text/csv",
+    }
+
+
+_ONE_DAY_SECONDS = 86400
+
+
+def _build_slider_marks(t_min: float, duration: float, n_marks: int = 5) -> dict[float, str]:
+    """
+    Build evenly-spaced marks for a RangeSlider using relative-second keys.
+
+    Keys are seconds offset from t_min (0 … duration).
+    Labels are absolute clock times in DISPLAY_TIMEZONE so the user sees
+    human-readable timestamps, not raw numbers.
+    """
+    display_tz = ZoneInfo(cst.DISPLAY_TIMEZONE)
+    fmt = "%m/%d %H:%M" if duration > _ONE_DAY_SECONDS else "%H:%M:%S"
+    marks = {}
+    for i in range(n_marks + 1):
+        offset = duration * i / n_marks
+        dt = datetime.fromtimestamp(t_min + offset, tz=UTC).astimezone(display_tz)
+        marks[float(offset)] = dt.strftime(fmt)
+    return marks
+
+
+def format_time_range(t_start: float, t_end: float) -> str:
+    """Format a time range as a human-readable string in DISPLAY_TIMEZONE."""
+    display_tz = ZoneInfo(cst.DISPLAY_TIMEZONE)
+    dt_start = datetime.fromtimestamp(t_start, tz=UTC).astimezone(display_tz)
+    dt_end = datetime.fromtimestamp(t_end, tz=UTC).astimezone(display_tz)
+    fmt = "%Y-%m-%d %H:%M:%S"
+    return f"{dt_start.strftime(fmt)}  —  {dt_end.strftime(fmt)}"
+
+
 def _build_graphs(
     model: Any,
     annotations_data: dict[str, Any],
@@ -286,6 +591,8 @@ def _build_graphs(
     Time-series figures are wrapped with FigureResampler for dynamic
     downsampling on zoom/pan. A companion dcc.Store holds the cache UUID
     so the resample_on_zoom callback can retrieve the server-side object.
+
+    Loop figures get a time-range slider for interactive time filtering.
     """
     graphs = []
 
@@ -300,11 +607,7 @@ def _build_graphs(
             uirevision=mod.name,  # preserve shapes across updates
         )
 
-        # Determine dragmode per figure type
-        default_dragmode = "drawline" if mod.name == "time_series" else "drawrect"
-
         fig.update_layout(
-            dragmode=default_dragmode,
             newshape={
                 "fillcolor": "rgba(0,255,0,0.25)",
                 "line": {"color": "green", "width": 2},
@@ -328,24 +631,104 @@ def _build_graphs(
         if graph_height:
             graph_style["height"] = f"{graph_height}px"
 
-        graphs.append(
-            html.Div(
-                [
-                    dcc.Graph(
-                        id={"type": "graph", "name": mod.name},
-                        figure=fig,
-                        config={
-                            "displayModeBar": True,
-                            "modeBarButtonsToAdd": [
-                                "drawline",  # time point
-                                "drawrect",  # time range
-                            ],
+        children = [
+            dcc.Graph(
+                id={"type": "graph", "name": mod.name},
+                figure=fig,
+                config={
+                    "displayModeBar": True,
+                    "modeBarButtonsToAdd": [
+                        "drawline",  # time point
+                        "drawrect",  # time range
+                    ],
+                },
+                style=graph_style,
+            ),
+            dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
+        ]
+
+        # --- Loop time-range slider ---
+        if mod.plot_type == cst.PlotType.LOOP:
+            loop_uid = str(uuid4())
+
+            # Cache full data arrays for each trace.
+            # Skip traces with missing data to keep cache indices aligned
+            # with the Plotly figure traces that are actually filterable.
+            trace_data = []
+            t_min_global = np.inf
+            t_max_global = -np.inf
+            for group in mod.groups:
+                for sig in group.signals:
+                    time_array = sig.data.loop_time_axis
+                    if time_array is None or sig.data.x is None or sig.data.y is None:
+                        trace_data.append({"x": None, "y": None, "time_axis": None})
+                        continue
+                    if len(time_array) > 0:
+                        t_min_global = min(t_min_global, time_array[0])
+                        t_max_global = max(t_max_global, time_array[-1])
+                    trace_data.append(
+                        {
+                            "x": sig.data.x,
+                            "y": sig.data.y,
+                            "time_axis": time_array,
+                        }
+                    )
+
+            # Store t_min alongside traces so callbacks can convert relative
+            # offsets back to absolute epoch seconds for display/masking.
+            # Convert to native Python float for orjson serialization safety.
+            t_min_f = float(t_min_global) if np.isfinite(t_min_global) else 0.0
+            LOOP_DATA_CACHE[loop_uid] = {"traces": trace_data, "t_min": t_min_f}
+            children.append(dcc.Store(id={"type": "loop-store", "name": mod.name}, data=loop_uid))
+
+            if np.isfinite(t_min_global) and t_min_global < t_max_global:
+                duration = float(t_max_global) - t_min_f
+                step = duration / 1000
+                marks = _build_slider_marks(t_min_f, duration)
+
+                children.append(
+                    html.Div(
+                        [
+                            html.Label(
+                                "Time range",
+                                style={
+                                    "fontWeight": "bold",
+                                    "marginBottom": "4px",
+                                    "display": "block",
+                                },
+                            ),
+                            dcc.RangeSlider(
+                                id={"type": "loop-time-slider", "name": mod.name},
+                                min=0.0,
+                                max=duration,
+                                value=[0.0, duration],
+                                marks=marks,
+                                step=step,
+                                updatemode="mouseup",
+                                # No tooltip: raw offset seconds are not meaningful to the user.
+                                tooltip=None,
+                            ),
+                            html.Div(
+                                format_time_range(t_min_f, t_min_f + duration),
+                                id={"type": "loop-time-display", "name": mod.name},
+                                style={
+                                    "textAlign": "center",
+                                    "color": "#555",
+                                    "fontSize": "13px",
+                                    "marginTop": "4px",
+                                },
+                            ),
+                        ],
+                        style={
+                            "padding": "12px 16px",
+                            "border": "1px solid #dee2e6",
+                            "borderRadius": "6px",
+                            "backgroundColor": "#f8f9fa",
+                            "marginTop": "8px",
                         },
-                        style=graph_style,
-                    ),
-                    dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
-                ]
-            )
-        )
+                    )
+                )
+
+        graphs.append(html.Div(children))
 
     return graphs

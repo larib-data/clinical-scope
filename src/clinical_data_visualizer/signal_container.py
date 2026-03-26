@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import clinical_data_visualizer.constants as cst
-from clinical_data_visualizer import helper
+from clinical_data_visualizer import helper, hover_formatters
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,10 @@ def merge_y_ranges(
 class Data:
     x: np.ndarray | None = None
     y: np.ndarray | None = None
-    timezone: str | None = None  # New attribute to store timezone information
+    timezone: str | None = (
+        None  # New attribute to store timezone information, more efficient than storing in x values  # noqa: E501
+    )
+    loop_time_axis: np.ndarray | None = None  # UTC epoch seconds (float64), only for loops
 
 
 @dataclass
@@ -95,7 +98,7 @@ class PlotOptions:
         """Initialize PlotOptions with default values."""
         if self.y_unit_name is None:
             self.y_unit_name = (
-                cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO
+                cst.DatabaseOptions.Signal.DEFAULT_UNIT
             )  # authorizing None here produce terrible results later
         if self.plot_type is None:
             logger.warning("PlotOptions.plot_type should not be initialized to None")
@@ -184,6 +187,8 @@ class TraceOptions:
     marker_color: str | None = None
     marker_symbol: str | None = None
     marker_size: float | None = None
+    visible: bool = True
+    hover_template: str | None = None  # Plotly hovertemplate, or "fraction" for 1/n display
     plot_options: PlotOptions = field(default_factory=PlotOptions)
 
     def __post_init__(self) -> None:
@@ -201,7 +206,7 @@ class TraceOptions:
 
 @dataclass
 class Metadata:
-    device_name: str | None = None
+    datasource_name: str | None = None
     is_derived: bool = False
     parent_signal_name: str | None = None
     period_resampling: float | None = None
@@ -235,50 +240,55 @@ class Signal:
         plot_type: str,
     ) -> "TraceOptions":
         """Build trace options from database and source options."""
-        data_opts = database_options_specific.get(cst.DatabaseOptions.DATA, {})
-        data_numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
+        signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
+        sig = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
+        numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
+
         # PlotOptions fields
         plot_options_dict = source_options.get("plot_options", {})
         valid_keys_plot_options = {f.name for f in fields(PlotOptions)}
         additional_plot_options = {
             k: v for k, v in plot_options_dict.items() if k in valid_keys_plot_options
         }
-        name_signal = data_opts.get(cst.DatabaseOptions.Data.LABEL_CORRESPONDENCE, {}).get(
-            raw_signal_name, raw_signal_name
-        )
-        range_signal_plot = data_opts.get(cst.DatabaseOptions.Data.UNIT_RANGE, {}).get(
-            raw_signal_name
-        )
-        y_unit_name = data_opts.get(cst.DatabaseOptions.Data.UNIT_INFO, {}).get(
-            raw_signal_name, cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO
-        )
+        sig_cst = cst.DatabaseOptions.Signal
+        name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
+        range_signal_plot = sig.get(sig_cst.RANGE)
+        y_unit_name = sig.get(sig_cst.UNIT, sig_cst.DEFAULT_UNIT)
         y_axis_title_raw = f"{name_signal} ({y_unit_name or ''})"
         y_axis_title = helper.wrap_label(y_axis_title_raw, max_line_length=12)
+
         # TraceOptions fields
         trace_options_dict = source_options.get(cst.SourceOptions.TRACE_OPTIONS, {})
         valid_keys_trace_options = {f.name for f in fields(TraceOptions)}
         additional_trace_options = {
             k: v for k, v in trace_options_dict.items() if k in valid_keys_trace_options
         }
-        color = data_opts.get(cst.DatabaseOptions.Data.COLOR, {}).get(raw_signal_name)
-        plot_priority_default_db = data_numerics.get(cst.DatabaseOptions.Numerics.PRIORITY)
-        plot_priority = data_opts.get(cst.DatabaseOptions.Data.PRIORITY, {}).get(
-            raw_signal_name, plot_priority_default_db
-        )
+        color = sig.get(sig_cst.COLOR)
+        plot_priority_default_db = numerics.get(cst.DatabaseOptions.Numerics.PRIORITY)
+        plot_priority = sig.get(sig_cst.PRIORITY, plot_priority_default_db)
+        visible = sig.get(sig_cst.VISIBLE, True)
+        line_dash_db = sig.get(sig_cst.LINE_DASH)
+        hover_template = sig.get(sig_cst.HOVER_TEMPLATE)
+
         plot_options = PlotOptions(
             y_axis_range=range_signal_plot,
             y_axis_title=y_axis_title,
             y_unit_name=y_unit_name,
             plot_type=plot_type,
             plot_priority=plot_priority,
-            # Any ohter field
+            # Any other field
             **additional_plot_options,
         )
+        # line_dash from database_options takes precedence over source_options
+        if line_dash_db is not None:
+            additional_trace_options["line_dash"] = line_dash_db
         return TraceOptions(
             plot_options=plot_options,
             line_color=color,
             marker_color=color,
-            # Any ohter field
+            visible=visible,
+            hover_template=hover_template,
+            # Any other field
             **additional_trace_options,
         )
 
@@ -298,21 +308,17 @@ class Signal:
         database_options_specific = database_options_specific or {}
         timing = {}
         # ---- Step 1: metadata extraction ---------------------------------------
-        data_opts = database_options_specific.get(cst.DatabaseOptions.DATA, {})
+        signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
+        sig = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
-        name_signal = data_opts.get(cst.DatabaseOptions.Data.LABEL_CORRESPONDENCE, {}).get(
-            raw_signal_name, raw_signal_name
-        )
-        unit_conversion_factor = data_opts.get(cst.DatabaseOptions.Data.UNIT_CONVERSION, {}).get(
-            raw_signal_name, cst.DatabaseOptions.DEFAULT_UNIT_FACTOR
-        )
+        sig_cst = cst.DatabaseOptions.Signal
+        name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
+        unit_conversion_factor = sig.get(sig_cst.UNIT_CONVERSION, sig_cst.DEFAULT_UNIT_CONVERSION)
         p_global = numerics.get(
             cst.DatabaseOptions.Numerics.PERIOD_RESAMPLING,
-            cst.DatabaseOptions.DEFAULT_PERIOD_RESAMPLING,
+            cst.DatabaseOptions.Numerics.DEFAULT_PERIOD_RESAMPLING,
         )
-        p = data_opts.get(cst.DatabaseOptions.Data.PERIOD_RESAMPLING, {}).get(
-            raw_signal_name, p_global
-        )
+        p = sig.get(sig_cst.PERIOD_RESAMPLING, p_global)
         # ---- Step 2-3: extract, prune, convert, resample ------------------------
         start = time.perf_counter()
         y_full = (
@@ -393,8 +399,12 @@ class Signal:
         x_x = helper.to_float_seconds(signal_x.data.x)
         x_y = helper.to_float_seconds(signal_y.data.x)
 
-        t_min = max(x_x[0], x_y[0])
-        t_max = min(x_x[-1], x_y[-1])
+        if len(x_x) == 0 or len(x_y) == 0:
+            msg = "One or both input signals have no data points."
+            raise ValueError(msg)
+
+        t_min = max(x_x.min(), x_y.min())
+        t_max = min(x_x.max(), x_y.max())
 
         if t_min >= t_max:
             msg = "Signals do not have overlapping time intervals."
@@ -413,7 +423,7 @@ class Signal:
 
         timing["interpolation"] = time.perf_counter() - start
         start = time.perf_counter()
-        data = Data(x=y_x, y=y_y, timezone=None)
+        data = Data(x=y_x, y=y_y, timezone=None, loop_time_axis=x_common)
         plot_options = PlotOptions(
             plot_type=cst.PlotType.LOOP,
             x_unit_name=signal_x.trace_options.plot_options.y_unit_name,
@@ -480,27 +490,34 @@ class Signal:
             else None
         )
         y_unit_name = self.trace_options.plot_options.y_unit_name
-        if self.trace_options.plot_options.plot_type == cst.PlotType.TIME_SERIES:
-            hovertemplate = (
-                f"<b>{self.name}</b><br>"
-                "%{x|%H:%M:%S.%f} | %{y}"
-                f" {
-                    y_unit_name if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
-                }<br>"
-                "<extra></extra>"
-            )
+        y_unit_suffix = (
+            f" {y_unit_name}" if y_unit_name != cst.DatabaseOptions.Signal.DEFAULT_UNIT else ""
+        )
+
+        # Magic keyword in hover_template → pre-compute customdata strings
+        _template = self.trace_options.hover_template
+        _is_keyword = hover_formatters.is_keyword(_template)
+        customdata = (
+            hover_formatters.compute_customdata(self.data.y, _template) if _is_keyword else None
+        )
+        _y_fmt = "%{customdata}" if _is_keyword else "%{y:.4g}"
+
+        if _template is not None and not _is_keyword:
+            hovertemplate = _template
+        elif self.trace_options.plot_options.plot_type == cst.PlotType.TIME_SERIES:
+            # Compact single-line template: time is shown once in the "x unified"
+            # header, so each trace only needs name + value.
+            hovertemplate = f"<b>{self.name}</b>: {_y_fmt}{y_unit_suffix}<extra></extra>"
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
+            _x_unit_suffix = (
+                f" {x_unit_name}" if x_unit_name != cst.DatabaseOptions.Signal.DEFAULT_UNIT else ""
+            )
+            # Keyword formatters (fraction, percentage, …) only cover one axis,
+            # so they are intentionally ignored for loops to avoid asymmetric display.
             hovertemplate = (
                 f"<b>{self.name}</b><br>"
-                "%{x}"
-                f" {
-                    x_unit_name if x_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
-                }"
-                " | %{y}"
-                f" {
-                    y_unit_name if y_unit_name != cst.DatabaseOptions.Data.DEFAULT_UNIT_INFO else ''
-                }<br>"
+                f"%{{x:.4g}}{_x_unit_suffix} | %{{y:.4g}}{y_unit_suffix}<br>"
                 "<extra></extra>"
             )
         else:
@@ -513,7 +530,9 @@ class Signal:
             line=line_dict,
             marker=marker_dict,
             opacity=self.trace_options.opacity,
+            customdata=customdata,
             hovertemplate=hovertemplate,
+            visible="legendonly" if not self.trace_options.visible else True,
         )
         elapsed = time.perf_counter() - start
         self.timing["to_plotly_trace"] = elapsed
@@ -580,80 +599,122 @@ class PlotModel:
     timing: dict = field(default_factory=dict)
     name: str | None = None
 
-    def to_figure(self, base_spacing: float = 0.05, min_spacing: float = 0.005) -> go.Figure:
+    def to_figure(self, min_spacing: float = 0.005) -> go.Figure:
         start = time.perf_counter()
-        n_rows = len(self.groups)
-        total_fig_height = np.sum(
-            [plot_group.plot_options.plot_height for plot_group in self.groups]
-        )
+        n_groups = len(self.groups)
+        is_loop = self.plot_type == cst.PlotType.LOOP
+
+        # Loop plots with multiple subplots use a multi-column grid so square subplots
+        # sit side-by-side instead of stacking vertically.
+        if is_loop and n_groups > 1:
+            n_cols = 2  # Flexible, TODO: remove the magic number
+            n_rows = int(np.ceil(n_groups / n_cols))
+            subplot_height = self.groups[0].plot_options.plot_height
+            total_fig_height = n_rows * subplot_height
+            row_heights = [1.0] * n_rows
+            specs = [
+                [
+                    {"secondary_y": True} if r * n_cols + c < n_groups else None
+                    for c in range(n_cols)
+                ]
+                for r in range(n_rows)
+            ]
+            subplot_titles = [g.name for g in self.groups]
+            fig_width = n_cols * subplot_height
+            extra_subplot_kwargs = {"horizontal_spacing": 0.05}
+        else:
+            n_cols = 1  # Fixed
+            n_rows = n_groups
+            total_fig_height = np.sum([g.plot_options.plot_height for g in self.groups])
+            row_heights = [g.plot_options.plot_height / total_fig_height for g in self.groups]
+            specs = [[{"secondary_y": True}] for _ in range(n_rows)]
+            subplot_titles = [g.name for g in self.groups]
+            fig_width = total_fig_height / n_rows if self.square_plot else None
+            extra_subplot_kwargs = {}
+
         self.computed_height = total_fig_height
-        proportions = [
-            plot_group.plot_options.plot_height / total_fig_height for plot_group in self.groups
-        ]
-        subplot_title = [plot_group.name for plot_group in self.groups]
-        vertical_spacing = max(min_spacing, base_spacing / n_rows)
+        # Aim for ~30 px between subplots to leave room for subplot titles.
+        # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
+        title_gap_px = 30.0
+        spacing_from_height = (
+            title_gap_px / total_fig_height if total_fig_height > 0 else min_spacing
+        )
+        vertical_spacing = max(min_spacing, spacing_from_height)
 
         fig = make_subplots(
             rows=n_rows,
-            cols=1,
+            cols=n_cols,
             shared_xaxes=False,
             vertical_spacing=vertical_spacing,
-            specs=[[{"secondary_y": True}] for _ in range(n_rows)],
-            row_heights=proportions,
-            subplot_titles=subplot_title,
+            specs=specs,
+            row_heights=row_heights,
+            subplot_titles=subplot_titles,
+            **extra_subplot_kwargs,
         )
-        # Map x-data type → master row for automatic shared x-axis
+
+        # Map x-data type → master row for automatic shared x-axis (time-series only)
         x_type_to_master_row = {}
-        for row_idx, group in enumerate(self.groups, start=1):
-            traces_with_axes = group.assign_axes()  # Use the new method
+        for group_idx, group in enumerate(self.groups):
+            plotly_row = group_idx // n_cols + 1
+            plotly_col = group_idx % n_cols + 1
+
+            traces_with_axes = group.assign_axes()
             for trace, secondary_y in traces_with_axes:
-                fig.add_trace(trace, row=row_idx, col=1, secondary_y=secondary_y)
-            # Update y-axis titles from plot_options
+                fig.add_trace(trace, row=plotly_row, col=plotly_col, secondary_y=secondary_y)
+
             y_title = group.plot_options.y_axis_title or ""
             fig.update_yaxes(
                 title_text=y_title,
-                row=row_idx,
-                col=1,
+                row=plotly_row,
+                col=plotly_col,
                 range=group.plot_options.y_axis_range,
                 secondary_y=False,
             )
-            # Add secondary y-axis title if exists
             if group.allow_secondary_y and len(traces_with_axes) > 1:
                 second_y_title = group.plot_options.y2_axis_title or ""
                 fig.update_yaxes(
                     title_text=second_y_title,
-                    row=row_idx,
-                    col=1,
+                    row=plotly_row,
+                    col=plotly_col,
                     range=group.plot_options.y2_axis_range,
                     secondary_y=True,
                 )
-            # Update x-axis title
             x_title = group.plot_options.x_axis_title
             fig.update_xaxes(
                 title_text=x_title,
-                row=row_idx,
-                col=1,
+                row=plotly_row,
+                col=plotly_col,
                 range=group.plot_options.x_axis_range,
             )
-            # --- Automatic shared x-axis based on x-data type ---
-            x_data_type = type(group.signals[0].data.x)
-            if x_data_type in x_type_to_master_row:
-                master_row = x_type_to_master_row[x_data_type]
-                fig.update_xaxes(matches=f"x{master_row}", row=row_idx, col=1)
-            else:
-                x_type_to_master_row[x_data_type] = row_idx
 
-            if self.name == cst.PlotType.TIME_SERIES:
-                fig.update_yaxes(modebardisable="zoominout", row=row_idx)
+            # Shared x-axis only applies to time-series (loop subplots each have
+            # an independent x-axis representing a different signal).
+            if not is_loop:
+                x_data_type = type(group.signals[0].data.x)
+                if x_data_type in x_type_to_master_row:
+                    master_row = x_type_to_master_row[x_data_type]
+                    master_ref = "x" if master_row == 1 else f"x{master_row}"
+                    fig.update_xaxes(matches=master_ref, row=plotly_row, col=plotly_col)
+                else:
+                    x_type_to_master_row[x_data_type] = plotly_row
+
+            if self.plot_type == cst.PlotType.TIME_SERIES:
+                fig.update_yaxes(fixedrange=True, row=plotly_row)
+
+        # Time-series figures use "x unified": one compact tooltip with a single time header
+        # and one line per trace.  Format the x-axis header as HH:MM:SS (milliseconds would
+        # clutter the header; they're available per trace via a custom hover_template if needed).
+        # Loop figures keep Plotly's default ("closest"): each point is independent.
+        if self.plot_type == cst.PlotType.TIME_SERIES:
+            fig.update_xaxes(hoverformat="%H:%M:%S.%3f")
+            fig.update_layout(hovermode="x unified")
 
         fig.update_layout(
             title_text=self.name,
             height=total_fig_height,
-            width=total_fig_height / n_rows if self.square_plot else None,
+            width=fig_width,
             showlegend=True,
-            hoverlabel={
-                "namelength": -1  # Show full curve name
-            },
+            hoverlabel={"namelength": -1},
         )
 
         fig.update_layout(
@@ -694,6 +755,7 @@ class PlotModel:
         )
 
         self.name = plot_type
+        self.plot_type = plot_type
         self.square_plot = square_plot
 
         # Sort groups by plot_priority
