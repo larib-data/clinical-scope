@@ -391,6 +391,29 @@ class TestLoopsSheet:
         result = xlsx_bytes_to_database_options(data)
         assert result["ds_b"]["loop"] == {"loop1": ["X", "Y"]}
 
+    def test_global_loop_datasource_sentinel(self):
+        """datasource='global' routes loop into result['global']['loop']."""
+        data = _build_xlsx(
+            [SIGNALS_HEADER, ["ds_a", "S1", "", "", "", "", "", "", "", "", "", "", "", ""]],
+            loops_rows=[LOOPS_HEADER, ["global", "cross_pv", "ds_a::Paw", "ds_b::Vol"]],
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert result["global"]["loop"] == {"cross_pv": ["ds_a::Paw", "ds_b::Vol"]}
+
+    def test_global_loop_coexists_with_global_grouped_fields(self):
+        """global.loop and global.grouped_fields can coexist under the same 'global' key."""
+        data = _build_xlsx(
+            [
+                SIGNALS_HEADER,
+                ["ds_a", "Paw", "", "", "", "", "", "", "", "", "", "", "", "MyGroup"],
+                ["ds_b", "Vol", "", "", "", "", "", "", "", "", "", "", "", "MyGroup"],
+            ],
+            loops_rows=[LOOPS_HEADER, ["global", "pv", "ds_a::Paw", "ds_b::Vol"]],
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert "grouped_fields" in result["global"]
+        assert "loop" in result["global"]
+
 
 # ---------------------------------------------------------------------------
 # Tests: error handling

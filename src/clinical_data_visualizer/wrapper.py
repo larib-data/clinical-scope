@@ -218,10 +218,42 @@ def main(
             if len(pg.signals) > 1 or pg.signals[0].raw_name not in global_grouped_raw_names
         ]
 
-    # Handle global loop not implemented
-    if cst.DatabaseOptions.LOOP in database_options_global.get(cst.DatabaseOptions.GLOBAL, {}):
-        logger.error("loop not implemented for trace from different signals yet")
-    # TODO: implement it
+    # Global loops (cross-datasource)
+    global_loop_group = database_options_global.get(cst.DatabaseOptions.GLOBAL, {}).get(
+        cst.DatabaseOptions.LOOP, {}
+    )
+    for loop_name, loop_field_list in global_loop_group.items():
+        try:
+            if len(loop_field_list) < 2:
+                logger.warning(
+                    "⚠️ Global loop '%s' needs exactly 2 signal refs, got %d.",
+                    loop_name,
+                    len(loop_field_list),
+                )
+                continue
+            signals = _resolve_signal_references(loop_field_list[:2], all_signal_list)
+            if len(signals) != 2:
+                logger.warning(
+                    "⚠️ Could not resolve both signals for global loop '%s' (resolved %d/2).",
+                    loop_name,
+                    len(signals),
+                )
+                continue
+            signal_x, signal_y = signals
+            try:
+                loop_signal = Signal.loop_from_signals(signal_x, signal_y, name=loop_name)
+            except Exception:
+                logger.exception("⚠️ Error constructing global loop '%s'.", loop_name)
+                continue
+            plot_group_list.append(PlotGroup.from_single_signal(loop_signal))
+            logger.info(
+                "✅ Global loop '%s' created (%s × %s).",
+                loop_name,
+                signal_x.raw_name,
+                signal_y.raw_name,
+            )
+        except Exception:
+            logger.exception("❌ Unexpected error while processing global loop '%s'.", loop_name)
 
     try:
         plot_model_list = PlotModel.assign_plot_model(plot_group_list)
