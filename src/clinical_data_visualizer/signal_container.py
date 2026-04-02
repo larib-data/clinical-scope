@@ -699,7 +699,7 @@ class PlotModel:
                     x_type_to_master_row[x_data_type] = plotly_row
 
             if self.plot_type == cst.PlotType.TIME_SERIES:
-                fig.update_yaxes(fixedrange=True, row=plotly_row)
+                fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
         # Time-series figures use "x unified": one compact tooltip with a single time header
         # and one line per trace.  Format the x-axis header as HH:MM:SS (milliseconds would
