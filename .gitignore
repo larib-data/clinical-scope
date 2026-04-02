@@ -34,7 +34,6 @@ logs/
 .ruff_cache/
 
 # IA
-.claude/skills/*
 PLANS/*
 
 # Local testing and example
