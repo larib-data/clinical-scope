@@ -46,11 +46,12 @@ class TestLoad:
         assert len(loaded_df) > 0
 
 
-class TestFormat:
-    @pytest.fixture(scope="class")
-    def formatted_df(self, loaded_df, patient_options_full, fluxmed_parameters_cls):
-        return fluxmed_parameters_cls._format(loaded_df, patient_options_full, {})
+@pytest.fixture(scope="module")
+def formatted_df(loaded_df, patient_options_full, fluxmed_parameters_cls):
+    return fluxmed_parameters_cls._format(loaded_df, patient_options_full, {})
 
+
+class TestFormat:
     def test_format_preserves_index_type(self, formatted_df):
         assert isinstance(formatted_df.index, pd.DatetimeIndex)
 
@@ -63,10 +64,6 @@ class TestSnapshot:
     """Content regression tests — compare against golden parquet files."""
 
     _DS = "fluxmed_parameters"
-
-    @pytest.fixture(scope="class")
-    def formatted_df(self, loaded_df, patient_options_full, fluxmed_parameters_cls):
-        return fluxmed_parameters_cls._format(loaded_df, patient_options_full, {})
 
     def test_loaded_snapshot(self, loaded_df, update_snapshots):
         from tests.conftest import SNAPSHOT_DIR, assert_or_update_snapshot

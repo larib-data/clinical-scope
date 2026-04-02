@@ -46,13 +46,14 @@ class TestLoad:
         assert len(loaded_df.columns) >= 1
 
 
+@pytest.fixture(scope="module")
+def formatted_df(loaded_df, patient_options_full, eit_cls, example_database_options):
+    eit_db_opts = example_database_options.get("eit", {})
+    return eit_cls._format(loaded_df, patient_options_full, eit_db_opts)
+
+
 class TestFormat:
     """EIT _format() needs the 'day' parameter to build a proper DatetimeIndex."""
-
-    @pytest.fixture(scope="class")
-    def formatted_df(self, loaded_df, patient_options_full, eit_cls, example_database_options):
-        eit_db_opts = example_database_options.get("eit", {})
-        return eit_cls._format(loaded_df, patient_options_full, eit_db_opts)
 
     def test_format_preserves_index_type(self, formatted_df):
         assert isinstance(formatted_df.index, pd.DatetimeIndex)
@@ -71,11 +72,6 @@ class TestSnapshot:
     """Content regression tests for EIT (uses example_database_options for _format)."""
 
     _DS = "eit"
-
-    @pytest.fixture(scope="class")
-    def formatted_df(self, loaded_df, patient_options_full, eit_cls, example_database_options):
-        eit_db_opts = example_database_options.get("eit", {})
-        return eit_cls._format(loaded_df, patient_options_full, eit_db_opts)
 
     def test_loaded_snapshot(self, loaded_df, update_snapshots):
         from tests.conftest import SNAPSHOT_DIR, assert_or_update_snapshot

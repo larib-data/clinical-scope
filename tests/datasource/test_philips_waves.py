@@ -55,11 +55,12 @@ class TestLoad:
         assert len(non_nan_cols) > 0
 
 
-class TestFormat:
-    @pytest.fixture(scope="class")
-    def formatted_df(self, loaded_df, patient_options_full, philips_waves_cls):
-        return philips_waves_cls._format(loaded_df, patient_options_full, {})
+@pytest.fixture(scope="module")
+def formatted_df(loaded_df, patient_options_full, philips_waves_cls):
+    return philips_waves_cls._format(loaded_df, patient_options_full, {})
 
+
+class TestFormat:
     def test_format_preserves_index_type(self, formatted_df):
         assert isinstance(formatted_df.index, pd.DatetimeIndex)
 
