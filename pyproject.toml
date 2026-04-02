@@ -34,12 +34,19 @@ dependencies = [
   "pytz",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=9.0"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "snapshot: golden-file content regression tests (deselect with '-m \"not snapshot\"')",
+]
 
 [project.urls]
 Homepage = "https://gitlab.inria.fr/ajanin/clinicaldatavisualizer"
