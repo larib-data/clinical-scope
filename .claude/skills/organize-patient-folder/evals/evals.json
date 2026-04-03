@@ -1,0 +1,45 @@
+{
+  "skill_name": "organize-patient-folder",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I have a patient data folder at example/example_patients/Patient_full/ — all the datasource subfolders are there. Can you do a dry-run audit and tell me which folders are correctly named for ClinicalDataVisualizer and which are not? Don't move anything.",
+      "expected_output": "Correctly identifies standard folders (eit, philips_waves, philips_numerics, fluxmed_signals, fluxmed_parameters, servo_u, mindray_scope, syringe) as already in place, and flags Mindray_resp_waves and Mindray_resp_numerics as non-standard (wrong case/spelling vs expected mindray_respi_waves and mindray_respi_numerics). No files moved.",
+      "files": [],
+      "assertions": [
+        "Unique-extension files classified correctly: .asc→eit/, .sta→servo_u/",
+        "Keyword files: Signals.txt→fluxmed_signals/, Parameters.txt→fluxmed_parameters/, mndry_waveform*.parquet→mindray_respi_waves/, mndry_numerics*.parquet→mindray_respi_numerics/, syringe*.csv→syringe/",
+        "Flags Mindray_resp_waves and Mindray_resp_numerics as non-standard folder names",
+        "Standard folders reported as already in place",
+        "No files moved or copied (dry run)",
+        "Skill uses library datasource configs via DataSource.AVAILABLE, not hardcoded names"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I have a folder at example/example_patients/ with multiple patients. Check if all patient subfolders are correctly organized for ClinicalDataVisualizer. Dry run only — no moves.",
+      "expected_output": "Detects batch mode across Patient_full, Patient_difficult_format, etc. For each patient, identifies correctly-named vs non-standard datasource subfolders. Mindray_resp_* flagged as non-standard in patients where they appear.",
+      "files": [],
+      "assertions": [
+        "Batch mode detected: reports on multiple patient subfolders",
+        "Flags Mindray_resp_numerics and Mindray_resp_waves as non-standard (expected: mindray_respi_*)",
+        "Standard folders (eit, philips_waves, fluxmed_*, servo_u, syringe, mindray_scope) reported as already correct",
+        "No files moved or copied",
+        "Provides per-patient summary"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I have a folder at example/example_patients/Patient_full/ — can you organize it? The Mindray_resp_waves and Mindray_resp_numerics folders have wrong names. Copy the files into correctly named folders (mindray_respi_waves and mindray_respi_numerics). Leave everything else alone.",
+      "expected_output": "Correctly identifies that Mindray_resp_waves→mindray_respi_waves and Mindray_resp_numerics→mindray_respi_numerics need renaming. Creates correctly-named subfolders and copies the files. All other folders left untouched.",
+      "files": [],
+      "assertions": [
+        "Creates mindray_respi_waves/ and copies files from Mindray_resp_waves/",
+        "Creates mindray_respi_numerics/ and copies files from Mindray_resp_numerics/",
+        "Other datasource folders (eit, philips_waves, etc.) reported as already correct and not touched",
+        "Original Mindray_resp_* folders preserved (copy not move)",
+        "Skill uses library folder_keywords to verify expected folder names"
+      ]
+    }
+  ]
+}
