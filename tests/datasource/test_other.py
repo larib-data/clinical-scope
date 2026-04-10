@@ -5,7 +5,6 @@ The 'other' datasource only exists in Patient_difficult_format, not Patient_full
 It has a custom main() that processes files individually rather than using _load().
 """
 
-import pandas as pd
 import pytest
 
 
@@ -68,9 +67,9 @@ class TestMainPipeline:
 
 
 class TestExtract:
-    """Test the extract pathway for the 'other' datasource."""
+    """The 'other' datasource does not support extract() — each file is its own signal group."""
 
-    def test_extract_returns_dataframe(self, patient_difficult_path, other_cls):
+    def test_extract_returns_none(self, patient_difficult_path, other_cls):
         patient_options = {
             "data_folder": str(patient_difficult_path),
             "datetime_start": None,
@@ -78,6 +77,6 @@ class TestExtract:
             "quick_load": False,
         }
         df = other_cls.extract(patient_options, {})
-        # extract() may return None or DataFrame for 'other'
-        if df is not None:
-            assert isinstance(df, pd.DataFrame)
+        assert df is None, (
+            "other.extract() must return None (multi-file datasource has no single-DataFrame representation)"
+        )

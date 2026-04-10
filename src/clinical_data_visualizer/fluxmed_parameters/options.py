@@ -11,6 +11,10 @@ FILE_NAME_DATAFRAME_LOADED = "fluxmed_param.parquet"
 
 DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 
+# Multilingual variants of the "Time" column header produced by FluxMed exports.
+# Add new language variants here as needed; comparison is always case-insensitive.
+TIME_HEADER_PREFIXES: list[str] = ["Time", "Tiempo", "Tempo", "Temps", "Zeit"]
+
 source_options = {
     cst.SourceOptions.TRACE_OPTIONS: {
         "mode": "lines+markers",

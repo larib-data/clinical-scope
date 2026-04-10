@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -69,7 +70,6 @@ def patient_options_difficult(patient_difficult_path):
 # Snapshot (golden-file) support
 # ---------------------------------------------------------------------------
 
-import pandas as pd  # noqa: E402
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent / "expected_results"
 

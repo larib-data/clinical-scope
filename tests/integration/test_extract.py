@@ -31,9 +31,16 @@ class TestExtractPatient:
         assert set(extract_results.keys()) == set(default_database_options.keys())
 
     def test_successful_extractions(self, extract_results):
-        """Most datasources should extract successfully."""
+        """
+        Most datasources should extract successfully.
+
+        Expected failures (by design, not bugs):
+        - 'other': extract() always returns None (multi-file datasource, use main() instead)
+        Patient_full has 10 datasource folders, so >= 9 successes is the realistic target
+        when all folders load cleanly. Threshold is set to 8 to tolerate one unexpected failure.
+        """
         successes = sum(1 for v in extract_results.values() if v is not None)
-        assert successes >= 8, f"Only {successes} extractions succeeded"
+        assert successes >= 9, f"Only {successes} extractions succeeded (expected >= 9)"
 
     def test_dataframes_are_valid(self, extract_results):
         for name, df in extract_results.items():

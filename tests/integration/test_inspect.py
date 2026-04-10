@@ -30,9 +30,14 @@ class TestInspectPatientFull:
         assert result_names == expected_names
 
     def test_most_datasources_ok(self, inspection_results):
-        """Patient_full has 10 datasource folders — most should load successfully."""
+        """
+        Patient_full has 10 datasource folders — all should load successfully.
+
+        'other' is absent from Patient_full so it will not be 'ok'.
+        Threshold is 9 to tolerate one unexpected failure while still catching regressions.
+        """
         ok_count = sum(1 for r in inspection_results if r.status == "ok")
-        assert ok_count >= 8, f"Only {ok_count} datasources succeeded"
+        assert ok_count >= 9, f"Only {ok_count} datasources succeeded (expected >= 9)"
 
     def test_ok_datasources_have_columns(self, inspection_results):
         for r in inspection_results:

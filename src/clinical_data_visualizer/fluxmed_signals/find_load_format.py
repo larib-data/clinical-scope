@@ -12,6 +12,13 @@ from clinical_data_visualizer.datasource_base import DataSourceBase
 logger = logging.getLogger(__name__)
 
 
+def _is_time_header(line: str) -> bool:
+    """Return True if *line* starts with any multilingual variant of 'Time'."""
+    return any(
+        line.casefold().startswith(p.casefold()) for p in options_naming.TIME_HEADER_PREFIXES
+    )
+
+
 class FluxmedSignalsDataSource(DataSourceBase):
     """Fluxmed Signals datasource processor."""
 
@@ -36,15 +43,16 @@ class FluxmedSignalsDataSource(DataSourceBase):
             with Path.open(file_path, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f]
 
-            # Find header row
+            # Find header row (accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
             header_idx = None
             for i, line in enumerate(lines):
-                if line.startswith("Time"):
+                if _is_time_header(line):
                     header_idx = i
                     break
 
             if header_idx is None:
-                msg = "No 'Time' header found"
+                known = ", ".join(options_naming.TIME_HEADER_PREFIXES)
+                msg = f"No time header found (tried: {known})"
                 raise RuntimeError(msg)
 
             units_idx = header_idx + 1

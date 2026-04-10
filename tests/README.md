@@ -5,13 +5,13 @@ Tests across unit, datasource, integration, and Dash callback layers.
 ## Common Commands
 
 ```bash
-# Activate venv first
-source /Users/alexis/Codes/clinical_visu_venv/bin/activate
+# Activate venv first (see CLAUDE.md for the venv path)
+source <venv_path>/bin/activate
 ```
 
 ```bash
 # Set working directory
-cd ~/Codes/ClinicalDataVisualizer 
+cd ~/Codes/ClinicalDataVisualizer
 ```
 
 ### Run everything

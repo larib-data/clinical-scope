@@ -189,11 +189,17 @@ class TestFindFilesSingleStemDeduplication:
         assert result is not None
         assert result.name == "data.parquet"
 
-    def test_two_stems_after_dedup_falls_through(self, tmp_path):
-        """a.parquet and b.csv → two distinct stems → needs further disambiguation."""
+    def test_two_stems_different_ext_after_dedup(self, tmp_path):
+        """a.parquet and b.csv → two distinct stems → resolve using extension"""
         create(tmp_path, "alpha.parquet", "beta.csv")
         result = find_files(tmp_path, [".parquet", ".csv"], "ds")
-        assert result is None  # ambiguous, no keywords
+        assert result.name == "alpha.parquet"
+
+    def test_two_stems_same_kw_different_ext(self, tmp_path):
+        """a.parquet and b.csv → two distinct stems → same keyword → resolve using extension"""
+        create(tmp_path, "alpha_one.parquet", "beta_one.csv")
+        result = find_files(tmp_path, [".parquet", ".csv"], "ds", keywords=["one"])
+        assert result.name == "alpha_one.parquet"
 
     def test_mixed_stems_dedup_then_keyword(self, tmp_path):
         """a.parquet, a.csv, b.csv → after dedup: a.parquet + b.csv → keyword 'alpha' → a.parquet."""

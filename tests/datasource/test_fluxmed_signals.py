@@ -64,21 +64,17 @@ class TestFormat:
 
 class TestLoadCsv:
     def test_load_csv(self, patient_difficult_path, fluxmed_signals_cls):
-        """CSV variant may lack the expected 'Time' header — the loader raises RuntimeError."""
+        """CSV with a Spanish 'Tiempo' header (FluxMed export in Spanish locale) must load."""
         folder = fluxmed_signals_cls._find_folder(patient_difficult_path)
         if folder is None:
             pytest.skip("fluxmed_signals not in Patient_difficult")
         file_path = fluxmed_signals_cls._find(folder)
         if file_path is None:
             pytest.skip("No file found")
-        # The difficult-format CSV is a raw re-export without the original header.
-        # The loader is expected to raise RuntimeError for this format.
-        try:
-            df = fluxmed_signals_cls._load(file_path, None)
-            assert isinstance(df, pd.DataFrame)
-            assert isinstance(df.index, pd.DatetimeIndex)
-        except RuntimeError:
-            pytest.skip("CSV format not supported by fluxmed_signals loader (no Time header)")
+        df = fluxmed_signals_cls._load(file_path, None)
+        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df.index, pd.DatetimeIndex)
+        assert len(df) > 0
 
 
 @pytest.mark.snapshot
