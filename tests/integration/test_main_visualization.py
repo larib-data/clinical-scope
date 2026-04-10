@@ -1,5 +1,7 @@
 """Integration tests for wrapper.main() — full visualization pipeline."""
 
+import copy
+
 import plotly.graph_objects as go
 import pytest
 
@@ -82,3 +84,47 @@ class TestToHtml:
         PlotModel.to_html(models, opts)
         html_files = list(tmp_path.rglob("*.html"))
         assert len(html_files) > 0
+
+
+class TestMainGlobalLoops:
+    @pytest.fixture(scope="class")
+    def db_opts_with_global_loop(self, example_database_options):
+        """example_database_options extended with a cross-datasource global loop."""
+        opts = copy.deepcopy(example_database_options)
+        opts.setdefault("global", {})
+        opts["global"].setdefault("loop", {})
+        # Use two signals from fluxmed_signals (qualified refs) — both present in Patient_full.
+        opts["global"]["loop"]["pv_loop"] = [
+            "fluxmed_signals::Paw(cmH2O)",
+            "fluxmed_signals::Volume(ml)",
+        ]
+        return opts
+
+    def test_global_loop_produces_loop_plot_model(
+        self, patient_options_full, db_opts_with_global_loop
+    ):
+        """wrapper.main() must produce at least one PlotModel with plot_type='loop'."""
+        models = main(patient_options_full, db_opts_with_global_loop)
+        loop_models = [m for m in models if m.plot_type == "loop"]
+        assert len(loop_models) >= 1, "Expected at least one loop PlotModel"
+
+    def test_global_loop_model_has_correct_name(
+        self, patient_options_full, db_opts_with_global_loop
+    ):
+        """The loop PlotModel group must be named after the loop key."""
+        models = main(patient_options_full, db_opts_with_global_loop)
+        loop_models = [m for m in models if m.plot_type == "loop"]
+        if not loop_models:
+            pytest.skip("No loop PlotModel produced — signal data may be absent")
+        group_names = [g.name for m in loop_models for g in m.groups]
+        assert "pv_loop" in group_names
+
+    def test_global_loop_model_has_figure(self, patient_options_full, db_opts_with_global_loop):
+        """The loop PlotModel must carry a rendered Plotly figure."""
+        models = main(patient_options_full, db_opts_with_global_loop)
+        loop_models = [m for m in models if m.plot_type == "loop"]
+        if not loop_models:
+            pytest.skip("No loop PlotModel produced — signal data may be absent")
+        for m in loop_models:
+            assert isinstance(m.figure, go.Figure)
+            assert len(m.figure.data) > 0

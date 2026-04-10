@@ -224,7 +224,7 @@ def main(
     )
     for loop_name, loop_field_list in global_loop_group.items():
         try:
-            if len(loop_field_list) < 2:
+            if len(loop_field_list) != 2:
                 logger.warning(
                     "⚠️ Global loop '%s' needs exactly 2 signal refs, got %d.",
                     loop_name,
@@ -242,10 +242,10 @@ def main(
             signal_x, signal_y = signals
             try:
                 loop_signal = Signal.loop_from_signals(signal_x, signal_y, name=loop_name)
+                plot_group_list.append(PlotGroup.from_single_signal(loop_signal))
             except Exception:
                 logger.exception("⚠️ Error constructing global loop '%s'.", loop_name)
                 continue
-            plot_group_list.append(PlotGroup.from_single_signal(loop_signal))
             logger.info(
                 "✅ Global loop '%s' created (%s × %s).",
                 loop_name,
