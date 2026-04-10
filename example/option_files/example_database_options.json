@@ -1,112 +1,56 @@
 {
     "global": {
         "grouped_fields": {
-            "Pressure": ["ART", "PNId", "PNIm", "PNIs"]
+            "NI Pressure": ["PNId", "PNIm", "PNIs"],
+            "Paw [cross-source qualified refs]": [
+                "fluxmed_signals::Paw(cmH2O)",
+                "mindray_scope::Paw",
+                "mindray_respi_waves::MDC_PRESS_AWAY-MDC_DIM_CM_H2O"
+            ]
         }
     },
+
     "philips_waves": {
-        "field_display": [
-            "ART",
-            "PAP",
-            "CO₂",
-            "CrbVol",
-            "P-aer"
-        ],
+        "field_display": ["art", "pleth", "paw", "vol"],
         "signals": {
-            "ART": {
-                "label": "Arterial pressure",
-                "unit": "mmHg"
+            "art": {
+                "label": "Arterial Pressure",
+                "unit": "mmHg",
+                "color": "red",
+                "range": [0, 200]
             },
-            "PAP": {
-                "label": "Pleural pressure (oesophagian)",
-                "unit": "cmH2O",
-                "unit_conversion": 1.35951,
-                "range": [-5, 25],
-                "period_resampling": 0.8,
-                "priority": 2
+            "pleth": {
+                "label": "Plethysmography",
+                "unit": "AU",
+                "color": "purple"
             },
-            "P-aer": {
-                "label": "Respiratory pressure",
+            "paw": {
+                "label": "Airway Pressure",
                 "unit": "cmH2O",
                 "range": [-5, 60],
+                "color": "steelblue",
                 "priority": 2
             },
-            "CrbVol": {
-                "label": "Respiratory Volume",
+            "vol": {
+                "label": "Tidal Volume",
                 "unit": "mL",
-                "range": [-20, 500],
-                "priority": 2
-            },
-            "CO₂": {
-                "label": "CO2",
-                "unit": "mmHg"
+                "range": [-50, 600],
+                "priority": 2,
+                "line_dash": "dash"
             }
         },
-        "grouped_fields": {
-        },
         "numerics": {
-            "period_resampling": 0.2,
+            "period_resampling": 0.5,
             "priority": 1
         },
-        "loop": {
-            "pv_loop": ["P-aer", "CrbVol"]
-        }
-    },
-    "philips_numerics": {
-        "field_display": [
-            "FC",
-            "FiO₂",
-            "Perf",
-            "rQinMx",
-            "PNId",
-            "PNIm",
-            "PNIs"
-        ],
-        "signals": {
-            "FC": {
-                "label": "Fréquence Cardiaque",
-                "unit": "Hz"
-            },
-            "FiO₂": {
-                "unit": "%"
-            },
-            "Perf": {},
-            "rQinMx": {
-                "unit": "l/m"
-            },
-            "PNId": {
-                "label": "Pressure diastolic",
-                "unit": "mmHg",
-                "priority": 1.5
-            },
-            "PNIm": {
-                "label": "Pressure mean",
-                "unit": "mmHg",
-                "priority": 1.5
-            },
-            "PNIs": {
-                "label": "Pressure systolic",
-                "unit": "mmHg",
-                "priority": 1.5
-            }
-        },
         "grouped_fields": {
-            "Pressure": ["PNId", "PNIm", "PNIs"]
-        }
-    },
-    "syringe": {
-        "signals": {
-            "Vitesse Babynoradrenaline": {
-                "unit": "µg/h",
-                "unit_conversion": 5.0
-            }
+            "Respiratory waves": ["paw", "vol"]
         },
-        "field_display": [
-            "Vitesse Babynoradrenaline"
-        ],
-        "numerics": {
+        "loop": {
+            "PV loop": ["paw", "vol"]
         }
     },
+
     "eit": {
         "field_display": [
             "Global",
@@ -143,11 +87,13 @@
             "%Local 1*": {
                 "unit": "Proportion",
                 "color": "red",
-                "range": [-0.05, 1.05]
+                "range": [-0.05, 1.05],
+                "hover_template": "fraction"
             },
             "%Local 2*": {
                 "unit": "Proportion",
-                "color": "blue"
+                "color": "blue",
+                "hover_template": "percentage"
             },
             "%Local 3*": {
                 "unit": "Proportion",
@@ -170,7 +116,7 @@
                 "Local 3*",
                 "Local 4*"
             ],
-            "Impedance": [
+            "Impedance proportion": [
                 "Global",
                 "%Local 1*",
                 "%Local 2*",
@@ -180,6 +126,575 @@
         },
         "additional_informations": {
             "timezone": "Europe/Paris"
+        }
+    },
+
+    "philips_numerics": {
+        "field_display": [
+            "FC",
+            "SpO₂",
+            "FiO₂",
+            "ARTd",
+            "ARTm",
+            "ARTs",
+            "PNId",
+            "PNIm",
+            "PNIs",
+            "PEP",
+            "Pplat.",
+            "VMexp",
+            "FR"
+        ],
+        "signals": {
+            "FC": {
+                "label": "Heart Rate",
+                "unit": "bpm",
+                "color": "#e31a1c",
+                "range": [0, 200],
+                "hover_template": "<b>HR:</b> %{y:.0f} bpm<extra></extra>"
+            },
+            "SpO₂": {
+                "label": "SpO2",
+                "unit": "%",
+                "range": [80, 100]
+            },
+            "FiO₂": {
+                "unit": "%"
+            },
+            "ARTd": {
+                "label": "ART diastolic",
+                "unit": "mmHg",
+                "priority": 1.5
+            },
+            "ARTm": {
+                "label": "ART mean",
+                "unit": "mmHg",
+                "priority": 1.5
+            },
+            "ARTs": {
+                "label": "ART systolic",
+                "unit": "mmHg",
+                "priority": 1.5
+            },
+            "PNId": {
+                "label": "NI Pressure diastolic",
+                "unit": "mmHg"
+            },
+            "PNIm": {
+                "label": "NI Pressure mean",
+                "unit": "mmHg"
+            },
+            "PNIs": {
+                "label": "NI Pressure systolic",
+                "unit": "mmHg"
+            },
+            "PEP": {
+                "label": "PEEP",
+                "unit": "cmH2O",
+                "range": [-2, 20]
+            },
+            "Pplat.": {
+                "label": "Plateau Pressure",
+                "unit": "cmH2O",
+                "range": [0, 40]
+            },
+            "VMexp": {
+                "label": "Minute Volume (exp)",
+                "unit": "L/min"
+            },
+            "FR": {
+                "label": "Respiratory Rate",
+                "unit": "/min",
+                "range": [0, 40]
+            }
+        },
+        "grouped_fields": {
+            "ART Pressure": ["ARTd", "ARTm", "ARTs"]
+        }
+    },
+
+    "syringe": {
+        "field_display": [
+            "Vitesse Propofol",
+            "Vitesse Remifentanil",
+            "Vitesse Babynoradrenaline",
+            "Effet Propofol",
+            "Effet Remifentanil"
+        ],
+        "signals": {
+            "Vitesse Propofol": {
+                "label": "Propofol rate",
+                "unit": "mg/h"
+            },
+            "Vitesse Remifentanil": {
+                "label": "Remifentanil rate",
+                "unit": "µg/h"
+            },
+            "Vitesse Babynoradrenaline": {
+                "label": "Noradrenalin rate",
+                "unit": "µg/h",
+                "unit_conversion": 5.0
+            },
+            "Effet Propofol": {
+                "label": "Propofol effect site",
+                "unit": "-",
+                "hover_template": "fraction"
+            },
+            "Effet Remifentanil": {
+                "label": "Remifentanil effect site",
+                "unit": "-",
+                "hover_template": "percentage"
+            }
+        },
+        "grouped_fields": {
+            "Drug rates": [
+                "Vitesse Propofol",
+                "Vitesse Remifentanil",
+                "Vitesse Babynoradrenaline"
+            ],
+            "Drug effects": ["Effet Propofol", "Effet Remifentanil"]
+        }
+    },
+
+    "fluxmed_parameters": {
+        "field_display": [
+            "RR(bpm)",
+            "VT(ml)",
+            "PEEP(cmH2O)",
+            "PIP(cmH2O)",
+            "Pplat(cmH2O)",
+            "Cdyn(ml/cmH2O)",
+            "Cstat(ml/cmH2O)",
+            "MV(l)",
+            "Ti(sec)",
+            "Te(sec)",
+            "StressIndex(-)",
+            "DrivingPaw(cmH2O)",
+            "EtCO2(mmHg)"
+        ],
+        "signals": {
+            "RR(bpm)": {
+                "label": "RR",
+                "unit": "bpm",
+                "range": [0, 40],
+                "priority": 1
+            },
+            "VT(ml)": {
+                "label": "VT",
+                "unit": "mL",
+                "range": [0, 800]
+            },
+            "PEEP(cmH2O)": {
+                "label": "PEEP",
+                "unit": "cmH2O",
+                "range": [-2, 20],
+                "color": "green"
+            },
+            "PIP(cmH2O)": {
+                "label": "PIP",
+                "unit": "cmH2O",
+                "range": [0, 50]
+            },
+            "Pplat(cmH2O)": {
+                "label": "Pplat",
+                "unit": "cmH2O",
+                "range": [0, 40]
+            },
+            "Cdyn(ml/cmH2O)": {
+                "label": "Dynamic compliance",
+                "unit": "mL/cmH2O",
+                "range": [0, 100]
+            },
+            "Cstat(ml/cmH2O)": {
+                "label": "Static compliance",
+                "unit": "mL/cmH2O",
+                "range": [0, 100],
+                "line_dash": "dash"
+            },
+            "MV(l)": {
+                "label": "Minute volume",
+                "unit": "L/min"
+            },
+            "Ti(sec)": {
+                "label": "Inspiratory time",
+                "unit": "s",
+                "visible": false
+            },
+            "Te(sec)": {
+                "label": "Expiratory time",
+                "unit": "s",
+                "visible": false
+            },
+            "StressIndex(-)": {
+                "label": "Stress Index",
+                "unit": "-",
+                "range": [0, 2],
+                "color": "orange",
+                "priority": 0.5,
+                "period_resampling": 1.0
+            },
+            "DrivingPaw(cmH2O)": {
+                "label": "Driving Pressure",
+                "unit": "cmH2O",
+                "range": [0, 30]
+            },
+            "EtCO2(mmHg)": {
+                "label": "EtCO2",
+                "unit": "mmHg",
+                "range": [20, 60]
+            }
+        },
+        "numerics": {
+            "period_resampling": 0.2,
+            "priority": 2
+        },
+        "grouped_fields": {
+            "Pressures": ["PEEP(cmH2O)", "PIP(cmH2O)", "Pplat(cmH2O)", "DrivingPaw(cmH2O)"],
+            "Compliance": ["Cdyn(ml/cmH2O)", "Cstat(ml/cmH2O)"]
+        }
+    },
+
+    "fluxmed_signals": {
+        "field_display": [
+            "Flow(l/min)",
+            "Volume(ml)",
+            "Paw(cmH2O)",
+            "Pes(cmH2O)",
+            "Ptpulm(cmH2O)",
+            "Ptdiaf(cmH2O)",
+            "CO2(mmHg)"
+        ],
+        "signals": {
+            "Flow(l/min)": {
+                "label": "Flow",
+                "unit": "L/min",
+                "range": [-100, 100],
+                "color": "darkgreen"
+            },
+            "Volume(ml)": {
+                "label": "Volume",
+                "unit": "mL",
+                "range": [-50, 600],
+                "color": "steelblue"
+            },
+            "Paw(cmH2O)": {
+                "label": "Airway Pressure",
+                "unit": "cmH2O",
+                "range": [-5, 40],
+                "color": "red"
+            },
+            "Pes(cmH2O)": {
+                "label": "Esophageal Pressure",
+                "unit": "cmH2O",
+                "range": [-20, 20],
+                "color": "orange",
+                "line_dash": "dot"
+            },
+            "Ptpulm(cmH2O)": {
+                "label": "Transpulmonary Pressure",
+                "unit": "cmH2O",
+                "range": [-10, 30],
+                "color": "purple"
+            },
+            "Ptdiaf(cmH2O)": {},
+            "CO2(mmHg)": {
+                "label": "CO2",
+                "unit": "mmHg",
+                "range": [0, 60]
+            }
+        },
+        "grouped_fields": {
+            "Waveforms": ["Flow(l/min)", "Volume(ml)", "Paw(cmH2O)"],
+            "Pressure waves": ["Paw(cmH2O)", "Pes(cmH2O)", "Ptpulm(cmH2O)"]
+        },
+        "loop": {
+            "PV airway": ["Paw(cmH2O)", "Volume(ml)"],
+            "PV esophageal": ["Pes(cmH2O)", "Volume(ml)"]
+        }
+    },
+
+    "servo_u": {
+        "field_display": [
+            "Airway Flow (ml / s)",
+            "Airway Press. (cmH2O)",
+            "Volume (ml)",
+            "Esophageal Press. (cmH2O)",
+            "CO2 Conc.(mmHg) (mmHg)"
+        ],
+        "signals": {
+            "Airway Flow (ml / s)": {
+                "label": "Flow",
+                "unit": "mL/s",
+                "range": [-1500, 1500]
+            },
+            "Airway Press. (cmH2O)": {
+                "label": "Airway Pressure",
+                "unit": "cmH2O",
+                "range": [-5, 40]
+            },
+            "Volume (ml)": {
+                "label": "Volume",
+                "unit": "mL",
+                "range": [-50, 600]
+            },
+            "Esophageal Press. (cmH2O)": {
+                "label": "Esophageal Pressure",
+                "unit": "cmH2O",
+                "range": [-20, 20],
+                "line_dash": "dashdot"
+            },
+            "CO2 Conc.(mmHg) (mmHg)": {
+                "label": "CO2",
+                "unit": "mmHg",
+                "range": [0, 60]
+            }
+        },
+        "grouped_fields": {
+            "Respiratory waveforms": [
+                "Airway Flow (ml / s)",
+                "Airway Press. (cmH2O)",
+                "Volume (ml)"
+            ]
+        },
+        "loop": {
+            "PV loop": ["Airway Press. (cmH2O)", "Volume (ml)"],
+            "PV esophageal": ["Esophageal Press. (cmH2O)", "Volume (ml)"]
+        }
+    },
+
+    "mindray_respi_numerics": {
+        "field_display": [
+            "MDC_PRESS_AWAY_MAX-MDC_DIM_CM_H2O",
+            "MDC_VENT_PRESS_AWAY_END_EXP_POS-MDC_DIM_CM_H2O",
+            "MDC_VOL_AWAY_TIDAL_EXP-MDC_DIM_MILLI_L",
+            "MDC_VENT_RESP_BTSD_PSAZC_RATE-MDC_DIM_RESP_PER_MIN",
+            "MDC_COMPL_LUNG-MDC_DIM_MILLI_L_PER_CM_H2O",
+            "MNDRY_VENT_PDRIVE-MDC_DIM_CM_H2O",
+            "MNDRY_VENT_MPRS-MNDRY_DIM_JOULES_PER_MIN",
+            "MNDRY_PRESS_OESOPHAGEAL_INSP-MDC_DIM_CM_H2O",
+            "MNDRY_PRESS_TRANSPULMONARY_INSP-MDC_DIM_CM_H2O"
+        ],
+        "signals": {
+            "MDC_PRESS_AWAY_MAX-MDC_DIM_CM_H2O": {
+                "label": "PIP",
+                "unit": "cmH2O",
+                "range": [0, 50]
+            },
+            "MDC_VENT_PRESS_AWAY_END_EXP_POS-MDC_DIM_CM_H2O": {
+                "label": "PEEP (measured)",
+                "unit": "cmH2O",
+                "range": [-2, 20]
+            },
+            "MDC_VOL_AWAY_TIDAL_EXP-MDC_DIM_MILLI_L": {
+                "label": "Vt exp",
+                "unit": "mL",
+                "range": [0, 800]
+            },
+            "MDC_VENT_RESP_BTSD_PSAZC_RATE-MDC_DIM_RESP_PER_MIN": {
+                "label": "RR",
+                "unit": "/min",
+                "range": [0, 40]
+            },
+            "MDC_COMPL_LUNG-MDC_DIM_MILLI_L_PER_CM_H2O": {
+                "label": "Compliance",
+                "unit": "mL/cmH2O",
+                "range": [0, 100]
+            },
+            "MNDRY_VENT_PDRIVE-MDC_DIM_CM_H2O": {
+                "label": "Driving Pressure",
+                "unit": "cmH2O",
+                "range": [0, 30],
+                "color": "tomato"
+            },
+            "MNDRY_VENT_MPRS-MNDRY_DIM_JOULES_PER_MIN": {
+                "label": "Mechanical Power",
+                "unit": "J/min",
+                "range": [0, 20],
+                "color": "crimson"
+            },
+            "MNDRY_PRESS_OESOPHAGEAL_INSP-MDC_DIM_CM_H2O": {
+                "label": "Poes insp",
+                "unit": "cmH2O",
+                "line_dash": "dot"
+            },
+            "MNDRY_PRESS_TRANSPULMONARY_INSP-MDC_DIM_CM_H2O": {
+                "label": "Ptranspulm insp",
+                "unit": "cmH2O"
+            }
+        },
+        "numerics": {
+            "period_resampling": 1.0,
+            "priority": 3
+        },
+        "grouped_fields": {
+            "Pressures": [
+                "MDC_PRESS_AWAY_MAX-MDC_DIM_CM_H2O",
+                "MDC_VENT_PRESS_AWAY_END_EXP_POS-MDC_DIM_CM_H2O",
+                "MNDRY_VENT_PDRIVE-MDC_DIM_CM_H2O"
+            ],
+            "Esophageal": [
+                "MNDRY_PRESS_OESOPHAGEAL_INSP-MDC_DIM_CM_H2O",
+                "MNDRY_PRESS_TRANSPULMONARY_INSP-MDC_DIM_CM_H2O"
+            ]
+        }
+    },
+
+    "mindray_respi_waves": {
+        "field_display": [
+            "MDC_PRESS_AWAY-MDC_DIM_CM_H2O",
+            "MDC_VOL_AWAY-MDC_DIM_MILLI_L",
+            "MDC_FLOW_AWAY-MDC_DIM_L_PER_MIN",
+            "MDC_PRESS_ESOPH-MDC_DIM_CM_H2O",
+            "MDC_PRESS_TRANSPULM-MDC_DIM_CM_H2O",
+            "MDC_CONC_AWAY_CO2-MDC_DIM_MMHG"
+        ],
+        "signals": {
+            "MDC_PRESS_AWAY-MDC_DIM_CM_H2O": {
+                "label": "Paw",
+                "unit": "cmH2O",
+                "range": [-5, 40],
+                "color": "red"
+            },
+            "MDC_VOL_AWAY-MDC_DIM_MILLI_L": {
+                "label": "Volume",
+                "unit": "mL",
+                "range": [-50, 600],
+                "color": "steelblue"
+            },
+            "MDC_FLOW_AWAY-MDC_DIM_L_PER_MIN": {
+                "label": "Flow",
+                "unit": "L/min",
+                "range": [-100, 100],
+                "color": "darkgreen"
+            },
+            "MDC_PRESS_ESOPH-MDC_DIM_CM_H2O": {
+                "label": "Poes",
+                "unit": "cmH2O",
+                "range": [-20, 20],
+                "color": "orange",
+                "line_dash": "dot"
+            },
+            "MDC_PRESS_TRANSPULM-MDC_DIM_CM_H2O": {
+                "label": "Ptranspulm",
+                "unit": "cmH2O",
+                "range": [-10, 30],
+                "color": "purple"
+            },
+            "MDC_CONC_AWAY_CO2-MDC_DIM_MMHG": {
+                "label": "CO2",
+                "unit": "mmHg",
+                "range": [0, 50]
+            }
+        },
+        "grouped_fields": {
+            "Waveforms": [
+                "MDC_FLOW_AWAY-MDC_DIM_L_PER_MIN",
+                "MDC_PRESS_AWAY-MDC_DIM_CM_H2O",
+                "MDC_VOL_AWAY-MDC_DIM_MILLI_L"
+            ]
+        },
+        "loop": {
+            "PV loop": [
+                "MDC_PRESS_AWAY-MDC_DIM_CM_H2O",
+                "MDC_VOL_AWAY-MDC_DIM_MILLI_L"
+            ],
+            "PV esophageal": [
+                "MDC_PRESS_ESOPH-MDC_DIM_CM_H2O",
+                "MDC_VOL_AWAY-MDC_DIM_MILLI_L"
+            ]
+        }
+    },
+
+    "mindray_scope": {
+        "field_display": ["ECG_II", "Art", "P4", "Pleth", "Paw", "Vol", "debit"],
+        "signals": {
+            "ECG_II": {
+                "label": "ECG Lead II",
+                "unit": "mV",
+                "color": "#33a02c",
+                "period_resampling": 0.5
+            },
+            "Art": {
+                "label": "Arterial Pressure",
+                "unit": "mmHg",
+                "color": "red",
+                "range": [0, 200]
+            },
+            "P4": {
+                "label": "P4 pressure"
+            },
+            "Pleth": {
+                "label": "Plethysmography",
+                "unit": "AU",
+                "color": "purple"
+            },
+            "Paw": {
+                "label": "Airway Pressure",
+                "unit": "cmH2O",
+                "range": [-5, 40],
+                "color": "steelblue"
+            },
+            "Vol": {
+                "label": "Volume",
+                "unit": "mL",
+                "range": [-50, 600]
+            },
+            "debit": {
+                "label": "Flow",
+                "unit": "L/min",
+                "range": [-100, 100],
+                "color": "darkgreen"
+            }
+        },
+        "grouped_fields": {
+            "Respiratory": ["Paw", "Vol", "debit"]
+        },
+        "loop": {
+            "PV loop": ["Paw", "Vol"]
+        }
+    },
+
+    "other": {
+        "field_display": [
+            "waves_first_half_filtered::Solar8000/HR",
+            "waves_first_half_filtered::Solar8000/PLETH_SPO2",
+            "waves_first_half_filtered::Solar8000/ETCO2",
+            "waves_first_half_filtered::Solar8000/VENT_RR",
+            "waves_first_half_filtered::Primus/FIO2",
+            "waves_first_half_filtered::BIS/BIS"
+        ],
+        "signals": {
+            "waves_first_half_filtered::Solar8000/HR": {
+                "label": "Heart Rate",
+                "unit": "bpm",
+                "range": [30, 200]
+            },
+            "waves_first_half_filtered::Solar8000/PLETH_SPO2": {
+                "label": "SpO2",
+                "unit": "%",
+                "range": [80, 100]
+            },
+            "waves_first_half_filtered::Solar8000/ETCO2": {
+                "label": "EtCO2",
+                "unit": "mmHg",
+                "range": [20, 60]
+            },
+            "waves_first_half_filtered::Solar8000/VENT_RR": {
+                "label": "RR (ventilator)",
+                "unit": "/min",
+                "range": [0, 40]
+            },
+            "waves_first_half_filtered::Primus/FIO2": {
+                "label": "FiO2",
+                "unit": "%",
+                "range": [0, 100]
+            },
+            "waves_first_half_filtered::BIS/BIS": {
+                "label": "BIS",
+                "unit": "-",
+                "range": [0, 100],
+                "color": "orange"
+            }
         }
     }
 }

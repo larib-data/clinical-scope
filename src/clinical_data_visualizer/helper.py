@@ -95,6 +95,8 @@ def find_files(
     4. If one stem remains, return it.
     5. If *keywords* is given, try each keyword in order to narrow the set;
        return immediately if exactly one match remains.
+    6. If *extensions* is given, narrow the set by the first prefered extension that is available
+       in the files. Return directly if only one remains.
     6. Warn and return ``None`` if still ambiguous.
     """
     if multi:
@@ -149,10 +151,21 @@ def find_files(
             kw_lower = kw.lower()
             kw_matches = [f for f in matches if kw_lower in f.stem.lower()]
             if len(kw_matches) == 1:
-                logger.info("Selected file for '%s': %s", datasource_name, kw_matches[0])
+                logger.info("Selected file by keyword for '%s': %s", datasource_name, kw_matches[0])
                 return kw_matches[0]
             if kw_matches:
                 matches = kw_matches
+
+    if extensions:
+        suffix_rank = {s.lower(): i for i, s in enumerate(extensions)}
+        matches.sort(key=lambda f: suffix_rank.get(f.suffix.lower(), len(extensions)))
+        if suffix_rank.get(matches[0].suffix.lower(), len(extensions)) < suffix_rank.get(
+            matches[1].suffix.lower(), len(extensions)
+        ):
+            logger.info(
+                "Selected file for '%s' by extension preference: %s", datasource_name, matches[0]
+            )
+            return matches[0]
 
     logger.warning(
         "Multiple '%s' files found in '%s', could not resolve a unique match: %s",

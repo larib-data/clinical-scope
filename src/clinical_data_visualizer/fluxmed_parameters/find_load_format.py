@@ -12,6 +12,13 @@ from clinical_data_visualizer.datasource_base import DataSourceBase
 logger = logging.getLogger(__name__)
 
 
+def _is_time_header(line: str) -> bool:
+    """Return True if *line* starts with any multilingual variant of 'Time'."""
+    return any(
+        line.casefold().startswith(p.casefold()) for p in options_naming.TIME_HEADER_PREFIXES
+    )
+
+
 class FluxmedParametersDataSource(DataSourceBase):
     """Fluxmed Parameters datasource processor."""
 
@@ -20,8 +27,6 @@ class FluxmedParametersDataSource(DataSourceBase):
     @classmethod
     @helper.time_it
     def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
-        time_col_name = "Time(sec)"
-
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() in [".txt", ".csv"]:
@@ -38,15 +43,16 @@ class FluxmedParametersDataSource(DataSourceBase):
             with Path.open(file_path, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f.readlines()]
 
-            # Find the column names row
+            # Find the column names row (accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
             col_idx = None
             for i, line in enumerate(lines):
-                if line.startswith(time_col_name.split("(", maxsplit=1)[0]):
+                if _is_time_header(line):
                     col_idx = i
                     break
 
             if col_idx is None:
-                msg = "No header row matching time column found"
+                known = ", ".join(options_naming.TIME_HEADER_PREFIXES)
+                msg = f"No time header found (tried: {known})"
                 raise RuntimeError(msg)
 
             # Extract column names and units
@@ -86,8 +92,9 @@ class FluxmedParametersDataSource(DataSourceBase):
             df.columns = df.columns.str.strip()
             df = df.apply(pd.to_numeric, errors="coerce")
 
-            # Compute datetime index
-            timestamps = [start_time + timedelta(seconds=s) for s in df[time_col_name]]
+            # Compute datetime index from the first column (the time-offset column)
+            time_col = columns[0]
+            timestamps = [start_time + timedelta(seconds=s) for s in df[time_col]]
             df.index = pd.to_datetime(timestamps)
             df.index.name = "datetime_index"
         else:
