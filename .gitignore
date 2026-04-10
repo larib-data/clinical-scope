@@ -34,8 +34,12 @@ logs/
 .ruff_cache/
 
 # IA
-.claude/skills/*
 PLANS/*
 
 # Local testing and example
 LOCAL_SCRIPT/*
+
+# Example until they are truly non-identifiable
+example/example_patients/Patient_difficult_format/tdv_visu
+example/example_patients/Patient_full/tdv_visu
+

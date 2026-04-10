@@ -102,6 +102,24 @@ On next app start, a **"Reload last config"** button (grey) appears in the Datab
 
 **Privacy**: this file contains only signal metadata (labels, colors, units, field mappings) — no patient data or PHI. Safe to store in the home directory.
 
+## Testing
+
+```bash
+pytest                                               # full suite
+pytest tests/datasource/ -m "not snapshot"           # fast structural only
+pytest tests/datasource/ --update-snapshots -m snapshot  # regenerate golden files after data change
+```
+
+See `tests/README.md` for full command reference.
+
+### Example data
+The example data in `example/example_patients/` is intentionally truncated to keep tests fast (~16 MB total).
+Do not replace files with full-size originals. After changing example data, regenerate snapshots with `--update-snapshots`.
+
+### Fixture scoping
+Datasource test files use `scope="module"` for `formatted_df` (shared between `TestFormat` and `TestSnapshot`).
+Tests only read DataFrames — they do not mutate them.
+
 ## Code Style
 
 - **Linter/Formatter**: Ruff (`ruff check`, `ruff format`)
