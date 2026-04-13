@@ -5,10 +5,7 @@ import pandas as pd
 
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
-from clinical_data_visualizer.database_options_parser import (
-    normalize_datasource_options,
-    warn_redundant_entries,
-)
+from clinical_data_visualizer.database_options_parser import warn_redundant_entries
 from clinical_data_visualizer.inspection import DataSourceInspection
 from clinical_data_visualizer.signal_container import (
     PlotGroup,
@@ -95,9 +92,8 @@ def main(
         if name not in database_options_global:
             continue
 
-        raw_db_opts = database_options_global[name]
-        warn_redundant_entries(raw_db_opts, name)
-        database_options = normalize_datasource_options(raw_db_opts)
+        database_options = database_options_global[name]
+        warn_redundant_entries(database_options, name)
 
         try:
             # (1) Create signals
@@ -224,7 +220,7 @@ def main(
     )
     for loop_name, loop_field_list in global_loop_group.items():
         try:
-            if len(loop_field_list) != 2:
+            if len(loop_field_list) != 2:  # noqa: PLR2004
                 logger.warning(
                     "⚠️ Global loop '%s' needs exactly 2 signal refs, got %d.",
                     loop_name,
@@ -232,7 +228,7 @@ def main(
                 )
                 continue
             signals = _resolve_signal_references(loop_field_list[:2], all_signal_list)
-            if len(signals) != 2:
+            if len(signals) != 2:  # noqa: PLR2004
                 logger.warning(
                     "⚠️ Could not resolve both signals for global loop '%s' (resolved %d/2).",
                     loop_name,
@@ -247,7 +243,7 @@ def main(
                 logger.exception("⚠️ Error constructing global loop '%s'.", loop_name)
                 continue
             logger.info(
-                "✅ Global loop '%s' created (%s × %s).",
+                "✅ Global loop '%s' created (%s x %s).",
                 loop_name,
                 signal_x.raw_name,
                 signal_y.raw_name,
@@ -296,9 +292,8 @@ def inspect(
         if name not in database_options_global:
             continue
 
-        raw_db_opts = database_options_global[name]
-        warn_redundant_entries(raw_db_opts, name)
-        db_opts = normalize_datasource_options(raw_db_opts)
+        db_opts = database_options_global[name]
+        warn_redundant_entries(db_opts, name)
 
         datasource_cls = data_source.DATASOURCE_CLASS
         if datasource_cls is None:
@@ -376,7 +371,7 @@ def extract_datasource(
 
     opts = dict(patient_options or {})
     opts["data_folder"] = str(datasource_folder.parent)
-    db_opts = normalize_datasource_options(database_options_specific or {})
+    db_opts = database_options_specific or {}
 
     return datasource_cls.extract(opts, db_opts, save_path=save_path)
 
@@ -425,9 +420,8 @@ def extract_patient(
         if name not in database_options_global:
             continue
 
-        raw_db_opts = database_options_global[name]
-        warn_redundant_entries(raw_db_opts, name)
-        db_opts = normalize_datasource_options(raw_db_opts)
+        db_opts = database_options_global[name]
+        warn_redundant_entries(db_opts, name)
 
         datasource_cls = data_source.DATASOURCE_CLASS
         if datasource_cls is None:

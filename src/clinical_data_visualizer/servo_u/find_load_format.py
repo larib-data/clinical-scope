@@ -184,12 +184,3 @@ class ServoUDataSource(DataSourceBase):
         # Servo U doesn't need timezone handling (already has it from loading)
         df = cls._apply_time_shift(df, patient_options)
         return cls._filter_by_datetime(df, patient_options)
-
-
-# Module-level main function for backward compatibility
-def main(
-    patient_options: dict,
-    database_options_specific: dict | None,
-) -> pd.DataFrame:
-    """Load and process Servo U data."""
-    return ServoUDataSource.main(patient_options, database_options_specific)

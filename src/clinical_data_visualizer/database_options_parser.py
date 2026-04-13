@@ -1,54 +1,10 @@
-"""
-Parse and normalize database_options files.
-
-The user-facing and internal format uses a per-signal ``"signals"`` dict::
-
-    "signals": {
-        "raw_name": {"label": "Display Name", "unit": "mmHg", ...},
-    }
-
-`normalize_datasource_options()` ensures ``field_display`` is populated
-from the ``"signals"`` keys when not explicitly set.
-"""
+"""Parse and validate database_options files."""
 
 import logging
 
 import clinical_data_visualizer.constants as cst
 
 logger = logging.getLogger(__name__)
-
-
-def normalize_datasource_options(raw: dict) -> dict:
-    """
-    Normalize a single datasource section of database_options.
-
-    Auto-populates ``field_display`` from ``"signals"`` keys when not
-    explicitly set.
-
-    Returns a *new* dict (the original is not mutated).
-    """
-    result = dict(raw)
-
-    signals = result.get(cst.DatabaseOptions.SIGNALS)
-    if signals is not None:
-        # Warn about unknown per-signal keys
-        for raw_name, sig_opts in signals.items():
-            if not isinstance(sig_opts, dict):
-                continue
-            unknown = set(sig_opts.keys()) - cst.DatabaseOptions.Signal.KNOWN_KEYS
-            if unknown:
-                logger.warning(
-                    "Unknown key(s) %s in signal '%s'. Known keys: %s",
-                    sorted(unknown),
-                    raw_name,
-                    sorted(cst.DatabaseOptions.Signal.KNOWN_KEYS),
-                )
-
-        # Auto-populate field_display from signals keys if not explicitly set
-        if cst.DatabaseOptions.FIELD_DISPLAY not in result:
-            result[cst.DatabaseOptions.FIELD_DISPLAY] = list(signals.keys())
-
-    return result
 
 
 def validate_database_options_structure(db_options: dict) -> list[str]:
@@ -76,11 +32,7 @@ def validate_database_options_structure(db_options: dict) -> list[str]:
 
 
 def warn_redundant_entries(raw: dict, datasource_name: str) -> None:
-    """
-    Log warnings for identity / default-value entries in the ``"signals"`` block.
-
-    Called *before* normalization for clearest messages.
-    """
+    """Log warnings for unknown keys, identity / default-value entries in the `"signals"` block."""
     signals = raw.get(cst.DatabaseOptions.SIGNALS)
     if not signals or not isinstance(signals, dict):
         return
@@ -90,6 +42,16 @@ def warn_redundant_entries(raw: dict, datasource_name: str) -> None:
     for raw_name, sig_opts in signals.items():
         if not isinstance(sig_opts, dict):
             continue
+
+        # Warn about unknown per-signal keys
+        unknown = set(sig_opts.keys()) - sig_cst.KNOWN_KEYS
+        if unknown:
+            logger.warning(
+                "Unknown key(s) %s in signal '%s'. Known keys: %s",
+                sorted(unknown),
+                raw_name,
+                sorted(sig_cst.KNOWN_KEYS),
+            )
 
         # label == raw_name is redundant
         if sig_opts.get(sig_cst.LABEL) == raw_name:

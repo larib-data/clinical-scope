@@ -1,4 +1,4 @@
-FOLDER_NAME_VISU = "tdv_visu"
+FOLDER_NAME_VISU = "cdv_visu"
 
 LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"

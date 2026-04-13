@@ -318,7 +318,10 @@ class OtherDataSource(DataSourceBase):
         database_options = (
             database_options_specific if database_options_specific is not None else {}
         )
-        configured_fields = set(database_options.get(cst.DatabaseOptions.FIELD_DISPLAY, []))
+        signals = database_options.get(cst.DatabaseOptions.SIGNALS, {})
+        configured_fields = set(
+            database_options.get(cst.DatabaseOptions.FIELD_DISPLAY, list(signals.keys()))
+        )
 
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
         search_folder = cls._find_folder(folder_path)
@@ -428,8 +431,3 @@ class OtherDataSource(DataSourceBase):
             filtered_date_range=filtered_date_range,
             columns=columns,
         )
-
-
-def main(patient_options: dict, database_options_specific: dict | None) -> list[Signal]:
-    """Load and process generic 'other' data."""
-    return OtherDataSource.main(patient_options, database_options_specific)

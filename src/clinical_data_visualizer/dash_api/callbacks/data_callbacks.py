@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # Server-side caches keyed by UUID — suitable for single-user desktop app.
 # Both caches grow during a session and are cleared on each process_visualization call.
 # Not bounded by size — acceptable for a single-user desktop app.
-# NOTE: these are distinct from the on-disk parquet cache (tdv_visu/ inside the patient folder)
+# NOTE: these are distinct from the on-disk parquet cache (cdv_visu/ inside the patient folder)
 # which persists across sessions for quick_load. These are ephemeral, in-memory only.
 FIGURE_RESAMPLER_CACHE = {}  # FigureResampler objects for time-series zoom/pan
 LOOP_DATA_CACHE = {}  # Loop trace data (x, y, time arrays) for slider filtering

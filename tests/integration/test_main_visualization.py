@@ -80,7 +80,7 @@ class TestToHtml:
         opts = dict(patient_options_full)
         opts["data_folder"] = str(tmp_path)
         # Create the output directory (to_html expects it or helper creates it)
-        (tmp_path / "tdv_visu").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "cdv_visu").mkdir(parents=True, exist_ok=True)
         PlotModel.to_html(models, opts)
         html_files = list(tmp_path.rglob("*.html"))
         assert len(html_files) > 0

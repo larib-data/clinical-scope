@@ -352,8 +352,3 @@ class EITDataSource(DataSourceBase):
 
         # Add percentage columns for local* columns relative to global (hardcoded for EIT)
         return _add_columns_percentage_for_eit(df)
-
-
-# Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
-    return EITDataSource.main(patient_options, database_options_specific)

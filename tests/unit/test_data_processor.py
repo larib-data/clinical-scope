@@ -163,13 +163,9 @@ class TestDataSourceBaseExtract:
 
 class TestExtractPatient:
     @patch("clinical_data_visualizer.wrapper.datasource_list")
-    @patch("clinical_data_visualizer.wrapper.normalize_datasource_options")
     @patch("clinical_data_visualizer.wrapper.warn_redundant_entries")
-    def test_extract_patient_processes_both_datasources(
-        self, mock_warn, mock_normalize, mock_ds_list
-    ):
+    def test_extract_patient_processes_both_datasources(self, mock_warn, mock_ds_list):
         df = _make_df()
-        mock_normalize.side_effect = lambda raw: raw
 
         cls_a = _make_datasource_cls("ds_a")
         cls_a.extract.return_value = df
@@ -190,13 +186,9 @@ class TestExtractPatient:
         assert results["ds_b"] is not None
 
     @patch("clinical_data_visualizer.wrapper.datasource_list")
-    @patch("clinical_data_visualizer.wrapper.normalize_datasource_options")
     @patch("clinical_data_visualizer.wrapper.warn_redundant_entries")
-    def test_extract_patient_saves_to_folder(
-        self, mock_warn, mock_normalize, mock_ds_list, tmp_path
-    ):
+    def test_extract_patient_saves_to_folder(self, mock_warn, mock_ds_list, tmp_path):
         df = _make_df()
-        mock_normalize.side_effect = lambda raw: raw
 
         cls_a = _make_datasource_cls("ds_a")
         cls_a.extract.return_value = df
@@ -211,14 +203,10 @@ class TestExtractPatient:
         assert kwargs.get("save_path") == tmp_path / "ds_a.parquet"
 
     @patch("clinical_data_visualizer.wrapper.datasource_list")
-    @patch("clinical_data_visualizer.wrapper.normalize_datasource_options")
     @patch("clinical_data_visualizer.wrapper.warn_redundant_entries")
-    def test_extract_patient_sets_data_folder_from_arg(
-        self, mock_warn, mock_normalize, mock_ds_list
-    ):
+    def test_extract_patient_sets_data_folder_from_arg(self, mock_warn, mock_ds_list):
         """patient_folder is always injected as data_folder, overriding patient_options."""
         df = _make_df()
-        mock_normalize.side_effect = lambda raw: raw
 
         cls_a = _make_datasource_cls("ds_a")
         cls_a.extract.return_value = df
@@ -236,14 +224,12 @@ class TestExtractPatient:
         assert passed_opts["data_folder"] == "/correct_folder"
 
     @patch("clinical_data_visualizer.wrapper.datasource_list")
-    @patch("clinical_data_visualizer.wrapper.normalize_datasource_options")
     @patch("clinical_data_visualizer.wrapper.warn_redundant_entries")
     def test_extract_patient_none_database_options_uses_all_datasources(
-        self, mock_warn, mock_normalize, mock_ds_list
+        self, mock_warn, mock_ds_list
     ):
         """database_options_global=None → all AVAILABLE datasources are processed."""
         df = _make_df()
-        mock_normalize.side_effect = lambda raw: raw
 
         cls_a = _make_datasource_cls("ds_a")
         cls_a.extract.return_value = df

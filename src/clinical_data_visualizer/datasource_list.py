@@ -50,8 +50,7 @@ def add_main_module(find_load_format_module: ModuleType) -> Callable[[type], typ
             )
             raise ValueError(msg)
 
-        # Assign the actual main function directly to the class
-        cls.MAIN_MODULE = module.main
+        cls.MAIN_MODULE = cls.DATASOURCE_CLASS.main
         cls.OPTIONS = options
 
         return cls

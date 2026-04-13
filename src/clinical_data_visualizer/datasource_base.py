@@ -429,7 +429,7 @@ class DataSourceBase(ABC):
         never calls ``_extract_signals``), but returns the data itself rather than
         inspection metadata.
 
-        Parquet caching inside ``tdv_visu/`` is always created automatically by
+        Parquet caching inside ``cdv_visu/`` is always created automatically by
         ``_load()`` inside ``_load_raw_dataframe()``.
 
         Args:
@@ -504,7 +504,10 @@ class DataSourceBase(ABC):
         db_opts_for_load = {
             k: v for k, v in database_options.items() if k != cst.DatabaseOptions.FIELD_DISPLAY
         }
-        configured_fields = set(database_options.get(cst.DatabaseOptions.FIELD_DISPLAY, []))
+        signals = database_options.get(cst.DatabaseOptions.SIGNALS, {})
+        configured_fields = set(
+            database_options.get(cst.DatabaseOptions.FIELD_DISPLAY, list(signals.keys()))
+        )
 
         file_path_str = None
         try:
