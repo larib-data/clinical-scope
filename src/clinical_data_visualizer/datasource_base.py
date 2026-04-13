@@ -19,15 +19,31 @@ from clinical_data_visualizer.signal_container import Signal
 logger = logging.getLogger(__name__)
 
 
-_TS_FMT = "%y-%m-%d %H:%M:%S"  # compact, no milliseconds, 2-digit year
+_TS_FMT = "%y-%m-%d %H:%M:%S %Z"  # compact, 2-digit year, timezone abbreviation
 
 
 def fmt_ts(ts: object) -> str:
     """Format a pandas Timestamp (or datetime-like) to a compact, human-readable string."""
     try:
-        return ts.strftime(_TS_FMT)
+        return ts.strftime(_TS_FMT).rstrip()
     except Exception:  # noqa: BLE001
         return str(ts)
+
+
+def _to_display_tz(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a shallow copy of *df* with its index converted to ``DISPLAY_TIMEZONE``.
+
+    Used in :meth:`DataSourceBase.inspect` so that reported timestamps match
+    the timezone shown in the Dash plots.  The copy is shallow (data arrays are
+    shared) so it is cheap even for wide, high-frequency DataFrames.
+    If the index is tz-naive or not a DatetimeIndex, *df* is returned unchanged.
+    """
+    if not (isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None):
+        return df
+    result = df.copy(deep=False)
+    result.index = df.index.tz_convert(cst.DISPLAY_TIMEZONE)
+    return result
 
 
 def _date_range(df: pd.DataFrame) -> tuple[str, str] | None:
@@ -507,7 +523,8 @@ class DataSourceBase(ABC):
                 datasource_name=cls.DATASOURCE_NAME, status="file_not_found"
             )
 
-        raw_date_range = _date_range(df_raw)
+        df_raw_display = _to_display_tz(df_raw)
+        raw_date_range = _date_range(df_raw_display)
 
         try:
             df_filtered = cls._format(df_raw, patient_options, database_options)
@@ -519,14 +536,15 @@ class DataSourceBase(ABC):
                 error_message=str(exc),
                 file_path=file_path_str,
                 raw_date_range=raw_date_range,
-                columns=_column_infos(df_raw, df_raw, configured_fields),
+                columns=_column_infos(df_raw_display, df_raw_display, configured_fields),
             )
 
+        df_filtered_display = _to_display_tz(df_filtered)
         return DataSourceInspection(
             datasource_name=cls.DATASOURCE_NAME,
             status="ok",
             file_path=file_path_str,
             raw_date_range=raw_date_range,
-            filtered_date_range=_date_range(df_filtered),
-            columns=_column_infos(df_raw, df_filtered, configured_fields),
+            filtered_date_range=_date_range(df_filtered_display),
+            columns=_column_infos(df_raw_display, df_filtered_display, configured_fields),
         )

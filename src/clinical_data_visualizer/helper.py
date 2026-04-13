@@ -117,6 +117,9 @@ def find_files(
             f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in suffix_set
         ]
     else:
+        # No extension filter: all files are candidates.
+        # NOTE: if a datasource defines FILE_EXTENSIONS = [] with MULTI_FILE = False,
+        # junk files (.DS_Store, etc.) will be included here. Always define FILE_EXTENSIONS.
         matches = [f for f in folder_path.iterdir() if f.is_file()]
 
     if not matches:
