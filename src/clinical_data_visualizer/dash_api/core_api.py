@@ -26,6 +26,7 @@ from clinical_data_visualizer.dash_api.styles import (
     EDIT_SHAPE_POPUP_STYLE,
     INSPECTION_MODAL_HEADER_ROW,
     INSPECTION_MODAL_PANEL,
+    INSPECTION_MODAL_SCROLLABLE_BODY,
     INSPECTION_MODAL_STYLE_HIDDEN,
     ROOT_CONTAINER,
     VERSION_BADGE,
@@ -244,11 +245,17 @@ app.layout = html.Div(
                             ],
                             style=INSPECTION_MODAL_HEADER_ROW,
                         ),
-                        dcc.Loading(
-                            type="default",
-                            children=html.Div(id="inspection-modal-content"),
+                        # Body
+                        html.Div(
+                            [
+                                dcc.Loading(
+                                    type="default",
+                                    children=html.Div(id="inspection-modal-content"),
+                                ),
+                                dcc.Download(id="inspection-download"),
+                            ],
+                            style=INSPECTION_MODAL_SCROLLABLE_BODY,
                         ),
-                        dcc.Download(id="inspection-download"),
                     ],
                     style=INSPECTION_MODAL_PANEL,
                 )
