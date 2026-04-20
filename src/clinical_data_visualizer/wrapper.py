@@ -5,7 +5,10 @@ import pandas as pd
 
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
-from clinical_data_visualizer.database_options_parser import warn_redundant_entries
+from clinical_data_visualizer.database_options_parser import (
+    normalize_database_options,
+    warn_redundant_entries,
+)
 from clinical_data_visualizer.inspection import DataSourceInspection
 from clinical_data_visualizer.signal_container import (
     PlotGroup,
@@ -21,6 +24,7 @@ logger = logging.getLogger(__name__)
 def _resolve_database_options(database_options_global: dict | None) -> dict:
     if database_options_global is None:
         return datasource_list.generate_default_database_options()
+    normalize_database_options(database_options_global)
     return database_options_global
 
 
@@ -317,7 +321,10 @@ def inspect(
                 error_message=str(exc),
             )
 
-        results.append(inspection)
+        if isinstance(inspection, list):
+            results.extend(inspection)
+        else:
+            results.append(inspection)
 
     logger.info("🔎 Inspection complete: %d datasource(s) inspected.", len(results))
     return results

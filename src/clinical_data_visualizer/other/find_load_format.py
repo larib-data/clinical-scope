@@ -2,19 +2,14 @@ import csv
 import logging
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
 import clinical_data_visualizer.other.options as options_naming
-from clinical_data_visualizer.datasource_base import DataSourceBase, fmt_ts
-from clinical_data_visualizer.inspection import ColumnInfo, DataSourceInspection
+from clinical_data_visualizer.datasource_base import DataSourceBase
+from clinical_data_visualizer.inspection import DataSourceInspection
 from clinical_data_visualizer.signal_container import (
-    Data,
-    Metadata,
-    PlotOptions,
     Signal,
-    TraceOptions,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,41 +120,17 @@ def _load_single_file(file_path: Path) -> pd.DataFrame:
     raise ValueError(msg)
 
 
-def _create_signal(
-    col_name: str,
-    display_name: str,
-    df: pd.DataFrame,
-    source_options: dict,
-) -> Signal:
-    """Create a Signal object from a single DataFrame column."""
-    y_full = df[col_name].to_numpy(dtype=np.float64)
-    valid_mask = np.isfinite(y_full)
-    x = df.index[valid_mask].to_numpy(dtype="datetime64[ns]")
-    y = y_full[valid_mask]
-    timezone = df.index.tz
+def _resolve_columns(df: pd.DataFrame, file_config: dict) -> list[str]:
+    """
+    Determine which columns to expose as signals for a file.
 
-    data = Data(x=x, y=y, timezone=timezone)
-
-    trace_dict = source_options.get(cst.SourceOptions.TRACE_OPTIONS, {})
-    valid_trace_keys = {"mode", "line_width", "line_dash", "opacity", "line_color", "marker_symbol"}
-
-    plot_options = PlotOptions(
-        plot_type=cst.PlotType.TIME_SERIES,
-        y_unit_name=cst.DatabaseOptions.Signal.DEFAULT_UNIT,
-    )
-
-    trace_options = TraceOptions(
-        plot_options=plot_options,
-        **{k: v for k, v in trace_dict.items() if k in valid_trace_keys},
-    )
-
-    return Signal(
-        raw_name=col_name,
-        name=display_name,
-        data=data,
-        trace_options=trace_options,
-        metadata=Metadata(),
-    )
+    If ``field_display`` is present in the per-file config, restrict to those
+    columns (bare names).  Otherwise all DataFrame columns are returned.
+    """
+    per_file_display = file_config.get(cst.DatabaseOptions.FIELD_DISPLAY)
+    if per_file_display is not None:
+        return [c for c in per_file_display if c in df.columns]
+    return list(df.columns)
 
 
 class OtherDataSource(DataSourceBase):
@@ -208,6 +179,12 @@ class OtherDataSource(DataSourceBase):
         columns as traces. Files that fail to load are skipped without affecting others.
         Populates database_options_specific['grouped_fields'] so the wrapper groups
         signals by source file.
+
+        Per-file configuration is read from ``database_options_specific["files"]``, which
+        is populated by ``wrapper._collect_other_per_file()`` from ``other::<stem>`` keys.
+        Each ``other::<stem>`` section supports the full set of database_options keys:
+        ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
+        ``grouped_fields``, and ``loop``.
         """
         database_options = (
             database_options_specific if database_options_specific is not None else {}
@@ -225,8 +202,17 @@ class OtherDataSource(DataSourceBase):
         if file_paths is None:
             return []
 
-        all_signals = []
-        grouped_fields = {}
+        per_file_options: dict = database_options.get(cst.DatabaseOptions.FILES, {})
+
+        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
+        group_by_file = patient_options_specific.get(
+            options_naming.PatientOptionsDataSourceRelative.GroupByFile.NAME,
+            options_naming.PatientOptionsDataSourceRelative.GroupByFile.DEFAULT,
+        )
+
+        all_signals: list[Signal] = []
+        grouped_fields: dict = {}
+        per_file_loops: dict = {}
 
         for file_path in file_paths:
             try:
@@ -240,11 +226,9 @@ class OtherDataSource(DataSourceBase):
                     continue
                 df = result
 
-                # Convert remaining columns to numeric
+                # Convert remaining columns to numeric, drop all-NaN columns
                 for col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-
-                # Drop columns that are entirely NaN after coercion
                 df = df.dropna(axis=1, how="all")
 
                 if df.empty or len(df.columns) == 0:
@@ -255,28 +239,33 @@ class OtherDataSource(DataSourceBase):
                 df = df[~df.index.duplicated(keep="first")]
                 df = df.sort_index()
 
-                # Apply formatting (timezone, time shift, datetime filter)
-                df = cls._format(df, patient_options, database_options)
+                file_stem = file_path.stem
+                file_config = per_file_options.get(file_stem, {})
+
+                # Apply formatting (timezone, time shift, datetime filter) with per-file opts
+                df = cls._format(df, patient_options, file_config)
 
                 if df.empty:
                     logger.warning("No data after filtering in '%s', skipping file", file_path.name)
                     continue
 
-                # Create signals for each column, with per-file prefix for uniqueness
-                file_stem = file_path.stem
-                file_signal_raw_names = []
+                # Determine which columns to expose as signals
+                columns = _resolve_columns(df, file_config)
+                if not columns:
+                    logger.debug("No columns selected for '%s', skipping file", file_path.name)
+                    continue
 
-                for col_name in df.columns:
+                file_signal_raw_names: list[str] = []
+                for col_name in columns:
                     raw_name = f"{file_stem}::{col_name}"
                     try:
-                        sig = _create_signal(
-                            col_name=col_name,
-                            display_name=col_name,
+                        sig = Signal.time_series_from_dataframe(
                             df=df,
+                            raw_signal_name=col_name,
                             source_options=cls.SOURCE_OPTIONS,
+                            database_options_specific=file_config,
                         )
-                        # Override raw_name for global uniqueness
-                        sig.raw_name = raw_name
+                        sig.raw_name = raw_name  # override for global uniqueness
                         sig.metadata.datasource_name = cls.DATASOURCE_NAME
                         all_signals.append(sig)
                         file_signal_raw_names.append(raw_name)
@@ -286,20 +275,33 @@ class OtherDataSource(DataSourceBase):
                         )
 
                 if file_signal_raw_names:
-                    grouped_fields[file_stem] = file_signal_raw_names
+                    # Grouping: prefer user-defined groups, fall back to group-by-file
+                    file_grouped = file_config.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
+                    if file_grouped:
+                        for group_name, bare_cols in file_grouped.items():
+                            grouped_fields[group_name] = [
+                                f"{file_stem}::{col}"
+                                for col in bare_cols
+                                if f"{file_stem}::{col}" in file_signal_raw_names
+                            ]
+                    elif group_by_file:
+                        grouped_fields[file_stem] = file_signal_raw_names
+
+                    # Loops: prefix bare column names with file_stem for global uniqueness
+                    for loop_name, bare_cols in file_config.get(
+                        cst.DatabaseOptions.LOOP, {}
+                    ).items():
+                        per_file_loops[loop_name] = [f"{file_stem}::{col}" for col in bare_cols]
 
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
                 continue
 
-        # Inject grouped_fields into database_options for the wrapper to use
-        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
-        group_by_file = patient_options_specific.get(
-            options_naming.PatientOptionsDataSourceRelative.GroupByFile.NAME,
-            options_naming.PatientOptionsDataSourceRelative.GroupByFile.DEFAULT,
-        )
-        if group_by_file:
+        # Inject grouped_fields and loop into database_options for the wrapper to use
+        if grouped_fields:
             database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
+        if per_file_loops:
+            database_options[cst.DatabaseOptions.LOOP] = per_file_loops
 
         return all_signals
 
@@ -308,9 +310,14 @@ class OtherDataSource(DataSourceBase):
         cls,
         patient_options: dict,
         database_options_specific: dict | None,
-    ) -> DataSourceInspection:
+    ) -> list[DataSourceInspection]:
         """
-        Inspect all CSV/parquet files in the other datasource folder.
+        Inspect each CSV/parquet file in the other datasource folder independently.
+
+        Returns one DataSourceInspection per file, named ``other::<stem>``, mirroring
+        the database_options key convention (``other::waves``, ``other::numerics``, …).
+        This avoids cross-file aggregation issues (e.g. mixed tz-naive/tz-aware indices)
+        and gives the caller per-file date ranges and column stats.
 
         Overrides DataSourceBase.inspect() because OtherDataSource._load() raises
         NotImplementedError (files are processed individually in main()).
@@ -318,116 +325,67 @@ class OtherDataSource(DataSourceBase):
         database_options = (
             database_options_specific if database_options_specific is not None else {}
         )
-        signals = database_options.get(cst.DatabaseOptions.SIGNALS, {})
-        configured_fields = set(
-            database_options.get(cst.DatabaseOptions.FIELD_DISPLAY, list(signals.keys()))
-        )
+        per_file_options: dict = database_options.get(cst.DatabaseOptions.FILES, {})
 
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
         search_folder = cls._find_folder(folder_path)
         if search_folder is None:
-            return DataSourceInspection(
-                datasource_name=cls.DATASOURCE_NAME, status="file_not_found"
-            )
+            return [
+                DataSourceInspection(datasource_name=cls.DATASOURCE_NAME, status="file_not_found")
+            ]
 
         file_paths = cls._find(search_folder)
         if not file_paths:
-            return DataSourceInspection(
-                datasource_name=cls.DATASOURCE_NAME, status="file_not_found"
-            )
+            return [
+                DataSourceInspection(datasource_name=cls.DATASOURCE_NAME, status="file_not_found")
+            ]
 
-        # Aggregate column stats across all files.
-        # Keys use the same "{stem}::{col}" format as main() for consistency.
-        all_raw_counts: dict[str, int] = {}
-        all_filtered_counts: dict[str, int] = {}
-        col_first_ts: dict[str, object] = {}  # per-column earliest filtered Timestamp object
-        col_last_ts: dict[str, object] = {}  # per-column latest filtered Timestamp object
-        min_raw, max_raw = None, None
-        min_flt, max_flt = None, None
+        results: list[DataSourceInspection] = []
 
         for fp in file_paths:
+            inspection_name = f"{cls.DATASOURCE_NAME}::{fp.stem}"
+            file_config = per_file_options.get(fp.stem, {})
+
             try:
                 df = _load_single_file(fp)
                 df = _detect_and_set_datetime_index(df)
                 if df is None:
                     logger.warning("inspect: no datetime index in '%s', skipping", fp.name)
+                    results.append(
+                        DataSourceInspection(
+                            datasource_name=inspection_name,
+                            status="load_error",
+                            error_message="No datetime index detected",
+                            file_path=str(fp),
+                        )
+                    )
                     continue
 
-                for col in df.columns:
+                # Coerce all columns to numeric; keep NaN-only columns so that
+                # _make_inspection/_column_infos can report them with raw_point_count=0.
+                for col in list(df.columns):
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-                df = df.dropna(axis=1, how="all")
-                if df.empty or len(df.columns) == 0:
-                    continue
-
                 df = df[~df.index.duplicated(keep="first")].sort_index()
 
-                if not df.empty:
-                    lo, hi = df.index.min(), df.index.max()
-                    min_raw = lo if min_raw is None else min(min_raw, lo)
-                    max_raw = hi if max_raw is None else max(max_raw, hi)
-
-                for col in df.columns:
-                    raw_name = f"{fp.stem}::{col}"
-                    all_raw_counts[raw_name] = all_raw_counts.get(raw_name, 0) + int(
-                        df[col].notna().sum()
-                    )
-
-                try:
-                    df_flt = cls._format(df, patient_options, database_options)
-                    if not df_flt.empty:
-                        lo, hi = df_flt.index.min(), df_flt.index.max()
-                        min_flt = lo if min_flt is None else min(min_flt, lo)
-                        max_flt = hi if max_flt is None else max(max_flt, hi)
-                    for col in df_flt.columns:
-                        raw_name = f"{fp.stem}::{col}"
-                        all_filtered_counts[raw_name] = all_filtered_counts.get(raw_name, 0) + int(
-                            df_flt[col].notna().sum()
-                        )
-                        valid_idx = df_flt.index[df_flt[col].notna()]
-                        if not valid_idx.empty:
-                            first_ts = valid_idx.min()
-                            last_ts = valid_idx.max()
-                            if raw_name not in col_first_ts or first_ts < col_first_ts[raw_name]:
-                                col_first_ts[raw_name] = first_ts
-                            if raw_name not in col_last_ts or last_ts > col_last_ts[raw_name]:
-                                col_last_ts[raw_name] = last_ts
-                except Exception:
-                    logger.exception("inspect: format failed for '%s'", fp.name)
+                results.append(
+                    cls._make_inspection(df, patient_options, file_config, inspection_name, str(fp))
+                )
 
             except Exception:
-                logger.exception("inspect: failed to load '%s'", fp.name)
+                logger.exception("inspect: failed to process '%s'", fp.name)
+                results.append(
+                    DataSourceInspection(
+                        datasource_name=inspection_name,
+                        status="load_error",
+                        error_message=f"Unexpected error processing {fp.name}",
+                        file_path=str(fp),
+                    )
+                )
 
-        if not all_raw_counts:
-            return DataSourceInspection(
+        return results or [
+            DataSourceInspection(
                 datasource_name=cls.DATASOURCE_NAME,
-                status="load_error",
-                error_message="No readable files found in folder",
+                status="file_not_found",
                 file_path=str(search_folder),
             )
-
-        columns = [
-            ColumnInfo(
-                raw_name=raw_name,
-                is_configured=raw_name in configured_fields,
-                raw_point_count=raw_count,
-                filtered_point_count=all_filtered_counts.get(raw_name, 0),
-                first_filtered_timestamp=(
-                    fmt_ts(col_first_ts[raw_name]) if raw_name in col_first_ts else None
-                ),
-                last_filtered_timestamp=(
-                    fmt_ts(col_last_ts[raw_name]) if raw_name in col_last_ts else None
-                ),
-            )
-            for raw_name, raw_count in all_raw_counts.items()
         ]
-        raw_date_range = (fmt_ts(min_raw), fmt_ts(max_raw)) if min_raw is not None else None
-        filtered_date_range = (fmt_ts(min_flt), fmt_ts(max_flt)) if min_flt is not None else None
-
-        return DataSourceInspection(
-            datasource_name=cls.DATASOURCE_NAME,
-            status="ok",
-            file_path=str(search_folder),
-            raw_date_range=raw_date_range,
-            filtered_date_range=filtered_date_range,
-            columns=columns,
-        )

@@ -7,6 +7,24 @@ import clinical_data_visualizer.constants as cst
 logger = logging.getLogger(__name__)
 
 
+def normalize_database_options(db_opts: dict) -> None:
+    """
+    Normalize the database_options dict in place before use.
+
+    Moves top-level ``other::<filename>`` sections into
+    ``db_opts["other"]["files"]["<filename>"]`` so that ``OtherDataSource``
+    receives per-file config without needing to scan the global dict itself.
+    A bare ``"other": {}`` entry is created if only ``other::*`` keys exist,
+    so the normal datasource-dispatch loop still triggers the datasource.
+    """
+    per_file = {k[len("other::") :]: v for k, v in db_opts.items() if k.startswith("other::")}
+    if not per_file:
+        return
+    if "other" not in db_opts:
+        db_opts["other"] = {}
+    db_opts["other"].setdefault(cst.DatabaseOptions.FILES, {}).update(per_file)
+
+
 def validate_database_options_structure(db_options: dict) -> list[str]:
     """
     Validate the top-level structure of a full database_options dict.
@@ -16,7 +34,7 @@ def validate_database_options_structure(db_options: dict) -> list[str]:
     warnings: list[str] = []
 
     for section_name, section in db_options.items():
-        if section_name == cst.DatabaseOptions.GLOBAL:
+        if section_name == cst.DatabaseOptions.GLOBAL or section_name.startswith("other::"):
             continue
         if not isinstance(section, dict):
             continue
