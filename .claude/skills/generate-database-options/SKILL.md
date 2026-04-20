@@ -93,10 +93,11 @@ Path(output_path).write_text(json.dumps(db_options, indent=4, ensure_ascii=False
 
 Sheet **"signals"** — header row (bold, light-grey fill `"D9D9D9"`):
 ```
-datasource | signal | label | unit | unit_conversion | color | priority | period_resampling | range_min | range_max | visible | line_dash | hover_template | display | groups
+datasource | signal | label | unit | unit_conversion | color | priority | period_resampling | range_min | range_max | visible | line_dash | hover_template | display | groups | timezone
 ```
 - One sentinel row per datasource (`signal = *`) only if `numerics` has values or `timezone` is set
 - One data row per signal (leave cells empty for unset options)
+- `timezone` column is **sentinel-only** (placed in `additional_informations.timezone`); a warning is logged if set in a per-signal row
 
 Sheet **"loops"** — header row (bold, light-grey fill):
 ```
@@ -129,6 +130,8 @@ Use this table to guide refinements and answer user questions.
 
 - ⚠️ **`global.loop`** (cross-datasource PV-loops): **not implemented** — `wrapper.py:222-224` logs an error and skips. Only per-datasource `loop` entries work.
 - ℹ️ **Qualified signal references** (`"datasource::signal_name"`): supported in `grouped_fields` to resolve ambiguity when the same signal name exists in multiple datasources. Useful in `global.grouped_fields`.
+- ℹ️ **`other` datasource — per-file config**: the `other` datasource uses `other::<stem>` keys (e.g. `other::waves`, `other::numerics`) in `database_options` to configure each file independently. In the XLSX, use `other::waves` as the `datasource` value for signals from the `waves.*` file. The `timezone` sentinel column works correctly for these keys.
+- ⚠️ **`other` datasource — global groups with `other` signals**: in `global.grouped_fields`, signals from `other` files must be referenced as `"other::waves::art"` (i.e. `datasource::stem::column`). The XLSX `groups` column only generates bare signal names in global groups, so cross-datasource groups involving `other` signals need manual adjustment in JSON after export.
 
 ## Checklist before finishing
 

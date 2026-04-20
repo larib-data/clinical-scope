@@ -266,6 +266,11 @@ Clicking it opens an inspection modal that shows, for each data source:
 This is useful for verifying that data files are correctly detected, checking which signals are
 available, and confirming the time range before committing to a full processing run.
 
+> **Note for the Other (Generic) source**: because the `other` folder may contain several
+> independent files, the inspection modal shows **one entry per file** (e.g. `other::waves`,
+> `other::numerics`) rather than a single aggregated entry. Each entry has its own date range
+> and column list.
+
 A **"Download CSV"** button in the modal header lets you export the inspection results as a CSV
 file for further analysis.
 
@@ -445,7 +450,7 @@ source key in this file is what activates that source; removing it disables it e
 | `loop` | object | `{}` | PV-loop definitions: `{"loop_name": ["x_signal", "y_signal"]}`. |
 | `numerics.period_resampling` | float | source default | Resampling period in seconds applied to all numeric parameters of this datasource. |
 | `numerics.priority` | float | source default | Plot ordering priority for numerics (lower value = higher on page). |
-| `additional_informations.timezone` | string | source default | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only supported by compatible datasources (e.g., EIT, Mindray). |
+| `additional_informations.timezone` | string | source default | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Supported by: EIT, FluxMed, Mindray Respi Waves/Numerics, Mindray Scope, Syringe, and **Other** (per-file, via `other::<stem>` keys). |
 
 ### Per-Signal Fields Reference (`signals.<signal_name>`)
 
@@ -514,7 +519,7 @@ The **Scope** column below indicates where each field is meaningful:
 | `hover_template` | No | Signal | Hover tooltip format. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is forwarded directly to Plotly as a `hovertemplate`. |
 | `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. |
 | `groups` | No | Signal | Semicolon-separated group names (e.g., `Respiratory;Pressure`). Groups within one datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
-| `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. |
+| `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. Works with `other::<stem>` datasource keys (e.g., `other::waves`). |
 
 ### `loops` sheet (optional)
 

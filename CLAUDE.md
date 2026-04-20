@@ -75,7 +75,7 @@ src/clinical_data_visualizer/
 - `mindray_respi_waves` - Mindray respiratory high-frequency waveforms (.parquet or .csv)
 - `mindray_respi_numerics` - Mindray respiratory numeric parameters (.parquet or .csv)
 - `syringe` - Syringe pump data
-- `other` - Generic data source (auto-discovers CSV/parquet files)
+- `other` - Generic data source (auto-discovers CSV/parquet files); per-file config via `other::<stem>` keys (e.g. `other::waves`, `other::numerics`); `inspect()` returns one entry per file
 
 ## Configuration Files
 
@@ -196,11 +196,13 @@ The `build_patient_options_ui` callback creates the patient options form:
    - `MULTI_FILE: bool`: `True` = load all matching files, `False` = pick one file (with tiered disambiguation: extension filter → stem dedup by preference → keyword filter)
    - `FILE_NAME_DATAFRAME_LOADED`: Cache filename (e.g., `"my_source.parquet"`)
    - Other source-specific constants (timezone, `source_options`, etc.)
+   - **`DatabaseOptionsAdditionalInformations` class** (opt-in): add `class DatabaseOptionsAdditionalInformations: TIMEZONE = "timezone"` to enable per-datasource timezone override via `additional_informations.timezone` in `database_options`. Without this class, the `additional_informations.timezone` key is silently ignored and `DATA_SOURCE_DEFAULT_TIMEZONE` is always used.
 3. Create `find_load_format.py` inheriting from `DataSourceBase`:
    - Set `OPTIONS_MODULE = options_naming` (class attributes auto-derived via `__init_subclass__`)
    - Default `_find()` uses `FILE_KEYWORDS`, `FILE_EXTENSIONS`, `MULTI_FILE` — override only if needed
    - Implement `_load()`: Parse raw data to DataFrame
    - Optionally override `_format()` and `_extract_signals()`
+   - **`_make_inspection` helper** (base class): `DataSourceBase._make_inspection(df_raw, patient_options, db_opts, datasource_name, file_path)` converts an already-loaded DataFrame into a `DataSourceInspection`. Used by both the default `inspect()` and `OtherDataSource.inspect()` (which calls it once per file). Override `inspect()` only if the default find→load→inspect flow doesn't apply.
 4. Register in `datasource_list.py` with `@add_main_module` decorator
 
 ### Data Flow
@@ -213,7 +215,7 @@ The `build_patient_options_ui` callback creates the patient options form:
 
 ### Alternative Pipelines
 - **Extraction only** (`wrapper.extract_patient` / `batch_extract`): find → load → format, returns DataFrames without visualization
-- **Inspection** (`wrapper.inspect`): find → load → format, returns column metadata (`DataSourceInspection`) for each datasource
+- **Inspection** (`wrapper.inspect`): find → load → format, returns column metadata (`DataSourceInspection`) for each datasource. `OtherDataSource.inspect()` returns **one entry per file** (named `other::<stem>`); the wrapper handles both single and list returns transparently.
 - **Python API**: `from clinical_data_visualizer import extract_datasource, extract_patient, batch_extract`
 
 ## Building / Deployment
