@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -74,6 +75,7 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
 def main(
     patient_options: dict,
     database_options_global: dict | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[PlotModel]:
     database_options_global = _resolve_database_options(database_options_global)
     all_signal_list = []
@@ -89,12 +91,19 @@ def main(
         requested_sources,
     )
 
+    proc_total = len(requested_sources)
+    proc_count = 0
+
     # Loop through data sources
     for data_source in datasource_list.DataSource.AVAILABLE:
         name = data_source.NAME
 
         if name not in database_options_global:
             continue
+
+        proc_count += 1
+        if progress_callback is not None:
+            progress_callback(proc_count, proc_total, name)
 
         database_options = database_options_global[name]
         warn_redundant_entries(database_options, name)
@@ -273,6 +282,7 @@ def main(
 def inspect(
     patient_options: dict,
     database_options_global: dict | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[DataSourceInspection]:
     """
     Run find → load → format for each enabled datasource and return inspection results.
@@ -290,11 +300,18 @@ def inspect(
         requested_sources,
     )
 
+    proc_total = len(requested_sources)
+    proc_count = 0
+
     results = []
     for data_source in datasource_list.DataSource.AVAILABLE:
         name = data_source.NAME
         if name not in database_options_global:
             continue
+
+        proc_count += 1
+        if progress_callback is not None:
+            progress_callback(proc_count, proc_total, name)
 
         db_opts = database_options_global[name]
         warn_redundant_entries(db_opts, name)

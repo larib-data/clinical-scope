@@ -122,6 +122,9 @@ app.layout = html.Div(
             type="default",
             children=html.Div(id="inspect-status"),
         ),
+        html.Div(id="process-progress"),
+        dcc.Interval(id="process-progress-interval", interval=500, disabled=True),
+        html.Hr(),
         html.Div(
             id="shape-controls",
             style={"display": "none"},
@@ -261,7 +264,6 @@ app.layout = html.Div(
                 )
             ],
         ),
-        html.Hr(),
         html.Div(id="visualization-container"),
         dcc.Store(id="annotations-store", data={}),
         dcc.Store(id="inspection-results-store", data=None),
