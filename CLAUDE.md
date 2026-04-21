@@ -228,11 +228,6 @@ The app can be packaged as a standalone executable using PyInstaller.
 ./src/clinical_data_visualizer/build_info/build.sh
 ```
 
-### Manual Build
-```bash
-pyinstaller src/clinical_data_visualizer/build_info/core_api.spec --clean --distpath builded_app/macOS_arm
-```
-
 ### Build Output
 - Executable: `builded_app/macOS_arm/ClinicalVisuAppAlexis/`
 - Spec file: `src/clinical_data_visualizer/build_info/core_api.spec`

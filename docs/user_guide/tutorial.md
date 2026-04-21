@@ -546,7 +546,7 @@ If the browser does not open after launching the application, manually navigate 
 http://127.0.0.1:8050
 ```
 
-Ensure no other application is using port 8050. If needed, close the terminal window which was opened in the app and restart the application.
+Ensure no other application is using port 8050 (typically a previous app launch terminal tab not yet closed). If needed, close the terminal window which was opened in the app and restart the application.
 
 ## No Data Found
 
@@ -562,6 +562,7 @@ If the visualization is empty or a data source shows no signals:
   selected automatically.
 - Check that the data source is **enabled** in your database options (or use "Default
   visualization" to enable all).
+- Use `inspect` feature rather than `visualization`, which may provide information on what the app finds and is able to load.
 
 ## Slow Loading
 
@@ -580,7 +581,7 @@ If signals from different sources appear misaligned in time:
 ## Application Crashes or Errors
 
 - Check the terminal window for error messages.
-- Log files are available in the `logs/` directory (if running from source).
+- Log files are available in the `logs/` directory.
 - Ensure the data files are not corrupted or truncated.
 
 \newpage
