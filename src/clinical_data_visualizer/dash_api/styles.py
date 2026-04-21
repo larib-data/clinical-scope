@@ -21,6 +21,7 @@ COLOR_GREY = "#6c757d"  # Reload last config, Close
 COLOR_GREEN = "#28a745"  # Default visualization
 COLOR_ORANGE = "#fd7e14"  # Process visualization
 COLOR_TEAL = "#17a2b8"  # Inspect data, Download CSV
+COLOR_PURPLE = "#6f42c1"  # Database statistics
 
 # ---------------------------------------------------------------------------
 # 2. Button styles
@@ -65,6 +66,15 @@ BUTTON_PROCESS: dict = {
 BUTTON_INSPECT: dict = {
     **_BUTTON_BASE,
     "backgroundColor": COLOR_TEAL,
+    "padding": "10px 22px",
+    "fontSize": "15px",
+    "fontWeight": "bold",
+    "marginLeft": "12px",
+}
+
+BUTTON_DB_STATS: dict = {
+    **_BUTTON_BASE,
+    "backgroundColor": COLOR_PURPLE,
     "padding": "10px 22px",
     "fontSize": "15px",
     "fontWeight": "bold",

@@ -206,25 +206,6 @@ def build_patient_options_ui(
     return components, schema_data
 
 
-def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
-    """Rehydrate schema classes from schema_data dictionary."""
-    schema_class_lookup = {}
-    for k, v in schema_data.items():
-        if k.startswith("global"):
-            schema_class_lookup[k] = getattr(cst.PatientOptions, v)
-        elif k.startswith("specific"):
-            parts = k.split(".")
-            datasource_name = parts[1] if len(parts) > 1 else None
-            datasource_class = datasource.DataSource.get_subclass_by_name(datasource_name)
-            logger.debug("parts: %s", parts)
-            logger.debug("datasource_name: %s", datasource_name)
-            logger.debug("datasource_class: %s", datasource_class)
-            schema_class_lookup[k] = getattr(
-                datasource_class.OPTIONS.PatientOptionsDataSourceRelative, v
-            )
-    return schema_class_lookup
-
-
 @callback(
     Output("visualization-container", "children"),
     Output("validation-errors", "children"),
@@ -250,7 +231,7 @@ def process_visualization(
     if not db_options:
         return None, "Database options not loaded", None, None, shape_hidden
 
-    schema_class_lookup = _rehydrate_schema_classes(schema_data)
+    schema_class_lookup = validation.rehydrate_schema_classes(schema_data)
 
     # Map IDs to values
     logger.debug("ids: %s", ids)
@@ -491,7 +472,7 @@ def inspect_data(
             None,
         )
 
-    schema_class_lookup = _rehydrate_schema_classes(schema_data)
+    schema_class_lookup = validation.rehydrate_schema_classes(schema_data)
     values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
     validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
 

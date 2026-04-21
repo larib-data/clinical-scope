@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +9,10 @@ from clinical_data_visualizer import datasource_list
 from clinical_data_visualizer.database_options_parser import (
     normalize_database_options,
     warn_redundant_entries,
+)
+from clinical_data_visualizer.database_statistics import (
+    DatabaseStatistics,
+    compute_database_statistics,
 )
 from clinical_data_visualizer.inspection import DataSourceInspection
 from clinical_data_visualizer.signal_container import (
@@ -499,3 +504,102 @@ def batch_extract(
 
     logger.info("📦 Batch complete: %d folder(s) processed.", len(batch_results))
     return batch_results
+
+
+def batch_inspect(
+    patient_folders_or_root: str | Path | list[str | Path],
+    database_options_global: dict | None = None,
+    patient_options: dict | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> dict[str, list[DataSourceInspection]]:
+    """
+    Run :func:`inspect` for multiple patient folders.
+
+    Args:
+        patient_folders_or_root: Either a single directory whose immediate
+            subdirectories are patient folders, or a list of patient folder paths.
+        database_options_global: Full database options dict shared across all patients.
+            Defaults to all available datasources with their default options.
+        patient_options: Base patient-level options applied to every patient.
+            ``data_folder`` is always overridden per patient.
+        progress_callback: Optional callable ``(current_index, total, patient_name)``
+            invoked after each patient is processed.
+
+    Returns:
+        Mapping ``{patient_folder_name: list[DataSourceInspection]}``.
+        A patient that raises an unexpected exception is stored as ``[]``.
+
+    """
+    database_options_global = _resolve_database_options(database_options_global)
+
+    if isinstance(patient_folders_or_root, (str, Path)):
+        root = Path(patient_folders_or_root)
+        folders = sorted(f for f in root.iterdir() if f.is_dir())
+    else:
+        folders = [Path(f) for f in patient_folders_or_root]
+
+    total = len(folders)
+    logger.info("📦 Batch inspection: %d folder(s).", total)
+    batch_results: dict[str, list[DataSourceInspection]] = {}
+
+    for idx, folder in enumerate(folders):
+        logger.info("── Inspecting: %s", folder)
+
+        per_patient_opts = dict(patient_options or {})
+        per_patient_opts["data_folder"] = str(folder)
+
+        try:
+            folder_results = inspect(
+                per_patient_opts,
+                database_options_global,
+            )
+        except Exception:
+            logger.exception("❌ Unexpected error inspecting folder '%s'.", folder)
+            folder_results = []
+
+        batch_results[folder.name] = folder_results
+
+        if progress_callback is not None:
+            progress_callback(idx + 1, total, folder.name)
+
+    logger.info("📦 Batch inspection complete: %d folder(s) processed.", len(batch_results))
+    return batch_results
+
+
+def database_statistics(
+    patient_folders_or_root: str | Path | list[str | Path],
+    database_options_global: dict | None = None,
+    patient_options: dict | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> DatabaseStatistics:
+    """
+    Compute aggregate statistics across all patients in a database.
+
+    Convenience wrapper: calls :func:`batch_inspect` then
+    :func:`~clinical_data_visualizer.database_statistics.compute_database_statistics`.
+
+    Args:
+        patient_folders_or_root: Either a single directory whose immediate
+            subdirectories are patient folders, or a list of patient folder paths.
+        database_options_global: Full database options dict shared across all patients.
+        patient_options: Base patient-level options applied to every patient.
+        progress_callback: Optional callable ``(current_index, total, patient_name)``.
+
+    Returns:
+        A :class:`~clinical_data_visualizer.database_statistics.DatabaseStatistics` instance.
+
+    """
+    per_patient = batch_inspect(
+        patient_folders_or_root,
+        database_options_global=database_options_global,
+        patient_options=patient_options,
+        progress_callback=progress_callback,
+    )
+    root_str = (
+        str(patient_folders_or_root)
+        if isinstance(patient_folders_or_root, (str, Path))
+        else str(patient_folders_or_root[0])
+        if patient_folders_or_root
+        else ""
+    )
+    return compute_database_statistics(per_patient, root_folder=root_str)

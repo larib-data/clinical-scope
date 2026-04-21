@@ -10,7 +10,18 @@ import csv
 import dataclasses
 import io
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import ClassVar
+
+
+def _fmt_ts_display(ts: str | None) -> str:
+    """Format a stored ISO timestamp to a compact human-readable string for display."""
+    if not ts:
+        return "—"
+    try:
+        return datetime.fromisoformat(ts).strftime("%y-%m-%d %H:%M:%S %Z").rstrip()
+    except (ValueError, TypeError):
+        return ts
 
 
 @dataclass
@@ -49,8 +60,8 @@ class ColumnInfo:
             f"{self.raw_point_count:,}",
             f"{self.filtered_point_count:,}",
             percent,
-            self.first_filtered_timestamp or "—",
-            self.last_filtered_timestamp or "—",
+            _fmt_ts_display(self.first_filtered_timestamp),
+            _fmt_ts_display(self.last_filtered_timestamp),
         ]
 
 
@@ -139,12 +150,14 @@ def to_text_summary(results: list[DataSourceInspection]) -> str:
             lines.append(f"         File:  {r.file_path}")
         if r.raw_date_range:
             lines.append(
-                f"         Raw dates:      {r.raw_date_range[0]}  →  {r.raw_date_range[1]}"
+                f"         Raw dates:      "
+                f"{_fmt_ts_display(r.raw_date_range[0])}  →  {_fmt_ts_display(r.raw_date_range[1])}"
             )
         if r.filtered_date_range:
             lines.append(
                 f"         Filtered dates: "
-                f"{r.filtered_date_range[0]}  →  {r.filtered_date_range[1]}"
+                f"{_fmt_ts_display(r.filtered_date_range[0])}  →  "
+                f"{_fmt_ts_display(r.filtered_date_range[1])}"
             )
         if r.columns:
             lines.append(f"         Columns ({len(r.columns)}):")

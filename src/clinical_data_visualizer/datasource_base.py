@@ -19,13 +19,10 @@ from clinical_data_visualizer.signal_container import Signal
 logger = logging.getLogger(__name__)
 
 
-_TS_FMT = "%y-%m-%d %H:%M:%S %Z"  # compact, 2-digit year, timezone abbreviation
-
-
 def fmt_ts(ts: object) -> str:
-    """Format a pandas Timestamp (or datetime-like) to a compact, human-readable string."""
+    """Serialise a pandas Timestamp to an ISO 8601 string for storage in inspection objects."""
     try:
-        return ts.strftime(_TS_FMT).rstrip()
+        return ts.isoformat()
     except Exception:  # noqa: BLE001
         return str(ts)
 

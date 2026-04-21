@@ -15,6 +15,7 @@ from clinical_data_visualizer.dash_api import callbacks  # noqa: F401
 from clinical_data_visualizer.dash_api.helper_api import get_cached_db_options_path
 from clinical_data_visualizer.dash_api.styles import (
     ACTION_BUTTONS_ROW,
+    BUTTON_DB_STATS,
     BUTTON_DEFAULT_VIZ,
     BUTTON_DOWNLOAD_CSV,
     BUTTON_INSPECT,
@@ -110,6 +111,11 @@ app.layout = html.Div(
                     id="inspect-button",
                     style=BUTTON_INSPECT,
                 ),
+                html.Button(
+                    "Database statistics",
+                    id="db-stats-button",
+                    style=BUTTON_DB_STATS,
+                ),
             ],
             style=ACTION_BUTTONS_ROW,
         ),
@@ -121,6 +127,13 @@ app.layout = html.Div(
         dcc.Loading(
             type="default",
             children=html.Div(id="inspect-status"),
+        ),
+        # Database statistics progress + status
+        html.Div(id="db-stats-progress", style={"marginTop": "8px"}),
+        dcc.Interval(
+            id="db-stats-progress-interval",
+            interval=1000,
+            disabled=True,
         ),
         html.Div(
             id="shape-controls",
@@ -261,10 +274,56 @@ app.layout = html.Div(
                 )
             ],
         ),
+        # Database statistics modal
+        html.Div(
+            id="db-stats-modal",
+            style=INSPECTION_MODAL_STYLE_HIDDEN,
+            children=[
+                html.Div(
+                    [
+                        # Header row
+                        html.Div(
+                            [
+                                html.H3("Database Statistics", style={"margin": 0}),
+                                html.Div(
+                                    [
+                                        html.Button(
+                                            "Download CSV",
+                                            id="db-stats-download-btn",
+                                            style=BUTTON_DOWNLOAD_CSV,
+                                        ),
+                                        html.Button(
+                                            "Close",
+                                            id="db-stats-modal-close",
+                                            style=BUTTON_MODAL_CLOSE,
+                                        ),
+                                    ],
+                                    style={"display": "flex", "gap": "8px"},
+                                ),
+                            ],
+                            style=INSPECTION_MODAL_HEADER_ROW,
+                        ),
+                        # Body
+                        html.Div(
+                            [
+                                dcc.Loading(
+                                    type="default",
+                                    children=html.Div(id="db-stats-modal-content"),
+                                ),
+                                dcc.Download(id="db-stats-download"),
+                            ],
+                            style=INSPECTION_MODAL_SCROLLABLE_BODY,
+                        ),
+                    ],
+                    style=INSPECTION_MODAL_PANEL,
+                )
+            ],
+        ),
         html.Hr(),
         html.Div(id="visualization-container"),
         dcc.Store(id="annotations-store", data={}),
         dcc.Store(id="inspection-results-store", data=None),
+        dcc.Store(id="db-stats-results-store", data=None),
     ],
     style=ROOT_CONTAINER,
 )

@@ -12,6 +12,12 @@ from clinical_data_visualizer.dash_api.callbacks.data_callbacks import (
     load_db_options,
     process_visualization,
 )
+from clinical_data_visualizer.dash_api.callbacks.db_stats_callbacks import (
+    close_db_stats_modal,
+    download_db_stats_csv,
+    poll_db_stats_progress,
+    trigger_db_stats,
+)
 from clinical_data_visualizer.dash_api.callbacks.loop_callbacks import (
     filter_loop_by_time,
     update_time_display,
@@ -28,7 +34,9 @@ from clinical_data_visualizer.dash_api.callbacks.shape_callbacks import (
 
 __all__ = [
     "build_patient_options_ui",
+    "close_db_stats_modal",
     "close_inspection_modal",
+    "download_db_stats_csv",
     "download_inspection_csv",
     "filter_loop_by_time",
     "inspect_data",
@@ -36,10 +44,12 @@ __all__ = [
     "lock_and_style_shapes",
     "modify_shape",
     "persist_shapes",
+    "poll_db_stats_progress",
     "process_visualization",
     "save_annotations_and_shapes",
     "sync_plotly_annotations",
     "toggle_modal",
+    "trigger_db_stats",
     "update_shape_options",
     "update_time_display",
 ]

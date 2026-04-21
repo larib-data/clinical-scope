@@ -5,12 +5,51 @@ This module contains validation functions for user input, schema validation,
 and type checking.
 """
 
+import logging
 from typing import Any
 
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
+import clinical_data_visualizer.datasource_list as datasource
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
+
+logger = logging.getLogger(__name__)
+
+
+def rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
+    """
+    Rebuild the schema-class lookup from the serialised ``schema-registry`` store.
+
+    The registry stores class *names* (strings) because ``dcc.Store`` cannot hold
+    live Python objects.  This function resolves them back to the actual classes so
+    that :func:`validate_and_collect` can do type-aware validation.
+
+    Args:
+        schema_data: ``{component_id: class_name}`` dict from the ``schema-registry``
+            ``dcc.Store``.  Keys starting with ``"global"`` refer to
+            :class:`~clinical_data_visualizer.constants.PatientOptions` attributes;
+            keys starting with ``"specific"`` refer to per-datasource option classes.
+
+    Returns:
+        ``{component_id: schema_class}`` ready to pass to :func:`validate_and_collect`.
+
+    """
+    schema_class_lookup: dict[str, type] = {}
+    for k, v in schema_data.items():
+        if k.startswith("global"):
+            schema_class_lookup[k] = getattr(cst.PatientOptions, v)
+        elif k.startswith("specific"):
+            parts = k.split(".")
+            datasource_name = parts[1] if len(parts) > 1 else None
+            datasource_class = datasource.DataSource.get_subclass_by_name(datasource_name)
+            logger.debug("parts: %s", parts)
+            logger.debug("datasource_name: %s", datasource_name)
+            logger.debug("datasource_class: %s", datasource_class)
+            schema_class_lookup[k] = getattr(
+                datasource_class.OPTIONS.PatientOptionsDataSourceRelative, v
+            )
+    return schema_class_lookup
 
 
 def _validate_by_type(
