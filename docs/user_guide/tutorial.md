@@ -24,30 +24,26 @@ from multiple medical devices in a single unified interface.
 
 ## Key Features
 
-- **Multi-source visualization**: Display signals from up to 9 different clinical data sources
-  simultaneously.
+- **Multi-source visualization**: Display signals from multiple clinical data sources
+  simultaneously (Philips, FluxMed, Mindray, EIT, Servo-U, syringe pumps, plus a
+  generic "Other" source for any CSV/parquet).
+- **Generic "Other" data source**: Drop any CSV or Parquet file with a datetime column
+  into an `other/` folder — signals are auto-discovered and can be configured per file.
 - **Interactive plots**: Zoom, pan, and explore data at any time scale with automatic resampling.
+- **Data inspection**: Preview available columns, point counts, and time ranges for every source
+  before running the full visualization — exportable to CSV.
 - **Annotations**: Draw lines and rectangles directly on plots to mark events or regions of
   interest. Annotations are saved and persist across sessions.
 - **Flexible configuration**: Choose which signals to display, customize labels, units, colors,
-  and group related signals together.
+  and group related signals together — in JSON or Excel format.
+- **Cross-datasource phase loops**: Define loop entries to build phase plots that
+  combine signals from different devices.
+- **Per-datasource timezone control**: Override the timezone of any supported source via
+  `additional_informations.timezone` (all plots still render in the configured display timezone).
 - **Export**: Generate standalone HTML visualizations for sharing.
 
-## Supported Data Sources
-
-| Data Source | Description |
-|---|---|
-| Philips Waves | High-frequency waveform data from Philips patient monitors |
-| Philips Numerics | Numeric parameter data from Philips monitors (heart rate, SpO2, etc.) |
-| EIT (PulmoVista) | Electrical Impedance Tomography data from Draeger PulmoVista |
-| FluxMed Signals | Waveform data from FluxMed respiratory monitors |
-| FluxMed Parameters | Parameter data from FluxMed monitors |
-| Servo-U | Ventilator data from Getinge Servo-U |
-| Mindray Scope | Patient monitor waveform data from Mindray scopes (.xml or .csv) |
-| Mindray Respi Waves | High-frequency respiratory waveforms from Mindray respiratory monitors |
-| Mindray Respi Numerics | Numeric respiratory parameters from Mindray respiratory monitors |
-| Syringe | Syringe pump infusion data |
-| Other (Generic) | Auto-discovers CSV or Parquet files with datetime columns |
+The full list of supported data sources — with folder keywords, accepted file extensions, and
+typical signals — lives in Section 3: **Patient Data & Supported Data Sources**.
 
 \newpage
 
@@ -55,7 +51,7 @@ from multiple medical devices in a single unified interface.
 
 ## Starting the App
 
-Locate the **ClinicalVisuAppAlexis** executable in the application folder and double-click it.
+Locate the **ClinicalDataVisualizer** executable in the application folder and double-click it.
 
 A terminal window will appear showing the application starting up. After a few seconds, your
 default web browser will automatically open at:
@@ -68,92 +64,171 @@ If the browser does not open automatically, manually navigate to the address abo
 
 ![Application launch screen](images/App_launch.png){ width=100% }
 
+The app also comes with the userguide (this document) and template folder to help organizing patient data for the app. Once runned for the first time, a `logs` folder will also appear, helping to debug if needed.
+
 ## Application Overview
 
 The interface is organized top-to-bottom in the following order:
 
-1. **Database Options** -- Load or select a visualization configuration.
+1. **Database Options** -- Three buttons side-by-side:
+    - **Upload config file** (blue) -- load a custom `database options` file, either [`.json`](#database_optionsjson) or [`.xlsx`](#database_optionsxlsx).
+    - **Reload last config** (grey) -- appears only if a previously uploaded config was cached;
+      restores it with one click.
+    - **Default visualization (all sources)** (green) -- enables every registered data source with
+      default settings, no file needed.
 2. **Patient Options** -- Configure data folder, time range, and per-source settings.
-3. **Process / Inspect Buttons** -- Start the visualization or inspect available data.
-4. **Annotations Controls** -- Manage annotations (visible after processing).
-5. **Visualization Area** -- Interactive plots.
+   The form is generated dynamically from the loaded database options.
+3. **Action buttons** -- **Process visualization** (orange) and **Inspect data** (teal).
+4. **Annotations Controls** -- Shape dropdown + Modify/Delete buttons (visible after a
+   successful visualization).
+5. **Inspection pop-up** -- Full-screen overlay triggered by the Inspect button, with per-source
+   status badges, column tables, and a CSV download.
+6. **Visualization Area** -- Interactive plots.
 
 ![Application main interface](images/AppMainScreen.png){ width=100% }
 
 \newpage
 
-# Preparing Your Data
-
-## Patient Folder Structure
+# Patient Data & Supported Data Sources
 
 Each patient's data must be organized in a root folder with **one subfolder per data source**.
 The application automatically identifies data sources based on keywords in subfolder names.
 
+You only need subfolders for the data sources you actually have — empty or missing
+subfolders are silently skipped. The `cdv_visu/` subfolder is created automatically the
+first time you process a patient. It contains annotations, `.html` visualizations, formatted data.
+
+## Example Folder Layouts
+
+A full setup with several devices:
+
 ```
 Patient1/
-  philips_waves/          Philips waveform data (.parquet)
-  philips_numerics/       Philips numeric data
-  eit/                    EIT PulmoVista data (.asc)
-  fluxmed_signals/        FluxMed waveform data
-  fluxmed_parameters/     FluxMed parameter data
-  servo_u/                Servo-U ventilator data (.sta)
-  mindray_scope/          Mindray scope data (.xml or .csv)
-  mindray_respi_waves/    Mindray respiratory waveforms (.parquet or .csv)
-  mindray_respi_numerics/ Mindray respiratory parameters (.parquet or .csv)
-  syringe/                Syringe pump data
-  other/                  Generic data (.csv or .parquet)
-  tdv_visu/               Auto-created: cached data and outputs
+  philips_waves/
+  philips_numerics/
+  eit/
+  fluxmed_signals/
+  fluxmed_parameters/
+  servo_u/
+  syringe/
+  cdv_visu/               ← auto-created,
 ```
 
-You only need subfolders for the data sources you actually have. Empty or missing subfolders
-are simply skipped.
+A minimal setup:
+
+```
+Patient1/
+  philips_waves/
+  cdv_visu/
+```
+
+An **"Other"-heavy** setup — drop any CSV/Parquet file with a datetime column into
+`other/`; each file is configured independently via `other::<stem>` keys in the
+database options (see [dedicated section](#generic-other-data-source) below):
+
+```
+Patient1/
+  other/
+    waves.parquet         → configured under "other::waves"
+    numerics.csv          → configured under "other::numerics"
+    syringe_log.csv       → configured under "other::syringe_log"
+  cdv_visu/
+```
 
 ## Folder Naming Rules
 
-Folder names are **flexible** -- they just need to contain the required keywords
-(case-insensitive, any separator allowed):
+Folder names are **flexible** — they just need to contain the required keywords:
 
-| Data Source | Required Keywords | Examples |
-|---|---|---|
-| Philips Waves | `philips` + `waves` | `philips_waves`, `Philips-Waves`, `waves_philips` |
-| Philips Numerics | `philips` + `numerics` | `philips_numerics`, `Philips-Numerics` |
-| EIT | `eit` | `eit`, `EIT`, `EIT_Data` |
-| FluxMed Signals | `fluxmed` + `signals` | `fluxmed_signals`, `FluxMed-Signals` |
-| FluxMed Parameters | `fluxmed` + `parameters` | `fluxmed_parameters`, `FluxMed_Parameters` |
-| Servo-U | `servo` | `servo_u`, `Servo-U`, `SERVO` |
-| Mindray Scope | `mindray` | `mindray_scope`, `mindray`, `Mindray` |
-| Mindray Respi Waves | `mindray` + `resp` + `wave` | `mindray_respi_waves`, `mindray_resp_waves` |
-| Mindray Respi Numerics | `mindray` + `resp` + `numeric` | `mindray_respi_numerics`, `mindray_resp_numerics` |
-| Syringe | `syringe` | `syringe`, `Syringe`, `syringe_pumps` |
-| Other | `other` | `other`, `Other` |
+- **Case-insensitive** — `Philips_Waves`, `PHILIPS-WAVES`, `philips waves` all match.
+- **Any separator** — underscore, dash, space, or none.
+- **Any order** — `waves_philips` works just as well as `philips_waves`.
+- **Partial keywords don't match** — `flux` alone will not match `fluxmed_*`; the full word is required.
 
-## Expected File Types
+A few sources are also **identified by file extension** when the folder is ambiguous or
+generic (e.g., `.asc` files inside a folder are enough to classify it as EIT, `.sta` for
+Servo-U, `.xml` for Mindray Scope). See the canonical table below for exact keywords
+and accepted extensions per source.
 
-Each data source only considers files with specific extensions. When multiple formats are
-accepted, they are listed below in order of preference (most preferred first):
+## Canonical Data Source Table
 
-| Data Source | Accepted Extensions | Discovery Mode |
-|---|---|---|
-| Philips Waves | `.parquet`, `.csv` | Single file |
-| Philips Numerics | `.parquet`, `.csv` | Single file |
-| EIT | `.asc` | All files |
-| FluxMed Signals | `.parquet`, `.txt`, `.csv` | Single file |
-| FluxMed Parameters | `.parquet`, `.txt`, `.csv` | Single file |
-| Servo-U | `.sta` | All files |
-| Mindray Scope | `.xml`, `.csv` | All files |
-| Mindray Respi Waves | `.parquet`, `.csv` | Single file |
-| Mindray Respi Numerics | `.parquet`, `.csv` | Single file |
-| Syringe | `.parquet`, `.csv` | Single file |
-| Other | `.csv`, `.parquet` | All files |
+The table below is the single source of truth for supported data sources and is what all
+folder-discovery / skill logic refers to.
 
-**Single file** sources expect exactly one data file per folder. Files with unrecognized
-extensions are ignored. When the same data exists in multiple formats (e.g., `data.csv` and
-`data.parquet`), the most preferred format is automatically selected. If multiple unrelated
-files remain, the source is skipped and a warning is logged.
+| Source | Module name | Folder keywords | Accepted extensions (ordered by preference) | Discovery mode | Typical signals |
+|---|---|---|---|---|---|
+| Philips Waves | `philips_waves` | `philips`, `waves` | `.parquet`, `.csv` | Single file | ART, PAP, CO2, respiratory pressure/volume |
+| Philips Numerics | `philips_numerics` | `philips`, `numerics` | `.parquet`, `.csv` | Single file | Heart rate, SpO2, FiO2, blood pressure |
+| EIT (PulmoVista) | `eit` | `eit` | `.asc` | All files | Global/local impedance, impedance percentages |
+| FluxMed Signals | `fluxmed_signals` | `fluxmed`, `signals` | `.parquet`, `.txt`, `.csv` | Single file | Respiratory waveforms |
+| FluxMed Parameters | `fluxmed_parameters` | `fluxmed`, `parameters` | `.parquet`, `.txt`, `.csv` | Single file | Respiratory parameters |
+| Servo-U | `servo_u` | `servo` | `.sta` | All files | Ventilator waveforms and settings |
+| Mindray Scope | `mindray_scope` | `mindray` | `.xml`, `.csv` | All files | Monitor waveforms (ECG, SpO2, pressure) |
+| Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single file | High-frequency respiratory waveforms |
+| Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single file | Respiratory parameters (Vt, RR, PEEP, etc.) |
+| Syringe | `syringe` | `syringe` | `.parquet`, `.csv` | Single file | Infusion rates and volumes |
+| Other (Generic) | `other` | `other` | `.csv`, `.parquet` | All files (one entry **per file**) | Any time-series with a datetime column |
 
-**All files** sources load every matching file in the folder and concatenate them.
+**Single file** sources expect exactly one data file per folder. When several formats coexist
+(e.g., `data.csv` and `data.parquet`), the most preferred extension wins. If multiple unrelated
+stems remain after that filter, the source is skipped and a warning is logged.
+
+**All files** sources load every matching file in the folder and concatenate them. The `Other`
+source is special: each file produces an independent entry named `other::<stem>` (see below).
+
+Per-source configuration options (`field_display`, `signals`, `grouped_fields`, `loop`,
+`additional_informations`, etc.) are documented in the [Configuration File Reference section](#configuration-file-reference).
 
 ![Patient folder structure example](images/PatientFolderStructure.png){ width=100% }
+
+## Generic "Other" Data Source
+
+`other` is the **generic escape hatch** for any CSV or Parquet file that has a datetime
+column but does not fit any of the specialised sources. It is the most natural entry point
+for users who already have well formatted data.
+
+**How it works:**
+
+- Drop any number of `.csv` or `.parquet` files into an `other/` subfolder.
+- Every file is discovered automatically — no separate folder or config key per file.
+- Each file produces an **independent entry** keyed by its stem (filename without extension):
+  a file named `waves.parquet` becomes `other::waves`, `numerics.csv` becomes
+  `other::numerics`, and so on.
+- Columns within a file are exposed as `<stem>::<column_name>` so names stay globally
+  unique (important for cross-datasource groups and loops).
+
+**Datetime column auto-detection.** The loader tries the common names first
+(`datetime`, `timestamp`, `time`, `date`, `date_time` — case-insensitive). If none match,
+it falls back to scanning non-numeric columns for parseable timestamps.
+
+**Per-file configuration.** In `database_options`, use `other::<stem>` keys — one block per
+file — exactly like any other datasource:
+
+```json
+"other::waves": {
+    "field_display": ["art", "pleth"],
+    "signals": {
+        "art":   { "label": "Arterial Pressure", "unit": "mmHg", "color": "red" },
+        "pleth": { "label": "Plethysmography",  "unit": "AU",   "color": "purple" }
+    },
+    "additional_informations": { "timezone": "Europe/Paris" }
+},
+"other::numerics": {
+    "field_display": ["FC", "SpO2"],
+    "additional_informations": { "timezone": "UTC" }
+}
+```
+
+**Per-file timezone.** Each `other::<stem>` block may declare its own
+`additional_informations.timezone` — useful when the CSV you dropped in comes from a
+device in a different timezone than your default.
+
+**Inspection shows one entry per file.** When you click *Inspect data* for a patient with
+an `other/` folder, the modal lists one row per file (`other::waves`, `other::numerics`, …),
+each with its own date range and column list, so you can verify that every file was
+correctly discovered and parsed.
+
+See `example/option_files/example_database_options_other.json` in the source repository
+for a full reference configuration.
 
 \newpage
 
@@ -162,34 +237,41 @@ files remain, the source is skipped and a warning is logged.
 Database options define **which data sources to enable** and **how signals should be displayed**
 (labels, units, colors, grouping).
 
-## Option 1: Default Visualization (Quick Start)
+There are three ways to get a database options config into the app, presented here in the
+order you are most likely to use them.
 
-Click the green **"Default visualization (all sources)"** button. This automatically enables all
-11 data sources with their default display settings. No configuration file is needed.
+## Option 1: Upload a Custom Configuration File
 
-This is the recommended starting point for new users.
+Click the blue **"Upload config file"** button to load a custom configuration. Two formats are
+accepted:
 
-![Default visualization button](images/DefaultVisuButton.png){ width=100% }
+- **`.json` extension** — a JSON file following the structure described in
+  [Configuration File Reference section](#configuration-file-reference).
+- **`.xlsx` extension** — an Excel spreadsheet following the column layout documented in
+  the same reference. The spreadsheet is converted to the equivalent JSON structure on load.
+
+This gives you full control over which sources are enabled and how each signal is displayed.
+
+When the upload succeeds the file is **cached locally** at
+`~/.clinical_data_visualizer/last_database_options.json` — this is what powers Option 2 below.
+Such a database option file should only contains signal metadata (labels, colors, units, field mappings) and no patient data or PHI, to ensure no sensitive information is cached and so leaves the original patient folder.
 
 ## Option 2: Reload Last Config (Daily Workflow)
 
 If a custom configuration was previously uploaded, a grey **"Reload last config"** button appears
-automatically on startup. Click it to instantly restore the last used configuration without browsing
-for files.
+automatically on startup. Click it to instantly restore the last used configuration without
+browsing for files — ideal when you re-open the app every day with the same setup.
 
-The cached configuration is stored locally at `~/.clinical_data_visualizer/last_database_options.json`
-and contains only signal metadata (labels, colors, units, field mappings) — no patient data.
+This button is **hidden** when no cached configuration exists.
 
-## Option 3: Custom Configuration File
+## Option 3: Default Visualization (Quick Start)
 
-Click the blue **"Upload config file"** button to load a custom configuration file.
-Two formats are accepted:
+Click the green **"Default visualization (all sources)"** button. This automatically enables
+**every registered data source** with its built-in default display settings — no configuration
+file needed. This is the recommended starting point for new users, and it automatically picks up
+any new data sources added to the library without requiring a config update. Note that if you have hundreds of timeseries, they will all be plot and you may experience performance issues on the app.
 
-- **`database_options.json`** — a JSON file following the structure described in Section 9.
-- **`database_options.xlsx`** — an Excel spreadsheet following the column layout described in
-  Section 9. The spreadsheet is automatically converted to the equivalent JSON structure on load.
-
-This gives you full control over which sources are enabled and how each signal is displayed.
+![Default visualization button](images/DefaultVisuButton.png){ width=100% }
 
 \newpage
 
@@ -207,7 +289,7 @@ These apply to all data sources:
 | **Path to data (folder)** | Full path to the patient's root data folder |
 | **Time start filter** | Start of the time window to display (format: `YYYY-MM-DD HH:MM:SS`). Leave empty to use all available data. |
 | **Time end filter** | End of the time window to display. Leave empty to use all available data. |
-| **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `tdv_visu/` folder, significantly speeding up subsequent loads. |
+| **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `cdv_visu/` folder, significantly speeding up subsequent loads. **Un-tick** if raw patient data has been modified |
 
 ![Global patient options](images/GlobalPatientOptions.png){ width=100% }
 
@@ -222,16 +304,24 @@ individual cards arranged in a two-column grid. Common per-source options includ
 
 Only data sources present in the loaded database options will show their configuration cards.
 
-![Per-source options](images/SpecificOptions.png){ width=100% }
+![Per-source options](images/SpecificPatientOptions.png){ width=100% }
 
 \newpage
 
-# Processing the Visualization
+# Processing Data
 
-Once you have configured the patient options, click the large orange **"Process visualization"**
-button to start generating the plots.
+Once patient options are configured, two actions are available from the action row. **Both
+run the same data pipeline** — find → load → format — and share the same per-datasource
+progress bar. What differs is only the outcome: the orange button builds interactive plots,
+the teal button produces a structured summary of what was found.
 
-## What Happens During Processing
+> **Recommended workflow**: start with **Inspect data** (teal button). It completes faster
+> because no plots are built, and it immediately surfaces loading errors, missing folders, or
+> unexpected column names.
+
+## Process Visualization (orange button)
+
+Click the large orange **"Process visualization"** button to generate the plots. The steps are:
 
 1. **Validation**: The application verifies that all mandatory fields are filled in and that the
    data folder exists.
@@ -240,39 +330,67 @@ button to start generating the plots.
 3. **Data Loading**: Raw data files are parsed according to each source's format.
 4. **Formatting**: Signals are filtered, resampled, and converted using your database options
    (labels, units, time range).
-5. **Caching**: Processed data is saved as `.parquet` files in the `tdv_visu/` subfolder for
-   faster reloading next time.
+5. **Caching**: Processed data is saved as `.parquet` files in the `cdv_visu/` subfolder for
+   faster reloading next time. Tick **"Re-use data if already loaded once"** (`quick_load`) to
+   skip raw parsing on subsequent runs and read the cache instead.
 6. **Plot Generation**: Interactive Plotly figures are created and displayed in the visualization
    area.
+
+While processing runs, a **per-datasource progress bar** appears below the action row. It shows
+`(completed / total): <datasource>` and its color matches the action — orange for visualization.
+The bar advances as each datasource completes; it never reaches 100% while the last source is
+still being processed (by design, so you always see which source is active).
 
 A success message appears when processing completes. If no data is found for a source, it is
 silently skipped.
 
-![Processing visualization](images/ProcessVisuButton.png){ width=100% }
+## Inspect Data (teal button)
 
-## Inspecting Data Before Visualization
+The teal **"Inspect data"** button runs the same `find → load → format` pipeline but
+**stops before signal extraction and plot building**. It is the **recommended first step**
+when opening a new patient folder: no figures are built so it is significantly lighter,
+and it immediately exposes any loading errors, missing folders, or unexpected column names
+— letting you catch problems before running the heavier visualization.
 
-Next to the "Process visualization" button, a teal **"Inspect data"** button allows you to
-examine available columns and data ranges **before** running the full visualization.
+The same progress bar is shown during inspection, colored teal.
 
-Clicking it opens an inspection modal that shows, for each data source:
+When inspection completes, a **full-screen inspection modal** opens, with one section per
+datasource containing:
 
-- **Status**: Whether the source was found and loaded successfully.
-- **File path**: The detected data file or folder.
-- **Date ranges**: Both the raw (unfiltered) and filtered time ranges.
-- **Columns**: A table listing each signal with its raw name, whether it is configured in the
-  database options, and the number of data points (raw and filtered).
-
-This is useful for verifying that data files are correctly detected, checking which signals are
-available, and confirming the time range before committing to a full processing run.
+- **Status badge** — colored per outcome:
+    - green `ok` — data loaded successfully
+    - orange `file_not_found` — no matching file/folder in the patient directory
+    - red `load_error` or `format_error` — loading or formatting raised an exception (the
+      error message is shown below the badge)
+- **File path** — the detected data file or folder.
+- **Date ranges** — both the raw (unfiltered) and filtered time ranges.
+- **Columns table** — each column with: raw name, whether it is configured in the database
+  options, raw point count, filtered point count, and first/last filtered timestamps.
 
 > **Note for the Other (Generic) source**: because the `other` folder may contain several
 > independent files, the inspection modal shows **one entry per file** (e.g. `other::waves`,
 > `other::numerics`) rather than a single aggregated entry. Each entry has its own date range
 > and column list.
 
-A **"Download CSV"** button in the modal header lets you export the inspection results as a CSV
-file for further analysis.
+A **"Download CSV"** button in the modal header exports the full inspection result as a CSV
+for offline analysis, sharing, or import into the `generate-database-options` helper.
+
+![Inspect data pop up](images/InspectFeature.png){ width=100% }
+
+## Inspecting from the Command Line
+
+The same inspection is available as a standalone script:
+
+```bash
+python scripts/inspect_patient_data.py <patient_folder> \
+    [--database-options <path>] \
+    [--patient-options <path>] \
+    [--output-csv out.csv] \
+    [--verbose]
+```
+
+Without `--database-options`, all registered datasources are inspected with their defaults.
+Pass `--output-csv` to save the same per-column table the UI download produces.
 
 \newpage
 
@@ -313,7 +431,7 @@ This keeps the interface responsive even with millions of data points.
 # Annotations
 
 The annotation system lets you mark events, time periods, or regions of interest directly on the
-plots. Annotations are saved to an `annotations.json` file in the `tdv_visu/` folder and persist
+plots. Annotations are saved to an `annotations.json` file in the `cdv_visu/` folder and persist
 across sessions.
 
 ## Drawing Annotations
@@ -345,7 +463,7 @@ Each annotation has the following properties:
 
 ## Persistence
 
-Annotations are automatically saved to `annotations.json` in the patient's `tdv_visu/` folder
+Annotations are automatically saved to `annotations.json` in the patient's `cdv_visu/` folder
 whenever you create, modify, or delete an annotation. They are reloaded when you re-process the same
 patient data.
 
@@ -357,7 +475,7 @@ patient data.
 
 ## patient_options.json
 
-This file defines patient-specific settings. It is automatically saved to the `tdv_visu/`
+This file defines patient-specific settings. It is automatically saved to the `cdv_visu/`
 subfolder each time you click "Process visualization".
 
 ```json
@@ -380,13 +498,13 @@ subfolder each time you click "Process visualization".
 | `data_folder` | string | — | Path to the patient's root data folder (required) |
 | `datetime_start` | string or null | null | Start of the time window (`YYYY-MM-DD HH:MM:SS`). Leave empty to use all available data. |
 | `datetime_end` | string or null | null | End of the time window. Leave empty to use all available data. |
-| `quick_load` | boolean | false | Reuse previously cached `.parquet` files in `tdv_visu/` |
+| `quick_load` | boolean | false | Reuse previously cached `.parquet` files in `cdv_visu/` |
 | `<source_name>` | object | — | Per-source options block (e.g., `time_shift`, `day`) |
 
-## database_options.json
+## database_options.json {#database_optionsjson}
 
 This file controls which data sources are active and how each signal is displayed. A snapshot is
-automatically saved to `tdv_visu/database_options.json` each time you click
+automatically saved to `cdv_visu/database_options.json` each time you click
 "Process visualization".
 
 ### Top-Level Structure
@@ -445,14 +563,13 @@ source key in this file is what activates that source; removing it disables it e
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `field_display` | list of strings | all signals | Signal names to display. Signals absent from this list are loaded but hidden. Omit to show all. |
-| `signals` | object | `{}` | Per-signal display options (see below). |
-| `grouped_fields` | object | `{}` | Groups of signals to overlay on the same subplot, within this datasource. |
-| `loop` | object | `{}` | PV-loop definitions: `{"loop_name": ["x_signal", "y_signal"]}`. |
-| `numerics.period_resampling` | float | source default | Resampling period in seconds applied to all numeric parameters of this datasource. |
-| `numerics.priority` | float | source default | Plot ordering priority for numerics (lower value = higher on page). |
-| `additional_informations.timezone` | string | source default | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Supported by: EIT, FluxMed, Mindray Respi Waves/Numerics, Mindray Scope, Syringe, and **Other** (per-file, via `other::<stem>` keys). |
+| `signals` | object | `{}` | Per-signal display options (see [Per-Signal Fields Reference](#per-signal-fields-reference-signalssignal_name) below). |
+| `grouped_fields` | object | `{}` | Groups of signals to overlay on the same subplot, within this datasource. `{"Respiratory waves": ["signal_1", "signal_2", ...], ...}`|
+| `loop` | object | `{}` | PV-loop definitions: `{"loop_name": ["x_signal", "y_signal"], ...}`. |
+| `numerics` | object | `{}` | Datasource-level defaults for numeric parameters (see [`numerics`](#numerics-block-datasource-level-defaults) below). |
+| `additional_informations` | object | `{}` | Device-level metadata, including timezone override (see [`additional_informations`](#additional_informations-block) below). |
 
-### Per-Signal Fields Reference (`signals.<signal_name>`)
+### Per-Signal Fields Reference (`signals.<signal_name>`) {#per-signal-fields-reference-signalssignal_name}
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -467,25 +584,109 @@ source key in this file is what activates that source; removing it disables it e
 | `period_resampling` | float | source default | Resampling period in seconds for this specific signal. |
 | `hover_template` | string | `null` | Custom hover tooltip. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is passed directly to Plotly as a `hovertemplate`. Leave empty for the default compact display. |
 
+### `numerics` Block (Datasource-Level Defaults)
+
+The `numerics` block sets **default values** shared by all numeric parameter signals in a
+datasource — without listing each signal individually. Any per-signal entry inside `signals`
+takes precedence; signals without an explicit entry inherit from here.
+
+```json
+"philips_numerics": {
+    "numerics": {
+        "period_resampling": 0.5,
+        "priority": 2.0
+    }
+}
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `period_resampling` | float | source default | Resampling period in seconds for all numeric parameters in this datasource. |
+| `priority` | float | source default | Default plot priority for numerics (lower = higher on page). Overridden per signal by `signals.<name>.priority`. |
+
+This block functions as a datasource-wide default container for resampling and priority.
+It does not filter which signals are affected — it simply provides fallback values.
+
+> In the Excel format, these values are set via the **sentinel row** (`signal = *`).
+> See [database_options.xlsx](#database_optionsxlsx).
+
+### `additional_informations` Block
+
+The `additional_informations` block carries device-level metadata that affects how raw data
+is interpreted. Currently its only field is `timezone`.
+
+```json
+"eit": {
+    "additional_informations": { "timezone": "UTC" }
+}
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `timezone` | string | source default | Override the timezone used to give a timezone (e.g., `"Europe/Paris"`, `"UTC"`) to timestamps which are timezone-naive. All plots still render in the configured display timezone. |
+
+**Which datasources support the `timezone` override?**
+
+| Datasource | Supports `timezone` override? |
+|---|---|
+| EIT, FluxMed Signals, FluxMed Parameters | Yes |
+| Mindray Scope, Mindray Respi Waves, Mindray Respi Numerics | Yes |
+| Syringe, Other (per-file, via `other::<stem>.additional_informations.timezone`) | Yes |
+| Philips Waves, Philips Numerics, Servo-U | No — timezone is fixed inside the source module |
+
+For datasources without override support, the key is silently ignored. The timezone is
+hardcoded in their source modules — this is a deliberate choice reflecting the vendor's data
+format, not a library limitation.
+
+> In the Excel format, set the timezone via the **sentinel row** (`signal = *`,
+> `timezone` column). See [database_options.xlsx](#database_optionsxlsx).
+
 ### Global Fields
 
 ```json
 "global": {
     "grouped_fields": {
         "Pressure": ["ART", "PNIs", "PNIm", "PNId"]
+    },
+    "loop": {
+        "PV loop (ventilator vs. FluxMed)": [
+            "servo_u::Paw", "fluxmed_signals::Vt"
+        ]
     }
 }
 ```
 
 | Key | Description |
 |---|---|
-| `global.grouped_fields` | Groups signals from **different** datasources onto the same subplot. Signal names must be unique across the datasources involved. |
+| `global.grouped_fields` | Groups signals from **different** datasources onto the same subplot. Signal names must be unique across the datasources involved — use `datasource::raw_name` to disambiguate. |
+| `global.loop` | Cross-datasource phase loops: `{"loop_name": ["x_ref", "y_ref"]}`. Both signals can come from different datasources. Each `*_ref` is resolved by the same three-mode chain as `grouped_fields`. |
 
-## database_options.xlsx
+### Signal Reference Resolution
 
-As an alternative to the JSON format, you can provide the same configuration as an Excel
-spreadsheet. The file must contain a sheet named **`signals`** and optionally a sheet named
-**`loops`**.
+Signal references in `grouped_fields` and `loop` — both global and per-source — are resolved
+by the following three-mode lookup chain:
+
+1. **Qualified reference** `datasource::raw_name` — explicit and unambiguous. Recommended
+   when the same column name exists in several datasources.
+2. **Display name** — the `label` from the signals block. Works when the label is unique
+   across sources; a warning is logged if it matches several signals.
+3. **Raw name fallback** — the column name as it appears in the raw data file.
+
+Multi-cycle loops are rendered with a **time-range slider** below the plot so you can scroll
+through cycles.
+
+![example json database options file](images/JsonDatabaseOptions.png){ width=100% }
+
+\newpage
+
+## database_options.xlsx {#database_optionsxlsx}
+
+For clinical users, the **Excel format is the recommended way** to configure signals — it
+requires no knowledge of JSON and can be edited in any spreadsheet application. On upload, it
+is automatically converted to the equivalent [JSON structure](#database_optionsjson), so every
+option available in JSON is also available in the spreadsheet.
+
+The file must contain a sheet named **`signals`** and optionally a sheet named **`loops`**.
 
 ### `signals` sheet
 
@@ -493,7 +694,9 @@ One row per signal. The columns `datasource` and `signal` are mandatory; all oth
 and fall back to the defaults listed in the per-signal table above.
 
 Use `*` in the `signal` column to write a **sentinel row** that sets datasource-level defaults
-(e.g., a common `period_resampling` or `timezone`) without defining a specific signal.
+(e.g., a common `period_resampling` or `timezone`) without defining a specific signal — equivalent
+to the [`numerics` and `additional_informations` blocks](#numerics-block-datasource-level-defaults)
+in JSON.
 Column names are case-insensitive (e.g., `Label`, `UNIT`, `Hover_Template` all work).
 
 The **Scope** column below indicates where each field is meaningful:
@@ -519,11 +722,13 @@ The **Scope** column below indicates where each field is meaningful:
 | `hover_template` | No | Signal | Hover tooltip format. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is forwarded directly to Plotly as a `hovertemplate`. |
 | `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. |
 | `groups` | No | Signal | Semicolon-separated group names (e.g., `Respiratory;Pressure`). Groups within one datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
-| `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. Works with `other::<stem>` datasource keys (e.g., `other::waves`). |
+| `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. Works with `other::<stem>` datasource keys. See [`additional_informations` Block](#additional_informations-block) for which datasources support this. |
 
 ### `loops` sheet (optional)
 
-One row per PV-loop definition. If the sheet is absent or malformed it is silently skipped.
+One row per PV-loop definition — equivalent to the `loop` key in the
+[JSON per-source block](#per-source-block-structure) or in `global`. If the sheet is absent
+or malformed it is silently skipped.
 
 | Column | Required | Description |
 |---|---|---|
@@ -533,6 +738,10 @@ One row per PV-loop definition. If the sheet is absent or malformed it is silent
 | `y_signal` | Yes | Signal name for the Y axis. |
 
 See `example/option_files/` in the source repository for complete example files in both formats.
+
+![example excel database option file signal wide](images/ExcelDatabaseOptionsWide.png){ width=100% }
+![example excel database option file with other source](images/ExcelDatabaseOptionsOther.png){ width=100% }
+![example excel database option file loop](images/ExcelDatabaseOptionsLoop.png){ width=100% }
 
 \newpage
 
@@ -552,6 +761,8 @@ Ensure no other application is using port 8050 (typically a previous app launch 
 
 If the visualization is empty or a data source shows no signals:
 
+- Start by inspecting the data (teal button) rather than visualizing it, which providem uch more informations on what the app could gather from the data.
+- Try with default visualization database options, to ensure it's not your options that hides the data from being visualized
 - Verify that the **data folder path** is correct and accessible.
 - Check that subfolders follow the **naming conventions** (see Section 3).
 - Ensure the subfolder contains files with one of the **accepted extensions** for that data
@@ -560,16 +771,13 @@ If the visualization is empty or a data source shows no signals:
   stems), the source is skipped. Keep only one data file per folder, or provide the same data
   in multiple formats (e.g., `data.csv` + `data.parquet`) and the preferred format will be
   selected automatically.
-- Check that the data source is **enabled** in your database options (or use "Default
-  visualization" to enable all).
-- Use `inspect` feature rather than `visualization`, which may provide information on what the app finds and is able to load.
 
 ## Slow Loading
 
 Large datasets may take time to load on the first run. To speed up subsequent loads:
 
 - Enable the **"Re-use data if already loaded once"** (quick_load) option. This uses the cached
-  `.parquet` files in `tdv_visu/` instead of re-reading raw data files.
+  `.parquet` files in `cdv_visu/` instead of re-reading raw data files.
 
 ## Time Alignment Issues
 
@@ -583,21 +791,14 @@ If signals from different sources appear misaligned in time:
 - Check the terminal window for error messages.
 - Log files are available in the `logs/` directory.
 - Ensure the data files are not corrupted or truncated.
+- If you think you are facing a real bug, please report it. (to the author `@alexis.janin@inria.fr` or on gitlab/github)
+<!-- Be careful to update the mail when leaving inria -->
+<!-- Add github link when it will be available -->
 
-\newpage
+## Known limitation
 
-# Appendix: Supported Data Sources
+These may or may not be tackled in the future, depending on the needs of the users. Feel free to ask for one of the below or any other feature demand/bug report on the gitlab/github page. 
+<!-- Add github link when it will be available -->
 
-| Source | Module Name | Keywords | Accepted Extensions | Mode | Typical Signals |
-|---|---|---|---|---|---|
-| Philips Waves | `philips_waves` | `philips`, `waves` | `.parquet`, `.csv` | Single | ART, PAP, CO2, respiratory pressure/volume |
-| Philips Numerics | `philips_numerics` | `philips`, `numerics` | `.parquet`, `.csv` | Single | Heart rate, SpO2, FiO2, blood pressure |
-| EIT | `eit` | `eit` | `.asc` | All | Global/local impedance, impedance percentages |
-| FluxMed Signals | `fluxmed_signals` | `fluxmed`, `signals` | `.parquet`, `.txt`, `.csv` | Single | Respiratory waveforms |
-| FluxMed Parameters | `fluxmed_parameters` | `fluxmed`, `parameters` | `.parquet`, `.txt`, `.csv` | Single | Respiratory parameters |
-| Servo-U | `servo_u` | `servo` | `.sta` | All | Ventilator waveforms and settings |
-| Mindray Scope | `mindray_scope` | `mindray` | `.xml`, `.csv` | All | Monitor waveforms (ECG, SpO2, pressure) |
-| Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single | High-frequency respiratory waveforms |
-| Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single | Respiratory parameters (Vt, RR, PEEP, etc.) |
-| Syringe | `syringe` | `syringe` | `.parquet`, `.csv` | Single | Infusion rates and volumes |
-| Other | `other` | `other` | `.csv`, `.parquet` | All | Any time-series with datetime columns |
+- No timeshift inside a datasource, e.g. if 2 timeseries from `philips_waves` are not aligned, this currently can't be solved in the app.
+- Display timezone in plots is hardcoded to Europe/Paris. This will be modified.

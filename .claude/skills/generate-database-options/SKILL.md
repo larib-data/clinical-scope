@@ -128,10 +128,23 @@ Use this table to guide refinements and answer user questions.
 
 ### Known limitations (tell the user if relevant)
 
-- ⚠️ **`global.loop`** (cross-datasource PV-loops): **not implemented** — `wrapper.py:222-224` logs an error and skips. Only per-datasource `loop` entries work.
-- ℹ️ **Qualified signal references** (`"datasource::signal_name"`): supported in `grouped_fields` to resolve ambiguity when the same signal name exists in multiple datasources. Useful in `global.grouped_fields`.
-- ℹ️ **`other` datasource — per-file config**: the `other` datasource uses `other::<stem>` keys (e.g. `other::waves`, `other::numerics`) in `database_options` to configure each file independently. In the XLSX, use `other::waves` as the `datasource` value for signals from the `waves.*` file. The `timezone` sentinel column works correctly for these keys.
-- ⚠️ **`other` datasource — global groups with `other` signals**: in `global.grouped_fields`, signals from `other` files must be referenced as `"other::waves::art"` (i.e. `datasource::stem::column`). The XLSX `groups` column only generates bare signal names in global groups, so cross-datasource groups involving `other` signals need manual adjustment in JSON after export.
+- ℹ️ **`global.loop`** (cross-datasource phase loops): **supported** — see
+  `wrapper.py::_resolve_signal_references`. Two signals per loop, each resolved via the
+  3-mode chain (qualified `datasource::raw_name` → display name → raw name fallback).
+  See `docs/user_guide/tutorial.md` → *Global Loops vs. Per-Source Loops*.
+- ℹ️ **Qualified signal references** (`"datasource::signal_name"`): supported in both
+  `grouped_fields` and `loop` (global and per-source) to resolve ambiguity when the same
+  signal name exists in multiple datasources. Use them in `global.grouped_fields` and
+  `global.loop`.
+- ℹ️ **`other` datasource — per-file config**: the `other` datasource uses `other::<stem>`
+  keys (e.g. `other::waves`, `other::numerics`) in `database_options` to configure each file
+  independently. In the XLSX, use `other::waves` as the `datasource` value for signals from
+  the `waves.*` file. The `timezone` sentinel column works correctly for these keys.
+- ⚠️ **`other` datasource — global groups/loops with `other` signals**: in
+  `global.grouped_fields` and `global.loop`, signals from `other` files must be referenced as
+  `"other::waves::art"` (i.e. `datasource::stem::column`). The XLSX `groups` column only
+  generates bare signal names in global groups, so cross-datasource groups involving `other`
+  signals need manual adjustment in JSON after export.
 
 ## Checklist before finishing
 
