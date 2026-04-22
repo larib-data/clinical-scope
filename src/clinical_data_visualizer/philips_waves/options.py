@@ -17,6 +17,10 @@ DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 DEFAULT_DATABASE_OPTIONS = {}
 
 
+class DatabaseOptionsAdditionalInformations:
+    TIMEZONE = "timezone"
+
+
 class PatientOptionsDataSourceRelative:
     class TimeShift:
         NAME = "time_shift"

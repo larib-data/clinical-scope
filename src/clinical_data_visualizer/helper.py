@@ -436,17 +436,16 @@ def apply_timezone_to_dataframe(
     options_module=None,  # noqa: ANN001
 ) -> pd.DataFrame:
     """Apply timezone to DataFrame index if not already set."""
-    timezone = default_timezone
+    override_timezone = None
 
     if options_module and hasattr(options_module, "DatabaseOptionsAdditionalInformations"):
         additional_info_class = options_module.DatabaseOptionsAdditionalInformations
         if hasattr(additional_info_class, "TIMEZONE"):
-            timezone = database_options_specific.get(
+            override_timezone = database_options_specific.get(
                 cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
-            ).get(
-                additional_info_class.TIMEZONE,
-                default_timezone,
-            )
+            ).get(additional_info_class.TIMEZONE)
+
+    timezone = override_timezone if override_timezone is not None else default_timezone
 
     if not isinstance(df.index, pd.DatetimeIndex):
         logger.warning(
@@ -455,9 +454,19 @@ def apply_timezone_to_dataframe(
         )
         return df
 
-    if df.index.tz is None:
-        df.index = df.index.tz_localize(timezone)
+    if df.index.tz is not None:
+        if override_timezone is not None and override_timezone != str(df.index.tz):
+            source = getattr(options_module, "DATASOURCE_NAME", "unknown")
+            logger.warning(
+                "[%s] Timezone override %r (from database options) ignored: "
+                "data is already tz-aware (%s).",
+                source,
+                override_timezone,
+                df.index.tz,
+            )
+        return df
 
+    df.index = df.index.tz_localize(timezone)
     return df
 
 

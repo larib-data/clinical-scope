@@ -625,18 +625,12 @@ is interpreted. Currently its only field is `timezone`.
 |---|---|---|---|
 | `timezone` | string | source default | Override the timezone used to give a timezone (e.g., `"Europe/Paris"`, `"UTC"`) to timestamps which are timezone-naive. All plots still render in the configured display timezone. |
 
-**Which datasources support the `timezone` override?**
+All datasources apply timezone according to the same rule:
 
-| Datasource | Supports `timezone` override? |
-|---|---|
-| EIT, FluxMed Signals, FluxMed Parameters | Yes |
-| Mindray Scope, Mindray Respi Waves, Mindray Respi Numerics | Yes |
-| Syringe, Other (per-file, via `other::<stem>.additional_informations.timezone`) | Yes |
-| Philips Waves, Philips Numerics, Servo-U | No — timezone is fixed inside the source module |
-
-For datasources without override support, the key is silently ignored. The timezone is
-hardcoded in their source modules — this is a deliberate choice reflecting the vendor's data
-format, not a library limitation.
+- If the loaded data already carries timezone information, it is kept as-is.
+- If the data is timezone-naive, the timezone is resolved in this order:
+  1. `additional_informations.timezone` in the database options (if present)
+  2. The datasource's built-in default timezone
 
 > In the Excel format, set the timezone via the **sentinel row** (`signal = *`,
 > `timezone` column). See [database_options.xlsx](#database_optionsxlsx).
