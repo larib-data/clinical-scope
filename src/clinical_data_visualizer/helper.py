@@ -396,6 +396,21 @@ def change_ndarray_timezone(
     return adjusted_array, new_timezone
 
 
+def loop_time_to_display_strings(
+    utc_float_seconds: np.ndarray, fmt: str = "%Y-%m-%d %H:%M:%S"
+) -> np.ndarray:
+    """
+    Convert an array of UTC epoch float seconds to display-timezone datetime strings.
+
+    Used for loop hover customdata and slider-callback customdata so both come
+    from a single, testable conversion path.
+    """
+    dt_display = pd.to_datetime(utc_float_seconds, unit="s", utc=True).tz_convert(
+        cst.DISPLAY_TIMEZONE
+    )
+    return np.array(dt_display.strftime(fmt))
+
+
 def get_column_name_from_pattern(columns: pd.Index | list[str], pattern: str) -> str | None:
     if pattern[-1] == "*":
         prefix = pattern.rstrip("*")

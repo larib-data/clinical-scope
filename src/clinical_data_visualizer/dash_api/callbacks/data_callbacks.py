@@ -822,7 +822,7 @@ def _build_graphs(
 
             if np.isfinite(t_min_global) and t_min_global < t_max_global:
                 duration = float(t_max_global) - t_min_f
-                step = duration / 1000
+                step = 1
                 marks = _build_slider_marks(t_min_f, duration)
 
                 children.append(
