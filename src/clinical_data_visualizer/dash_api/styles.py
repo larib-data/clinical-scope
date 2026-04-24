@@ -2,7 +2,7 @@
 Shared style constants for the Dash application.
 
 Centralises style dicts used across layout (core_api.py) and callbacks
-(data_callbacks.py, shape_callbacks.py) so there is a single source of truth.
+(data_callbacks.py) so there is a single source of truth.
 
 Sections
 --------
@@ -156,28 +156,6 @@ INSPECTION_MODAL_HEADER_ROW: dict = {
     "marginBottom": "16px",
     "borderBottom": "2px solid #dee2e6",
     "paddingBottom": "12px",
-}
-
-# Shape edit popup — positioned overlay
-EDIT_SHAPE_POPUP_STYLE: dict = {
-    "display": "none",
-    "position": "fixed",
-    "top": "30%",
-    "left": "70%",
-    "transform": "translate(-50%, -50%)",
-    "zIndex": 1000,
-    "background": "white",
-    "padding": "16px",
-    "borderRadius": "8px",
-    "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
-}
-
-EDIT_SHAPE_POPUP_PANEL: dict = {
-    "background": "white",
-    "padding": "20px",
-    "borderRadius": "10px",
-    "width": "500px",
-    "maxWidth": "90vw",
 }
 
 # ---------------------------------------------------------------------------

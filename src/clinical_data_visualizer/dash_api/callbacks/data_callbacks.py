@@ -258,7 +258,6 @@ def enable_progress_interval(
     Output("validation-errors", "children"),
     Output("process-status", "children"),
     Output("folder-visu-path", "data"),
-    Output("shape-controls", "style"),
     Output("process-progress-interval", "disabled", allow_duplicate=True),
     Output("process-progress", "children", allow_duplicate=True),
     Input("process-button", "n_clicks"),
@@ -274,9 +273,8 @@ def process_visualization(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
-) -> tuple[Any, Any, Any, str | None, dict, bool, str]:
+) -> tuple[Any, Any, Any, str | None, bool, str]:
     """Process visualization request with validated patient options."""
-    shape_hidden = {"display": "none"}
     interval_off, progress_clear = True, ""
     if not db_options:
         return (
@@ -284,7 +282,6 @@ def process_visualization(
             "Database options not loaded",
             None,
             None,
-            shape_hidden,
             interval_off,
             progress_clear,
         )
@@ -307,7 +304,6 @@ def process_visualization(
             html.Ul([html.Li(e) for e in errors]),
             None,
             None,
-            shape_hidden,
             interval_off,
             progress_clear,
         )
@@ -317,7 +313,6 @@ def process_visualization(
         Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_VISU / "patient_options.json"
     )
     name_folder_visu = str(Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_VISU)
-    annotations_data = ui_helper.load_annotations(name_folder_visu)
     ui_helper.save_json(validated_dict, patient_options_path)
     db_options_path = (
         Path(validated_dict["data_folder"])
@@ -342,7 +337,7 @@ def process_visualization(
             progress_callback=_on_progress,
         )
         PlotModel.to_html(model, validated_dict)
-        graphs = _build_graphs(model, annotations_data)
+        graphs = _build_graphs(model)
     except Exception as e:
         logger.exception("Could not make the plot: ")
         return (
@@ -360,7 +355,6 @@ def process_visualization(
                 style={"color": "red"},
             ),
             None,
-            shape_hidden,
             interval_off,
             progress_clear,
         )
@@ -376,7 +370,6 @@ def process_visualization(
             style={"color": "green"},
         ),
         name_folder_visu,
-        {"display": "block"},
         interval_off,
         progress_clear,
     )
@@ -720,10 +713,7 @@ def format_time_range(t_start: float, t_end: float) -> str:
     return f"{dt_start.strftime(fmt)}  —  {dt_end.strftime(fmt)}"
 
 
-def _build_graphs(
-    model: Any,
-    annotations_data: dict[str, Any],
-) -> list[html.Div]:
+def _build_graphs(model: Any) -> list[html.Div]:
     """
     Build list of dcc.Graph + dcc.Store components from model.
 
@@ -737,22 +727,6 @@ def _build_graphs(
 
     for mod in model:
         fig = mod.figure
-
-        # Default shapes / annotations
-        stored = annotations_data.get("by_figure", {}).get(mod.name, {})
-        fig.update_layout(
-            annotations=stored.get("annotations", []),
-            shapes=stored.get("shapes", []),
-            uirevision=mod.name,  # preserve shapes across updates
-        )
-
-        fig.update_layout(
-            newshape={
-                "fillcolor": "rgba(0,255,0,0.25)",
-                "line": {"color": "green", "width": 2},
-                "layer": "above",
-            },
-        )
 
         # Wrap time_series with FigureResampler for dynamic downsampling
         uid = None
@@ -774,13 +748,7 @@ def _build_graphs(
             dcc.Graph(
                 id={"type": "graph", "name": mod.name},
                 figure=fig,
-                config={
-                    "displayModeBar": True,
-                    "modeBarButtonsToAdd": [
-                        "drawline",  # time point
-                        "drawrect",  # time range
-                    ],
-                },
+                config={"displayModeBar": True},
                 style=graph_style,
             ),
             dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
