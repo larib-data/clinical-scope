@@ -5,7 +5,6 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import dash_bootstrap_components as dbc
-import dash_daq as daq
 from dash import Dash, dcc, html
 
 from clinical_data_visualizer import logger_config
@@ -22,8 +21,6 @@ from clinical_data_visualizer.dash_api.styles import (
     BUTTON_PROCESS,
     BUTTON_RELOAD,
     BUTTON_UPLOAD,
-    EDIT_SHAPE_POPUP_PANEL,
-    EDIT_SHAPE_POPUP_STYLE,
     INSPECTION_MODAL_HEADER_ROW,
     INSPECTION_MODAL_PANEL,
     INSPECTION_MODAL_SCROLLABLE_BODY,
@@ -125,100 +122,6 @@ app.layout = html.Div(
         html.Div(id="process-progress"),
         dcc.Interval(id="process-progress-interval", interval=500, disabled=True),
         html.Hr(),
-        html.Div(
-            id="shape-controls",
-            style={"display": "none"},
-            children=[
-                dcc.Dropdown(
-                    id="shape-selector",
-                    options=[],
-                    value=None,
-                    clearable=False,
-                ),
-                html.Button("Modify", id="modify-button"),
-                html.Button("Delete", id="delete-button"),
-            ],
-        ),
-        # Shape edit modal
-        html.Div(
-            id="shape-edit-popup",
-            style=EDIT_SHAPE_POPUP_STYLE,
-            children=[
-                html.Div(
-                    [
-                        html.H4("Edit Shape", style={"marginBottom": "20px"}),
-                        html.Div(
-                            [
-                                # Left column: name + checkbox
-                                html.Div(
-                                    [
-                                        html.Div(
-                                            [
-                                                html.Label("Name:"),
-                                                dcc.Input(
-                                                    id="shape-name-input",
-                                                    placeholder="New Shape name",
-                                                    style={"width": "100%"},
-                                                ),
-                                            ],
-                                            style={"marginBottom": "15px"},
-                                        ),
-                                        html.Div(
-                                            [
-                                                html.Label("Global (full y-axis):"),
-                                                dcc.Checklist(
-                                                    id="shape-global-input",
-                                                    options=[
-                                                        {"label": "Global", "value": "global"}
-                                                    ],
-                                                    value=[],
-                                                ),
-                                            ],
-                                            style={"marginBottom": "0px"},
-                                        ),
-                                    ],
-                                    style={
-                                        "flex": "1",
-                                        "display": "flex",
-                                        "flexDirection": "column",
-                                    },
-                                ),
-                                # Right column: color picker
-                                html.Div(
-                                    [
-                                        html.Label("Color:"),
-                                        daq.ColorPicker(
-                                            id="shape-color-input",
-                                            value={
-                                                "hex": "#ff0000",
-                                                "rgb": {"r": 255, "g": 0, "b": 0, "a": 0.5},
-                                            },
-                                            size=120,
-                                        ),
-                                    ],
-                                    style={
-                                        "flex": "1",
-                                        "display": "flex",
-                                        "flexDirection": "column",
-                                        "alignItems": "center",
-                                    },
-                                ),
-                            ],
-                            style={"display": "flex", "gap": "20px"},
-                        ),
-                        # Buttons row
-                        html.Div(
-                            [
-                                html.Button("Save", id="shape-save-button"),
-                                html.Button("Cancel", id="shape-cancel-button"),
-                            ],
-                            style={"marginTop": "20px", "textAlign": "left"},
-                        ),
-                    ],
-                    style=EDIT_SHAPE_POPUP_PANEL,
-                )
-            ],
-        ),
         # Inspection modal
         html.Div(
             id="inspection-modal",
@@ -265,7 +168,6 @@ app.layout = html.Div(
             ],
         ),
         html.Div(id="visualization-container"),
-        dcc.Store(id="annotations-store", data={}),
         dcc.Store(id="inspection-results-store", data=None),
     ],
     style=ROOT_CONTAINER,

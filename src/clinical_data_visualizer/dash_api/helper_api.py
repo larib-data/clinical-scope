@@ -4,9 +4,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-# === Constants === #
-DEFAULT_FONT_SIZE = 16
-
 # Cache path — contains only signal metadata (labels, colors, units, field mappings), no PHI.
 _CACHED_DB_OPTIONS_PATH = Path.home() / ".clinical_data_visualizer" / "last_database_options.json"
 
@@ -52,27 +49,3 @@ def format_path(path: str) -> Path:
     path = path.replace('"', "")
     path = path.replace("'", "")
     return Path(path)
-
-
-# ==================================================================================================
-def load_annotations(folder_visu_path: str | Path) -> dict[str, Any]:
-    path = Path(folder_visu_path) / "annotations.json"
-    if path.exists():
-        with path.open() as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {"by_figure": {}}
-    return {"by_figure": {}}
-
-
-# ==================================================================================================
-def is_user_annotation(ann: dict) -> bool:
-    """Heuristic to detect user-created annotation vs system annotation (subplot titles)."""
-    # User annotations have x and y in data coordinates (numbers), not 'paper'
-    if (
-        ann.get("xref") == "paper"
-        and ann.get("yref") == "paper"
-        and not ann.get("showarrow")
-        and ann.get("font", {}).get("size") == DEFAULT_FONT_SIZE
-    ):
-        return False
-    return not ("x" not in ann or "y" not in ann)
