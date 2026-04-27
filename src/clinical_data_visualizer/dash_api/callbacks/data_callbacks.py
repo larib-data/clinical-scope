@@ -15,7 +15,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import numpy as np
-from dash import ALL, Input, Output, State, callback, ctx, dcc, html
+from dash import ALL, MATCH, Input, Output, State, callback, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 from plotly_resampler import FigureResampler
 
@@ -251,6 +251,22 @@ def enable_progress_interval(
 ) -> bool:
     """Enable the progress interval as soon as either action button is clicked."""
     return False
+
+
+@callback(
+    Output({"type": "graph", "name": MATCH}, "figure", allow_duplicate=True),
+    Input({"type": "graph", "name": MATCH}, "relayoutData"),
+    State({"type": "resampler-store", "name": MATCH}, "data"),
+    prevent_initial_call=True,
+)
+def resample_on_zoom(relayout: dict[str, Any], resampler_uid: str | None) -> Any:
+    """Resample time-series traces when the user zooms or pans."""
+    if not relayout or not resampler_uid or resampler_uid not in FIGURE_RESAMPLER_CACHE:
+        raise PreventUpdate
+    result = FIGURE_RESAMPLER_CACHE[resampler_uid].construct_update_data_patch(relayout)
+    if result is no_update:
+        raise PreventUpdate
+    return result
 
 
 @callback(
@@ -744,6 +760,54 @@ def _build_graphs(model: Any) -> list[html.Div]:
         if graph_height:
             graph_style["height"] = f"{graph_height}px"
 
+        # --- Build annotation metadata stores from the PlotModel ---
+        # These are read by annotation_callbacks to know subplot names and axis refs.
+        # Must be built from mod.figure (original go.Figure) before FigureResampler wraps it.
+        is_loop = mod.plot_type == cst.PlotType.LOOP
+        n_cols_layout = 2 if (is_loop and len(mod.groups) > 1) else 1
+
+        signal_meta_lookup: dict[str, dict] = {
+            sig.name: {
+                "raw_name": sig.raw_name,
+                "datasource_name": sig.metadata.datasource_name or "",
+            }
+            for group in mod.groups
+            for sig in group.signals
+        }
+        trace_map: dict[str, dict] = {}
+        for trace_idx, trace in enumerate(mod.figure.data):
+            trace_name = getattr(trace, "name", "") or ""
+            meta = signal_meta_lookup.get(trace_name, {})
+            trace_map[f"curve_{trace_idx}"] = {
+                "yaxis": getattr(trace, "yaxis", None) or "y",
+                "xaxis": getattr(trace, "xaxis", None) or "x",
+                "display_name": trace_name,
+                "raw_name": meta.get("raw_name", ""),
+                "datasource_name": meta.get("datasource_name", ""),
+            }
+
+        subplot_rows = []
+        for group_idx, group in enumerate(mod.groups):
+            plotly_row = group_idx // n_cols_layout + 1
+            plotly_col = group_idx % n_cols_layout + 1
+            subplot_rows.append({"row": plotly_row, "col": plotly_col, "name": group.name})
+
+        # Capture subplot title annotations injected by make_subplots so the
+        # annotation renderer can restore them when it replaces layout.annotations.
+        subplot_title_annotations: list[dict] = []
+        if mod.figure.layout.annotations:
+            subplot_title_annotations = [
+                ann.to_plotly_json() for ann in mod.figure.layout.annotations
+            ]
+
+        graph_subplots_data = {
+            "rows": subplot_rows,
+            "subplot_annotations": subplot_title_annotations,
+            "plot_type": mod.plot_type,
+            "n_cols": n_cols_layout,
+            "display_timezone": cst.DISPLAY_TIMEZONE,
+        }
+
         children = [
             dcc.Graph(
                 id={"type": "graph", "name": mod.name},
@@ -752,6 +816,8 @@ def _build_graphs(model: Any) -> list[html.Div]:
                 style=graph_style,
             ),
             dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
+            dcc.Store(id={"type": "graph-subplots", "name": mod.name}, data=graph_subplots_data),
+            dcc.Store(id={"type": "graph-trace-map", "name": mod.name}, data=trace_map),
         ]
 
         # --- Loop time-range slider ---
