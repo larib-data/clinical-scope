@@ -35,6 +35,7 @@ logs/
 
 # IA
 PLANS/*
+QWEN.md
 
 # Local testing and example
 LOCAL_SCRIPT/*

@@ -11,9 +11,15 @@ from clinical_data_visualizer import logger_config
 
 # Import callbacks to register them with the app
 from clinical_data_visualizer.dash_api import callbacks  # noqa: F401
+from clinical_data_visualizer.dash_api.annotations.model import ANNOTATION_COLORS, AnnotationType
 from clinical_data_visualizer.dash_api.helper_api import get_cached_db_options_path
 from clinical_data_visualizer.dash_api.styles import (
     ACTION_BUTTONS_ROW,
+    ANNOTATION_MODAL_PANEL,
+    ANNOTATION_MODAL_STYLE_HIDDEN,
+    ANNOTATION_TOOLBAR_STYLE,
+    BUTTON_ANNOTATION_INACTIVE,
+    BUTTON_ANNOTATION_SAVE,
     BUTTON_DEFAULT_VIZ,
     BUTTON_DOWNLOAD_CSV,
     BUTTON_INSPECT,
@@ -62,10 +68,251 @@ app = Dash(
     assets_folder=_assets_folder,
 )
 
+# ---------------------------------------------------------------------------
+# Annotation toolbar — color swatches built from the preset palette
+# ---------------------------------------------------------------------------
+_COLOR_TYPE_LABELS = {
+    AnnotationType.TIME_EVENT: "Time Event",
+    AnnotationType.TIME_WINDOW: "Time Window",
+    AnnotationType.POINT: "Point",
+}
+
+_annotation_type_buttons = [
+    html.Button(
+        label,
+        id=f"annotation-type-btn-{ann_type.value}",
+        n_clicks=0,
+        style=BUTTON_ANNOTATION_INACTIVE,
+    )
+    for ann_type, label in _COLOR_TYPE_LABELS.items()
+]
+
+_annotation_toolbar = html.Div(
+    id="annotation-toolbar",
+    style={**ANNOTATION_TOOLBAR_STYLE, "display": "none"},
+    children=[
+        html.Span("Annotate:", style={"fontWeight": "bold", "fontSize": "13px", "color": "#555"}),
+        *_annotation_type_buttons,
+        html.Button(
+            "Exit mode",
+            id="annotation-mode-deactivate",
+            n_clicks=0,
+            style={**BUTTON_ANNOTATION_INACTIVE, "display": "none"},
+        ),
+        html.Button(
+            "Save",
+            id="annotation-save-btn",
+            n_clicks=0,
+            style=BUTTON_ANNOTATION_SAVE,
+        ),
+        html.Span(
+            "",
+            id="annotation-count-badge",
+            style={
+                "fontSize": "12px",
+                "color": "#888",
+                "marginLeft": "4px",
+            },
+        ),
+        html.Span(
+            "",
+            id="annotation-save-status",
+            style={"fontSize": "12px", "color": "#28a745", "marginLeft": "8px"},
+        ),
+        html.Span(
+            "",
+            id="annotation-warning-msg",
+            style={
+                "fontSize": "12px",
+                "color": "#e67e00",
+                "marginLeft": "8px",
+                "fontStyle": "italic",
+            },
+        ),
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# Annotation creation modal
+# ---------------------------------------------------------------------------
+_color_swatches = html.Div(
+    [
+        html.Div(
+            id={"type": "annotation-color-swatch", "color": c},
+            n_clicks=0,
+            style={
+                "width": "22px",
+                "height": "22px",
+                "borderRadius": "50%",
+                "backgroundColor": c,
+                "cursor": "pointer",
+                "border": "2px solid transparent",
+                "flexShrink": 0,
+            },
+        )
+        for c in ANNOTATION_COLORS
+    ],
+    style={"display": "flex", "gap": "6px", "alignItems": "center"},
+)
+
+_annotation_modal = html.Div(
+    id="annotation-modal",
+    style=ANNOTATION_MODAL_STYLE_HIDDEN,
+    children=[
+        html.Div(
+            [
+                # Header
+                html.Div(
+                    [
+                        html.H4("New Annotation", style={"margin": 0, "fontSize": "16px"}),
+                        html.Button(
+                            "×",
+                            id="cancel-annotation-btn",
+                            n_clicks=0,
+                            style={
+                                **BUTTON_MODAL_CLOSE,
+                                "fontSize": "18px",
+                                "padding": "2px 10px",
+                                "lineHeight": "1",
+                            },
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "center",
+                        "marginBottom": "16px",
+                        "borderBottom": "1px solid #dee2e6",
+                        "paddingBottom": "12px",
+                    },
+                ),
+                # Position info (read-only, pre-filled)
+                html.Div(
+                    id="annotation-modal-position-display",
+                    style={"fontSize": "12px", "color": "#666", "marginBottom": "12px"},
+                ),
+                # Label input
+                html.Div(
+                    [
+                        html.Label(
+                            "Label",
+                            style={"fontSize": "13px", "fontWeight": "bold", "marginBottom": "4px"},
+                        ),
+                        dcc.Input(
+                            id="annotation-label-input",
+                            type="text",
+                            placeholder="e.g. Alarm, Intervention…",
+                            debounce=False,
+                            style={
+                                "width": "100%",
+                                "padding": "6px 10px",
+                                "border": "1px solid #ced4da",
+                                "borderRadius": "4px",
+                                "fontSize": "13px",
+                                "boxSizing": "border-box",
+                            },
+                        ),
+                    ],
+                    style={"marginBottom": "12px"},
+                ),
+                # Color picker
+                html.Div(
+                    [
+                        html.Label(
+                            "Color",
+                            style={"fontSize": "13px", "fontWeight": "bold", "marginBottom": "4px"},
+                        ),
+                        html.Div(
+                            [
+                                _color_swatches,
+                                dcc.Input(
+                                    id="annotation-color-input",
+                                    type="text",
+                                    value=ANNOTATION_COLORS[0],
+                                    maxLength=7,
+                                    style={
+                                        "width": "90px",
+                                        "padding": "4px 8px",
+                                        "border": "1px solid #ced4da",
+                                        "borderRadius": "4px",
+                                        "fontSize": "12px",
+                                        "fontFamily": "monospace",
+                                    },
+                                ),
+                            ],
+                            style={"display": "flex", "alignItems": "center", "gap": "10px"},
+                        ),
+                    ],
+                    style={"marginBottom": "12px"},
+                ),
+                # Global toggle (hidden for point annotations)
+                html.Div(
+                    id="annotation-global-checkbox-container",
+                    children=[
+                        dcc.Checklist(
+                            id="annotation-global-checkbox",
+                            options=[
+                                {"label": " Apply to all subplots (global)", "value": "global"}
+                            ],
+                            value=["global"],
+                            style={"fontSize": "13px"},
+                        ),
+                    ],
+                    style={"marginBottom": "20px"},
+                ),
+                # Footer buttons
+                html.Div(
+                    [
+                        html.Button(
+                            "Cancel",
+                            id="cancel-annotation-btn-footer",
+                            n_clicks=0,
+                            style=BUTTON_MODAL_CLOSE,
+                        ),
+                        html.Button(
+                            "Create",
+                            id="create-annotation-btn",
+                            n_clicks=0,
+                            style={
+                                **BUTTON_MODAL_CLOSE,
+                                "backgroundColor": "#7c4dff",
+                                "marginLeft": "8px",
+                            },
+                        ),
+                    ],
+                    style={"display": "flex", "justifyContent": "flex-end"},
+                ),
+            ],
+            style=ANNOTATION_MODAL_PANEL,
+        )
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# Annotation list panel (shown below toolbar when annotations exist)
+# ---------------------------------------------------------------------------
+_annotation_list_panel = html.Div(
+    id="annotation-list-panel",
+    style={"marginBottom": "16px"},
+    children=[],
+)
+
 app.layout = html.Div(
     [
         # Version display in top right corner
         html.Div(f"API Version: {__version__}", style=VERSION_BADGE),
+        # Global annotation stores
+        dcc.Store(id="annotation-store", data=[]),
+        dcc.Store(
+            id="annotation-mode-store",
+            data={
+                "active": False,
+                "type": AnnotationType.TIME_EVENT.value,
+                "pending_x0": None,
+                "pending_plot_name": None,
+            },
+        ),
+        dcc.Store(id="annotation-modal-data", data={}),
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
@@ -167,6 +414,11 @@ app.layout = html.Div(
                 )
             ],
         ),
+        # Annotation modal (above visualization, below inspection modal in z-order)
+        _annotation_modal,
+        # Annotation toolbar + list (shown after visualization is generated)
+        _annotation_toolbar,
+        _annotation_list_panel,
         html.Div(id="visualization-container"),
         dcc.Store(id="inspection-results-store", data=None),
     ],

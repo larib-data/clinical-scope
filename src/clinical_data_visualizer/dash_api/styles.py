@@ -21,6 +21,7 @@ COLOR_GREY = "#6c757d"  # Reload last config, Close
 COLOR_GREEN = "#28a745"  # Default visualization
 COLOR_ORANGE = "#fd7e14"  # Process visualization
 COLOR_TEAL = "#17a2b8"  # Inspect data, Download CSV
+COLOR_PURPLE = "#7c4dff"  # Annotation mode active
 
 # ---------------------------------------------------------------------------
 # 2. Button styles
@@ -185,4 +186,79 @@ ACTION_BUTTONS_ROW: dict = {
     "alignItems": "center",
     "marginTop": "16px",
     "marginBottom": "8px",
+}
+
+# ---------------------------------------------------------------------------
+# 6. Annotation styles
+# ---------------------------------------------------------------------------
+
+BUTTON_ANNOTATION_INACTIVE: dict = {
+    **_BUTTON_BASE,
+    "backgroundColor": COLOR_GREY,
+    "padding": "6px 14px",
+    "fontSize": "13px",
+}
+
+BUTTON_ANNOTATION_ACTIVE: dict = {
+    **_BUTTON_BASE,
+    "backgroundColor": COLOR_PURPLE,
+    "padding": "6px 14px",
+    "fontSize": "13px",
+    "boxShadow": f"0 0 0 2px {COLOR_PURPLE}55",
+}
+
+BUTTON_ANNOTATION_SAVE: dict = {
+    **_BUTTON_BASE,
+    "backgroundColor": COLOR_GREY,
+    "padding": "6px 12px",
+    "fontSize": "13px",
+    "marginLeft": "8px",
+}
+
+ANNOTATION_TOOLBAR_STYLE: dict = {
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "6px",
+    "padding": "8px 12px",
+    "border": "1px solid #dee2e6",
+    "borderRadius": "6px",
+    "backgroundColor": "#f8f9fa",
+    "marginBottom": "12px",
+    "flexWrap": "wrap",
+}
+
+# Annotation creation modal — smaller centered dialog
+ANNOTATION_MODAL_STYLE_HIDDEN: dict = {
+    "display": "none",
+    "position": "fixed",
+    "top": 0,
+    "left": 0,
+    "width": "100vw",
+    "height": "100vh",
+    "backgroundColor": "rgba(0,0,0,0.45)",
+    "zIndex": 3000,
+    "justifyContent": "center",
+    "alignItems": "center",
+}
+ANNOTATION_MODAL_STYLE_SHOWN: dict = {
+    **ANNOTATION_MODAL_STYLE_HIDDEN,
+    "display": "flex",
+}
+
+ANNOTATION_MODAL_PANEL: dict = {
+    "background": "white",
+    "borderRadius": "8px",
+    "padding": "24px",
+    "width": "420px",
+    "maxWidth": "95vw",
+    "boxShadow": "0 8px 32px rgba(0,0,0,0.25)",
+}
+
+ANNOTATION_LIST_ROW: dict = {
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "8px",
+    "padding": "6px 8px",
+    "borderBottom": "1px solid #f0f0f0",
+    "fontSize": "13px",
 }
