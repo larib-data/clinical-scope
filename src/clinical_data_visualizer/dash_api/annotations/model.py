@@ -63,8 +63,16 @@ class Annotation:
         Hex color string (e.g. ``"#e74c3c"``).
     plot_name
         Name of the PlotModel this annotation belongs to (e.g. ``"time_series"``).
-    subplot_row
-        1-indexed subplot row.  ``None`` means global (all subplots).
+    subplot_name
+        Title of the subplot this annotation targets.  ``None`` means global
+        (all subplots).  Used by the renderer for stable, position-independent
+        lookup: if the subplot is later removed the annotation is silently skipped.
+    group_id
+        ID of the annotation group this annotation belongs to, or ``None``.
+    label_hidden
+        When ``True``, the text label / arrow is not rendered.  For ``POINT``
+        annotations this defaults to ``True`` so the dot marker shows without
+        cluttering the plot.
     data
         Type-specific payload dict:
 
@@ -84,8 +92,11 @@ class Annotation:
     data: dict
     label: str = ""
     color: str = "#e74c3c"
-    subplot_row: int | None = None
+    subplot_name: str | None = None
+    group_id: str | None = None
+    group_name: str | None = None
     trace_metadata: dict | None = None
+    label_hidden: bool = False
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(default_factory=_now_iso)
 
@@ -97,9 +108,12 @@ class Annotation:
             "label": self.label,
             "color": self.color,
             "plot_name": self.plot_name,
-            "subplot_row": self.subplot_row,
+            "subplot_name": self.subplot_name,
+            "group_id": self.group_id,
+            "group_name": self.group_name,
             "data": self.data,
             "trace_metadata": self.trace_metadata,
+            "label_hidden": self.label_hidden,
             "created_at": self.created_at,
         }
 
@@ -112,8 +126,11 @@ class Annotation:
             label=d.get("label", ""),
             color=d.get("color", "#e74c3c"),
             plot_name=d.get("plot_name", ""),
-            subplot_row=d.get("subplot_row"),
+            subplot_name=d.get("subplot_name"),
+            group_id=d.get("group_id"),
+            group_name=d.get("group_name"),
             data=d.get("data", {}),
             trace_metadata=d.get("trace_metadata"),
+            label_hidden=d.get("label_hidden", False),
             created_at=d.get("created_at", _now_iso()),
         )

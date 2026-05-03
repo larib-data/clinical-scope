@@ -111,8 +111,15 @@ def load_db_options(
     """Load database options from uploaded file, cache, or generate defaults."""
 
     triggered = ctx.triggered_id
+    logger.info(
+        "load_db_options fired | triggered=%r | filename=%r | contents_present=%s",
+        triggered,
+        filename,
+        contents is not None,
+    )
 
     if triggered == "default-viz-button":
+        logger.info("load_db_options: generating default database options")
         return (
             datasource.generate_default_database_options(),
             html.Div(
@@ -122,25 +129,41 @@ def load_db_options(
         )
 
     if triggered == "reload-cached-db-button":
+        logger.info("load_db_options: reloading cached db options")
         cached = ui_helper.load_cached_db_options()
         if cached is None:
+            logger.warning("load_db_options: no cached config found")
             return (
                 None,
                 html.Div("No cached config found.", style={"color": "red", "fontWeight": "bold"}),
             )
+        logger.info("load_db_options: cached config reloaded successfully")
         return (
             cached,
             html.Div("Reloaded last config", style={"color": "green", "fontWeight": "bold"}),
         )
 
     if not contents:
+        # This fires when dcc.Upload triggers the callback but contents is None
+        # (e.g. the user opened the file picker and cancelled, or the component
+        # was initialised without a file). If this fires right after the user
+        # selected a file, it indicates a Dash upload bug — check the browser console.
+        logger.warning(
+            "load_db_options: triggered=%r but contents is None/empty "
+            "(user may have cancelled the file picker, or a Dash upload issue occurred)",
+            triggered,
+        )
         return None, None
 
     try:
+        logger.info("load_db_options: parsing file %r (%d bytes encoded)", filename, len(contents))
         _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
         database_options_dict = _parse_database_options_file(decoded, filename)
-        logger.debug("loaded database_options_dict: %r", database_options_dict)
+        logger.info(
+            "load_db_options: parsed successfully, keys=%s",
+            list(database_options_dict.keys()),
+        )
 
         ui_helper.save_cached_db_options(database_options_dict)
 
@@ -152,7 +175,7 @@ def load_db_options(
         )
 
     except Exception as e:
-        logger.exception("Failed to load database options: ")
+        logger.exception("load_db_options: failed to parse %r", filename)
         return (
             None,
             html.Div(f"Error loading file: {e!s}", style={"color": "red", "fontWeight": "bold"}),
@@ -778,19 +801,61 @@ def _build_graphs(model: Any) -> list[html.Div]:
         for trace_idx, trace in enumerate(mod.figure.data):
             trace_name = getattr(trace, "name", "") or ""
             meta = signal_meta_lookup.get(trace_name, {})
+            trace_color: str | None = None
+            try:
+                if getattr(trace, "line", None) and getattr(trace.line, "color", None):
+                    trace_color = trace.line.color
+                elif getattr(trace, "marker", None) and isinstance(
+                    getattr(trace.marker, "color", None), str
+                ):
+                    trace_color = trace.marker.color
+            except (AttributeError, TypeError):
+                pass
             trace_map[f"curve_{trace_idx}"] = {
                 "yaxis": getattr(trace, "yaxis", None) or "y",
                 "xaxis": getattr(trace, "xaxis", None) or "x",
                 "display_name": trace_name,
                 "raw_name": meta.get("raw_name", ""),
                 "datasource_name": meta.get("datasource_name", ""),
+                "line_color": trace_color,
             }
 
         subplot_rows = []
+        # Build mapping from yaxis reference to subplot name.
+        # Traces are added to the figure in group order, so we can iterate
+        # through mod.figure.data and assign each trace's yaxis to its group's subplot.
+        yaxis_to_subplot: dict[str, dict] = {}
+        trace_idx = 0
         for group_idx, group in enumerate(mod.groups):
             plotly_row = group_idx // n_cols_layout + 1
             plotly_col = group_idx % n_cols_layout + 1
-            subplot_rows.append({"row": plotly_row, "col": plotly_col, "name": group.name})
+
+            # Get the primary y-axis for this subplot (first trace's yaxis)
+            primary_yaxis = "y"
+            if trace_idx < len(mod.figure.data):
+                primary_yaxis = getattr(mod.figure.data[trace_idx], "yaxis", None) or "y"
+
+            subplot_rows.append(
+                {
+                    "row": plotly_row,
+                    "col": plotly_col,
+                    "name": group.name,
+                    "yaxis": primary_yaxis,
+                }
+            )
+
+            # Add all traces from this group to the mapping
+            n_traces_in_group = len(group.signals)
+            for _ in range(n_traces_in_group):
+                if trace_idx < len(mod.figure.data):
+                    trace = mod.figure.data[trace_idx]
+                    yaxis_ref = getattr(trace, "yaxis", None) or "y"
+                    yaxis_to_subplot[yaxis_ref] = {
+                        "row": plotly_row,
+                        "col": plotly_col,
+                        "name": group.name,
+                    }
+                    trace_idx += 1
 
         # Capture subplot title annotations injected by make_subplots so the
         # annotation renderer can restore them when it replaces layout.annotations.
@@ -802,6 +867,7 @@ def _build_graphs(model: Any) -> list[html.Div]:
 
         graph_subplots_data = {
             "rows": subplot_rows,
+            "yaxis_to_subplot": yaxis_to_subplot,
             "subplot_annotations": subplot_title_annotations,
             "plot_type": mod.plot_type,
             "n_cols": n_cols_layout,

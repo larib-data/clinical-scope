@@ -225,6 +225,9 @@ ANNOTATION_TOOLBAR_STYLE: dict = {
     "backgroundColor": "#f8f9fa",
     "marginBottom": "12px",
     "flexWrap": "wrap",
+    "position": "sticky",
+    "top": "0",
+    "zIndex": 1000,
 }
 
 # Annotation creation modal — smaller centered dialog

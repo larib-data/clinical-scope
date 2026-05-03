@@ -279,3 +279,27 @@ See `src/clinical_data_visualizer/build_info/README.md` for detailed instruction
 Logs are stored in `logs/` directory (gitignored):
 - `logs/app/dash_api.log` - Dash application logs
 - `logs/scripts/` - Script execution logs
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Project skills
+
+Repo-specific skills live under `.claude/skills/`. Invoke with `/skill-name`.
+
+| Skill | When to use |
+|---|---|
+| `/new-datasource` | Add a new medical device / file format as a datasource module |
+| `/organize-patient-folder` | Reorganize a dump of clinical files into the correct per-datasource folder structure |
+| `/generate-database-options` | Generate a `database_options.json` config by inspecting available signals in a patient folder |
