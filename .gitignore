@@ -43,3 +43,6 @@ LOCAL_SCRIPT/*
 # Example until they are truly non-identifiable
 example/example_patients/*/cdv_visu
 
+docs/agents/triage-labels.md
+docs/agents/issue-tracker.md
+docs/agents/domain.md
