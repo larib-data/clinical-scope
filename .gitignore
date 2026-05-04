@@ -40,6 +40,5 @@ PLANS/*
 LOCAL_SCRIPT/*
 
 # Example until they are truly non-identifiable
-example/example_patients/Patient_difficult_format/tdv_visu
-example/example_patients/Patient_full/tdv_visu
+example/example_patients/*/cdv_visu
 

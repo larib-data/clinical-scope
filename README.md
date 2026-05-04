@@ -4,8 +4,13 @@ Interactive visualization dashboard for clinical physiological signals built wit
 
 ## Features
 
-- Visualize time series of physiological signals from multiple data sources
-- Support for various clinical data formats (Philips, Servo-U, FluxMed, EIT, etc.)
+- Visualize time series of physiological signals from multiple clinical data sources
+- Support for common clinical formats (Philips, Servo-U, FluxMed, EIT, Mindray, syringe pumps)
+  plus a generic **"Other"** source that auto-discovers any CSV/Parquet file with a datetime column
+- **Inspect** patient folders to preview columns, point counts, and time ranges before plotting
+  (with CSV export)
+- **Cross-datasource phase loops** via `global.loop` for combined pressure/volume/flow plots
+- Live per-datasource progress feedback during processing and inspection
 - Interactive annotations and shape drawing on plots
 - Export visualizations to HTML
 
@@ -41,7 +46,7 @@ The application will open in your browser at `http://127.0.0.1:8050`.
 
 **Option 1: Default Visualization (Quick Start)**
 1. Click "Default visualization (all sources)" button
-   - Automatically loads all 9 data sources with default settings
+   - Automatically loads all available data sources with their default settings
    - No `database_options.json` file needed
 2. Configure patient options (data folder, time range, etc.)
 3. Click "Process visualization" to generate the interactive plots
@@ -58,7 +63,17 @@ The application will open in your browser at `http://127.0.0.1:8050`.
 3. Click "Process visualization" to generate the interactive plots
 4. Use the drawing tools to annotate time points or regions of interest
 
-> **Note:** The "Default visualization" mode enables all available data sources (philips_waves, philips_numerics, eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray_scope, mindray_respi_waves, mindray_respi_numerics, syringe, other) with their default display configurations. You can still upload a custom `database_options.json` later to override this.
+### Inspecting Data
+
+Before running a full visualization you can click the teal **"Inspect data"** button (or run
+`scripts/inspect_patient_data.py`) to see which data sources were detected, what columns are
+available, their point counts, and their time ranges — with a CSV export. See the tutorial
+section *Processing the Visualization → Inspect Data* for details.
+
+> **Note:** The "Default visualization" mode enables all registered data sources with their
+> default display configurations — see the [tutorial](docs/user_guide/tutorial.md) section
+> "Patient Data & Supported Data Sources" for the full list. You can still upload a custom
+> `database_options.json` later to override this.
 
 ### Local Config Cache — Privacy Note
 
@@ -91,50 +106,36 @@ Patient1/                        # Root patient folder (configure in patient_opt
 ├── mindray_respi_numerics/      # Mindray respiratory parameters (.parquet or .csv)
 ├── syringe/                     # Syringe pump data
 ├── other/                       # Generic data (.csv or .parquet files)
-└── tdv_visu/                    # Auto-generated: cached data and outputs
+└── cdv_visu/                    # Auto-generated: cached data and outputs
 ```
 
 ### Data Source Folder Names
 
-Folder names are **flexible** - they just need to contain the required keywords (case-insensitive, any separator):
+Folder names are **flexible** — they just need to contain the required keywords
+(case-insensitive, any separator). A few examples:
 
-| Data Source | Required Keywords | Recommended Name | Example Alternatives |
-|-------------|-------------------|------------------|---------------------|
-| **Philips Waves** | `philips`, `waves` | `philips_waves` | `Philips-Waves`, `waves_philips`, `PHILIPS WAVES` |
-| **Philips Numerics** | `philips`, `numerics` | `philips_numerics` | `Philips-Numerics`, `numerics-philips` |
-| **EIT (PulmoVista)** | `eit` | `eit` | `EIT`, `EIT_Data` |
-| **FluxMed Signals** | `fluxmed`, `signals` | `fluxmed_signals` | `FluxMed-Signals`, `signals_fluxmed` |
-| **FluxMed Parameters** | `fluxmed`, `parameters` | `fluxmed_parameters` | `FluxMed_Parameters`, `parameters-fluxmed` |
-| **Servo-U** | `servo` | `servo_u` | `Servo-U`, `SERVO`, `servo_data` |
-| **Mindray Scope** | `mindray` | `mindray_scope` | `mindray`, `Mindray`, `MINDRAY` |
-| **Mindray Respi Waves** | `mindray`, `resp`, `wave` | `mindray_respi_waves` | `mindray_resp_waves` |
-| **Mindray Respi Numerics** | `mindray`, `resp`, `numeric` | `mindray_respi_numerics` | `mindray_resp_numerics` |
-| **Syringe Pumps** | `syringe` | `syringe` | `Syringe`, `syringe_pumps` |
-| **Other (Generic)** | `other` | `other` | `Other`, `OTHER` |
+| Data Source | Required Keywords | Recommended Name |
+|-------------|-------------------|------------------|
+| **Philips Waves** | `philips`, `waves` | `philips_waves` |
+| **EIT (PulmoVista)** | `eit` | `eit` |
+| **Other (Generic)** | `other` | `other` |
 
-**File Types** (listed in order of preference when multiple formats exist for the same data):
+The complete list of data sources, their folder keywords, accepted file extensions, and
+discovery modes is in the tutorial — see
+[`docs/user_guide/tutorial.md`](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources*.
 
-| Data Source | Accepted Extensions | Mode |
-|---|---|---|
-| **Philips Waves** | `.parquet`, `.csv` | Single file |
-| **Philips Numerics** | `.parquet`, `.csv` | Single file |
-| **EIT** | `.asc` | All files |
-| **FluxMed Signals** | `.parquet`, `.txt`, `.csv` | Single file |
-| **FluxMed Parameters** | `.parquet`, `.txt`, `.csv` | Single file |
-| **Servo-U** | `.sta` | All files |
-| **Mindray Scope** | `.xml`, `.csv` | All files |
-| **Mindray Respi Waves** | `.parquet`, `.csv` | Single file |
-| **Mindray Respi Numerics** | `.parquet`, `.csv` | Single file |
-| **Syringe** | `.parquet`, `.csv` | Single file |
-| **Other** | `.csv`, `.parquet` | All files |
-
-**Single file** sources expect exactly one data file per folder. When multiple files are present, the application resolves ambiguity automatically:
+**Single file** sources expect exactly one data file per folder. When multiple files are present,
+the application resolves ambiguity automatically:
 
 1. Only files with accepted extensions are considered (other files are ignored).
-2. If the same stem exists in multiple formats (e.g., `data.csv` + `data.parquet`), the most preferred extension is kept (first in the list above).
+2. If the same stem exists in multiple formats (e.g., `data.csv` + `data.parquet`), the most
+   preferred extension is kept (first in the list of accepted extensions).
 3. If multiple stems remain, the application returns no match and logs a warning.
 
-**All files** sources load every matching file in the folder and concatenate them.
+**All files** sources load every matching file in the folder and concatenate them. The
+**Other** source is a special multi-file source: each file is treated as an independent
+entry keyed by its stem (`other::<stem>` in `database_options`), so `waves.parquet` becomes
+`other::waves`, `numerics.csv` becomes `other::numerics`, etc.
 
 ### Folder Naming Rules
 
@@ -151,7 +152,7 @@ Folder names are **flexible** - they just need to contain the required keywords 
 ### Notes
 
 - **Only include folders for available data sources** - empty folders are fine but not required
-- The `tdv_visu/` folder is automatically created for caching processed data (`.parquet` files) and visualization outputs
+- The `cdv_visu/` folder is automatically created for caching processed data (`.parquet` files) and visualization outputs
 - Using the recommended names provides the best performance (exact match is checked first)
 
 ### Example
@@ -165,7 +166,7 @@ If you only have Philips waves and EIT data:
 ├── eit/
 │   ├── recording_001.asc
 │   └── recording_002.asc
-└── tdv_visu/              # Created automatically
+└── cdv_visu/              # Created automatically
     ├── philips_waves.parquet
     └── eit.parquet
 ```
@@ -174,7 +175,7 @@ If you only have Philips waves and EIT data:
 
 The library provides three layered functions for preprocessing patient data (running
 find → load → format) without opening the Dash UI.  Raw parquet caches are always
-written to `<data_folder>/tdv_visu/` automatically.  Pass `save_folder` to also save
+written to `<data_folder>/cdv_visu/` automatically.  Pass `save_folder` to also save
 the formatted output.
 
 ### Python API
@@ -266,11 +267,14 @@ src/clinical_data_visualizer/
 ├── database_options_parser.py  # Normalize new/legacy JSON formats
 ├── database_options_xlsx.py    # XLSX → dict conversion
 ├── inspection.py           # Data inspection models & CSV export
-├── signal_container.py     # Data model for signals and plots
-├── wrapper.py              # Main processing logic
-├── constants.py            # Configuration constants
+├── signal_container.py     # Signal, PlotGroup, PlotModel data models
+├── wrapper.py              # Main processing logic (visualization, extraction, inspection)
+├── constants.py            # Global constants and option classes
 ├── helper.py               # Utility functions
 ├── utilities.py            # Additional utilities
 ├── data_management.py      # Data management functions
 └── logger_config.py        # Logging configuration
 ```
+
+See [`CLAUDE.md`](CLAUDE.md) for a more detailed architecture overview and
+[`docs/user_guide/tutorial.md`](docs/user_guide/tutorial.md) for the user-facing guide.

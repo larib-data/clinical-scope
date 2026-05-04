@@ -66,8 +66,3 @@ class SyringeDataSource(DataSourceBase):
         if path_output is not None:
             cls._save_dataframe(df, path_output)
         return df
-
-
-# Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
-    return SyringeDataSource.main(patient_options, database_options_specific)

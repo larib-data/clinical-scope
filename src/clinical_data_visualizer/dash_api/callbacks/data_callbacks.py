@@ -46,10 +46,24 @@ logger = logging.getLogger(__name__)
 # Server-side caches keyed by UUID — suitable for single-user desktop app.
 # Both caches grow during a session and are cleared on each process_visualization call.
 # Not bounded by size — acceptable for a single-user desktop app.
-# NOTE: these are distinct from the on-disk parquet cache (tdv_visu/ inside the patient folder)
+# NOTE: these are distinct from the on-disk parquet cache (cdv_visu/ inside the patient folder)
 # which persists across sessions for quick_load. These are ephemeral, in-memory only.
 FIGURE_RESAMPLER_CACHE = {}  # FigureResampler objects for time-series zoom/pan
 LOOP_DATA_CACHE = {}  # Loop trace data (x, y, time arrays) for slider filtering
+
+# Shared progress state for process_visualization / inspect_data.
+# Written by the active callback via progress_callback; read every 500 ms by
+# poll_process_progress running in a concurrent Flask thread.
+# CPython's GIL protects individual key assignments, but dict.update() with multiple
+# keys is not atomic — a partial read is theoretically possible. Acceptable here since
+# the polling callback only renders display state, not business logic.
+PROCESS_PROGRESS: dict[str, Any] = {
+    "running": False,
+    "current": 0,
+    "total": 0,
+    "current_datasource": "",
+    "mode": "",  # "visualize" or "inspect"
+}
 
 
 def clear_visualization_caches() -> None:
@@ -226,11 +240,27 @@ def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
 
 
 @callback(
+    Output("process-progress-interval", "disabled"),
+    Input("process-button", "n_clicks"),
+    Input("inspect-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def enable_progress_interval(
+    n_proc: int | None,  # noqa: ARG001
+    n_insp: int | None,  # noqa: ARG001
+) -> bool:
+    """Enable the progress interval as soon as either action button is clicked."""
+    return False
+
+
+@callback(
     Output("visualization-container", "children"),
     Output("validation-errors", "children"),
     Output("process-status", "children"),
     Output("folder-visu-path", "data"),
     Output("shape-controls", "style"),
+    Output("process-progress-interval", "disabled", allow_duplicate=True),
+    Output("process-progress", "children", allow_duplicate=True),
     Input("process-button", "n_clicks"),
     State("db-options-store", "data"),
     State("schema-registry", "data"),
@@ -244,11 +274,20 @@ def process_visualization(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
-) -> tuple[Any, Any, Any, str | None, dict]:
+) -> tuple[Any, Any, Any, str | None, dict, bool, str]:
     """Process visualization request with validated patient options."""
     shape_hidden = {"display": "none"}
+    interval_off, progress_clear = True, ""
     if not db_options:
-        return None, "Database options not loaded", None, None, shape_hidden
+        return (
+            None,
+            "Database options not loaded",
+            None,
+            None,
+            shape_hidden,
+            interval_off,
+            progress_clear,
+        )
 
     schema_class_lookup = _rehydrate_schema_classes(schema_data)
 
@@ -263,7 +302,15 @@ def process_visualization(
     logger.debug("validated_dict: %s", validated_dict)
 
     if errors:
-        return None, html.Ul([html.Li(e) for e in errors]), None, None, shape_hidden
+        return (
+            None,
+            html.Ul([html.Li(e) for e in errors]),
+            None,
+            None,
+            shape_hidden,
+            interval_off,
+            progress_clear,
+        )
 
     # Save JSON exactly as before
     patient_options_path = (
@@ -280,16 +327,22 @@ def process_visualization(
     ui_helper.save_json(db_options, db_options_path)
 
     clear_visualization_caches()
+    PROCESS_PROGRESS.update(
+        {"running": True, "current": 0, "total": 0, "current_datasource": "", "mode": "visualize"}
+    )
+
+    def _on_progress(current: int, total: int, name: str) -> None:
+        PROCESS_PROGRESS.update({"current": current, "total": total, "current_datasource": name})
 
     logger.info("Processing visualization request for: %s", validated_dict.get("data_folder", "?"))
     try:
         model = wrapper.main(
             patient_options=validated_dict,
             database_options_global=db_options,
+            progress_callback=_on_progress,
         )
         PlotModel.to_html(model, validated_dict)
         graphs = _build_graphs(model, annotations_data)
-
     except Exception as e:
         logger.exception("Could not make the plot: ")
         return (
@@ -308,7 +361,11 @@ def process_visualization(
             ),
             None,
             shape_hidden,
+            interval_off,
+            progress_clear,
         )
+    finally:
+        PROCESS_PROGRESS["running"] = False
 
     logger.info("Visualization succeeded: %d plot model(s) generated.", len(model))
     return (
@@ -320,6 +377,8 @@ def process_visualization(
         ),
         name_folder_visu,
         {"display": "block"},
+        interval_off,
+        progress_clear,
     )
 
 
@@ -467,6 +526,8 @@ def _build_inspection_content(results: list) -> list:
     Output("inspection-modal-content", "children"),
     Output("inspection-results-store", "data"),
     Output("inspect-status", "children"),
+    Output("process-progress-interval", "disabled", allow_duplicate=True),
+    Output("process-progress", "children", allow_duplicate=True),
     Input("inspect-button", "n_clicks"),
     State("db-options-store", "data"),
     State("schema-registry", "data"),
@@ -480,8 +541,9 @@ def inspect_data(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
-) -> tuple[dict, Any, list | None, None]:
+) -> tuple[dict, Any, list | None, None, bool, str]:
     """Run data inspection for all enabled datasources and display results in modal."""
+    interval_off, progress_clear = True, ""
 
     if not db_options:
         return (
@@ -489,6 +551,8 @@ def inspect_data(
             html.Div("Database options not loaded.", style={"color": "red"}),
             None,
             None,
+            interval_off,
+            progress_clear,
         )
 
     schema_class_lookup = _rehydrate_schema_classes(schema_data)
@@ -501,13 +565,23 @@ def inspect_data(
             html.Ul([html.Li(e) for e in errors]),
             None,
             None,
+            interval_off,
+            progress_clear,
         )
+
+    PROCESS_PROGRESS.update(
+        {"running": True, "current": 0, "total": 0, "current_datasource": "", "mode": "inspect"}
+    )
+
+    def _on_progress(current: int, total: int, name: str) -> None:
+        PROCESS_PROGRESS.update({"current": current, "total": total, "current_datasource": name})
 
     logger.info("Running inspection for: %s", validated_dict.get("data_folder", "?"))
     try:
         results = wrapper.inspect(
             patient_options=validated_dict,
             database_options_global=db_options,
+            progress_callback=_on_progress,
         )
     except Exception as e:
         logger.exception("Inspection failed: ")
@@ -516,10 +590,21 @@ def inspect_data(
             html.Div(f"Inspection failed: {e}", style={"color": "red"}),
             None,
             None,
+            interval_off,
+            progress_clear,
         )
+    finally:
+        PROCESS_PROGRESS["running"] = False
 
     content = _build_inspection_content(results)
-    return INSPECTION_MODAL_STYLE_SHOWN, content, results_to_json(results), None
+    return (
+        INSPECTION_MODAL_STYLE_SHOWN,
+        content,
+        results_to_json(results),
+        None,
+        interval_off,
+        progress_clear,
+    )
 
 
 @callback(
@@ -549,6 +634,60 @@ def download_inspection_csv(n_clicks: int, stored: list | None) -> dict:  # noqa
         "filename": "data_inspection.csv",
         "type": "text/csv",
     }
+
+
+_PROGRESS_BAR_COLOR = {"visualize": "#fd7e14", "inspect": "#17a2b8"}
+_PROGRESS_BAR_LABEL = {"visualize": "Visualizing", "inspect": "Inspecting"}
+
+
+@callback(
+    Output("process-progress", "children"),
+    Input("process-progress-interval", "n_intervals"),
+)
+def poll_process_progress(n_intervals: int) -> Any:  # noqa: ARG001
+    """Update the per-datasource progress bar while a long operation is running."""
+    if not PROCESS_PROGRESS["running"]:
+        raise PreventUpdate
+
+    current = PROCESS_PROGRESS["current"]
+    total = PROCESS_PROGRESS["total"]
+    name = PROCESS_PROGRESS["current_datasource"]
+    mode = PROCESS_PROGRESS["mode"]
+
+    if total == 0:
+        return html.Div("Starting...", style={"fontSize": "13px", "color": "#666"})
+
+    # Bar tracks completed sources; label names the active one — the two are intentionally
+    # decoupled so the bar never shows 100% while the last datasource is still processing.
+    # TODO: reset current_datasource="" at run start so a stale name doesn't flash briefly
+    #       on the next run before the first progress_callback fires.
+    pct = int((current - 1) / total * 100)
+    label = f"{_PROGRESS_BAR_LABEL.get(mode, 'Processing')} ({current}/{total}): {name}"
+    bar_color = _PROGRESS_BAR_COLOR.get(mode, "#6c757d")
+
+    return html.Div(
+        [
+            html.Div(label, style={"fontSize": "13px", "color": "#555", "marginBottom": "4px"}),
+            html.Div(
+                html.Div(
+                    style={
+                        "width": f"{pct}%",
+                        "backgroundColor": bar_color,
+                        "height": "8px",
+                        "borderRadius": "4px",
+                        "transition": "width 0.3s",
+                    }
+                ),
+                style={
+                    "backgroundColor": "#e9ecef",
+                    "borderRadius": "4px",
+                    "overflow": "hidden",
+                    "width": "300px",
+                },
+            ),
+        ],
+        style={"marginTop": "4px"},
+    )
 
 
 _ONE_DAY_SECONDS = 86400
@@ -683,7 +822,7 @@ def _build_graphs(
 
             if np.isfinite(t_min_global) and t_min_global < t_max_global:
                 duration = float(t_max_global) - t_min_f
-                step = duration / 1000
+                step = 1
                 marks = _build_slider_marks(t_min_f, duration)
 
                 children.append(

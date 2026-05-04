@@ -138,8 +138,15 @@ INSPECTION_MODAL_PANEL: dict = {
     "width": "90vw",
     "maxWidth": "1700px",
     "maxHeight": "80vh",
-    "overflowY": "auto",
+    "display": "flex",
+    "flexDirection": "column",
+    "overflowY": "hidden",
     "boxShadow": "0 8px 32px rgba(0,0,0,0.25)",
+}
+
+INSPECTION_MODAL_SCROLLABLE_BODY: dict = {
+    "overflowY": "auto",
+    "flex": "1",
 }
 
 INSPECTION_MODAL_HEADER_ROW: dict = {

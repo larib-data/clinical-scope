@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -6,7 +7,7 @@ import pandas as pd
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
 from clinical_data_visualizer.database_options_parser import (
-    normalize_datasource_options,
+    normalize_database_options,
     warn_redundant_entries,
 )
 from clinical_data_visualizer.inspection import DataSourceInspection
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 def _resolve_database_options(database_options_global: dict | None) -> dict:
     if database_options_global is None:
         return datasource_list.generate_default_database_options()
+    normalize_database_options(database_options_global)
     return database_options_global
 
 
@@ -73,6 +75,7 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
 def main(
     patient_options: dict,
     database_options_global: dict | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[PlotModel]:
     database_options_global = _resolve_database_options(database_options_global)
     all_signal_list = []
@@ -88,6 +91,9 @@ def main(
         requested_sources,
     )
 
+    proc_total = len(requested_sources)
+    proc_count = 0
+
     # Loop through data sources
     for data_source in datasource_list.DataSource.AVAILABLE:
         name = data_source.NAME
@@ -95,9 +101,12 @@ def main(
         if name not in database_options_global:
             continue
 
-        raw_db_opts = database_options_global[name]
-        warn_redundant_entries(raw_db_opts, name)
-        database_options = normalize_datasource_options(raw_db_opts)
+        proc_count += 1
+        if progress_callback is not None:
+            progress_callback(proc_count, proc_total, name)
+
+        database_options = database_options_global[name]
+        warn_redundant_entries(database_options, name)
 
         try:
             # (1) Create signals
@@ -218,10 +227,42 @@ def main(
             if len(pg.signals) > 1 or pg.signals[0].raw_name not in global_grouped_raw_names
         ]
 
-    # Handle global loop not implemented
-    if cst.DatabaseOptions.LOOP in database_options_global.get(cst.DatabaseOptions.GLOBAL, {}):
-        logger.error("loop not implemented for trace from different signals yet")
-    # TODO: implement it
+    # Global loops (cross-datasource)
+    global_loop_group = database_options_global.get(cst.DatabaseOptions.GLOBAL, {}).get(
+        cst.DatabaseOptions.LOOP, {}
+    )
+    for loop_name, loop_field_list in global_loop_group.items():
+        try:
+            if len(loop_field_list) != 2:  # noqa: PLR2004
+                logger.warning(
+                    "⚠️ Global loop '%s' needs exactly 2 signal refs, got %d.",
+                    loop_name,
+                    len(loop_field_list),
+                )
+                continue
+            signals = _resolve_signal_references(loop_field_list[:2], all_signal_list)
+            if len(signals) != 2:  # noqa: PLR2004
+                logger.warning(
+                    "⚠️ Could not resolve both signals for global loop '%s' (resolved %d/2).",
+                    loop_name,
+                    len(signals),
+                )
+                continue
+            signal_x, signal_y = signals
+            try:
+                loop_signal = Signal.loop_from_signals(signal_x, signal_y, name=loop_name)
+                plot_group_list.append(PlotGroup.from_single_signal(loop_signal))
+            except Exception:
+                logger.exception("⚠️ Error constructing global loop '%s'.", loop_name)
+                continue
+            logger.info(
+                "✅ Global loop '%s' created (%s x %s).",
+                loop_name,
+                signal_x.raw_name,
+                signal_y.raw_name,
+            )
+        except Exception:
+            logger.exception("❌ Unexpected error while processing global loop '%s'.", loop_name)
 
     try:
         plot_model_list = PlotModel.assign_plot_model(plot_group_list)
@@ -241,6 +282,7 @@ def main(
 def inspect(
     patient_options: dict,
     database_options_global: dict | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[DataSourceInspection]:
     """
     Run find → load → format for each enabled datasource and return inspection results.
@@ -258,15 +300,21 @@ def inspect(
         requested_sources,
     )
 
+    proc_total = len(requested_sources)
+    proc_count = 0
+
     results = []
     for data_source in datasource_list.DataSource.AVAILABLE:
         name = data_source.NAME
         if name not in database_options_global:
             continue
 
-        raw_db_opts = database_options_global[name]
-        warn_redundant_entries(raw_db_opts, name)
-        db_opts = normalize_datasource_options(raw_db_opts)
+        proc_count += 1
+        if progress_callback is not None:
+            progress_callback(proc_count, proc_total, name)
+
+        db_opts = database_options_global[name]
+        warn_redundant_entries(db_opts, name)
 
         datasource_cls = data_source.DATASOURCE_CLASS
         if datasource_cls is None:
@@ -290,7 +338,10 @@ def inspect(
                 error_message=str(exc),
             )
 
-        results.append(inspection)
+        if isinstance(inspection, list):
+            results.extend(inspection)
+        else:
+            results.append(inspection)
 
     logger.info("🔎 Inspection complete: %d datasource(s) inspected.", len(results))
     return results
@@ -344,7 +395,7 @@ def extract_datasource(
 
     opts = dict(patient_options or {})
     opts["data_folder"] = str(datasource_folder.parent)
-    db_opts = normalize_datasource_options(database_options_specific or {})
+    db_opts = database_options_specific or {}
 
     return datasource_cls.extract(opts, db_opts, save_path=save_path)
 
@@ -393,9 +444,8 @@ def extract_patient(
         if name not in database_options_global:
             continue
 
-        raw_db_opts = database_options_global[name]
-        warn_redundant_entries(raw_db_opts, name)
-        db_opts = normalize_datasource_options(raw_db_opts)
+        db_opts = database_options_global[name]
+        warn_redundant_entries(db_opts, name)
 
         datasource_cls = data_source.DATASOURCE_CLASS
         if datasource_cls is None:

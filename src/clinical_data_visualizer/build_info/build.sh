@@ -18,7 +18,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Configuration
 SPEC_FILE="$SCRIPT_DIR/core_api.spec"
-APP_NAME="ClinicalVisuAppAlexis"
+APP_NAME="ClinicalDataVisualizer"
 
 # Detect platform
 detect_platform() {

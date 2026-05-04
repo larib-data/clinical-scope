@@ -117,6 +117,9 @@ def find_files(
             f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in suffix_set
         ]
     else:
+        # No extension filter: all files are candidates.
+        # NOTE: if a datasource defines FILE_EXTENSIONS = [] with MULTI_FILE = False,
+        # junk files (.DS_Store, etc.) will be included here. Always define FILE_EXTENSIONS.
         matches = [f for f in folder_path.iterdir() if f.is_file()]
 
     if not matches:
@@ -393,6 +396,21 @@ def change_ndarray_timezone(
     return adjusted_array, new_timezone
 
 
+def loop_time_to_display_strings(
+    utc_float_seconds: np.ndarray, fmt: str = "%Y-%m-%d %H:%M:%S"
+) -> np.ndarray:
+    """
+    Convert an array of UTC epoch float seconds to display-timezone datetime strings.
+
+    Used for loop hover customdata and slider-callback customdata so both come
+    from a single, testable conversion path.
+    """
+    dt_display = pd.to_datetime(utc_float_seconds, unit="s", utc=True).tz_convert(
+        cst.DISPLAY_TIMEZONE
+    )
+    return np.array(dt_display.strftime(fmt))
+
+
 def get_column_name_from_pattern(columns: pd.Index | list[str], pattern: str) -> str | None:
     if pattern[-1] == "*":
         prefix = pattern.rstrip("*")
@@ -418,17 +436,16 @@ def apply_timezone_to_dataframe(
     options_module=None,  # noqa: ANN001
 ) -> pd.DataFrame:
     """Apply timezone to DataFrame index if not already set."""
-    timezone = default_timezone
+    override_timezone = None
 
     if options_module and hasattr(options_module, "DatabaseOptionsAdditionalInformations"):
         additional_info_class = options_module.DatabaseOptionsAdditionalInformations
         if hasattr(additional_info_class, "TIMEZONE"):
-            timezone = database_options_specific.get(
+            override_timezone = database_options_specific.get(
                 cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
-            ).get(
-                additional_info_class.TIMEZONE,
-                default_timezone,
-            )
+            ).get(additional_info_class.TIMEZONE)
+
+    timezone = override_timezone if override_timezone is not None else default_timezone
 
     if not isinstance(df.index, pd.DatetimeIndex):
         logger.warning(
@@ -437,9 +454,19 @@ def apply_timezone_to_dataframe(
         )
         return df
 
-    if df.index.tz is None:
-        df.index = df.index.tz_localize(timezone)
+    if df.index.tz is not None:
+        if override_timezone is not None and override_timezone != str(df.index.tz):
+            source = getattr(options_module, "DATASOURCE_NAME", "unknown")
+            logger.warning(
+                "[%s] Timezone override %r (from database options) ignored: "
+                "data is already tz-aware (%s).",
+                source,
+                override_timezone,
+                df.index.tz,
+            )
+        return df
 
+    df.index = df.index.tz_localize(timezone)
     return df
 
 

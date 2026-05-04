@@ -1,15 +1,4 @@
-"""
-Parse and normalize database_options files.
-
-The user-facing and internal format uses a per-signal ``"signals"`` dict::
-
-    "signals": {
-        "raw_name": {"label": "Display Name", "unit": "mmHg", ...},
-    }
-
-`normalize_datasource_options()` ensures ``field_display`` is populated
-from the ``"signals"`` keys when not explicitly set.
-"""
+"""Parse and validate database_options files."""
 
 import logging
 
@@ -18,37 +7,22 @@ import clinical_data_visualizer.constants as cst
 logger = logging.getLogger(__name__)
 
 
-def normalize_datasource_options(raw: dict) -> dict:
+def normalize_database_options(db_opts: dict) -> None:
     """
-    Normalize a single datasource section of database_options.
+    Normalize the database_options dict in place before use.
 
-    Auto-populates ``field_display`` from ``"signals"`` keys when not
-    explicitly set.
-
-    Returns a *new* dict (the original is not mutated).
+    Moves top-level ``other::<filename>`` sections into
+    ``db_opts["other"]["files"]["<filename>"]`` so that ``OtherDataSource``
+    receives per-file config without needing to scan the global dict itself.
+    A bare ``"other": {}`` entry is created if only ``other::*`` keys exist,
+    so the normal datasource-dispatch loop still triggers the datasource.
     """
-    result = dict(raw)
-
-    signals = result.get(cst.DatabaseOptions.SIGNALS)
-    if signals is not None:
-        # Warn about unknown per-signal keys
-        for raw_name, sig_opts in signals.items():
-            if not isinstance(sig_opts, dict):
-                continue
-            unknown = set(sig_opts.keys()) - cst.DatabaseOptions.Signal.KNOWN_KEYS
-            if unknown:
-                logger.warning(
-                    "Unknown key(s) %s in signal '%s'. Known keys: %s",
-                    sorted(unknown),
-                    raw_name,
-                    sorted(cst.DatabaseOptions.Signal.KNOWN_KEYS),
-                )
-
-        # Auto-populate field_display from signals keys if not explicitly set
-        if cst.DatabaseOptions.FIELD_DISPLAY not in result:
-            result[cst.DatabaseOptions.FIELD_DISPLAY] = list(signals.keys())
-
-    return result
+    per_file = {k[len("other::") :]: v for k, v in db_opts.items() if k.startswith("other::")}
+    if not per_file:
+        return
+    if "other" not in db_opts:
+        db_opts["other"] = {}
+    db_opts["other"].setdefault(cst.DatabaseOptions.FILES, {}).update(per_file)
 
 
 def validate_database_options_structure(db_options: dict) -> list[str]:
@@ -60,7 +34,7 @@ def validate_database_options_structure(db_options: dict) -> list[str]:
     warnings: list[str] = []
 
     for section_name, section in db_options.items():
-        if section_name == cst.DatabaseOptions.GLOBAL:
+        if section_name == cst.DatabaseOptions.GLOBAL or section_name.startswith("other::"):
             continue
         if not isinstance(section, dict):
             continue
@@ -76,11 +50,7 @@ def validate_database_options_structure(db_options: dict) -> list[str]:
 
 
 def warn_redundant_entries(raw: dict, datasource_name: str) -> None:
-    """
-    Log warnings for identity / default-value entries in the ``"signals"`` block.
-
-    Called *before* normalization for clearest messages.
-    """
+    """Log warnings for unknown keys, identity / default-value entries in the `"signals"` block."""
     signals = raw.get(cst.DatabaseOptions.SIGNALS)
     if not signals or not isinstance(signals, dict):
         return
@@ -90,6 +60,16 @@ def warn_redundant_entries(raw: dict, datasource_name: str) -> None:
     for raw_name, sig_opts in signals.items():
         if not isinstance(sig_opts, dict):
             continue
+
+        # Warn about unknown per-signal keys
+        unknown = set(sig_opts.keys()) - sig_cst.KNOWN_KEYS
+        if unknown:
+            logger.warning(
+                "Unknown key(s) %s in signal '%s'. Known keys: %s",
+                sorted(unknown),
+                raw_name,
+                sorted(sig_cst.KNOWN_KEYS),
+            )
 
         # label == raw_name is redundant
         if sig_opts.get(sig_cst.LABEL) == raw_name:

@@ -19,15 +19,31 @@ from clinical_data_visualizer.signal_container import Signal
 logger = logging.getLogger(__name__)
 
 
-_TS_FMT = "%y-%m-%d %H:%M:%S"  # compact, no milliseconds, 2-digit year
+_TS_FMT = "%y-%m-%d %H:%M:%S %Z"  # compact, 2-digit year, timezone abbreviation
 
 
 def fmt_ts(ts: object) -> str:
     """Format a pandas Timestamp (or datetime-like) to a compact, human-readable string."""
     try:
-        return ts.strftime(_TS_FMT)
+        return ts.strftime(_TS_FMT).rstrip()
     except Exception:  # noqa: BLE001
         return str(ts)
+
+
+def _to_display_tz(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a shallow copy of *df* with its index converted to ``DISPLAY_TIMEZONE``.
+
+    Used in :meth:`DataSourceBase.inspect` so that reported timestamps match
+    the timezone shown in the Dash plots.  The copy is shallow (data arrays are
+    shared) so it is cheap even for wide, high-frequency DataFrames.
+    If the index is tz-naive or not a DatetimeIndex, *df* is returned unchanged.
+    """
+    if not (isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None):
+        return df
+    result = df.copy(deep=False)
+    result.index = df.index.tz_convert(cst.DISPLAY_TIMEZONE)
+    return result
 
 
 def _date_range(df: pd.DataFrame) -> tuple[str, str] | None:
@@ -413,7 +429,7 @@ class DataSourceBase(ABC):
         never calls ``_extract_signals``), but returns the data itself rather than
         inspection metadata.
 
-        Parquet caching inside ``tdv_visu/`` is always created automatically by
+        Parquet caching inside ``cdv_visu/`` is always created automatically by
         ``_load()`` inside ``_load_raw_dataframe()``.
 
         Args:
@@ -461,11 +477,68 @@ class DataSourceBase(ABC):
         return df
 
     @classmethod
+    def _make_inspection(
+        cls,
+        df_raw: pd.DataFrame,
+        patient_options: dict,
+        database_options_specific: dict,
+        datasource_name: str,
+        file_path: str | None = None,
+    ) -> DataSourceInspection:
+        """
+        Build a DataSourceInspection from an already-loaded raw DataFrame.
+
+        Shared by :meth:`inspect` (called once after loading) and datasource overrides
+        that load files individually (e.g. ``OtherDataSource``).
+
+        Args:
+            df_raw: Raw DataFrame with a DatetimeIndex (pre-format).
+            patient_options: Patient-specific options forwarded to ``_format``.
+            database_options_specific: Options for this datasource or per-file config.
+            datasource_name: Name written into the returned DataSourceInspection.
+            file_path: Path string to include in the result, or None.
+
+        Returns:
+            DataSourceInspection with status ``"ok"`` or ``"format_error"``.
+
+        """
+        signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
+        configured_fields = set(
+            database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY, list(signals.keys()))
+        )
+
+        df_raw_display = _to_display_tz(df_raw)
+        raw_date_range = _date_range(df_raw_display)
+
+        try:
+            df_filtered = cls._format(df_raw, patient_options, database_options_specific)
+        except Exception as exc:
+            logger.exception("[%s] inspect: format failed.", datasource_name)
+            return DataSourceInspection(
+                datasource_name=datasource_name,
+                status="format_error",
+                error_message=str(exc),
+                file_path=file_path,
+                raw_date_range=raw_date_range,
+                columns=_column_infos(df_raw_display, df_raw_display, configured_fields),
+            )
+
+        df_filtered_display = _to_display_tz(df_filtered)
+        return DataSourceInspection(
+            datasource_name=datasource_name,
+            status="ok",
+            file_path=file_path,
+            raw_date_range=raw_date_range,
+            filtered_date_range=_date_range(df_filtered_display),
+            columns=_column_infos(df_raw_display, df_filtered_display, configured_fields),
+        )
+
+    @classmethod
     def inspect(
         cls,
         patient_options: dict,
         database_options_specific: dict | None,
-    ) -> DataSourceInspection:
+    ) -> DataSourceInspection | list[DataSourceInspection]:
         """
         Run find → load → format for this datasource and return inspection metadata.
 
@@ -488,7 +561,6 @@ class DataSourceBase(ABC):
         db_opts_for_load = {
             k: v for k, v in database_options.items() if k != cst.DatabaseOptions.FIELD_DISPLAY
         }
-        configured_fields = set(database_options.get(cst.DatabaseOptions.FIELD_DISPLAY, []))
 
         file_path_str = None
         try:
@@ -507,26 +579,10 @@ class DataSourceBase(ABC):
                 datasource_name=cls.DATASOURCE_NAME, status="file_not_found"
             )
 
-        raw_date_range = _date_range(df_raw)
-
-        try:
-            df_filtered = cls._format(df_raw, patient_options, database_options)
-        except Exception as exc:
-            logger.exception("[%s] inspect: format failed.", cls.DATASOURCE_NAME)
-            return DataSourceInspection(
-                datasource_name=cls.DATASOURCE_NAME,
-                status="format_error",
-                error_message=str(exc),
-                file_path=file_path_str,
-                raw_date_range=raw_date_range,
-                columns=_column_infos(df_raw, df_raw, configured_fields),
-            )
-
-        return DataSourceInspection(
+        return cls._make_inspection(
+            df_raw,
+            patient_options,
+            database_options,
             datasource_name=cls.DATASOURCE_NAME,
-            status="ok",
             file_path=file_path_str,
-            raw_date_range=raw_date_range,
-            filtered_date_range=_date_range(df_filtered),
-            columns=_column_infos(df_raw, df_filtered, configured_fields),
         )
