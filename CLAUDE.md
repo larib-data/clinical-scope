@@ -26,12 +26,16 @@ Opens at http://127.0.0.1:8050
 python scripts/process_patient_data.py patient /data/Patient01 --database-options db.json
 python scripts/process_patient_data.py batch /data/patients --output-folder /out
 
-# Inspect available columns per datasource
+# Inspect available columns per datasource (no plots built)
 python scripts/inspect_patient_data.py /data/Patient01 --database-options db.json --output-csv out.csv
 
 # Visualize (generates HTML)
 python scripts/visualization_patient_data.py /data/Patient01 --database-options db.json
 ```
+
+Common flags across scripts: `--database-options`, `--patient-options`, `--output-csv`
+(inspect only), `--verbose`, `--debug`. Omit `--database-options` to enable all registered
+datasources with their defaults.
 
 ## Project Structure
 
@@ -65,17 +69,21 @@ src/clinical_data_visualizer/
 ```
 
 ### Supported Data Sources
-- `philips_waves` - Philips waveform data (high-frequency signals)
-- `philips_numerics` - Philips numeric/parameter data
-- `eit` - EIT PulmoVista impedance data
-- `fluxmed_signals` - FluxMed waveforms
-- `fluxmed_parameters` - FluxMed parameters
-- `servo_u` - Servo-U ventilator data
-- `mindray_scope` - Mindray scope data (.xml or .csv waveforms); folder keyword: `mindray`
-- `mindray_respi_waves` - Mindray respiratory high-frequency waveforms (.parquet or .csv)
-- `mindray_respi_numerics` - Mindray respiratory numeric parameters (.parquet or .csv)
-- `syringe` - Syringe pump data
-- `other` - Generic data source (auto-discovers CSV/parquet files)
+
+> Canonical doc: `docs/user_guide/tutorial.md` → *Patient Data & Supported Data Sources*.
+> Live registry: `src/clinical_data_visualizer/datasource_list.py::DataSource.AVAILABLE`.
+
+- `philips_waves` — Philips waveform data (high-frequency signals).
+- `philips_numerics` — Philips numeric/parameter data.
+- `eit` — EIT PulmoVista impedance data (`.asc`).
+- `fluxmed_signals` — FluxMed respiratory waveforms.
+- `fluxmed_parameters` — FluxMed respiratory parameters.
+- `servo_u` — Servo-U ventilator data (`.sta`).
+- `mindray_scope` — Mindray scope waveforms (`.xml` or `.csv`); folder keyword `mindray`.
+- `mindray_respi_waves` — Mindray respiratory high-frequency waveforms.
+- `mindray_respi_numerics` — Mindray respiratory numeric parameters.
+- `syringe` — Syringe pump data.
+- `other` — Generic: auto-discovers CSV/parquet files; per-file config via `other::<stem>` keys (e.g. `other::waves`); `inspect()` returns one entry per file.
 
 ## Configuration Files
 
@@ -139,10 +147,12 @@ ruff format src/
 ### Layout Structure (`core_api.py`)
 The Dash app layout follows this hierarchy:
 - Root container: centered, max-width 1400px, 20px/32px padding
-- Database options section: upload button (blue), "Reload last config" button (grey, hidden when no cache), or "Default visualization" button (green)
-- Patient options section: dynamically generated based on loaded database options
-- Process button: orange, prominent, triggers visualization
+- Database options section: Upload config file (blue), "Reload last config" (grey, hidden when no cache), "Default visualization" (green)
+- Patient options section: dynamically generated based on loaded database options (auto-sized 2-column grid — adding a datasource produces a card with no layout edit needed)
+- Action row: Process button (orange, primary) + Inspect button (teal)
+- Progress bar: per-datasource, color-matched to the active action (orange for viz, teal for inspect); hidden when no action is running
 - Shape controls: dropdown + Modify/Delete buttons (hidden until visualization succeeds)
+- Inspection modal: full-screen overlay, opened by Inspect button (close button in header)
 - Visualization container: rendered plots with annotation tools
 
 ### UI Component Generation (`ui_components.py`)
@@ -184,37 +194,69 @@ The `build_patient_options_ui` callback creates the patient options form:
 - On success: `{"display": "block"}` shows dropdown + buttons
 - On failure/no-data: `{"display": "none"}` keeps them hidden
 
+### Progress Reporting (`data_callbacks.py`)
+- Shared state: module-level `PROCESS_PROGRESS` dict with keys `running`, `current`, `total`, `current_datasource`, `mode` (`"visualize"` or `"inspect"`).
+- Written by `wrapper.main()` / `wrapper.inspect()` via a `progress_callback(current, total, name)` signature.
+- Read every 500 ms by `poll_process_progress`, driven by a `dcc.Interval` enabled at action start and disabled when the callback returns.
+- Bar width formula: `pct = int((current - 1) / total * 100)` — **completed** count, not in-progress. Keeps the bar from showing 100% while the last datasource is still being processed.
+- Colour picked from `_PROGRESS_BAR_COLOR[mode]`: orange (`#fd7e14`) for visualize, teal (`#17a2b8`) for inspect. Label prefix from `_PROGRESS_BAR_LABEL[mode]`: "Visualizing" / "Inspecting".
+
+### Inspection Modal (`data_callbacks.py`)
+- Full-screen overlay pattern (`INSPECTION_MODAL_STYLE_SHOWN` / `_HIDDEN` in `styles.py`).
+- Populated by `inspect_data` callback after `wrapper.inspect()` returns a `list[DataSourceInspection]`.
+- Status badges colour-coded: `ok` green, `file_not_found` orange, `load_error` / `format_error` red.
+- Results are JSON-serialised via `inspection.results_to_json` / `results_from_json` for `dcc.Store`, then re-hydrated for the CSV export flow.
+- CSV download uses `dcc.Download`; column layout is derived from `ColumnInfo.DISPLAY_HEADERS` + `ColumnInfo.display_values()` (single source of truth shared with `inspection.to_text_summary()`).
+
 ## Architecture Notes
 
 ### Adding a New Data Source
-1. Create a new module under `src/clinical_data_visualizer/<source_name>/`
-2. Implement `options.py` with:
-   - `DATASOURCE_NAME`: Unique identifier (e.g., `"my_source"`)
-   - `EXPECTED_FOLDER_NAME` / `FOLDER_KEYWORDS`: For folder discovery
-   - `FILE_KEYWORDS: list[str]`: Ordered stem keywords for disambiguation tie-breaking (e.g., `["numerics"]`), or `[]`
-   - `FILE_EXTENSIONS: list[str]`: Accepted extensions **ordered by preference** (first = most preferred)
-   - `MULTI_FILE: bool`: `True` = load all matching files, `False` = pick one file (with tiered disambiguation: extension filter → stem dedup by preference → keyword filter)
-   - `FILE_NAME_DATAFRAME_LOADED`: Cache filename (e.g., `"my_source.parquet"`)
-   - Other source-specific constants (timezone, `source_options`, etc.)
-3. Create `find_load_format.py` inheriting from `DataSourceBase`:
-   - Set `OPTIONS_MODULE = options_naming` (class attributes auto-derived via `__init_subclass__`)
-   - Default `_find()` uses `FILE_KEYWORDS`, `FILE_EXTENSIONS`, `MULTI_FILE` — override only if needed
-   - Implement `_load()`: Parse raw data to DataFrame
-   - Optionally override `_format()` and `_extract_signals()`
-4. Register in `datasource_list.py` with `@add_main_module` decorator
+
+**Authoritative workflow**: use `.claude/skills/new-datasource/SKILL.md`. The skill covers every
+step (module, options, loader, registration, example data, tests, snapshots, docs) and enforces
+the exact patterns used by the existing sources. The summary below is for quick reference only —
+follow the skill for real work.
+
+1. Create a new module under `src/clinical_data_visualizer/<source_name>/` (`__init__.py`,
+   `options.py`, `find_load_format.py`).
+2. `options.py` must define `DATASOURCE_NAME`, `EXPECTED_FOLDER_NAME`, `FOLDER_KEYWORDS`,
+   `FILE_KEYWORDS`, `FILE_EXTENSIONS` (ordered by preference), `MULTI_FILE`,
+   `FILE_NAME_DATAFRAME_LOADED`, source-specific constants (timezone, `source_options`).
+   Optional opt-in: `class DatabaseOptionsAdditionalInformations: TIMEZONE = "timezone"` to
+   enable per-datasource timezone override via `additional_informations.timezone` (silently
+   ignored when the class is absent).
+3. `find_load_format.py` subclasses `DataSourceBase` with `OPTIONS_MODULE = options_naming`.
+   Default `_find()`/`_format()`/`_extract_signals()`/`inspect()` cover the common path —
+   typically you only implement `_load()`. `DataSourceBase._make_inspection(...)` is the base
+   helper for `inspect()`; `OtherDataSource.inspect()` calls it once per file.
+4. Register in `datasource_list.py` with `@add_main_module` (keep `Other` last).
+5. **Update docs**:
+   - `docs/user_guide/tutorial.md` → *Patient Data & Supported Data Sources* (canonical table).
+   - `CLAUDE.md` → *Supported Data Sources* bullet list above.
+   - `README.md` → only if it enumerates datasources (currently it defers to the tutorial).
+   - `example/option_files/*.json` if they enumerate all sources.
 
 ### Data Flow
-1. User uploads `database_options.json` (or `.xlsx`) in Dash UI
-2. User configures `patient_options` (folder, time range, etc.)
-3. `wrapper.main()` processes each enabled datasource
-4. Each datasource: find → load → format → extract signals
-5. Signals grouped into `PlotGroup` → assigned to `PlotModel`
-6. Plotly figures rendered in Dash or exported to HTML
+1. User uploads `database_options.json` (or `.xlsx`) in Dash UI (or passes it to a script).
+2. User configures `patient_options` (folder, time range, `quick_load`, etc.).
+3. `wrapper.main()` processes each enabled datasource, calling the optional
+   `progress_callback(current, total, name)` as it moves from one to the next.
+4. Each datasource runs `find → load → format → extract signals`.
+5. Signals grouped into `PlotGroup` → assigned to `PlotModel`; global `grouped_fields` and
+   `global.loop` entries are resolved via the 3-mode lookup in `_resolve_signal_references`
+   (qualified `datasource::raw_name` → display name → raw name fallback).
+6. Plotly figures rendered in Dash or exported to HTML.
 
 ### Alternative Pipelines
-- **Extraction only** (`wrapper.extract_patient` / `batch_extract`): find → load → format, returns DataFrames without visualization
-- **Inspection** (`wrapper.inspect`): find → load → format, returns column metadata (`DataSourceInspection`) for each datasource
-- **Python API**: `from clinical_data_visualizer import extract_datasource, extract_patient, batch_extract`
+All three share `find → load → format` and diverge only at signal extraction / output:
+- **Visualization** (`wrapper.main`) — build `Signal`s → `PlotGroup`s → `PlotModel`s → figures.
+- **Extraction only** (`wrapper.extract_patient` / `batch_extract` / `extract_datasource`) —
+  stop at `format`, return the formatted DataFrame(s). Uses `save_path`/`save_folder` for
+  explicit output; independent of the in-patient `cdv_visu/` cache.
+- **Inspection** (`wrapper.inspect`) — stop at `format`, return a `list[DataSourceInspection]`
+  describing columns, point counts, and time ranges. `OtherDataSource.inspect()` returns **one
+  entry per file** (named `other::<stem>`); the wrapper handles both single and list returns.
+- **Python API**: `from clinical_data_visualizer import extract_datasource, extract_patient, batch_extract`.
 
 ## Building / Deployment
 
@@ -226,13 +268,8 @@ The app can be packaged as a standalone executable using PyInstaller.
 ./src/clinical_data_visualizer/build_info/build.sh
 ```
 
-### Manual Build
-```bash
-pyinstaller src/clinical_data_visualizer/build_info/core_api.spec --clean --distpath builded_app/macOS_arm
-```
-
 ### Build Output
-- Executable: `builded_app/macOS_arm/ClinicalVisuAppAlexis/`
+- Executable: `builded_app/macOS_arm/ClinicalDataVisualizer/`
 - Spec file: `src/clinical_data_visualizer/build_info/core_api.spec`
 
 See `src/clinical_data_visualizer/build_info/README.md` for detailed instructions.

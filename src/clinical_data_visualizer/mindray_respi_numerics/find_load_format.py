@@ -81,9 +81,3 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         if path_output is not None:
             cls._save_dataframe(df_pivoted, path_output)
         return df_pivoted
-
-
-# Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
-    """Load and process MindRay Respi Numerics data."""
-    return MindRayRespiNumericsDataSource.main(patient_options, database_options_specific)

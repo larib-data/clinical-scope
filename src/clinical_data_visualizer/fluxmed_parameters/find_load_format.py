@@ -43,7 +43,7 @@ class FluxmedParametersDataSource(DataSourceBase):
             with Path.open(file_path, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f.readlines()]
 
-            # Find the column names row (accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
+            # Find the column names row(accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
             col_idx = None
             for i, line in enumerate(lines):
                 if _is_time_header(line):
@@ -108,8 +108,3 @@ class FluxmedParametersDataSource(DataSourceBase):
         if path_output is not None:
             cls._save_dataframe(df, path_output)
         return df
-
-
-# Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
-    return FluxmedParametersDataSource.main(patient_options, database_options_specific)

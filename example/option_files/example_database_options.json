@@ -654,42 +654,42 @@
         }
     },
 
-    "other": {
+    "other::waves_first_half_filtered": {
         "field_display": [
-            "waves_first_half_filtered::Solar8000/HR",
-            "waves_first_half_filtered::Solar8000/PLETH_SPO2",
-            "waves_first_half_filtered::Solar8000/ETCO2",
-            "waves_first_half_filtered::Solar8000/VENT_RR",
-            "waves_first_half_filtered::Primus/FIO2",
-            "waves_first_half_filtered::BIS/BIS"
+            "Solar8000/HR",
+            "Solar8000/PLETH_SPO2",
+            "Solar8000/ETCO2",
+            "Solar8000/VENT_RR",
+            "Primus/FIO2",
+            "BIS/BIS"
         ],
         "signals": {
-            "waves_first_half_filtered::Solar8000/HR": {
+            "Solar8000/HR": {
                 "label": "Heart Rate",
                 "unit": "bpm",
                 "range": [30, 200]
             },
-            "waves_first_half_filtered::Solar8000/PLETH_SPO2": {
+            "Solar8000/PLETH_SPO2": {
                 "label": "SpO2",
                 "unit": "%",
                 "range": [80, 100]
             },
-            "waves_first_half_filtered::Solar8000/ETCO2": {
+            "Solar8000/ETCO2": {
                 "label": "EtCO2",
                 "unit": "mmHg",
                 "range": [20, 60]
             },
-            "waves_first_half_filtered::Solar8000/VENT_RR": {
+            "Solar8000/VENT_RR": {
                 "label": "RR (ventilator)",
                 "unit": "/min",
                 "range": [0, 40]
             },
-            "waves_first_half_filtered::Primus/FIO2": {
+            "Primus/FIO2": {
                 "label": "FiO2",
                 "unit": "%",
                 "range": [0, 100]
             },
-            "waves_first_half_filtered::BIS/BIS": {
+            "BIS/BIS": {
                 "label": "BIS",
                 "unit": "-",
                 "range": [0, 100],

@@ -416,29 +416,35 @@ Report any mismatches to the user.
 
 Once the datasource is fully working and tested, update all relevant documentation:
 
-### 7a. `CLAUDE.md` (project root)
+The canonical location for the datasource list is the tutorial's "Patient Data & Supported
+Data Sources" section. Update it plus the short list in `CLAUDE.md`:
 
-Add the new datasource to the **Supported Data Sources** list, following the existing format:
+### 7a. `docs/user_guide/tutorial.md` → *Patient Data & Supported Data Sources* (canonical)
+
+Add one row to the **Canonical Data Source Table** (module name, folder keywords, accepted
+extensions ordered by preference, discovery mode, typical signals). Do **not** duplicate the
+row in any other section — other docs link here. Historically a second table existed under
+an "Appendix: Supported Data Sources" heading; it has been removed — do not re-introduce it.
+
+### 7b. `CLAUDE.md` (project root)
+
+Add the new datasource to the **Supported Data Sources** bullet list, following the existing
+one-line format:
 ```markdown
-- `<datasource_name>` - <Description> (<file formats>); folder keyword: `<keyword>`
+- `<datasource_name>` — <Description> (<file formats>); folder keyword: `<keyword>`
 ```
-Keep the list in the same order as `AVAILABLE` in `datasource_list.py`.
+Keep the list order aligned with `AVAILABLE` in `datasource_list.py`.
 
-### 7b. `README.md` (if it exists and lists datasources)
+### 7c. `README.md` (currently defers to the tutorial)
 
-Add the new datasource to any datasource listing or feature table in the README.
-
-### 7c. User guide / documentation
-
-If there is a user guide or docs folder, add the new datasource there too. Include:
-- What device/format it supports
-- Expected folder structure and file naming
-- Any datasource-specific patient options (e.g., `day`, `time_shift`)
-- Known limitations or quirks
+The README typically links to the tutorial rather than enumerating datasources. If you see an
+inline list of datasource names, update it; otherwise no change is needed.
 
 ### 7d. Example option files
 
-If `example/option_files/` contains example `database_options.json` or `.xlsx` files that list all datasources, add the new datasource entry there too (even if just an empty `{}` placeholder).
+If `example/option_files/` contains example `database_options.json` or `.xlsx` files that
+enumerate all datasources, add the new datasource entry there too (even if just an empty
+`{}` placeholder).
 
 ## Checklist — files created/modified
 
@@ -455,8 +461,9 @@ Print this checklist when done so the user can verify:
 - [ ] All tests pass
 - [ ] Linter passes
 - [ ] Inspect script sees the new datasource
-- [ ] `CLAUDE.md` — Supported Data Sources list updated
-- [ ] `README.md` — updated if it lists datasources
+- [ ] `docs/user_guide/tutorial.md` — row added to the canonical *Patient Data & Supported Data Sources* table
+- [ ] `CLAUDE.md` — Supported Data Sources bullet list updated
+- [ ] `README.md` — updated only if it still enumerates datasources inline
 - [ ] Example option files — updated if they enumerate all datasources
 
 ## Dependencies

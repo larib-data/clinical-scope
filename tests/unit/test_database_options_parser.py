@@ -3,44 +3,9 @@
 import logging
 
 from clinical_data_visualizer.database_options_parser import (
-    normalize_datasource_options,
     validate_database_options_structure,
     warn_redundant_entries,
 )
-
-# ---------------------------------------------------------------------------
-# normalize_datasource_options
-# ---------------------------------------------------------------------------
-
-
-class TestNormalize:
-    def test_auto_populates_field_display(self):
-        raw = {"signals": {"ART": {}, "PAP": {}}}
-        result = normalize_datasource_options(raw)
-        assert set(result["field_display"]) == {"ART", "PAP"}
-
-    def test_preserves_explicit_field_display(self):
-        raw = {"signals": {"ART": {}, "PAP": {}}, "field_display": ["ART"]}
-        result = normalize_datasource_options(raw)
-        assert result["field_display"] == ["ART"]
-
-    def test_no_signals_key(self):
-        raw = {"numerics": {"priority": 1}}
-        result = normalize_datasource_options(raw)
-        assert "field_display" not in result
-
-    def test_does_not_mutate_original(self):
-        raw = {"signals": {"X": {}}}
-        original_keys = set(raw.keys())
-        normalize_datasource_options(raw)
-        assert set(raw.keys()) == original_keys
-
-    def test_warns_unknown_signal_keys(self, caplog):
-        raw = {"signals": {"ART": {"label": "ok", "bogus_key": 42}}}
-        with caplog.at_level(logging.WARNING):
-            normalize_datasource_options(raw)
-        assert any("Unknown key" in msg for msg in caplog.messages)
-
 
 # ---------------------------------------------------------------------------
 # validate_database_options_structure
@@ -101,6 +66,12 @@ class TestWarnRedundant:
         with caplog.at_level(logging.INFO):
             warn_redundant_entries(raw, "test_ds")
         assert any("default" in msg for msg in caplog.messages)
+
+    def test_warns_unknown_signal_keys(self, caplog):
+        raw = {"signals": {"ART": {"label": "ok", "bogus_key": 42}}}
+        with caplog.at_level(logging.WARNING):
+            warn_redundant_entries(raw, "test_ds")
+        assert any("Unknown key" in msg for msg in caplog.messages)
 
     def test_no_warnings_for_good_config(self, caplog):
         raw = {"signals": {"ART": {"label": "Arterial", "unit": "mmHg"}}}

@@ -14,7 +14,7 @@ Patient01/
 ├── fluxmed_signals/
 ├── servo_u/
 ├── other/                  ← catch-all for unclassifiable files
-└── tdv_visu/               ← cache folder (auto-created by the library, never touch)
+└── cdv_visu/               ← cache folder (auto-created by the library, never touch)
 ```
 
 ## Step 0 — Gather context
@@ -62,7 +62,7 @@ If the venv import fails (library not installed), fall back to reading each `src
 Confirm the detected mode with the user before scanning.
 
 **Scan**: For each patient folder (one in single mode, N in batch mode), recursively list all files, building a flat list of absolute paths. Exclude:
-- Anything inside `tdv_visu/` — this is the library cache, never touch it
+- Anything inside `cdv_visu/` — this is the library cache, never touch it
 - Hidden files and folders (names starting with `.`)
 
 ## Step 3 — Classify each file
@@ -186,7 +186,7 @@ The classification logic in Steps 2–4 must always be driven by the live output
 
 - **Batch mode**: process each patient subfolder independently, showing one confirmation plan per patient.
 - **Files already in correctly named subfolders**: report as "already in place", never move them.
-- **`tdv_visu/`**: always skip, never modify — it is the library's internal cache.
+- **`cdv_visu/`**: always skip, never modify — it is the library's internal cache.
 - **No files found**: report and exit gracefully.
 - **Permission errors**: report the offending file and skip it; continue with the rest.
 - **`.txt` ambiguity between fluxmed_signals and fluxmed_parameters**: use filename keyword scoring (`parameters` vs `signal`/`signals`). If still tied, ask the user.

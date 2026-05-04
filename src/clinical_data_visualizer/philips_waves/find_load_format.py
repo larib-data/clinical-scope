@@ -52,8 +52,3 @@ class PhilipsWavesDataSource(DataSourceBase):
         )
         df = cls._apply_time_shift(df, patient_options)
         return cls._filter_by_datetime(df, patient_options)
-
-
-# Module-level main function for backward compatibility
-def main(patient_options: dict, database_options_specific: dict | None) -> pd.DataFrame:
-    return PhilipsWavesDataSource.main(patient_options, database_options_specific)

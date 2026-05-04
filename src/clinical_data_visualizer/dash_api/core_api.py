@@ -26,6 +26,7 @@ from clinical_data_visualizer.dash_api.styles import (
     EDIT_SHAPE_POPUP_STYLE,
     INSPECTION_MODAL_HEADER_ROW,
     INSPECTION_MODAL_PANEL,
+    INSPECTION_MODAL_SCROLLABLE_BODY,
     INSPECTION_MODAL_STYLE_HIDDEN,
     ROOT_CONTAINER,
     VERSION_BADGE,
@@ -121,6 +122,9 @@ app.layout = html.Div(
             type="default",
             children=html.Div(id="inspect-status"),
         ),
+        html.Div(id="process-progress"),
+        dcc.Interval(id="process-progress-interval", interval=500, disabled=True),
+        html.Hr(),
         html.Div(
             id="shape-controls",
             style={"display": "none"},
@@ -244,17 +248,22 @@ app.layout = html.Div(
                             ],
                             style=INSPECTION_MODAL_HEADER_ROW,
                         ),
-                        dcc.Loading(
-                            type="default",
-                            children=html.Div(id="inspection-modal-content"),
+                        # Body
+                        html.Div(
+                            [
+                                dcc.Loading(
+                                    type="default",
+                                    children=html.Div(id="inspection-modal-content"),
+                                ),
+                                dcc.Download(id="inspection-download"),
+                            ],
+                            style=INSPECTION_MODAL_SCROLLABLE_BODY,
                         ),
-                        dcc.Download(id="inspection-download"),
                     ],
                     style=INSPECTION_MODAL_PANEL,
                 )
             ],
         ),
-        html.Hr(),
         html.Div(id="visualization-container"),
         dcc.Store(id="annotations-store", data={}),
         dcc.Store(id="inspection-results-store", data=None),

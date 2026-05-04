@@ -66,7 +66,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ClinicalVisuAppAlexis',
+    name='ClinicalDataVisualizer',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -82,5 +82,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ClinicalVisuAppAlexis',
+    name='ClinicalDataVisualizer',
 )

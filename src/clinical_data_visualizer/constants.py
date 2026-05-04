@@ -1,4 +1,4 @@
-FOLDER_NAME_VISU = "tdv_visu"
+FOLDER_NAME_VISU = "cdv_visu"
 
 LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"
@@ -94,9 +94,10 @@ class DatabaseOptions:
     ADDITIONAL_INFORMATIONS = "additional_informations"
     GROUPED_FIELDS = "grouped_fields"
     LOOP = "loop"
+    FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
 
     KNOWN_SECTION_KEYS = frozenset(
-        {SIGNALS, FIELD_DISPLAY, NUMERICS, ADDITIONAL_INFORMATIONS, GROUPED_FIELDS, LOOP}
+        {SIGNALS, FIELD_DISPLAY, NUMERICS, ADDITIONAL_INFORMATIONS, GROUPED_FIELDS, LOOP, FILES}
     )
 
     # --- Per-signal configuration (inside "signals" → "<raw_name>" dict) ---

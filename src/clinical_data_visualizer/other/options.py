@@ -12,6 +12,11 @@ DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 
 CANDIDATE_LIST_DATETIME_COLUMN = ["datetime", "timestamp", "time", "date", "date_time"]
 
+
+class DatabaseOptionsAdditionalInformations:
+    TIMEZONE = "timezone"
+
+
 source_options = {
     cst.SourceOptions.TRACE_OPTIONS: {
         "mode": "lines",

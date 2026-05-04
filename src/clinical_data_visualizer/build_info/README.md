@@ -51,8 +51,8 @@ pyinstaller src/clinical_data_visualizer/build_info/core_api.spec --clean --dist
 ```
 builded_app/
 └── macOS_arm/
-    └── ClinicalVisuAppAlexis/
-        ├── ClinicalVisuAppAlexis    # Main executable
+    └── ClinicalDataVisualizer/
+        ├── ClinicalDataVisualizer    # Main executable
         └── _internal/               # Dependencies
 ```
 
@@ -60,10 +60,10 @@ builded_app/
 
 ```bash
 # macOS/Linux
-./builded_app/macOS_arm/ClinicalVisuAppAlexis/ClinicalVisuAppAlexis
+./builded_app/macOS_arm/ClinicalDataVisualizer/ClinicalDataVisualizer
 
 # Windows
-builded_app\windows\ClinicalVisuAppAlexis\ClinicalVisuAppAlexis.exe
+builded_app\windows\ClinicalDataVisualizer\ClinicalDataVisualizer.exe
 ```
 
 The app will open your browser to http://127.0.0.1:8050
@@ -74,7 +74,7 @@ The `core_api.spec` file configures the build:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| `name` | ClinicalVisuAppAlexis | Output executable name |
+| `name` | ClinicalDataVisualizer | Output executable name |
 | `console` | True | Shows terminal output (set False to hide) |
 | `onefile` | False | Creates folder structure (faster startup) |
 | `upx` | True | Compresses binaries |

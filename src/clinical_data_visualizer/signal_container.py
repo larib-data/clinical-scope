@@ -219,6 +219,26 @@ class Quality:
     quality_score: float = 1.0
 
 
+def _signal_utc_float_seconds(sig: "Signal") -> np.ndarray:
+    """
+    Return true UTC epoch float seconds for a signal's time axis.
+
+    to_plotly_trace() shifts data.x in-place from its source timezone to naive
+    DISPLAY_TIMEZONE values.  loop_from_signals() is called after that mutation,
+    so data.x no longer holds UTC values.  Re-localise to data.timezone then
+    convert to UTC nanoseconds via .asi8 (avoids np.issubdtype on tz-aware dtype).
+    """
+    if sig.data.timezone is None:
+        return helper.to_float_seconds(sig.data.x)
+    return (
+        pd.to_datetime(sig.data.x)
+        .tz_localize(str(sig.data.timezone))
+        .tz_convert(cst.LIBRARY_TZ)
+        .asi8
+        / 1e9
+    )
+
+
 @dataclass
 class Signal:
     raw_name: str
@@ -396,8 +416,8 @@ class Signal:
             msg = "Both input signals must be of type 'time_series'."
             raise ValueError(msg)
 
-        x_x = helper.to_float_seconds(signal_x.data.x)
-        x_y = helper.to_float_seconds(signal_y.data.x)
+        x_x = _signal_utc_float_seconds(signal_x)
+        x_y = _signal_utc_float_seconds(signal_y)
 
         if len(x_x) == 0 or len(x_y) == 0:
             msg = "One or both input signals have no data points."
@@ -515,11 +535,25 @@ class Signal:
             )
             # Keyword formatters (fraction, percentage, …) only cover one axis,
             # so they are intentionally ignored for loops to avoid asymmetric display.
-            hovertemplate = (
-                f"<b>{self.name}</b><br>"
-                f"%{{x:.4g}}{_x_unit_suffix} | %{{y:.4g}}{y_unit_suffix}<br>"
-                "<extra></extra>"
-            )
+            if self.data.loop_time_axis is not None and len(self.data.loop_time_axis) > 0:
+                customdata = helper.loop_time_to_display_strings(self.data.loop_time_axis)
+                _tz_abbr = (
+                    pd.to_datetime(self.data.loop_time_axis[0], unit="s", utc=True)
+                    .tz_convert(cst.DISPLAY_TIMEZONE)
+                    .tzname()
+                )
+                hovertemplate = (
+                    f"<b>{self.name}</b><br>"
+                    f"%{{x:.4g}}{_x_unit_suffix} | %{{y:.4g}}{y_unit_suffix}<br>"
+                    f"%{{customdata}} ({_tz_abbr})<br>"
+                    "<extra></extra>"
+                )
+            else:
+                hovertemplate = (
+                    f"<b>{self.name}</b><br>"
+                    f"%{{x:.4g}}{_x_unit_suffix} | %{{y:.4g}}{y_unit_suffix}<br>"
+                    "<extra></extra>"
+                )
         else:
             hovertemplate = None
         trace = go.Scatter(
@@ -699,7 +733,7 @@ class PlotModel:
                     x_type_to_master_row[x_data_type] = plotly_row
 
             if self.plot_type == cst.PlotType.TIME_SERIES:
-                fig.update_yaxes(fixedrange=True, row=plotly_row)
+                fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
         # Time-series figures use "x unified": one compact tooltip with a single time header
         # and one line per trace.  Format the x-axis header as HH:MM:SS (milliseconds would
