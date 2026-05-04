@@ -37,7 +37,8 @@ from dash import ALL, Input, Output, Patch, State, callback, ctx, html, no_updat
 from dash.exceptions import PreventUpdate
 
 import clinical_data_visualizer.constants as cst
-from clinical_data_visualizer.dash_api.annotations.io import load_annotations, save_annotations
+from clinical_data_visualizer import load_annotations
+from clinical_data_visualizer.dash_api.annotations.io import save_annotations
 from clinical_data_visualizer.dash_api.annotations.model import (
     ANNOTATION_COLORS,
     TIME_BASED_ANNOTATION_TYPES,
