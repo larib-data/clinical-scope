@@ -69,6 +69,10 @@ class Annotation:
         lookup: if the subplot is later removed the annotation is silently skipped.
     group_id
         ID of the annotation group this annotation belongs to, or ``None``.
+    patient
+        Patient identifier string set when loading annotations via
+        :func:`~clinical_data_visualizer.load_database_annotations`.  ``None`` for
+        annotations loaded individually.
     label_hidden
         When ``True``, the text label / arrow is not rendered.  For ``POINT``
         annotations this defaults to ``True`` so the dot marker shows without
@@ -97,6 +101,7 @@ class Annotation:
     group_name: str | None = None
     trace_metadata: dict | None = None
     label_hidden: bool = False
+    patient: str | None = None
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(default_factory=_now_iso)
 
@@ -111,6 +116,7 @@ class Annotation:
             "subplot_name": self.subplot_name,
             "group_id": self.group_id,
             "group_name": self.group_name,
+            "patient": self.patient,
             "data": self.data,
             "trace_metadata": self.trace_metadata,
             "label_hidden": self.label_hidden,
@@ -129,6 +135,7 @@ class Annotation:
             subplot_name=d.get("subplot_name"),
             group_id=d.get("group_id"),
             group_name=d.get("group_name"),
+            patient=d.get("patient"),
             data=d.get("data", {}),
             trace_metadata=d.get("trace_metadata"),
             label_hidden=d.get("label_hidden", False),

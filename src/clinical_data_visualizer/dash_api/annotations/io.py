@@ -58,6 +58,7 @@ def save_annotations(annotations: list[Annotation], patient_folder: str | Path) 
 # Internal: core annotation loading logic
 # ==================================================================================================
 
+
 def _load_annotations_from_path(path: Path) -> list[Annotation]:
     """
     Load annotations from a JSON file at the given path.
