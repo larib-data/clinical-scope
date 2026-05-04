@@ -6,9 +6,9 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
 import clinical_data_visualizer.constants as cst
-import clinical_data_visualizer.eit.options as options_naming
+import clinical_data_visualizer.datasource.sources.eit.options as options_naming
+from clinical_data_visualizer.datasource.base import DataSourceBase
 from clinical_data_visualizer.datasource.timing import time_it
-from clinical_data_visualizer.datasource_base import DataSourceBase
 from clinical_data_visualizer.io.file_utils import get_column_name_from_pattern
 
 logger = logging.getLogger(__name__)

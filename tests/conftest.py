@@ -38,7 +38,7 @@ def example_database_options():
 @pytest.fixture(scope="session")
 def default_database_options():
     """Default database options from generate_default_database_options() — all 11 datasources."""
-    from clinical_data_visualizer.datasource_list import generate_default_database_options
+    from clinical_data_visualizer.datasource.registry import generate_default_database_options
 
     return generate_default_database_options()
 

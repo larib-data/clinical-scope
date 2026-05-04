@@ -2,7 +2,7 @@
 
 import pytest
 
-from clinical_data_visualizer.inspection import (
+from clinical_data_visualizer.datasource.inspection import (
     ColumnInfo,
     DataSourceInspection,
     results_from_json,

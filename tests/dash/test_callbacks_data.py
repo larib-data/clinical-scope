@@ -11,7 +11,7 @@ from clinical_data_visualizer.dash_api.callbacks.data_callbacks import (
     _status_badge,
     format_time_range,
 )
-from clinical_data_visualizer.inspection import ColumnInfo, DataSourceInspection
+from clinical_data_visualizer.datasource.inspection import ColumnInfo, DataSourceInspection
 
 # ---------------------------------------------------------------------------
 # _parse_database_options_file

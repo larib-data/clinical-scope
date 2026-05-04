@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 
-import clinical_data_visualizer.fluxmed_signals.options as options_naming
+import clinical_data_visualizer.datasource.sources.fluxmed_parameters.options as options_naming
+from clinical_data_visualizer.datasource.base import DataSourceBase
 from clinical_data_visualizer.datasource.timing import time_it
-from clinical_data_visualizer.datasource_base import DataSourceBase
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,8 @@ def _is_time_header(line: str) -> bool:
     )
 
 
-class FluxmedSignalsDataSource(DataSourceBase):
-    """Fluxmed Signals datasource processor."""
+class FluxmedParametersDataSource(DataSourceBase):
+    """Fluxmed Parameters datasource processor."""
 
     OPTIONS_MODULE = options_naming
 
@@ -39,55 +39,63 @@ class FluxmedSignalsDataSource(DataSourceBase):
             start_time_str = match.group(1)
             start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S").replace(tzinfo=UTC)
 
-            # Read raw file
+            # Read the first lines to get headers and units
             with Path.open(file_path, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f]
+                lines = [line.strip() for line in f.readlines()]
 
-            # Find header row (accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
-            header_idx = None
+            # Find the column names row(accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
+            col_idx = None
             for i, line in enumerate(lines):
                 if _is_time_header(line):
-                    header_idx = i
+                    col_idx = i
                     break
 
-            if header_idx is None:
+            if col_idx is None:
                 known = ", ".join(options_naming.TIME_HEADER_PREFIXES)
                 msg = f"No time header found (tried: {known})"
                 raise RuntimeError(msg)
 
-            units_idx = header_idx + 1
-            data_start_idx = units_idx + 6  # skip 6 lines after units
+            # Extract column names and units
+            col_names = lines[col_idx].split()
+            col_units = lines[col_idx + 1].split()
+            columns = [f"{n}({u})" for n, u in zip(col_names, col_units, strict=False)]
 
-            # Build column names
-            col_names = re.split(r"\s+", lines[header_idx])
-            col_units = re.split(r"\s+", lines[units_idx])
-            columns = [f"{name}({unit})" for name, unit in zip(col_names, col_units, strict=False)]
+            # Make columns unique if duplicates exist
+            def make_unique(columns: list[str]) -> list[str]:
+                seen = {}
+                result = []
+                for col in columns:
+                    if col not in seen:
+                        seen[col] = 1
+                        result.append(col)
+                    else:
+                        new_col = f"{col}_{seen[col]}"
+                        seen[col] += 1
+                        result.append(new_col)
+                return result
 
-            # Extract numeric rows only
-            numeric_lines = [
-                line for line in lines[data_start_idx:] if re.match(r"^[0-9]+[.,][0-9]", line)
-            ]
+            columns = make_unique(columns)
 
-            if not numeric_lines:
-                msg = "No numeric signal rows found after skipping 6 lines"
-                raise RuntimeError(msg)
-
-            # Load into DataFrame
+            # Read the data starting from the row after units
+            data_start_idx = col_idx + 2
             df = pd.read_csv(
-                pd.io.common.StringIO("\n".join(numeric_lines)),
+                file_path,
                 sep=r"\s+",
                 header=None,
                 names=columns,
+                skiprows=data_start_idx,
                 decimal=",",
                 engine="python",
+                on_bad_lines="warn",
             )
 
-            # Build datetime index
-            time_col = columns[0]
+            df.columns = df.columns.str.strip()
             df = df.apply(pd.to_numeric, errors="coerce")
-            df.index = pd.to_datetime(
-                [start_time + timedelta(seconds=float(t)) for t in df[time_col]]
-            )
+
+            # Compute datetime index from the first column (the time-offset column)
+            time_col = columns[0]
+            timestamps = [start_time + timedelta(seconds=s) for s in df[time_col]]
+            df.index = pd.to_datetime(timestamps)
             df.index.name = "datetime_index"
         else:
             msg = (
@@ -96,7 +104,6 @@ class FluxmedSignalsDataSource(DataSourceBase):
             )
             raise NotImplementedError(msg)
 
-        df = df.sort_index()
         df = df[~df.index.duplicated(keep="first")]
         if path_output is not None:
             cls._save_dataframe(df, path_output)

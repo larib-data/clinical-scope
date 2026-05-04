@@ -17,19 +17,23 @@ import logging
 import sys
 from pathlib import Path
 
-from clinical_data_visualizer import helper, logger_config, wrapper
-from clinical_data_visualizer.inspection import to_csv_string, to_text_summary
+from clinical_data_visualizer import logger_config, wrapper
+from clinical_data_visualizer.config.parsing import (
+    build_patient_options,
+    load_database_options_from_path,
+)
+from clinical_data_visualizer.datasource.inspection import to_csv_string, to_text_summary
 
 logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
 def main(option_dict: dict) -> None:
-    patient_options = helper.build_patient_options(
+    patient_options = build_patient_options(
         option_dict["patient_folder"], option_dict.get("path_patient_options")
     )
     path_db = option_dict.get("path_database_options")
-    database_options = helper.load_database_options_from_path(Path(path_db)) if path_db else None
+    database_options = load_database_options_from_path(Path(path_db)) if path_db else None
 
     results = wrapper.inspect(
         patient_options=patient_options,

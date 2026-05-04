@@ -12,12 +12,12 @@ from plotly.subplots import make_subplots
 
 import clinical_data_visualizer.constants as cst
 from clinical_data_visualizer import hover_formatters
-from clinical_data_visualizer.io.file_utils import get_column_name_from_pattern
-from clinical_data_visualizer.io.timezone import (
+from clinical_data_visualizer.datasource.formatting.timezone import (
     change_ndarray_timezone,
     loop_time_to_display_strings,
     to_float_seconds,
 )
+from clinical_data_visualizer.io.file_utils import get_column_name_from_pattern
 
 logger = logging.getLogger(__name__)
 

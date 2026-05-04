@@ -12,6 +12,10 @@ import io
 from dataclasses import dataclass, field
 from typing import ClassVar
 
+import pandas as pd
+
+from clinical_data_visualizer.datasource.formatting.timezone import fmt_ts
+
 
 @dataclass
 class ColumnInfo:
@@ -179,3 +183,43 @@ def results_from_json(data: list[dict]) -> list[DataSourceInspection]:
         )
         for d in data
     ]
+
+
+# ==================================================================================================
+# Column info helpers (used by datasource_base inspection logic)
+# ==================================================================================================
+
+
+def _first_last_timestamp(df: pd.DataFrame, col: str) -> tuple[str | None, str | None]:
+    """Return (first, last) compact timestamp strings for valid (non-NaN) values in a column."""
+
+    if col not in df.columns:
+        return None, None
+    valid_index = df.index[df[col].notna()]
+    if valid_index.empty:
+        return None, None
+    return fmt_ts(valid_index.min()), fmt_ts(valid_index.max())
+
+
+def _column_infos(
+    df_raw: pd.DataFrame,
+    df_filtered: pd.DataFrame,
+    configured_fields: set[str],
+) -> list:
+    """Build a list of ColumnInfo objects from raw and filtered DataFrames."""
+    infos = []
+    for col in df_raw.columns:
+        first_ts, last_ts = _first_last_timestamp(df_filtered, col)
+        infos.append(
+            ColumnInfo(
+                raw_name=col,
+                is_configured=col in configured_fields,
+                raw_point_count=int(df_raw[col].notna().sum()),
+                filtered_point_count=(
+                    int(df_filtered[col].notna().sum()) if col in df_filtered.columns else 0
+                ),
+                first_filtered_timestamp=first_ts,
+                last_filtered_timestamp=last_ts,
+            )
+        )
+    return infos

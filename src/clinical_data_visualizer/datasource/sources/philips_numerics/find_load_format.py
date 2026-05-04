@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 
-import clinical_data_visualizer.philips_numerics.options as options_naming
+import clinical_data_visualizer.datasource.sources.philips_numerics.options as options_naming
+from clinical_data_visualizer.datasource.base import DataSourceBase
 from clinical_data_visualizer.datasource.timing import time_it
-from clinical_data_visualizer.datasource_base import DataSourceBase
 from clinical_data_visualizer.io.file_utils import load_csv_with_datetime_index
 
 logger = logging.getLogger(__name__)

@@ -12,7 +12,7 @@ from clinical_data_visualizer.dash_api.callbacks.data_callbacks import (
     LOOP_DATA_CACHE,
     format_time_range,
 )
-from clinical_data_visualizer.io.timezone import loop_time_to_display_strings
+from clinical_data_visualizer.datasource.formatting.timezone import loop_time_to_display_strings
 
 logger = logging.getLogger(__name__)
 

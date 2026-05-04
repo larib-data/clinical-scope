@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pandas as pd
 
-import clinical_data_visualizer.syringe.options as options_naming
+import clinical_data_visualizer.datasource.sources.syringe.options as options_naming
+from clinical_data_visualizer.datasource.base import DataSourceBase
 from clinical_data_visualizer.datasource.timing import time_it
-from clinical_data_visualizer.datasource_base import DataSourceBase
 
 logger = logging.getLogger(__name__)
 

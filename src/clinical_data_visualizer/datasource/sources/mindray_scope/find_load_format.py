@@ -7,10 +7,10 @@ import numpy as np
 import pandas as pd
 from defusedxml.ElementTree import parse as parse_xml
 
-import clinical_data_visualizer.mindray_scope.options as options_naming
+import clinical_data_visualizer.datasource.sources.mindray_scope.options as options_naming
+from clinical_data_visualizer.datasource.base import DataSourceBase
+from clinical_data_visualizer.datasource.formatting.timezone import apply_timezone_to_dataframe
 from clinical_data_visualizer.datasource.timing import time_it
-from clinical_data_visualizer.datasource_base import DataSourceBase
-from clinical_data_visualizer.io.timezone import apply_timezone_to_dataframe
 
 logger = logging.getLogger(__name__)
 

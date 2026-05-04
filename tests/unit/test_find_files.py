@@ -1,5 +1,5 @@
 """
-Tests for helper.find_files() — the central file-discovery function.
+Tests for find_files() — the central file-discovery function.
 
 Covers both multi-file mode (multi=True) and single-file mode (multi=False)
 with all disambiguation tiers:
