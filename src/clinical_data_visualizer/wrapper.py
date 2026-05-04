@@ -6,6 +6,8 @@ import pandas as pd
 
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
+from clinical_data_visualizer.dash_api.annotations.io import _load_annotations_from_path
+from clinical_data_visualizer.dash_api.annotations.model import Annotation
 from clinical_data_visualizer.database_options_parser import (
     normalize_database_options,
     warn_redundant_entries,
@@ -516,3 +518,56 @@ def batch_extract(
 
     logger.info("📦 Batch complete: %d folder(s) processed.", len(batch_results))
     return batch_results
+
+
+# ==================================================================================================
+# Annotation loading — multi-source entry point
+# ==================================================================================================
+
+
+def load_annotations(path: str | Path) -> list[Annotation]:
+    """
+    Load annotations from a JSON file, auto-detecting the source type.
+
+    The path is interpreted as follows:
+
+    1. **Ends with ``.json``** — treated as a direct JSON file path.
+    2. **Ends with ``cdv_visu``** — treated as a ``cdv_visu/`` folder;
+       annotations are loaded from ``<path>/annotations.json``.
+    3. **Any other path** — treated as a patient folder;
+       annotations are loaded from ``<path>/annotations.json``.
+
+    Returns an empty list when the file does not exist or cannot be parsed.
+    The file must contain a JSON dict with a list from key ``"annotations"`` key
+    (e.g. ``{"annotations": [...]}``).
+
+    Args:
+        path: Path to a JSON file, a ``cdv_visu/`` folder, or a patient folder.
+
+    Returns:
+        List of :class:`~clinical_data_visualizer.dash_api.annotations.model.Annotation`.
+
+    Examples:
+    --------
+    >>> from clinical_data_visualizer import load_annotations
+    >>> # Direct JSON file
+    >>> annotations = load_annotations("/path/to/annotations.json")
+    >>> # cdv_visu folder
+    >>> annotations = load_annotations("/data/Patient01/cdv_visu")
+    >>> # Patient folder (standard layout)
+    >>> annotations = load_annotations("/data/Patient01")
+
+    """
+    path = Path(path)
+
+    if path.suffix == ".json":
+        # Direct JSON file
+        resolved_path = path
+    elif path.name == cst.FOLDER_NAME_VISU:
+        # cdv_visu folder
+        resolved_path = path / cst.ANNOTATION_FILE_NAME
+    else:
+        # Patient folder (standard layout)
+        resolved_path = path / cst.ANNOTATION_FILE_NAME
+
+    return _load_annotations_from_path(resolved_path)
