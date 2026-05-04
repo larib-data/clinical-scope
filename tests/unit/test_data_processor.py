@@ -18,7 +18,7 @@ import pytest
 
 from clinical_data_visualizer import wrapper
 from clinical_data_visualizer.datasource_list import detect_datasource_from_folder
-from clinical_data_visualizer.helper import save_df
+from clinical_data_visualizer.io.file_utils import save_df
 
 # ==================================================================================================
 # Helpers

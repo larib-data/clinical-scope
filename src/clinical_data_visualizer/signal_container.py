@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -10,7 +11,13 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import clinical_data_visualizer.constants as cst
-from clinical_data_visualizer import helper, hover_formatters
+from clinical_data_visualizer import hover_formatters
+from clinical_data_visualizer.io.file_utils import get_column_name_from_pattern
+from clinical_data_visualizer.io.timezone import (
+    change_ndarray_timezone,
+    loop_time_to_display_strings,
+    to_float_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,10 +138,8 @@ class PlotOptions:
                 y_unit_list,
             )
 
-        y_axis_title = helper.wrap_label(f"{group_name} ({primary_unit})") if primary_unit else None
-        y2_axis_title = (
-            helper.wrap_label(f"{group_name} ({secondary_unit})") if secondary_unit else None
-        )
+        y_axis_title = wrap_label(f"{group_name} ({primary_unit})") if primary_unit else None
+        y2_axis_title = wrap_label(f"{group_name} ({secondary_unit})") if secondary_unit else None
 
         y_axis_range = merge_y_ranges(signals, primary_unit)
         y2_axis_range = merge_y_ranges(signals, secondary_unit)
@@ -229,7 +234,7 @@ def _signal_utc_float_seconds(sig: "Signal") -> np.ndarray:
     convert to UTC nanoseconds via .asi8 (avoids np.issubdtype on tz-aware dtype).
     """
     if sig.data.timezone is None:
-        return helper.to_float_seconds(sig.data.x)
+        return to_float_seconds(sig.data.x)
     return (
         pd.to_datetime(sig.data.x)
         .tz_localize(str(sig.data.timezone))
@@ -275,7 +280,7 @@ class Signal:
         range_signal_plot = sig.get(sig_cst.RANGE)
         y_unit_name = sig.get(sig_cst.UNIT, sig_cst.DEFAULT_UNIT)
         y_axis_title_raw = f"{name_signal} ({y_unit_name or ''})"
-        y_axis_title = helper.wrap_label(y_axis_title_raw, max_line_length=12)
+        y_axis_title = wrap_label(y_axis_title_raw, max_line_length=12)
 
         # TraceOptions fields
         trace_options_dict = source_options.get(cst.SourceOptions.TRACE_OPTIONS, {})
@@ -342,9 +347,7 @@ class Signal:
         # ---- Step 2-3: extract, prune, convert, resample ------------------------
         start = time.perf_counter()
         y_full = (
-            df[helper.get_column_name_from_pattern(df.columns, raw_signal_name)].to_numpy(
-                dtype=np.float64
-            )
+            df[get_column_name_from_pattern(df.columns, raw_signal_name)].to_numpy(dtype=np.float64)
             * unit_conversion_factor
         )
         valid_mask = np.isfinite(y_full)
@@ -484,7 +487,7 @@ class Signal:
             logger.warning("Trace of %s will be overwritten", self.name)
         # Convert timezone-naive numpy datetime to the desired timezone
         if self.data.timezone is not None:
-            self.data.x, self.data.timezone = helper.change_ndarray_timezone(
+            self.data.x, self.data.timezone = change_ndarray_timezone(
                 self.data.x, self.data.timezone, cst.DISPLAY_TIMEZONE
             )
 
@@ -536,7 +539,7 @@ class Signal:
             # Keyword formatters (fraction, percentage, …) only cover one axis,
             # so they are intentionally ignored for loops to avoid asymmetric display.
             if self.data.loop_time_axis is not None and len(self.data.loop_time_axis) > 0:
-                customdata = helper.loop_time_to_display_strings(self.data.loop_time_axis)
+                customdata = loop_time_to_display_strings(self.data.loop_time_axis)
                 _tz_abbr = (
                     pd.to_datetime(self.data.loop_time_axis[0], unit="s", utc=True)
                     .tz_convert(cst.DISPLAY_TIMEZONE)
@@ -820,6 +823,48 @@ class PlotModel:
         output_path = data_folder / cst.FOLDER_NAME_VISU / cst.DEFAULT_NAME_VISUALIZATION
         fig_list = [plot_mod.figure for plot_mod in plot_models if plot_mod.figure is not None]
         start = time.perf_counter()
-        helper.print_out_figure(output_path, fig_list)
+        print_out_figure(output_path, fig_list)
         elapsed = time.perf_counter() - start
         logger.debug("⏳ %.4fs for PlotModel list to html visualization", elapsed)
+
+
+# ==================================================================================================
+def wrap_label(text: str, max_line_length: int = 12, break_chars: str = r"[ \-_]") -> str:
+    """
+    Wrap a long label into multiple HTML lines (<br>) at allowed break characters.
+
+    Used for axis titles or legends in Plotly figures.
+
+    Args:
+        text: The text to wrap.
+        max_line_length: Maximum characters per line before wrapping.
+        break_chars: Regex pattern of allowed break characters (default: space, hyphen, underscore).
+
+    Returns:
+        Wrapped text string with <br> line breaks.
+
+    """
+    tokens = re.split(f"({break_chars})", text)
+    lines = []
+    current_line = ""
+
+    for token in tokens:
+        if len(current_line + token) <= max_line_length:
+            current_line += token
+        else:
+            if current_line.strip():
+                lines.append(current_line.strip())
+            current_line = token
+
+    if current_line.strip():
+        lines.append(current_line.strip())
+
+    return "<br>".join(lines)
+
+
+# ==================================================================================================
+def print_out_figure(path_output: Path, fig_list: list) -> None:
+    """Export Plotly figures to a single HTML file."""
+    with Path.open(path_output, "w") as file_out:
+        for fig in fig_list:
+            file_out.write(fig.to_html(full_html=False, include_plotlyjs="cdn"))

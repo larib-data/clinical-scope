@@ -7,8 +7,9 @@ from pandas.api.types import is_numeric_dtype
 
 import clinical_data_visualizer.constants as cst
 import clinical_data_visualizer.eit.options as options_naming
-from clinical_data_visualizer import helper
+from clinical_data_visualizer.datasource.timing import time_it
 from clinical_data_visualizer.datasource_base import DataSourceBase
+from clinical_data_visualizer.io.file_utils import get_column_name_from_pattern
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def _parse_asc_selected_columns(
     else:
         resolved_cols = []
         for pattern in selected_cols:
-            col = helper.get_column_name_from_pattern(all_columns, pattern)
+            col = get_column_name_from_pattern(all_columns, pattern)
             if col is not None:
                 resolved_cols.append(col)
 
@@ -195,7 +196,7 @@ def _parse_eit_asc_file(
     )
 
 
-@helper.time_it
+@time_it
 def _parse_eit_asc_file_list(
     asc_files: list[Path], columns_to_extract: list[str] | None
 ) -> tuple[
@@ -302,7 +303,7 @@ class EITDataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:
         database_options_specific = kwargs.get("database_options_specific", {})
         (
@@ -322,7 +323,7 @@ class EITDataSource(DataSourceBase):
         return df
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _format(
         cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
     ) -> pd.DataFrame:
