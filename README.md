@@ -271,8 +271,6 @@ src/clinical_data_visualizer/
 ├── wrapper.py              # Main processing logic (visualization, extraction, inspection)
 ├── constants.py            # Global constants and option classes
 ├── helper.py               # Utility functions
-├── utilities.py            # Additional utilities
-├── data_management.py      # Data management functions
 └── logger_config.py        # Logging configuration
 ```
 
