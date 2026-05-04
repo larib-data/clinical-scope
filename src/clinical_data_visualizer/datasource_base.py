@@ -12,8 +12,18 @@ from pathlib import Path
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
-from clinical_data_visualizer import helper
+from clinical_data_visualizer.datasource.timing import time_it
 from clinical_data_visualizer.inspection import ColumnInfo, DataSourceInspection
+from clinical_data_visualizer.io.file_utils import (
+    find_files,
+    folder_name_matches_keywords,
+    save_df,
+)
+from clinical_data_visualizer.io.timezone import (
+    apply_timezone_to_dataframe,
+    filter_data_by_timestamps,
+    shift_data_by_seconds,
+)
 from clinical_data_visualizer.signal_container import Signal
 
 logger = logging.getLogger(__name__)
@@ -144,7 +154,7 @@ class DataSourceBase(ABC):
 
         """
         opts = cls.OPTIONS_MODULE
-        return helper.find_files(
+        return find_files(
             folder_path,
             extensions=getattr(opts, "FILE_EXTENSIONS", []),
             datasource_name=cls.DATASOURCE_NAME,
@@ -235,7 +245,7 @@ class DataSourceBase(ABC):
         cls, df: pd.DataFrame, database_options_specific: dict, default_timezone: str
     ) -> pd.DataFrame:
         """Apply timezone to DataFrame index if not already set."""
-        return helper.apply_timezone_to_dataframe(
+        return apply_timezone_to_dataframe(
             df, database_options_specific, default_timezone, cls.OPTIONS_MODULE
         )
 
@@ -246,7 +256,7 @@ class DataSourceBase(ABC):
         time_shift_second = patient_options_specific.get(
             cls.OPTIONS_MODULE.PatientOptionsDataSourceRelative.TimeShift.NAME, 0.0
         )
-        helper.shift_data_by_seconds(df, time_shift_second)
+        shift_data_by_seconds(df, time_shift_second)
         return df
 
     @classmethod
@@ -258,12 +268,12 @@ class DataSourceBase(ABC):
         datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
         datetime_start = pd.Timestamp(datetime_start) if datetime_start else None
         datetime_end = pd.Timestamp(datetime_end) if datetime_end else None
-        return helper.filter_data_by_timestamps(
+        return filter_data_by_timestamps(
             df, time_start=datetime_start, time_end=datetime_end, filter_date=filter_date
         )
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _format(
         cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
     ) -> pd.DataFrame:
@@ -287,7 +297,7 @@ class DataSourceBase(ABC):
         return cls._filter_by_datetime(df, patient_options)
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _extract_signals(
         cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
     ) -> list[Signal]:
@@ -359,7 +369,7 @@ class DataSourceBase(ABC):
             if not subfolder.is_dir():
                 continue
 
-            if helper.folder_name_matches_keywords(subfolder.name, folder_keywords):
+            if folder_name_matches_keywords(subfolder.name, folder_keywords):
                 if subfolder.name != expected_folder_name:
                     logger.info(
                         "Found %s folder '%s' matching keywords %s (recommended name: '%s')",
@@ -379,7 +389,7 @@ class DataSourceBase(ABC):
         return None
 
     @classmethod
-    @helper.time_it
+    @time_it
     def main(
         cls,
         patient_options: dict,
@@ -436,7 +446,7 @@ class DataSourceBase(ABC):
             patient_options: Patient-specific options (same as :meth:`main`).
             database_options_specific: Database options for this datasource.
             save_path: If given, save the formatted DataFrame to this path using
-                :func:`helper.save_df` (supports ``.csv`` and ``.parquet``).
+                :func:`io.file_utils.save_df` (supports ``.csv`` and ``.parquet``).
 
         Returns:
             Formatted ``pd.DataFrame``, or ``None`` if the file was not found or
@@ -472,7 +482,7 @@ class DataSourceBase(ABC):
         )
 
         if save_path is not None:
-            helper.save_df(df, Path(save_path))
+            save_df(df, Path(save_path))
 
         return df
 

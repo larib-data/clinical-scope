@@ -7,8 +7,9 @@ import numpy as np
 import pandas as pd
 
 import clinical_data_visualizer.mindray_respi_waves.options as options_naming
-from clinical_data_visualizer import helper
+from clinical_data_visualizer.datasource.timing import time_it
 from clinical_data_visualizer.datasource_base import DataSourceBase
+from clinical_data_visualizer.io.timezone import apply_timezone_to_dataframe
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class MindRayRespiWavesDataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _load(cls, file_path: Path, path_output: Path | None, **kwargs: Any) -> pd.DataFrame:
         """
         Load and parse MindRay Respi Waves data.
@@ -126,7 +127,7 @@ class MindRayRespiWavesDataSource(DataSourceBase):
         df_pivoted = df_pivoted[~df_pivoted.index.duplicated(keep="first")]
 
         # Apply timezone if needed
-        df_pivoted = helper.apply_timezone_to_dataframe(
+        df_pivoted = apply_timezone_to_dataframe(
             df_pivoted,
             database_options_specific,
             options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,

@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 import clinical_data_visualizer.servo_u.options as options_naming
-from clinical_data_visualizer import helper
+from clinical_data_visualizer.datasource.timing import time_it
 from clinical_data_visualizer.datasource_base import DataSourceBase
 
 logger = logging.getLogger(__name__)
@@ -141,7 +141,7 @@ class ServoUDataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _load(
         cls,
         file_path_list: list[Path],
@@ -171,7 +171,7 @@ class ServoUDataSource(DataSourceBase):
         return df
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _format(
         cls,
         df: pd.DataFrame,

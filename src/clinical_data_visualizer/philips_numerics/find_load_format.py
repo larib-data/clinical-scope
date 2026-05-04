@@ -4,8 +4,9 @@ from pathlib import Path
 import pandas as pd
 
 import clinical_data_visualizer.philips_numerics.options as options_naming
-from clinical_data_visualizer import helper
+from clinical_data_visualizer.datasource.timing import time_it
 from clinical_data_visualizer.datasource_base import DataSourceBase
+from clinical_data_visualizer.io.file_utils import load_csv_with_datetime_index
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +17,12 @@ class PhilipsNumericsDataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() == ".csv":
-            df = helper.load_csv_with_datetime_index(file_path)
+            df = load_csv_with_datetime_index(file_path)
         else:
             msg = f"file_path extension was neither '.csv' or '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(msg)
@@ -32,7 +33,7 @@ class PhilipsNumericsDataSource(DataSourceBase):
         return df
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _format(
         cls,
         df: pd.DataFrame,

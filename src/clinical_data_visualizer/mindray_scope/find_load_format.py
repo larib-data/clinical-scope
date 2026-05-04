@@ -8,8 +8,9 @@ import pandas as pd
 from defusedxml.ElementTree import parse as parse_xml
 
 import clinical_data_visualizer.mindray_scope.options as options_naming
-from clinical_data_visualizer import helper
+from clinical_data_visualizer.datasource.timing import time_it
 from clinical_data_visualizer.datasource_base import DataSourceBase
+from clinical_data_visualizer.io.timezone import apply_timezone_to_dataframe
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ class MindRayScopeDataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _load(
         cls, file_path_list: list[Path], path_output: Path | None, **kwargs: Any
     ) -> pd.DataFrame:
@@ -263,7 +264,7 @@ class MindRayScopeDataSource(DataSourceBase):
                     )
                     timestamps.extend(pd.to_datetime(row_times))
                 df_local = pd.DataFrame({name: signal}, index=timestamps)
-                df_local = helper.apply_timezone_to_dataframe(
+                df_local = apply_timezone_to_dataframe(
                     df_local,
                     database_options_specific,
                     options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,

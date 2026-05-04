@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 import clinical_data_visualizer.syringe.options as options_naming
-from clinical_data_visualizer import helper
+from clinical_data_visualizer.datasource.timing import time_it
 from clinical_data_visualizer.datasource_base import DataSourceBase
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class SyringeDataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
