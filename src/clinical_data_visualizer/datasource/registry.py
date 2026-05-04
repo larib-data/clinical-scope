@@ -4,20 +4,34 @@ from pathlib import Path
 from types import ModuleType
 from typing import ClassVar
 
-from clinical_data_visualizer.datasource_base import DataSourceBase
-from clinical_data_visualizer.eit import find_load_format as _eit
-from clinical_data_visualizer.fluxmed_parameters import find_load_format as _fluxmed_parameters
-from clinical_data_visualizer.fluxmed_signals import find_load_format as _fluxmed_signals
+from clinical_data_visualizer.datasource.base import DataSourceBase
+from clinical_data_visualizer.datasource.sources.eit import find_load_format as _eit
+from clinical_data_visualizer.datasource.sources.fluxmed_parameters import (
+    find_load_format as _fluxmed_parameters,
+)
+from clinical_data_visualizer.datasource.sources.fluxmed_signals import (
+    find_load_format as _fluxmed_signals,
+)
+from clinical_data_visualizer.datasource.sources.mindray_respi_numerics import (
+    find_load_format as _mindray_respi_num,
+)
+from clinical_data_visualizer.datasource.sources.mindray_respi_waves import (
+    find_load_format as _mindray_respi_waves,
+)
+from clinical_data_visualizer.datasource.sources.mindray_scope import (
+    find_load_format as _mindray_scope,
+)
+from clinical_data_visualizer.datasource.sources.other import find_load_format as _other
+from clinical_data_visualizer.datasource.sources.philips_numerics import (
+    find_load_format as _philips_numerics,
+)
+from clinical_data_visualizer.datasource.sources.philips_waves import (
+    find_load_format as _philips_waves,
+)
+from clinical_data_visualizer.datasource.sources.servo_u import find_load_format as _servo_u
+from clinical_data_visualizer.datasource.sources.syringe import find_load_format as _syringe
 from clinical_data_visualizer.io.file_utils import folder_name_matches_keywords
-from clinical_data_visualizer.mindray_respi_numerics import find_load_format as _mindray_respi_num
-from clinical_data_visualizer.mindray_respi_waves import find_load_format as _mindray_respi_waves
-from clinical_data_visualizer.mindray_scope import find_load_format as _mindray_scope
-from clinical_data_visualizer.other import find_load_format as _other
-from clinical_data_visualizer.philips_numerics import find_load_format as _philips_numerics
-from clinical_data_visualizer.philips_waves import find_load_format as _philips_waves
-from clinical_data_visualizer.servo_u import find_load_format as _servo_u
 from clinical_data_visualizer.signal_container import Signal
-from clinical_data_visualizer.syringe import find_load_format as _syringe
 
 # ==================================================================================================
 logger = logging.getLogger(__name__)

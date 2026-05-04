@@ -10,7 +10,7 @@ from clinical_data_visualizer.signal_container import PlotGroup, PlotModel, Sign
 @pytest.fixture(scope="module")
 def philips_waves_df(patient_full_path):
     """Load philips_waves data for signal creation tests."""
-    from clinical_data_visualizer.datasource_list import DataSource
+    from clinical_data_visualizer.datasource.registry import DataSource
 
     ds_cls = DataSource.PhilipsWaves.DATASOURCE_CLASS
     patient_opts = {

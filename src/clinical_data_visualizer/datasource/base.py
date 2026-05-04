@@ -12,92 +12,26 @@ from pathlib import Path
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
+from clinical_data_visualizer.datasource.formatting.timezone import (
+    _date_range,
+    _to_display_tz,
+    apply_timezone_to_dataframe,
+    filter_data_by_timestamps,
+    shift_data_by_seconds,
+)
+from clinical_data_visualizer.datasource.inspection import (
+    DataSourceInspection,
+    _column_infos,
+)
 from clinical_data_visualizer.datasource.timing import time_it
-from clinical_data_visualizer.inspection import ColumnInfo, DataSourceInspection
 from clinical_data_visualizer.io.file_utils import (
     find_files,
     folder_name_matches_keywords,
     save_df,
 )
-from clinical_data_visualizer.io.timezone import (
-    apply_timezone_to_dataframe,
-    filter_data_by_timestamps,
-    shift_data_by_seconds,
-)
 from clinical_data_visualizer.signal_container import Signal
 
 logger = logging.getLogger(__name__)
-
-
-_TS_FMT = "%y-%m-%d %H:%M:%S %Z"  # compact, 2-digit year, timezone abbreviation
-
-
-def fmt_ts(ts: object) -> str:
-    """Format a pandas Timestamp (or datetime-like) to a compact, human-readable string."""
-    try:
-        return ts.strftime(_TS_FMT).rstrip()
-    except Exception:  # noqa: BLE001
-        return str(ts)
-
-
-def _to_display_tz(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Return a shallow copy of *df* with its index converted to ``DISPLAY_TIMEZONE``.
-
-    Used in :meth:`DataSourceBase.inspect` so that reported timestamps match
-    the timezone shown in the Dash plots.  The copy is shallow (data arrays are
-    shared) so it is cheap even for wide, high-frequency DataFrames.
-    If the index is tz-naive or not a DatetimeIndex, *df* is returned unchanged.
-    """
-    if not (isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None):
-        return df
-    result = df.copy(deep=False)
-    result.index = df.index.tz_convert(cst.DISPLAY_TIMEZONE)
-    return result
-
-
-def _date_range(df: pd.DataFrame) -> tuple[str, str] | None:
-    """Return (compact_min, compact_max) of the DataFrame index, or None if empty."""
-    if df.empty:
-        return None
-    try:
-        return (fmt_ts(df.index.min()), fmt_ts(df.index.max()))
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def _first_last_timestamp(df: pd.DataFrame, col: str) -> tuple[str | None, str | None]:
-    """Return (first, last) compact timestamp strings for valid (non-NaN) values in a column."""
-    if col not in df.columns:
-        return None, None
-    valid_index = df.index[df[col].notna()]
-    if valid_index.empty:
-        return None, None
-    return fmt_ts(valid_index.min()), fmt_ts(valid_index.max())
-
-
-def _column_infos(
-    df_raw: pd.DataFrame,
-    df_filtered: pd.DataFrame,
-    configured_fields: set[str],
-) -> list:
-    """Build a list of ColumnInfo objects from raw and filtered DataFrames."""
-    infos = []
-    for col in df_raw.columns:
-        first_ts, last_ts = _first_last_timestamp(df_filtered, col)
-        infos.append(
-            ColumnInfo(
-                raw_name=col,
-                is_configured=col in configured_fields,
-                raw_point_count=int(df_raw[col].notna().sum()),
-                filtered_point_count=(
-                    int(df_filtered[col].notna().sum()) if col in df_filtered.columns else 0
-                ),
-                first_filtered_timestamp=first_ts,
-                last_filtered_timestamp=last_ts,
-            )
-        )
-    return infos
 
 
 class DataSourceBase(ABC):

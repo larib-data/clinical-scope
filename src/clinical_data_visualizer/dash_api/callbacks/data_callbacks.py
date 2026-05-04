@@ -20,7 +20,7 @@ from dash.exceptions import PreventUpdate
 from plotly_resampler import FigureResampler
 
 import clinical_data_visualizer.constants as cst
-import clinical_data_visualizer.datasource_list as datasource
+import clinical_data_visualizer.datasource.registry as datasource
 from clinical_data_visualizer import wrapper
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
 from clinical_data_visualizer.dash_api import ui_components, validation
@@ -33,7 +33,7 @@ from clinical_data_visualizer.dash_api.styles import (
 )
 from clinical_data_visualizer.database_options_parser import validate_database_options_structure
 from clinical_data_visualizer.database_options_xlsx import xlsx_bytes_to_database_options
-from clinical_data_visualizer.inspection import (
+from clinical_data_visualizer.datasource.inspection import (
     ColumnInfo,
     results_from_json,
     results_to_json,

@@ -6,9 +6,9 @@ from typing import Any
 
 import pandas as pd
 
-import clinical_data_visualizer.servo_u.options as options_naming
+import clinical_data_visualizer.datasource.sources.servo_u.options as options_naming
+from clinical_data_visualizer.datasource.base import DataSourceBase
 from clinical_data_visualizer.datasource.timing import time_it
-from clinical_data_visualizer.datasource_base import DataSourceBase
 
 logger = logging.getLogger(__name__)
 

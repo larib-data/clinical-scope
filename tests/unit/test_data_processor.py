@@ -6,7 +6,7 @@ Covers:
 - wrapper.extract_datasource()     (wrapper.py)
 - wrapper.extract_patient()        (wrapper.py)
 - wrapper.batch_extract()          (wrapper.py)
-- helper.save_df()                 (helper.py)
+- file_utils.save_df()                 (file_utils.py)
 - datasource_list.detect_datasource_from_folder()  (datasource_list.py)
 """
 
@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 from clinical_data_visualizer import wrapper
-from clinical_data_visualizer.datasource_list import detect_datasource_from_folder
+from clinical_data_visualizer.datasource.registry import detect_datasource_from_folder
 from clinical_data_visualizer.io.file_utils import save_df
 
 # ==================================================================================================
@@ -45,7 +45,7 @@ def _make_ds_entry(name: str, cls, keywords: list[str]) -> MagicMock:
 
 
 # ==================================================================================================
-# helper.save_df
+# save_df
 # ==================================================================================================
 
 
@@ -80,21 +80,21 @@ class TestSaveDf:
 
 
 class TestDetectDatasourceFromFolder:
-    @patch("clinical_data_visualizer.datasource_list.DataSource")
+    @patch("clinical_data_visualizer.datasource.registry.DataSource")
     def test_matches_by_keywords(self, mock_ds):
         ds_entry = _make_ds_entry("philips_waves", MagicMock(), ["philips", "waves"])
         mock_ds.AVAILABLE = [ds_entry]
         result = detect_datasource_from_folder(Path("/data/patient/philips_waves"))
         assert result is ds_entry
 
-    @patch("clinical_data_visualizer.datasource_list.DataSource")
+    @patch("clinical_data_visualizer.datasource.registry.DataSource")
     def test_no_match_returns_none(self, mock_ds):
         ds_entry = _make_ds_entry("philips_waves", MagicMock(), ["philips", "waves"])
         mock_ds.AVAILABLE = [ds_entry]
         result = detect_datasource_from_folder(Path("/data/patient/unknown_folder"))
         assert result is None
 
-    @patch("clinical_data_visualizer.datasource_list.DataSource")
+    @patch("clinical_data_visualizer.datasource.registry.DataSource")
     def test_matching_is_case_insensitive(self, mock_ds):
         ds_entry = _make_ds_entry("eit", MagicMock(), ["eit"])
         mock_ds.AVAILABLE = [ds_entry]
@@ -111,7 +111,7 @@ class TestDataSourceBaseExtract:
     """Tests for DataSourceBase.extract() via a mock subclass."""
 
     def _make_cls(self, name="ds_a"):
-        from clinical_data_visualizer.datasource_base import DataSourceBase
+        from clinical_data_visualizer.datasource.base import DataSourceBase
 
         # Build a minimal concrete subclass on-the-fly
         cls = MagicMock(spec=DataSourceBase)
@@ -119,7 +119,7 @@ class TestDataSourceBaseExtract:
         return cls
 
     def test_extract_datasource_success(self):
-        from clinical_data_visualizer.datasource_base import DataSourceBase
+        from clinical_data_visualizer.datasource.base import DataSourceBase
 
         cls = _make_datasource_cls()
         df = _make_df()
@@ -133,7 +133,7 @@ class TestDataSourceBaseExtract:
         assert list(result.columns) == ["col_a", "col_b"]
 
     def test_extract_datasource_file_not_found(self):
-        from clinical_data_visualizer.datasource_base import DataSourceBase
+        from clinical_data_visualizer.datasource.base import DataSourceBase
 
         cls = _make_datasource_cls()
         cls._load_raw_dataframe.return_value = (None, None)
@@ -143,7 +143,7 @@ class TestDataSourceBaseExtract:
         cls._format.assert_not_called()
 
     def test_extract_datasource_saves_parquet(self, tmp_path):
-        from clinical_data_visualizer.datasource_base import DataSourceBase
+        from clinical_data_visualizer.datasource.base import DataSourceBase
 
         cls = _make_datasource_cls()
         df = _make_df()

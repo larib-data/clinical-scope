@@ -3,6 +3,8 @@ Timezone and time conversion utilities for clinical data processing.
 
 This module provides functions for converting time representations,
 shifting timestamps, and filtering data by time ranges.
+
+Also includes display formatting helpers that were previously in datasource_base.py.
 """
 
 import contextlib
@@ -188,3 +190,54 @@ def apply_timezone_to_dataframe(
 
     df.index = df.index.tz_localize(timezone)
     return df
+
+
+# ==================================================================================================
+# Display formatting helpers (moved from datasource_base.py)
+# ==================================================================================================
+
+_TS_FMT = "%y-%m-%d %H:%M:%S %Z"  # compact, 2-digit year, timezone abbreviation
+
+
+def fmt_ts(ts: object) -> str:
+    """Format a pandas Timestamp (or datetime-like) to a compact, human-readable string."""
+    try:
+        return ts.strftime(_TS_FMT).rstrip()
+    except Exception:  # noqa: BLE001
+        return str(ts)
+
+
+def _to_display_tz(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a shallow copy of *df* with its index converted to ``DISPLAY_TIMEZONE``.
+
+    Used in :meth:`DataSourceBase.inspect` so that reported timestamps match
+    the timezone shown in the Dash plots.  The copy is shallow (data arrays are
+    shared) so it is cheap even for wide, high-frequency DataFrames.
+    If the index is tz-naive or not a DatetimeIndex, *df* is returned unchanged.
+    """
+    if not (isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None):
+        return df
+    result = df.copy(deep=False)
+    result.index = df.index.tz_convert(cst.DISPLAY_TIMEZONE)
+    return result
+
+
+def _date_range(df: pd.DataFrame) -> tuple[str, str] | None:
+    """Return (compact_min, compact_max) of the DataFrame index, or None if empty."""
+    if df.empty:
+        return None
+    try:
+        return (fmt_ts(df.index.min()), fmt_ts(df.index.max()))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _first_last_timestamp(df: pd.DataFrame, col: str) -> tuple[str | None, str | None]:
+    """Return (first, last) compact timestamp strings for valid (non-NaN) values in a column."""
+    if col not in df.columns:
+        return None, None
+    valid_index = df.index[df[col].notna()]
+    if valid_index.empty:
+        return None, None
+    return fmt_ts(valid_index.min()), fmt_ts(valid_index.max())

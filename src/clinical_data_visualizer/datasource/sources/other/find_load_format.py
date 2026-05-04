@@ -5,9 +5,9 @@ from pathlib import Path
 import pandas as pd
 
 import clinical_data_visualizer.constants as cst
-import clinical_data_visualizer.other.options as options_naming
-from clinical_data_visualizer.datasource_base import DataSourceBase
-from clinical_data_visualizer.inspection import DataSourceInspection
+import clinical_data_visualizer.datasource.sources.other.options as options_naming
+from clinical_data_visualizer.datasource.base import DataSourceBase
+from clinical_data_visualizer.datasource.inspection import DataSourceInspection
 from clinical_data_visualizer.signal_container import (
     Signal,
 )

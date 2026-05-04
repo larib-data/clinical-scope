@@ -5,14 +5,14 @@ from pathlib import Path
 import pandas as pd
 
 from clinical_data_visualizer import constants as cst
-from clinical_data_visualizer import datasource_list
 from clinical_data_visualizer.dash_api.annotations.io import _load_annotations_from_path
 from clinical_data_visualizer.dash_api.annotations.model import Annotation
 from clinical_data_visualizer.database_options_parser import (
     normalize_database_options,
     warn_redundant_entries,
 )
-from clinical_data_visualizer.inspection import DataSourceInspection
+from clinical_data_visualizer.datasource import registry as datasource_list
+from clinical_data_visualizer.datasource.inspection import DataSourceInspection
 from clinical_data_visualizer.signal_container import (
     PlotGroup,
     PlotModel,
