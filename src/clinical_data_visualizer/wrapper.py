@@ -571,3 +571,75 @@ def load_annotations(path: str | Path) -> list[Annotation]:
         resolved_path = path / cst.ANNOTATION_FILE_NAME
 
     return _load_annotations_from_path(resolved_path)
+
+
+# ==================================================================================================
+# Load all annotations from a database folder
+# ==================================================================================================
+
+
+def load_database_annotations(database_folder: str | Path) -> list[Annotation]:
+    """
+    Load all annotations from every patient subfolder within *database_folder*.
+
+    Iterates over immediate subdirectories, calls :func:`load_annotations` for
+    each (which auto-detects the source type), and attaches the subdirectory name
+    as the ``patient`` attribute on every loaded annotation.
+
+    Returns a flat list of :class:`~clinical_data_visualizer.dash_api.annotations.model.Annotation`
+    with the ``patient`` field set.  Annotations from folders without
+    ``annotations.json`` (or with empty annotations) are simply skipped.
+
+    Args:
+        database_folder: Path to a directory whose immediate subdirectories
+            are patient data folders (each containing ``annotations.json`` or
+            ``cdv_visu/annotations.json``).
+
+    Returns:
+        Flat list of annotations with ``patient`` set to the subfolder name.
+        Returns an empty list when no subdirectories are found.
+
+    Examples:
+    --------
+    >>> from clinical_data_visualizer import load_database_annotations
+    >>> # Scan all patients under /data
+    >>> all_anns = load_database_annotations("/data")
+    >>> for ann in all_anns:
+    ...     print(f"{ann.patient}: {ann.label} ({ann.plot_name})")
+    >>> # Group by patient
+    >>> from collections import defaultdict
+    >>> by_patient = defaultdict(list)
+    >>> for ann in all_anns:
+    ...     by_patient[ann.patient].append(ann)
+
+    """
+    database_folder = Path(database_folder)
+
+    if not database_folder.is_dir():
+        logger.warning("Database folder does not exist or is not a directory: %s", database_folder)
+        return []
+
+    subdirectories = sorted(f for f in database_folder.iterdir() if f.is_dir())
+    if not subdirectories:
+        logger.warning("No patient subdirectories found in %s", database_folder)
+        return []
+
+    all_annotations: list[Annotation] = []
+
+    for patient_dir in subdirectories:
+        patient_name = patient_dir.name
+        annotations = load_annotations(patient_dir)
+
+        # Tag each annotation with the patient identifier
+        for annotation in annotations:
+            annotation.patient = patient_name
+
+        all_annotations.extend(annotations)
+
+    logger.info(
+        "Loaded %d annotation(s) from %d patient folder(s) in %s",
+        len(all_annotations),
+        len(subdirectories),
+        database_folder,
+    )
+    return all_annotations
