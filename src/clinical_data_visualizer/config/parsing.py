@@ -9,7 +9,7 @@ import json
 import logging
 from pathlib import Path
 
-from clinical_data_visualizer.database_options_parser import validate_database_options_structure
+from clinical_data_visualizer.database_options_parser import validate_database_options
 from clinical_data_visualizer.database_options_xlsx import xlsx_to_database_options
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,12 @@ def load_database_options_from_path(path: Path) -> dict:
         msg = f"Unsupported file extension '{suffix}'. Expected .json or .xlsx."
         raise ValueError(msg)
 
-    for w in validate_database_options_structure(db_options):
-        logger.warning("database_options validation: %s", w)
+    for issue in validate_database_options(db_options):
+        if issue.severity == "error":
+            logger.error("database_options [%s]: %s", issue.path, issue.message)
+        elif issue.severity == "warning":
+            logger.warning("database_options [%s]: %s", issue.path, issue.message)
+        else:
+            logger.info("database_options [%s]: %s", issue.path, issue.message)
 
     return db_options
