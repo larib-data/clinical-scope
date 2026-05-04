@@ -9,7 +9,7 @@ from clinical_data_visualizer.dash_api.annotations.io import _load_annotations_f
 from clinical_data_visualizer.dash_api.annotations.model import Annotation
 from clinical_data_visualizer.database_options_parser import (
     normalize_database_options,
-    warn_redundant_entries,
+    validate_database_options,
 )
 from clinical_data_visualizer.datasource import registry as datasource_list
 from clinical_data_visualizer.datasource.inspection import DataSourceInspection
@@ -28,6 +28,13 @@ def _resolve_database_options(database_options_global: dict | None) -> dict:
     if database_options_global is None:
         return datasource_list.generate_default_database_options()
     normalize_database_options(database_options_global)
+    for issue in validate_database_options(database_options_global):
+        if issue.severity == "error":
+            logger.error("database_options [%s]: %s", issue.path, issue.message)
+        elif issue.severity == "warning":
+            logger.warning("database_options [%s]: %s", issue.path, issue.message)
+        else:
+            logger.info("database_options [%s]: %s", issue.path, issue.message)
     return database_options_global
 
 
@@ -108,7 +115,6 @@ def main(
             progress_callback(proc_count, proc_total, name)
 
         database_options = database_options_global[name]
-        warn_redundant_entries(database_options, name)
 
         try:
             # (1) Create signals
@@ -316,7 +322,6 @@ def inspect(
             progress_callback(proc_count, proc_total, name)
 
         db_opts = database_options_global[name]
-        warn_redundant_entries(db_opts, name)
 
         datasource_cls = data_source.DATASOURCE_CLASS
         if datasource_cls is None:
@@ -447,7 +452,6 @@ def extract_patient(
             continue
 
         db_opts = database_options_global[name]
-        warn_redundant_entries(db_opts, name)
 
         datasource_cls = data_source.DATASOURCE_CLASS
         if datasource_cls is None:
