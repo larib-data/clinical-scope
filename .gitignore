@@ -34,7 +34,7 @@ logs/
 .ruff_cache/
 
 # Local testing and example
-example/example_patients/*/cdv_visu/*
+example/example_patients/*/clinical_scope_output/*
 LOCAL_SCRIPT/*
 
 # IA

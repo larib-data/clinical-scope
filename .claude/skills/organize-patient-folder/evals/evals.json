@@ -3,7 +3,7 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "I have a patient data folder at example/example_patients/Patient_full/ — all the datasource subfolders are there. Can you do a dry-run audit and tell me which folders are correctly named for ClinicalDataVisualizer and which are not? Don't move anything.",
+      "prompt": "I have a patient data folder at example/example_patients/Patient_full/ — all the datasource subfolders are there. Can you do a dry-run audit and tell me which folders are correctly named for ClinicalScope and which are not? Don't move anything.",
       "expected_output": "Correctly identifies standard folders (eit, philips_waves, philips_numerics, fluxmed_signals, fluxmed_parameters, servo_u, mindray_scope, syringe) as already in place, and flags Mindray_resp_waves and Mindray_resp_numerics as non-standard (wrong case/spelling vs expected mindray_respi_waves and mindray_respi_numerics). No files moved.",
       "files": [],
       "assertions": [
@@ -17,7 +17,7 @@
     },
     {
       "id": 2,
-      "prompt": "I have a folder at example/example_patients/ with multiple patients. Check if all patient subfolders are correctly organized for ClinicalDataVisualizer. Dry run only — no moves.",
+      "prompt": "I have a folder at example/example_patients/ with multiple patients. Check if all patient subfolders are correctly organized for ClinicalScope. Dry run only — no moves.",
       "expected_output": "Detects batch mode across Patient_full, Patient_difficult_format, etc. For each patient, identifies correctly-named vs non-standard datasource subfolders. Mindray_resp_* flagged as non-standard in patients where they appear.",
       "files": [],
       "assertions": [

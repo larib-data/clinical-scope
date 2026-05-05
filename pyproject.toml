@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clinical_data_visualizer"
-version = "0.2.0"
+name = "clinical-scope"
+version = "0.2.2"
 description = "Interactive visualization dashboard for clinical physiological signals"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -43,6 +43,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+# Default coverage target for clinical_scope package
+# Usage: pytest --cov=clinical_scope --cov-report=term-missing
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "snapshot: golden-file content regression tests (deselect with '-m \"not snapshot\"')",

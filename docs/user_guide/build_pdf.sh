@@ -7,7 +7,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INPUT="$SCRIPT_DIR/tutorial.md"
-OUTPUT="$SCRIPT_DIR/ClinicalDataVisualizer_UserGuide.pdf"
+OUTPUT="$SCRIPT_DIR/ClinicalScope_UserGuide.pdf"
 
 # Colors
 RED='\033[0;31m'

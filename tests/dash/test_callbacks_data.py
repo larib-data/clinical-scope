@@ -4,14 +4,14 @@ import json
 
 import pytest
 
-from clinical_data_visualizer.dash_api.callbacks.data_callbacks import (
+from clinical_scope.dash_api.callbacks.data_callbacks import (
     _build_inspection_content,
     _build_slider_marks,
     _parse_database_options_file,
     _status_badge,
     format_time_range,
 )
-from clinical_data_visualizer.datasource.inspection import ColumnInfo, DataSourceInspection
+from clinical_scope.datasource.inspection import ColumnInfo, DataSourceInspection
 
 # ---------------------------------------------------------------------------
 # _parse_database_options_file

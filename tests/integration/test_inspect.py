@@ -2,7 +2,7 @@
 
 import pytest
 
-from clinical_data_visualizer.datasource.inspection import (
+from clinical_scope.datasource.inspection import (
     ColumnInfo,
     DataSourceInspection,
     results_from_json,
@@ -10,7 +10,7 @@ from clinical_data_visualizer.datasource.inspection import (
     to_csv_string,
     to_text_summary,
 )
-from clinical_data_visualizer.wrapper import inspect
+from clinical_scope.wrapper import inspect
 
 
 @pytest.fixture(scope="module")

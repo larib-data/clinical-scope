@@ -6,7 +6,7 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from clinical_data_visualizer.database_options_xlsx import xlsx_bytes_to_database_options
+from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -464,7 +464,7 @@ class TestExampleFileRoundTrip:
         assert "global" in result
 
     def test_example_passes_validation(self):
-        from clinical_data_visualizer.database_options_parser import validate_database_options
+        from clinical_scope.database_options_parser import validate_database_options
 
         example = Path("example/option_files/example_database_options.xlsx")
         if not example.exists():

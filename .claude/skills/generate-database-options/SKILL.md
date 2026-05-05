@@ -23,11 +23,11 @@ Run the existing inspect script to get the full signal list:
 source /Users/alexis/Codes/clinical_visu_venv/bin/activate
 python scripts/inspect_patient_data.py <patient_folder> \
     [--database-options <existing_db_options_path>] \
-    --output-csv /tmp/cdv_inspection.csv \
+    --output-csv /tmp/clinical_scope_inspection.csv \
     --verbose
 ```
 
-Read `/tmp/cdv_inspection.csv`. Relevant columns: `datasource`, `status`, `raw_name`, `raw_point_count`.
+Read `/tmp/clinical_scope_inspection.csv`. Relevant columns: `datasource`, `status`, `raw_name`, `raw_point_count`.
 
 Skip any datasource row where `status != "ok"` or `raw_name` is empty.
 

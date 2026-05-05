@@ -3,12 +3,12 @@ import logging
 import sys
 from pathlib import Path
 
-from clinical_data_visualizer import logger_config, wrapper
-from clinical_data_visualizer.config.parsing import (
+from clinical_scope import logger_config, wrapper
+from clinical_scope.config.parsing import (
     build_patient_options,
     load_database_options_from_path,
 )
-from clinical_data_visualizer.signal_container import (
+from clinical_scope.signal_container import (
     PlotModel,
 )
 

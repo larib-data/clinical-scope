@@ -11,7 +11,7 @@ source <venv_path>/bin/activate
 
 ```bash
 # Set working directory
-cd ~/Codes/ClinicalDataVisualizer
+cd ~/Codes/ClinicalScope
 ```
 
 ### Run everything
@@ -36,7 +36,7 @@ pytest tests/unit/
 
 ### With coverage
 ```bash
-pytest --cov=clinical_data_visualizer --cov-report=term-missing
+pytest --cov=clinical_scope --cov-report=term-missing
 ```
 
 ## Snapshot (Golden-File) Tests

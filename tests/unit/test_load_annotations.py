@@ -3,7 +3,7 @@ Unit tests for the public load_annotations function in wrapper.py.
 
 Tests the auto-detection logic for the three source types:
 1. Direct JSON file (path ends in .json)
-2. cdv_visu folder (path name is "cdv_visu")
+2. clinical_scope_output folder (path name is "clinical_scope_output")
 3. Patient folder (any other path)
 """
 
@@ -16,9 +16,9 @@ from unittest.mock import patch
 
 import pytest
 
-from clinical_data_visualizer import load_annotations
-from clinical_data_visualizer.constants import ANNOTATION_KEY
-from clinical_data_visualizer.dash_api.annotations.model import (
+from clinical_scope import load_annotations
+from clinical_scope.constants import ANNOTATION_KEY
+from clinical_scope.dash_api.annotations.model import (
     Annotation,
     AnnotationType,
 )
@@ -68,7 +68,7 @@ class TestAutoDetection:
             json_path.write_text("[]")
 
             with patch(
-                "clinical_data_visualizer.wrapper._load_annotations_from_path",
+                "clinical_scope.wrapper._load_annotations_from_path",
                 return_value=[],
             ) as mock:
                 load_annotations(json_path)
@@ -76,20 +76,20 @@ class TestAutoDetection:
                 # Should load from the json_path directly, not json_path/annotations.json
                 mock.assert_called_once_with(json_path)
 
-    def test_cdv_visu_name_resolves_to_folder(self):
-        """Path whose name is 'cdv_visu' should be treated as a cdv_visu folder."""
+    def test_clinical_scope_output_name_resolves_to_folder(self):
+        """Path whose name is 'clinical_scope_output' should be treated as a clinical_scope_output folder."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            cdv_path = Path(tmpdir) / "cdv_visu"
-            cdv_path.mkdir()
+            output_path = Path(tmpdir) / "clinical_scope_output"
+            output_path.mkdir()
 
             with patch(
-                "clinical_data_visualizer.wrapper._load_annotations_from_path",
+                "clinical_scope.wrapper._load_annotations_from_path",
                 return_value=[],
             ) as mock:
-                load_annotations(cdv_path)
+                load_annotations(output_path)
 
-                # Should resolve to cdv_visu/annotations.json
-                mock.assert_called_once_with(cdv_path / "annotations.json")
+                # Should resolve to clinical_scope_output/annotations.json
+                mock.assert_called_once_with(output_path / "annotations.json")
 
     def test_other_path_resolves_to_patient_folder(self):
         """Any other path should be treated as a patient folder."""
@@ -98,7 +98,7 @@ class TestAutoDetection:
             patient_path.mkdir()
 
             with patch(
-                "clinical_data_visualizer.wrapper._load_annotations_from_path",
+                "clinical_scope.wrapper._load_annotations_from_path",
                 return_value=[],
             ) as mock:
                 load_annotations(patient_path)

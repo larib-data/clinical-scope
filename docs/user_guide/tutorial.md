@@ -1,6 +1,6 @@
 ---
-title: "Clinical Data Visualizer -- User Guide"
-author: "Clinical Data Visualizer Team"
+title: "Clinical Scope -- User Guide"
+author: "Clinical Scope Team"
 date: \today
 geometry: margin=2.5cm
 toc: true
@@ -18,7 +18,7 @@ header-includes:
 
 # Introduction
 
-Clinical Data Visualizer is an interactive dashboard for visualizing clinical physiological
+Clinical Scope is an interactive dashboard for visualizing clinical physiological
 signals. It allows clinicians and researchers to explore, compare, and annotate time-series data
 from multiple medical devices in a single unified interface.
 
@@ -51,7 +51,7 @@ typical signals — lives in Section 3: **Patient Data & Supported Data Sources*
 
 ## Starting the App
 
-Locate the **ClinicalDataVisualizer** executable in the application folder and double-click it.
+Locate the **ClinicalScope** executable in the application folder and double-click it.
 
 A terminal window will appear showing the application starting up. After a few seconds, your
 default web browser will automatically open at:
@@ -95,7 +95,7 @@ Each patient's data must be organized in a root folder with **one subfolder per 
 The application automatically identifies data sources based on keywords in subfolder names.
 
 You only need subfolders for the data sources you actually have — empty or missing
-subfolders are silently skipped. The `cdv_visu/` subfolder is created automatically the
+subfolders are silently skipped. The `clinical_scope_output/` subfolder is created automatically the
 first time you process a patient. It contains annotations, `.html` visualizations, formatted data.
 
 ## Example Folder Layouts
@@ -111,7 +111,7 @@ Patient1/
   fluxmed_parameters/
   servo_u/
   syringe/
-  cdv_visu/               ← auto-created,
+  clinical_scope_output/               ← auto-created,
 ```
 
 A minimal setup:
@@ -119,7 +119,7 @@ A minimal setup:
 ```
 Patient1/
   philips_waves/
-  cdv_visu/
+  clinical_scope_output/
 ```
 
 An **"Other"-heavy** setup — drop any CSV/Parquet file with a datetime column into
@@ -132,7 +132,7 @@ Patient1/
     waves.parquet         → configured under "other::waves"
     numerics.csv          → configured under "other::numerics"
     syringe_log.csv       → configured under "other::syringe_log"
-  cdv_visu/
+  clinical_scope_output/
 ```
 
 ## Folder Naming Rules
@@ -253,7 +253,7 @@ accepted:
 This gives you full control over which sources are enabled and how each signal is displayed.
 
 When the upload succeeds the file is **cached locally** at
-`~/.clinical_data_visualizer/last_database_options.json` — this is what powers Option 2 below.
+`~/.clinical_scope/last_database_options.json` — this is what powers Option 2 below.
 Such a database option file should only contains signal metadata (labels, colors, units, field mappings) and no patient data or PHI, to ensure no sensitive information is cached and so leaves the original patient folder.
 
 ## Option 2: Reload Last Config (Daily Workflow)
@@ -289,7 +289,7 @@ These apply to all data sources:
 | **Path to data (folder)** | Full path to the patient's root data folder |
 | **Time start filter** | Start of the time window to display (format: `YYYY-MM-DD HH:MM:SS`). Leave empty to use all available data. |
 | **Time end filter** | End of the time window to display. Leave empty to use all available data. |
-| **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `cdv_visu/` folder, significantly speeding up subsequent loads. **Un-tick** if raw patient data has been modified |
+| **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `clinical_scope_output/` folder, significantly speeding up subsequent loads. **Un-tick** if raw patient data has been modified |
 
 ![Global patient options](images/GlobalPatientOptions.png){ width=100% }
 
@@ -330,7 +330,7 @@ Click the large orange **"Process visualization"** button to generate the plots.
 3. **Data Loading**: Raw data files are parsed according to each source's format.
 4. **Formatting**: Signals are filtered, resampled, and converted using your database options
    (labels, units, time range).
-5. **Caching**: Processed data is saved as `.parquet` files in the `cdv_visu/` subfolder for
+5. **Caching**: Processed data is saved as `.parquet` files in the `clinical_scope_output/` subfolder for
    faster reloading next time. Tick **"Re-use data if already loaded once"** (`quick_load`) to
    skip raw parsing on subsequent runs and read the cache instead.
 6. **Plot Generation**: Interactive Plotly figures are created and displayed in the visualization
@@ -473,16 +473,16 @@ patient.
 Annotations can be loaded programmatically for analysis:
 
 ```python
-from clinical_data_visualizer import load_annotations, load_database_annotations
+from clinical_scope import load_annotations, load_database_annotations
 
-# Single patient — accepts a JSON file, a cdv_visu/ folder, or a patient folder
+# Single patient — accepts a JSON file, a clinical_scope_output/ folder, or a patient folder
 annotations = load_annotations("/data/Patient01")
 
 # Whole database — scans all patient sub-folders and sets ann.patient on each result
 all_anns = load_database_annotations("/data")
 ```
 
-![Annotations tools](images/AnnotationsButtons.png){ width=100% }
+![Annotations tools](images/Annotations.png){ width=100% }
 
 \newpage
 
@@ -490,7 +490,7 @@ all_anns = load_database_annotations("/data")
 
 ## patient_options.json
 
-This file defines patient-specific settings. It is automatically saved to the `cdv_visu/`
+This file defines patient-specific settings. It is automatically saved to the `clinical_scope_output/`
 subfolder each time you click "Process visualization".
 
 ```json
@@ -513,13 +513,13 @@ subfolder each time you click "Process visualization".
 | `data_folder` | string | — | Path to the patient's root data folder (required) |
 | `datetime_start` | string or null | null | Start of the time window (`YYYY-MM-DD HH:MM:SS`). Leave empty to use all available data. |
 | `datetime_end` | string or null | null | End of the time window. Leave empty to use all available data. |
-| `quick_load` | boolean | false | Reuse previously cached `.parquet` files in `cdv_visu/` |
+| `quick_load` | boolean | false | Reuse previously cached `.parquet` files in `clinical_scope_output/` |
 | `<source_name>` | object | — | Per-source options block (e.g., `time_shift`, `day`) |
 
 ## database_options.json {#database_optionsjson}
 
 This file controls which data sources are active and how each signal is displayed. A snapshot is
-automatically saved to `cdv_visu/database_options.json` each time you click
+automatically saved to `clinical_scope_output/database_options.json` each time you click
 "Process visualization".
 
 ### Top-Level Structure
@@ -786,7 +786,7 @@ If the visualization is empty or a data source shows no signals:
 Large datasets may take time to load on the first run. To speed up subsequent loads:
 
 - Enable the **"Re-use data if already loaded once"** (quick_load) option. This uses the cached
-  `.parquet` files in `cdv_visu/` instead of re-reading raw data files.
+  `.parquet` files in `clinical_scope_output/` instead of re-reading raw data files.
 
 ## Time Alignment Issues
 

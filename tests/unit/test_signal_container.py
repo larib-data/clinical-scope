@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import pytest
 
-from clinical_data_visualizer.signal_container import (
+from clinical_scope.signal_container import (
     PlotGroup,
     PlotModel,
     PlotOptions,

@@ -1,4 +1,4 @@
-# Clinical Data Visualizer
+# Clinical Scope
 
 Interactive visualization dashboard for clinical physiological signals built with Dash/Plotly.
 
@@ -16,7 +16,7 @@ pip install -e .
 
 ### Dash Web Application (Interactive)
 ```bash
-python src/clinical_data_visualizer/dash_api/core_api.py
+python src/clinical_scope/dash_api/core_api.py
 ```
 Opens at http://127.0.0.1:8050
 
@@ -40,7 +40,7 @@ datasources with their defaults.
 ## Project Structure
 
 ```
-src/clinical_data_visualizer/
+src/clinical_scope/
 ├── dash_api/               # Dash web application
 │   ├── core_api.py         # Main entry point, layout definition
 │   ├── ui_components.py    # UI component builders
@@ -80,7 +80,7 @@ src/clinical_data_visualizer/
 ### Supported Data Sources
 
 > Canonical doc: `docs/user_guide/tutorial.md` → *Patient Data & Supported Data Sources*.
-> Live registry: `src/clinical_data_visualizer/datasource/registry.py::DataSource.AVAILABLE`.
+> Live registry: `src/clinical_scope/datasource/registry.py::DataSource.AVAILABLE`.
 
 - `philips_waves` — Philips waveform data (high-frequency signals).
 - `philips_numerics` — Philips numeric/parameter data.
@@ -113,7 +113,7 @@ See `example/option_files/` for reference configurations.
 ### Local Config Cache
 When a custom `database_options` file (JSON or XLSX) is successfully uploaded via the UI, it is automatically saved to:
 ```
-~/.clinical_data_visualizer/last_database_options.json
+~/.clinical_scope/last_database_options.json
 ```
 On next app start, a **"Reload last config"** button (grey) appears in the Database Options section, allowing one-click restore.
 
@@ -226,7 +226,7 @@ step (module, options, loader, registration, example data, tests, snapshots, doc
 the exact patterns used by the existing sources. The summary below is for quick reference only —
 follow the skill for real work.
 
-1. Create a new module under `src/clinical_data_visualizer/datasource/sources/<source_name>/` (`__init__.py`,
+1. Create a new module under `src/clinical_scope/datasource/sources/<source_name>/` (`__init__.py`,
    `options.py`, `find_load_format.py`).
 2. `options.py` must define `DATASOURCE_NAME`, `EXPECTED_FOLDER_NAME`, `FOLDER_KEYWORDS`,
    `FILE_KEYWORDS`, `FILE_EXTENSIONS` (ordered by preference), `MULTI_FILE`,
@@ -261,11 +261,11 @@ All three share `find → load → format` and diverge only at signal extraction
 - **Visualization** (`wrapper.main`) — build `Signal`s → `PlotGroup`s → `PlotModel`s → figures.
 - **Extraction only** (`wrapper.extract_patient` / `batch_extract` / `extract_datasource`) —
   stop at `format`, return the formatted DataFrame(s). Uses `save_path`/`save_folder` for
-  explicit output; independent of the in-patient `cdv_visu/` cache.
+  explicit output; independent of the in-patient `clinical_scope_output/` cache.
 - **Inspection** (`wrapper.inspect`) — stop at `format`, return a `list[DataSourceInspection]`
   describing columns, point counts, and time ranges. `OtherDataSource.inspect()` returns **one
   entry per file** (named `other::<stem>`); the wrapper handles both single and list returns.
-- **Python API**: `from clinical_data_visualizer import extract_datasource, extract_patient, batch_extract`.
+- **Python API**: `from clinical_scope import extract_datasource, extract_patient, batch_extract`.
 
 ## Building / Deployment
 
@@ -274,14 +274,14 @@ The app can be packaged as a standalone executable using PyInstaller.
 ### Quick Build
 ```bash
 # From project root, with venv activated
-./src/clinical_data_visualizer/build_info/build.sh
+./src/clinical_scope/build_info/build.sh
 ```
 
 ### Build Output
-- Executable: `builded_app/macOS_arm/ClinicalDataVisualizer/`
-- Spec file: `src/clinical_data_visualizer/build_info/core_api.spec`
+- Executable: `builded_app/macOS_arm/ClinicalScope/`
+- Spec file: `src/clinical_scope/build_info/core_api.spec`
 
-See `src/clinical_data_visualizer/build_info/README.md` for detailed instructions.
+See `src/clinical_scope/build_info/README.md` for detailed instructions.
 
 ## Logs
 

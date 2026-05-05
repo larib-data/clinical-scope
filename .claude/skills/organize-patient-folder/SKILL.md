@@ -1,11 +1,11 @@
 ---
 name: organize-patient-folder
-description: Organize files in a folder into the correct ClinicalDataVisualizer patient folder structure — one subfolder per datasource. Use this skill whenever the user wants to restructure a patient data folder, prepare a dump of clinical data files for use with the library, sort mixed files into datasource subfolders, or set up a new patient directory. Trigger on phrases like "organize patient folder", "restructure patient data", "prepare folder for ClinicalDataVisualizer", "sort my clinical files", "set up patient structure", or any request to move clinical data files into proper named subfolders.
+description: Organize files in a folder into the correct ClinicalScope patient folder structure — one subfolder per datasource. Use this skill whenever the user wants to restructure a patient data folder, prepare a dump of clinical data files for use with the library, sort mixed files into datasource subfolders, or set up a new patient directory. Trigger on phrases like "organize patient folder", "restructure patient data", "prepare folder for ClinicalScope", "sort my clinical files", "set up patient structure", or any request to move clinical data files into proper named subfolders.
 ---
 
 # Organize Patient Folder Skill
 
-Reorganize files in a user-provided folder into the correct `ClinicalDataVisualizer` patient structure: one subfolder per datasource, each named so the library can auto-discover it.
+Reorganize files in a user-provided folder into the correct `ClinicalScope` patient structure: one subfolder per datasource, each named so the library can auto-discover it.
 
 The expected structure is:
 ```
@@ -14,7 +14,7 @@ Patient01/
 ├── fluxmed_signals/
 ├── servo_u/
 ├── other/                  ← catch-all for unclassifiable files
-└── cdv_visu/               ← cache folder (auto-created by the library, never touch)
+└── clinical_scope_output/               ← cache folder (auto-created by the library, never touch)
 ```
 
 ## Step 0 — Gather context
@@ -32,7 +32,7 @@ Run this to get the authoritative datasource list (folder keywords, file keyword
 ```bash
 source /Users/alexis/Codes/clinical_visu_venv/bin/activate && python3 - <<'EOF'
 import json
-from clinical_data_visualizer.datasource_list import DataSource
+from clinical_scope.datasource_list import DataSource
 
 result = []
 for ds in DataSource.AVAILABLE:
@@ -51,7 +51,7 @@ EOF
 
 Save this output — it is the ground truth for all classification decisions. Never hardcode datasource names: always use this live data so newly added datasources are automatically supported.
 
-If the venv import fails (library not installed), fall back to reading each `src/clinical_data_visualizer/*/options.py` directly and extracting the constants manually.
+If the venv import fails (library not installed), fall back to reading each `src/clinical_scope/*/options.py` directly and extracting the constants manually.
 
 ## Step 2 — Detect scope and scan files
 
@@ -62,7 +62,7 @@ If the venv import fails (library not installed), fall back to reading each `src
 Confirm the detected mode with the user before scanning.
 
 **Scan**: For each patient folder (one in single mode, N in batch mode), recursively list all files, building a flat list of absolute paths. Exclude:
-- Anything inside `cdv_visu/` — this is the library cache, never touch it
+- Anything inside `clinical_scope_output/` — this is the library cache, never touch it
 - Hidden files and folders (names starting with `.`)
 
 ## Step 3 — Classify each file
@@ -160,7 +160,7 @@ Done. Copied/Moved N files into M datasource folders.
 After organizing, suggest:
 - **Inspect signals**: `python scripts/inspect_patient_data.py <patient_folder> --verbose`
 - **Generate database options**: use the `generate-database-options` skill
-- **Run the app**: `python src/clinical_data_visualizer/dash_api/core_api.py` and load the folder
+- **Run the app**: `python src/clinical_scope/dash_api/core_api.py` and load the folder
 
 ---
 
@@ -186,7 +186,7 @@ The classification logic in Steps 2–4 must always be driven by the live output
 
 - **Batch mode**: process each patient subfolder independently, showing one confirmation plan per patient.
 - **Files already in correctly named subfolders**: report as "already in place", never move them.
-- **`cdv_visu/`**: always skip, never modify — it is the library's internal cache.
+- **`clinical_scope_output/`**: always skip, never modify — it is the library's internal cache.
 - **No files found**: report and exit gracefully.
 - **Permission errors**: report the offending file and skip it; continue with the rest.
 - **`.txt` ambiguity between fluxmed_signals and fluxmed_parameters**: use filename keyword scoring (`parameters` vs `signal`/`signals`). If still tied, ask the user.

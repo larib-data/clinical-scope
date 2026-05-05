@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from clinical_data_visualizer.wrapper import batch_extract, extract_datasource, extract_patient
+from clinical_scope.wrapper import batch_extract, extract_datasource, extract_patient
 
 
 class TestExtractDatasource:

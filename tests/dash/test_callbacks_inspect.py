@@ -1,7 +1,7 @@
 """Tests for Dash inspection callback helpers with real data."""
 
-from clinical_data_visualizer.dash_api.callbacks.data_callbacks import _build_inspection_content
-from clinical_data_visualizer.wrapper import inspect
+from clinical_scope.dash_api.callbacks.data_callbacks import _build_inspection_content
+from clinical_scope.wrapper import inspect
 
 
 class TestBuildInspectionWithRealData:
