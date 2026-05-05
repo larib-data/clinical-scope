@@ -430,42 +430,57 @@ This keeps the interface responsive even with millions of data points.
 
 # Annotations
 
-The annotation system lets you mark events, time periods, or regions of interest directly on the
-plots. Annotations are saved to an `annotations.json` file in the `cdv_visu/` folder and persist
-across sessions.
+The annotation system lets you mark events, time windows, or individual points directly on the
+plots. Annotations are saved to `annotations.json` in the patient folder and persist across
+sessions.
 
-## Drawing Annotations
+## Annotation Toolbar
 
-Use the Plotly drawing tools in each plot's toolbar:
+After a successful visualization, the **annotation toolbar** appears above the plots. It contains:
 
-- **Draw Line**: Click two points to draw a vertical line marking a specific event.
-- **Draw Rectangle**: Click and drag to highlight a time region or value range.
+- **Type buttons** — select the annotation type to place next: *Time Event*, *Time Window*, or *Point*.
+- **New Group** — create a named group to organise related annotations.
+- **Active group display** — shows which group new annotations will belong to.
+- **Save** — writes all annotations to disk.
+- **Exit mode** — visible while a type is active; click to stop placing annotations without saving.
 
-Each annotations can be given a name and a color via the edit popup that appears after drawing.
+## Annotation Types
 
-## Annotations Management
+| Type | Description | Supported plots |
+|---|---|---|
+| **Time Event** | Vertical line marking a single instant | Time-axis plots only |
+| **Time Window** | Shaded region spanning a time range | Time-axis plots only |
+| **Point** | Dot marker at a specific (x, y) location | All plots including loop plots |
 
-After processing, the **Annotation Controls** section becomes visible below the Process button:
+Click a type button to activate it, then click (or click-and-drag for Time Window) on a plot.
+A creation modal appears where you can set a **label** and **color** before confirming.
 
-- **Annotations Dropdown**: Lists all annotations across all figures, showing the annotations
-  label.
-- **Modify Button**: Opens the edit popup for the selected annotation (change name, color, or
-  whether it spans all subplots).
-- **Delete Button**: Removes the selected annotation.
+## Groups
 
-## Annotation Properties
-
-Each annotation has the following properties:
-
-- **Name**: A text label displayed on the annotation.
-- **Color**: The line or fill color.
-- **Global**: When enabled, the annotation spans all subplots in the figure (using paper y-coordinates).
+Annotations can be organised into named groups. Click **New Group**, enter a name, and all
+subsequent annotations will belong to that group until you switch or create another. Groups are
+a runtime concept — they are not persisted in `annotations.json`; instead each annotation stores
+its `group_id` and `group_name` inline.
 
 ## Persistence
 
-Annotations are automatically saved to `annotations.json` in the patient's `cdv_visu/` folder
-whenever you create, modify, or delete an annotation. They are reloaded when you re-process the same
-patient data.
+Click **Save** to write annotations to `annotations.json` in the patient data folder (next to the
+datasource sub-folders). Annotations are reloaded automatically when you re-process the same
+patient.
+
+## Python API
+
+Annotations can be loaded programmatically for analysis:
+
+```python
+from clinical_data_visualizer import load_annotations, load_database_annotations
+
+# Single patient — accepts a JSON file, a cdv_visu/ folder, or a patient folder
+annotations = load_annotations("/data/Patient01")
+
+# Whole database — scans all patient sub-folders and sets ann.patient on each result
+all_anns = load_database_annotations("/data")
+```
 
 ![Annotations tools](images/AnnotationsButtons.png){ width=100% }
 
