@@ -2,7 +2,7 @@
 
 import pytest
 
-from clinical_data_visualizer.datasource.registry import DataSource
+from clinical_scope.datasource.registry import DataSource
 
 # ---------------------------------------------------------------------------
 # Helper to get the DataSourceBase subclass by name

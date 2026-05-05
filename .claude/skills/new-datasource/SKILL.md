@@ -1,11 +1,11 @@
 ---
 name: new-datasource
-description: Add a brand-new data source module to the ClinicalDataVisualizer project. Use this skill whenever the user wants to integrate a new medical device, file format, or signal source into the pipeline — including creating the module folder, options, loading logic, registration, default database_options, tests, and example data. Trigger on phrases like "add a datasource", "new data source", "integrate X device data", "support a new file format", or any request to create a datasource from scratch.
+description: Add a brand-new data source module to the ClinicalScope project. Use this skill whenever the user wants to integrate a new medical device, file format, or signal source into the pipeline — including creating the module folder, options, loading logic, registration, default database_options, tests, and example data. Trigger on phrases like "add a datasource", "new data source", "integrate X device data", "support a new file format", or any request to create a datasource from scratch.
 ---
 
 # New Datasource Skill
 
-Guide the user through adding a complete, production-ready datasource module to the ClinicalDataVisualizer project. The goal is to produce code that follows the exact same patterns as the existing 11 datasources — consistent style, proper registration, full test coverage.
+Guide the user through adding a complete, production-ready datasource module to the ClinicalScope project. The goal is to produce code that follows the exact same patterns as the existing 11 datasources — consistent style, proper registration, full test coverage.
 
 ## Step 0 — Gather context
 
@@ -53,7 +53,7 @@ Print a short summary for the user: file format, N columns found, datetime handl
 
 ## Step 2 — Create the datasource module
 
-Create three files under `src/clinical_data_visualizer/<datasource_name>/`:
+Create three files under `src/clinical_scope/<datasource_name>/`:
 
 ### 2a. `__init__.py`
 
@@ -64,7 +64,7 @@ Empty file (or single-line docstring).
 Use this template — fill in from the user's answers and data inspection:
 
 ```python
-import clinical_data_visualizer.constants as cst
+import clinical_scope.constants as cst
 
 DATASOURCE_NAME = "<datasource_name>"
 EXPECTED_FOLDER_NAME = "<datasource_name>"
@@ -140,9 +140,9 @@ from pathlib import Path
 
 import pandas as pd
 
-import clinical_data_visualizer.datasource.sources.<datasource_name>.options as options_naming
-from clinical_data_visualizer.datasource.base import DataSourceBase
-from clinical_data_visualizer.datasource.timing import time_it
+import clinical_scope.datasource.sources.<datasource_name>.options as options_naming
+from clinical_scope.datasource.base import DataSourceBase
+from clinical_scope.datasource.timing import time_it
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +197,7 @@ Critical patterns:
 - Override `_format()` only if post-load transformations are needed beyond timezone/timeshift/datetime-filter (which the base class already does).
 - The module-level `main()` function is required — it's the entry point called by the registry.
 - For **empty data**, return `pd.DataFrame(index=pd.DatetimeIndex([], tz=<tz>))` — never a plain `pd.DataFrame()`.
-- Use `@time_it` decorator on `_load()` for performance logging (import from `clinical_data_visualizer.datasource.timing`).
+- Use `@time_it` decorator on `_load()` for performance logging (import from `clinical_scope.datasource.timing`).
 
 ### Starting-point adaptations
 
@@ -212,11 +212,11 @@ Inspect the raw files thoroughly. Write `_load()` based on what you find. Print 
 
 ## Step 3 — Register the datasource
 
-Edit `src/clinical_data_visualizer/datasource/registry.py`:
+Edit `src/clinical_scope/datasource/registry.py`:
 
 1. **Add the import** (alphabetical among existing imports):
    ```python
-   from clinical_data_visualizer.datasource.sources.<datasource_name> import find_load_format as _<datasource_name>
+   from clinical_scope.datasource.sources.<datasource_name> import find_load_format as _<datasource_name>
    ```
 
 2. **Add the inner class** inside `class DataSource:` (place it before `Other`, which should stay last):
@@ -372,7 +372,7 @@ Run these checks in order:
 
 ### 6a. Import check
 ```bash
-python -c "from clinical_data_visualizer.datasource.registry import DataSource; print([d.NAME for d in DataSource.AVAILABLE])"
+python -c "from clinical_scope.datasource.registry import DataSource; print([d.NAME for d in DataSource.AVAILABLE])"
 ```
 Confirm the new datasource appears in the list.
 
@@ -390,8 +390,8 @@ No regressions in other datasources.
 
 ### 6d. Lint
 ```bash
-ruff check src/clinical_data_visualizer/datasource/sources/<datasource_name>/
-ruff format --check src/clinical_data_visualizer/datasource/sources/<datasource_name>/
+ruff check src/clinical_scope/datasource/sources/<datasource_name>/
+ruff format --check src/clinical_scope/datasource/sources/<datasource_name>/
 ```
 
 ### 6e. Quick smoke test with the inspect script
@@ -450,10 +450,10 @@ enumerate all datasources, add the new datasource entry there too (even if just 
 
 Print this checklist when done so the user can verify:
 
-- [ ] `src/clinical_data_visualizer/datasource/sources/<name>/__init__.py` — created
-- [ ] `src/clinical_data_visualizer/datasource/sources/<name>/options.py` — created
-- [ ] `src/clinical_data_visualizer/datasource/sources/<name>/find_load_format.py` — created
-- [ ] `src/clinical_data_visualizer/datasource/registry.py` — import added, inner class added, AVAILABLE updated
+- [ ] `src/clinical_scope/datasource/sources/<name>/__init__.py` — created
+- [ ] `src/clinical_scope/datasource/sources/<name>/options.py` — created
+- [ ] `src/clinical_scope/datasource/sources/<name>/find_load_format.py` — created
+- [ ] `src/clinical_scope/datasource/registry.py` — import added, inner class added, AVAILABLE updated
 - [ ] `example/example_patients/Patient_full/<folder>/` — example data added
 - [ ] `tests/datasource/conftest.py` — fixture added
 - [ ] `tests/datasource/test_<name>.py` — created

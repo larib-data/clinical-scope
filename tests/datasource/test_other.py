@@ -7,7 +7,7 @@ It has a custom main() that processes files individually rather than using _load
 
 import pytest
 
-from clinical_data_visualizer.database_options_parser import normalize_database_options
+from clinical_scope.database_options_parser import normalize_database_options
 
 
 class TestFind:
@@ -44,7 +44,7 @@ class TestMainPipeline:
             "datetime_end": None,
             "quick_load": False,
         }
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         signals = ds.MAIN_MODULE(patient_options, {})
@@ -58,7 +58,7 @@ class TestMainPipeline:
             "datetime_end": None,
             "quick_load": False,
         }
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         signals = ds.MAIN_MODULE(patient_options, {})
@@ -100,7 +100,7 @@ class TestFieldDisplayFiltering:
 
     def test_per_file_field_display_limits_signals(self, patient_difficult_path):
         """Only the listed columns are returned when per-file field_display is set."""
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         patient_options = {**PATIENT_OPTIONS, "data_folder": str(patient_difficult_path)}
@@ -119,7 +119,7 @@ class TestFieldDisplayFiltering:
 
     def test_no_field_display_returns_all_columns(self, patient_difficult_path):
         """When no field_display is configured, all numeric columns are returned."""
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         patient_options = {**PATIENT_OPTIONS, "data_folder": str(patient_difficult_path)}
@@ -135,7 +135,7 @@ class TestSignalOptionApplication:
     """Signal options (label, unit, color, range) are applied from database_options."""
 
     def _run_main(self, patient_difficult_path, db_opts):
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         patient_options = {**PATIENT_OPTIONS, "data_folder": str(patient_difficult_path)}
@@ -173,7 +173,7 @@ class TestGroupedFields:
     """Per-file grouped_fields from other::filename section are injected into database_options."""
 
     def _run_main_and_get_db_opts(self, patient_difficult_path, global_db_opts):
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         patient_options = {**PATIENT_OPTIONS, "data_folder": str(patient_difficult_path)}
@@ -200,7 +200,7 @@ class TestGroupedFields:
 
     def test_group_by_file_creates_auto_group(self, patient_difficult_path):
         """When group_by_file=True (default) and no custom groups, file stem is the group name."""
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         patient_options = {
@@ -216,7 +216,7 @@ class TestGroupedFields:
 
     def test_group_by_file_false_no_auto_group(self, patient_difficult_path):
         """When group_by_file=False, no grouped_fields are injected."""
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         patient_options = {
@@ -242,7 +242,7 @@ class TestLoopConfig:
             }
         }
         normalize_database_options(db_opts)
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         patient_options = {**PATIENT_OPTIONS, "data_folder": str(patient_difficult_path)}
@@ -295,7 +295,7 @@ class TestTimezone:
     """Timezone is applied via additional_informations.timezone in database_options."""
 
     def _run_main(self, patient_difficult_path, db_opts):
-        from clinical_data_visualizer.datasource.registry import DataSource
+        from clinical_scope.datasource.registry import DataSource
 
         ds = DataSource.get_subclass_by_name("other")
         patient_options = {**PATIENT_OPTIONS, "data_folder": str(patient_difficult_path)}

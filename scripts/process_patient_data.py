@@ -28,9 +28,9 @@ import logging
 import sys
 from pathlib import Path
 
-import clinical_data_visualizer.constants as cst
-from clinical_data_visualizer import logger_config, wrapper
-from clinical_data_visualizer.config.parsing import (
+import clinical_scope.constants as cst
+from clinical_scope import logger_config, wrapper
+from clinical_scope.config.parsing import (
     build_patient_options,
     load_database_options_from_path,
 )

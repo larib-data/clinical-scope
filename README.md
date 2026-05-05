@@ -1,4 +1,4 @@
-# Clinical Data Visualizer
+# Clinical Scope
 
 Interactive visualization dashboard for clinical physiological signals built with Dash.
 
@@ -37,7 +37,7 @@ pip install -e .
 
 Run the Dash application:
 ```bash
-python src/clinical_data_visualizer/dash_api/core_api.py
+python src/clinical_scope/dash_api/core_api.py
 ```
 
 The application will open in your browser at `http://127.0.0.1:8050`.
@@ -80,12 +80,12 @@ section *Processing the Visualization → Inspect Data* for details.
 When a custom configuration file is uploaded successfully, it is automatically saved to:
 
 ```
-~/.clinical_data_visualizer/last_database_options.json
+~/.clinical_scope/last_database_options.json
 ```
 
 **What this file should contains:** signal metadata only — display names, units, colors, field mappings, and groupings. **DO NOT include any patient data, file paths.**
 
-To delete the cache, simply remove the file or the `~/.clinical_data_visualizer/` folder.
+To delete the cache, simply remove the file or the `~/.clinical_scope/` folder.
 
 ## Patient Data Folder Organization
 
@@ -106,7 +106,7 @@ Patient1/                        # Root patient folder (configure in patient_opt
 ├── mindray_respi_numerics/      # Mindray respiratory parameters (.parquet or .csv)
 ├── syringe/                     # Syringe pump data
 ├── other/                       # Generic data (.csv or .parquet files)
-└── cdv_visu/                    # Auto-generated: cached data and outputs
+└── clinical_scope_output/                    # Auto-generated: cached data and outputs
 ```
 
 ### Data Source Folder Names
@@ -152,7 +152,7 @@ entry keyed by its stem (`other::<stem>` in `database_options`), so `waves.parqu
 ### Notes
 
 - **Only include folders for available data sources** - empty folders are fine but not required
-- The `cdv_visu/` folder is automatically created for caching processed data (`.parquet` files) and visualization outputs
+- The `clinical_scope_output/` folder is automatically created for caching processed data (`.parquet` files) and visualization outputs
 - Using the recommended names provides the best performance (exact match is checked first)
 
 ### Example
@@ -166,7 +166,7 @@ If you only have Philips waves and EIT data:
 ├── eit/
 │   ├── recording_001.asc
 │   └── recording_002.asc
-└── cdv_visu/              # Created automatically
+└── clinical_scope_output/              # Created automatically
     ├── philips_waves.parquet
     └── eit.parquet
 ```
@@ -175,15 +175,15 @@ If you only have Philips waves and EIT data:
 
 The library provides three layered functions for preprocessing patient data (running
 find → load → format) without opening the Dash UI.  Raw parquet caches are always
-written to `<data_folder>/cdv_visu/` automatically.  Pass `save_folder` to also save
+written to `<data_folder>/clinical_scope_output/` automatically.  Pass `save_folder` to also save
 the formatted output.
 
 ### Python API
 
 ```python
 from pathlib import Path
-from clinical_data_visualizer import extract_datasource, extract_patient, batch_extract
-from clinical_data_visualizer.helper import load_database_options_from_path
+from clinical_scope import extract_datasource, extract_patient, batch_extract
+from clinical_scope.helper import load_database_options_from_path
 
 db_options = load_database_options_from_path(Path("example/option_files/database_options.json"))
 
@@ -248,7 +248,7 @@ Use `--patient-options opts.json` to pass datetime range, time shift, quick_load
 ## Project Structure
 
 ```
-src/clinical_data_visualizer/
+src/clinical_scope/
 ├── dash_api/               # Dash web application
 │   ├── core_api.py         # Main entry point, layout definition
 │   ├── ui_components.py    # UI component builders

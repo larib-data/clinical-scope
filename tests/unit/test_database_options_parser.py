@@ -1,6 +1,6 @@
 """Unit tests for database_options_parser.py."""
 
-from clinical_data_visualizer.database_options_parser import (
+from clinical_scope.database_options_parser import (
     ValidationIssue,
     validate_database_options,
 )
