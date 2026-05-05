@@ -6,6 +6,8 @@ import pandas as pd
 
 from clinical_data_visualizer import constants as cst
 from clinical_data_visualizer import datasource_list
+from clinical_data_visualizer.dash_api.annotations.io import _load_annotations_from_path
+from clinical_data_visualizer.dash_api.annotations.model import Annotation
 from clinical_data_visualizer.database_options_parser import (
     normalize_database_options,
     warn_redundant_entries,
@@ -516,3 +518,128 @@ def batch_extract(
 
     logger.info("📦 Batch complete: %d folder(s) processed.", len(batch_results))
     return batch_results
+
+
+# ==================================================================================================
+# Annotation loading — multi-source entry point
+# ==================================================================================================
+
+
+def load_annotations(path: str | Path) -> list[Annotation]:
+    """
+    Load annotations from a JSON file, auto-detecting the source type.
+
+    The path is interpreted as follows:
+
+    1. **Ends with ``.json``** — treated as a direct JSON file path.
+    2. **Ends with ``cdv_visu``** — treated as a ``cdv_visu/`` folder;
+       annotations are loaded from ``<path>/annotations.json``.
+    3. **Any other path** — treated as a patient folder;
+       annotations are loaded from ``<path>/annotations.json``.
+
+    Returns an empty list when the file does not exist or cannot be parsed.
+    The file must contain a JSON dict with a list from key ``"annotations"`` key
+    (e.g. ``{"annotations": [...]}``).
+
+    Args:
+        path: Path to a JSON file, a ``cdv_visu/`` folder, or a patient folder.
+
+    Returns:
+        List of :class:`~clinical_data_visualizer.dash_api.annotations.model.Annotation`.
+
+    Examples:
+    --------
+    >>> from clinical_data_visualizer import load_annotations
+    >>> # Direct JSON file
+    >>> annotations = load_annotations("/path/to/annotations.json")
+    >>> # cdv_visu folder
+    >>> annotations = load_annotations("/data/Patient01/cdv_visu")
+    >>> # Patient folder (standard layout)
+    >>> annotations = load_annotations("/data/Patient01")
+
+    """
+    path = Path(path)
+
+    if path.suffix == ".json":
+        # Direct JSON file
+        resolved_path = path
+    elif path.name == cst.FOLDER_NAME_VISU:
+        # cdv_visu folder
+        resolved_path = path / cst.ANNOTATION_FILE_NAME
+    else:
+        # Patient folder (standard layout)
+        resolved_path = path / cst.ANNOTATION_FILE_NAME
+
+    return _load_annotations_from_path(resolved_path)
+
+
+# ==================================================================================================
+# Load all annotations from a database folder
+# ==================================================================================================
+
+
+def load_database_annotations(database_folder: str | Path) -> list[Annotation]:
+    """
+    Load all annotations from every patient subfolder within *database_folder*.
+
+    Iterates over immediate subdirectories, calls :func:`load_annotations` for
+    each (which auto-detects the source type), and attaches the subdirectory name
+    as the ``patient`` attribute on every loaded annotation.
+
+    Returns a flat list of :class:`~clinical_data_visualizer.dash_api.annotations.model.Annotation`
+    with the ``patient`` field set.  Annotations from folders without
+    ``annotations.json`` (or with empty annotations) are simply skipped.
+
+    Args:
+        database_folder: Path to a directory whose immediate subdirectories
+            are patient data folders (each containing ``annotations.json`` or
+            ``cdv_visu/annotations.json``).
+
+    Returns:
+        Flat list of annotations with ``patient`` set to the subfolder name.
+        Returns an empty list when no subdirectories are found.
+
+    Examples:
+    --------
+    >>> from clinical_data_visualizer import load_database_annotations
+    >>> # Scan all patients under /data
+    >>> all_anns = load_database_annotations("/data")
+    >>> for ann in all_anns:
+    ...     print(f"{ann.patient}: {ann.label} ({ann.plot_name})")
+    >>> # Group by patient
+    >>> from collections import defaultdict
+    >>> by_patient = defaultdict(list)
+    >>> for ann in all_anns:
+    ...     by_patient[ann.patient].append(ann)
+
+    """
+    database_folder = Path(database_folder)
+
+    if not database_folder.is_dir():
+        logger.warning("Database folder does not exist or is not a directory: %s", database_folder)
+        return []
+
+    subdirectories = sorted(f for f in database_folder.iterdir() if f.is_dir())
+    if not subdirectories:
+        logger.warning("No patient subdirectories found in %s", database_folder)
+        return []
+
+    all_annotations: list[Annotation] = []
+
+    for patient_dir in subdirectories:
+        patient_name = patient_dir.name
+        annotations = load_annotations(patient_dir)
+
+        # Tag each annotation with the patient identifier
+        for annotation in annotations:
+            annotation.patient = patient_name
+
+        all_annotations.extend(annotations)
+
+    logger.info(
+        "Loaded %d annotation(s) from %d patient folder(s) in %s",
+        len(all_annotations),
+        len(subdirectories),
+        database_folder,
+    )
+    return all_annotations

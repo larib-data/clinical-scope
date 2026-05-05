@@ -15,7 +15,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import numpy as np
-from dash import ALL, Input, Output, State, callback, ctx, dcc, html
+from dash import ALL, MATCH, Input, Output, State, callback, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 from plotly_resampler import FigureResampler
 
@@ -111,8 +111,15 @@ def load_db_options(
     """Load database options from uploaded file, cache, or generate defaults."""
 
     triggered = ctx.triggered_id
+    logger.info(
+        "load_db_options fired | triggered=%r | filename=%r | contents_present=%s",
+        triggered,
+        filename,
+        contents is not None,
+    )
 
     if triggered == "default-viz-button":
+        logger.info("load_db_options: generating default database options")
         return (
             datasource.generate_default_database_options(),
             html.Div(
@@ -122,25 +129,41 @@ def load_db_options(
         )
 
     if triggered == "reload-cached-db-button":
+        logger.info("load_db_options: reloading cached db options")
         cached = ui_helper.load_cached_db_options()
         if cached is None:
+            logger.warning("load_db_options: no cached config found")
             return (
                 None,
                 html.Div("No cached config found.", style={"color": "red", "fontWeight": "bold"}),
             )
+        logger.info("load_db_options: cached config reloaded successfully")
         return (
             cached,
             html.Div("Reloaded last config", style={"color": "green", "fontWeight": "bold"}),
         )
 
     if not contents:
+        # This fires when dcc.Upload triggers the callback but contents is None
+        # (e.g. the user opened the file picker and cancelled, or the component
+        # was initialised without a file). If this fires right after the user
+        # selected a file, it indicates a Dash upload bug — check the browser console.
+        logger.warning(
+            "load_db_options: triggered=%r but contents is None/empty "
+            "(user may have cancelled the file picker, or a Dash upload issue occurred)",
+            triggered,
+        )
         return None, None
 
     try:
+        logger.info("load_db_options: parsing file %r (%d bytes encoded)", filename, len(contents))
         _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
         database_options_dict = _parse_database_options_file(decoded, filename)
-        logger.debug("loaded database_options_dict: %r", database_options_dict)
+        logger.info(
+            "load_db_options: parsed successfully, keys=%s",
+            list(database_options_dict.keys()),
+        )
 
         ui_helper.save_cached_db_options(database_options_dict)
 
@@ -152,7 +175,7 @@ def load_db_options(
         )
 
     except Exception as e:
-        logger.exception("Failed to load database options: ")
+        logger.exception("load_db_options: failed to parse %r", filename)
         return (
             None,
             html.Div(f"Error loading file: {e!s}", style={"color": "red", "fontWeight": "bold"}),
@@ -254,11 +277,26 @@ def enable_progress_interval(
 
 
 @callback(
+    Output({"type": "graph", "name": MATCH}, "figure", allow_duplicate=True),
+    Input({"type": "graph", "name": MATCH}, "relayoutData"),
+    State({"type": "resampler-store", "name": MATCH}, "data"),
+    prevent_initial_call=True,
+)
+def resample_on_zoom(relayout: dict[str, Any], resampler_uid: str | None) -> Any:
+    """Resample time-series traces when the user zooms or pans."""
+    if not relayout or not resampler_uid or resampler_uid not in FIGURE_RESAMPLER_CACHE:
+        raise PreventUpdate
+    result = FIGURE_RESAMPLER_CACHE[resampler_uid].construct_update_data_patch(relayout)
+    if result is no_update:
+        raise PreventUpdate
+    return result
+
+
+@callback(
     Output("visualization-container", "children"),
     Output("validation-errors", "children"),
     Output("process-status", "children"),
     Output("folder-visu-path", "data"),
-    Output("shape-controls", "style"),
     Output("process-progress-interval", "disabled", allow_duplicate=True),
     Output("process-progress", "children", allow_duplicate=True),
     Input("process-button", "n_clicks"),
@@ -274,9 +312,8 @@ def process_visualization(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
-) -> tuple[Any, Any, Any, str | None, dict, bool, str]:
+) -> tuple[Any, Any, Any, str | None, bool, str]:
     """Process visualization request with validated patient options."""
-    shape_hidden = {"display": "none"}
     interval_off, progress_clear = True, ""
     if not db_options:
         return (
@@ -284,7 +321,6 @@ def process_visualization(
             "Database options not loaded",
             None,
             None,
-            shape_hidden,
             interval_off,
             progress_clear,
         )
@@ -307,7 +343,6 @@ def process_visualization(
             html.Ul([html.Li(e) for e in errors]),
             None,
             None,
-            shape_hidden,
             interval_off,
             progress_clear,
         )
@@ -317,7 +352,6 @@ def process_visualization(
         Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_VISU / "patient_options.json"
     )
     name_folder_visu = str(Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_VISU)
-    annotations_data = ui_helper.load_annotations(name_folder_visu)
     ui_helper.save_json(validated_dict, patient_options_path)
     db_options_path = (
         Path(validated_dict["data_folder"])
@@ -342,7 +376,7 @@ def process_visualization(
             progress_callback=_on_progress,
         )
         PlotModel.to_html(model, validated_dict)
-        graphs = _build_graphs(model, annotations_data)
+        graphs = _build_graphs(model)
     except Exception as e:
         logger.exception("Could not make the plot: ")
         return (
@@ -360,7 +394,6 @@ def process_visualization(
                 style={"color": "red"},
             ),
             None,
-            shape_hidden,
             interval_off,
             progress_clear,
         )
@@ -376,7 +409,6 @@ def process_visualization(
             style={"color": "green"},
         ),
         name_folder_visu,
-        {"display": "block"},
         interval_off,
         progress_clear,
     )
@@ -720,10 +752,7 @@ def format_time_range(t_start: float, t_end: float) -> str:
     return f"{dt_start.strftime(fmt)}  —  {dt_end.strftime(fmt)}"
 
 
-def _build_graphs(
-    model: Any,
-    annotations_data: dict[str, Any],
-) -> list[html.Div]:
+def _build_graphs(model: Any) -> list[html.Div]:
     """
     Build list of dcc.Graph + dcc.Store components from model.
 
@@ -737,22 +766,6 @@ def _build_graphs(
 
     for mod in model:
         fig = mod.figure
-
-        # Default shapes / annotations
-        stored = annotations_data.get("by_figure", {}).get(mod.name, {})
-        fig.update_layout(
-            annotations=stored.get("annotations", []),
-            shapes=stored.get("shapes", []),
-            uirevision=mod.name,  # preserve shapes across updates
-        )
-
-        fig.update_layout(
-            newshape={
-                "fillcolor": "rgba(0,255,0,0.25)",
-                "line": {"color": "green", "width": 2},
-                "layer": "above",
-            },
-        )
 
         # Wrap time_series with FigureResampler for dynamic downsampling
         uid = None
@@ -770,20 +783,107 @@ def _build_graphs(
         if graph_height:
             graph_style["height"] = f"{graph_height}px"
 
+        # --- Build annotation metadata stores from the PlotModel ---
+        # These are read by annotation_callbacks to know subplot names and axis refs.
+        # Must be built from mod.figure (original go.Figure) before FigureResampler wraps it.
+        is_loop = mod.plot_type == cst.PlotType.LOOP
+        n_cols_layout = 2 if (is_loop and len(mod.groups) > 1) else 1
+
+        signal_meta_lookup: dict[str, dict] = {
+            sig.name: {
+                "raw_name": sig.raw_name,
+                "datasource_name": sig.metadata.datasource_name or "",
+            }
+            for group in mod.groups
+            for sig in group.signals
+        }
+        trace_map: dict[str, dict] = {}
+        for trace_idx, trace in enumerate(mod.figure.data):
+            trace_name = getattr(trace, "name", "") or ""
+            meta = signal_meta_lookup.get(trace_name, {})
+            trace_color: str | None = None
+            try:
+                if getattr(trace, "line", None) and getattr(trace.line, "color", None):
+                    trace_color = trace.line.color
+                elif getattr(trace, "marker", None) and isinstance(
+                    getattr(trace.marker, "color", None), str
+                ):
+                    trace_color = trace.marker.color
+            except (AttributeError, TypeError):
+                pass
+            trace_map[f"curve_{trace_idx}"] = {
+                "yaxis": getattr(trace, "yaxis", None) or "y",
+                "xaxis": getattr(trace, "xaxis", None) or "x",
+                "display_name": trace_name,
+                "raw_name": meta.get("raw_name", ""),
+                "datasource_name": meta.get("datasource_name", ""),
+                "line_color": trace_color,
+            }
+
+        subplot_rows = []
+        # Build mapping from yaxis reference to subplot name.
+        # Traces are added to the figure in group order, so we can iterate
+        # through mod.figure.data and assign each trace's yaxis to its group's subplot.
+        yaxis_to_subplot: dict[str, dict] = {}
+        trace_idx = 0
+        for group_idx, group in enumerate(mod.groups):
+            plotly_row = group_idx // n_cols_layout + 1
+            plotly_col = group_idx % n_cols_layout + 1
+
+            # Get the primary y-axis for this subplot (first trace's yaxis)
+            primary_yaxis = "y"
+            if trace_idx < len(mod.figure.data):
+                primary_yaxis = getattr(mod.figure.data[trace_idx], "yaxis", None) or "y"
+
+            subplot_rows.append(
+                {
+                    "row": plotly_row,
+                    "col": plotly_col,
+                    "name": group.name,
+                    "yaxis": primary_yaxis,
+                }
+            )
+
+            # Add all traces from this group to the mapping
+            n_traces_in_group = len(group.signals)
+            for _ in range(n_traces_in_group):
+                if trace_idx < len(mod.figure.data):
+                    trace = mod.figure.data[trace_idx]
+                    yaxis_ref = getattr(trace, "yaxis", None) or "y"
+                    yaxis_to_subplot[yaxis_ref] = {
+                        "row": plotly_row,
+                        "col": plotly_col,
+                        "name": group.name,
+                    }
+                    trace_idx += 1
+
+        # Capture subplot title annotations injected by make_subplots so the
+        # annotation renderer can restore them when it replaces layout.annotations.
+        subplot_title_annotations: list[dict] = []
+        if mod.figure.layout.annotations:
+            subplot_title_annotations = [
+                ann.to_plotly_json() for ann in mod.figure.layout.annotations
+            ]
+
+        graph_subplots_data = {
+            "rows": subplot_rows,
+            "yaxis_to_subplot": yaxis_to_subplot,
+            "subplot_annotations": subplot_title_annotations,
+            "plot_type": mod.plot_type,
+            "n_cols": n_cols_layout,
+            "display_timezone": cst.DISPLAY_TIMEZONE,
+        }
+
         children = [
             dcc.Graph(
                 id={"type": "graph", "name": mod.name},
                 figure=fig,
-                config={
-                    "displayModeBar": True,
-                    "modeBarButtonsToAdd": [
-                        "drawline",  # time point
-                        "drawrect",  # time range
-                    ],
-                },
+                config={"displayModeBar": True},
                 style=graph_style,
             ),
             dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
+            dcc.Store(id={"type": "graph-subplots", "name": mod.name}, data=graph_subplots_data),
+            dcc.Store(id={"type": "graph-trace-map", "name": mod.name}, data=trace_map),
         ]
 
         # --- Loop time-range slider ---

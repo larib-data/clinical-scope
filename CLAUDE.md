@@ -44,12 +44,14 @@ src/clinical_data_visualizer/
 ├── dash_api/               # Dash web application
 │   ├── core_api.py         # Main entry point, layout definition
 │   ├── ui_components.py    # UI component builders
-│   ├── callbacks/          # Dash callbacks (data, shape & loop handling)
-│   ├── shape_manager.py    # Annotation shape management
+│   ├── callbacks/          # Dash callbacks (data, annotation & loop handling)
+│   ├── annotations/        # Annotation model, persistence, and rendering
+│   │   ├── model.py        # Annotation dataclass, AnnotationType, color palette
+│   │   ├── io.py           # Save/load annotations.json
+│   │   └── renderer.py     # Plotly shape/annotation rendering logic
 │   ├── styles.py           # Shared style constants (modal styles, etc.)
 │   ├── validation.py       # Input validation
-│   ├── helper_api.py       # API helper functions
-│   └── datetime_utils.py   # Datetime utilities
+│   └── helper_api.py       # API helper functions
 ├── <datasource>/           # Each data source has its own module:
 │   ├── __init__.py
 │   ├── options.py          # Source-specific options/constants
@@ -151,7 +153,7 @@ The Dash app layout follows this hierarchy:
 - Patient options section: dynamically generated based on loaded database options (auto-sized 2-column grid — adding a datasource produces a card with no layout edit needed)
 - Action row: Process button (orange, primary) + Inspect button (teal)
 - Progress bar: per-datasource, color-matched to the active action (orange for viz, teal for inspect); hidden when no action is running
-- Shape controls: dropdown + Modify/Delete buttons (hidden until visualization succeeds)
+- Annotation toolbar: type buttons (Time Event, Time Window, Point) + group management + Save/Exit — hidden until visualization succeeds
 - Inspection modal: full-screen overlay, opened by Inspect button (close button in header)
 - Visualization container: rendered plots with annotation tools
 
@@ -189,10 +191,10 @@ The `build_patient_options_ui` callback creates the patient options form:
    - Grid: `gridTemplateColumns: 1fr 1fr`, `gap: 12px`
 
 ### Visibility Management
-- Shape controls start hidden (`display: none`)
-- `process_visualization` callback returns 5 outputs including `shape-controls` style
-- On success: `{"display": "block"}` shows dropdown + buttons
-- On failure/no-data: `{"display": "none"}` keeps them hidden
+- Annotation toolbar starts hidden (`display: none`)
+- `process_visualization` callback returns 6 outputs; one controls `annotation-toolbar` style
+- On success: `{"display": "flex"}` shows the toolbar
+- On failure/no-data: `{"display": "none"}` keeps it hidden
 
 ### Progress Reporting (`data_callbacks.py`)
 - Shared state: module-level `PROCESS_PROGRESS` dict with keys `running`, `current`, `total`, `current_datasource`, `mode` (`"visualize"` or `"inspect"`).
@@ -279,3 +281,27 @@ See `src/clinical_data_visualizer/build_info/README.md` for detailed instruction
 Logs are stored in `logs/` directory (gitignored):
 - `logs/app/dash_api.log` - Dash application logs
 - `logs/scripts/` - Script execution logs
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Project skills
+
+Repo-specific skills live under `.claude/skills/`. Invoke with `/skill-name`.
+
+| Skill | When to use |
+|---|---|
+| `/new-datasource` | Add a new medical device / file format as a datasource module |
+| `/organize-patient-folder` | Reorganize a dump of clinical files into the correct per-datasource folder structure |
+| `/generate-database-options` | Generate a `database_options.json` config by inspecting available signals in a patient folder |

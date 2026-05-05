@@ -33,12 +33,16 @@ logs/
 # Ruff
 .ruff_cache/
 
-# IA
-PLANS/*
-
 # Local testing and example
+example/example_patients/*/cdv_visu/*
 LOCAL_SCRIPT/*
 
-# Example until they are truly non-identifiable
-example/example_patients/*/cdv_visu
+# IA
+PLANS/*
+# QWEN.md — now a symlink to CLAUDE.md
+.qwen/settings.json.orig
+.qwen/settings.json
 
+# mattpocock skills
+docs/agents/
+.scratch/

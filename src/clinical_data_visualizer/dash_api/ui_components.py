@@ -1,12 +1,10 @@
 """
 UI component utilities for Dash API visualization.
 
-This module contains functions for creating Dash UI components based on schemas
-and managing UI-related utilities.
+This module contains functions for creating Dash UI components based on schemas.
 """
 
 import logging
-import re
 from typing import Any
 
 from dash import dcc, html
@@ -126,33 +124,3 @@ def build_ui_and_schema_registry(options_class: Any, prefix: str) -> tuple[html.
             i += 1
 
     return html.Div(components), schema_lookup
-
-
-def parse_color(color: str) -> str:
-    """
-    Parse color strings (rgb/rgba/hex) into a standardized format.
-
-    Args:
-        color: Color string in rgb, rgba, or hex format
-
-    Returns:
-        str: Standardized color string
-
-    """
-    # Parse rgb/rgba strings
-    r, g, b, a = 128, 128, 128, 1  # default gray
-    if color.startswith("rgba"):
-        match = re.match(r"rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([0-9.]+)\s*\)", color)
-        if match:
-            r, g, b, a = match.groups()
-        color_out = f"rgba({r},{g},{b},{a})"
-    elif color.startswith("rgb"):
-        match = re.match(r"rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)", color)
-        if match:
-            r, g, b = match.groups()
-            a = 1
-        color_out = f"rgba({r},{g},{b},{a})"
-    else:
-        color_out = color
-
-    return color_out
