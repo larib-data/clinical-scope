@@ -1,5 +1,5 @@
 """
-Tests for helper.find_files() — the central file-discovery function.
+Tests for find_files() — the central file-discovery function.
 
 Covers both multi-file mode (multi=True) and single-file mode (multi=False)
 with all disambiguation tiers:
@@ -12,7 +12,7 @@ with all disambiguation tiers:
 
 from pathlib import Path
 
-from clinical_data_visualizer.helper import find_files
+from clinical_data_visualizer.io.file_utils import find_files
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -20,7 +20,7 @@ from dash.exceptions import PreventUpdate
 from plotly_resampler import FigureResampler
 
 import clinical_data_visualizer.constants as cst
-import clinical_data_visualizer.datasource_list as datasource
+import clinical_data_visualizer.datasource.registry as datasource
 from clinical_data_visualizer import wrapper
 from clinical_data_visualizer.dash_api import helper_api as ui_helper
 from clinical_data_visualizer.dash_api import ui_components, validation
@@ -31,9 +31,12 @@ from clinical_data_visualizer.dash_api.styles import (
     INSPECTION_MODAL_STYLE_SHOWN,
     SECTION_HEADER_STYLE,
 )
-from clinical_data_visualizer.database_options_parser import validate_database_options_structure
+from clinical_data_visualizer.database_options_parser import (
+    ValidationIssue,
+    validate_database_options,
+)
 from clinical_data_visualizer.database_options_xlsx import xlsx_bytes_to_database_options
-from clinical_data_visualizer.inspection import (
+from clinical_data_visualizer.datasource.inspection import (
     ColumnInfo,
     results_from_json,
     results_to_json,
@@ -72,13 +75,10 @@ def clear_visualization_caches() -> None:
     LOOP_DATA_CACHE.clear()
 
 
-def _parse_database_options_file(decoded_content: bytes, filename: str) -> dict[str, Any]:
-    """
-    Parse database options from decoded file bytes and validate structure.
-
-    Supports ``.json`` and ``.xlsx`` formats.
-    Runs ``validate_database_options_structure`` on the result regardless of source format.
-    """
+def _parse_database_options_file(
+    decoded_content: bytes, filename: str
+) -> tuple[dict[str, Any], list[ValidationIssue]]:
+    """Parse database options from decoded file bytes and run full validation."""
     if filename.lower().endswith(".json"):
         db_options = json.loads(decoded_content.decode("utf-8"))
     elif filename.lower().endswith(".xlsx"):
@@ -87,10 +87,48 @@ def _parse_database_options_file(decoded_content: bytes, filename: str) -> dict[
         msg = f"Unsupported file type '{Path(filename).suffix}'. Expected .json or .xlsx."
         raise ValueError(msg)
 
-    for w in validate_database_options_structure(db_options):
-        logger.warning("database_options validation: %s", w)
+    issues = validate_database_options(db_options)
+    for issue in issues:
+        if issue.severity == "error":
+            logger.error("database_options [%s]: %s", issue.path, issue.message)
+        elif issue.severity == "warning":
+            logger.warning("database_options [%s]: %s", issue.path, issue.message)
+        else:
+            logger.info("database_options [%s]: %s", issue.path, issue.message)
 
-    return db_options
+    return db_options, issues
+
+
+def _build_load_status(filename: str, issues: list[ValidationIssue]) -> html.Div:
+    errors = [i for i in issues if i.severity == "error"]
+    warnings = [i for i in issues if i.severity == "warning"]
+    if not errors and not warnings:
+        return html.Div(
+            f"Successfully loaded {filename}", style={"color": "green", "fontWeight": "bold"}
+        )
+    _severity_color = {"error": "#dc3545", "warning": "#fd7e14"}
+    items = [
+        html.Li(f"[{i.path}] {i.message}", style={"color": _severity_color[i.severity]})
+        for i in errors + warnings
+    ]
+    counts = []
+    if errors:
+        counts.append(f"{len(errors)} error(s)")
+    if warnings:
+        counts.append(f"{len(warnings)} warning(s)")
+    header_color = "#dc3545" if errors else "#fd7e14"
+    return html.Div(
+        [
+            html.Div(
+                f"Loaded {filename} — {', '.join(counts)}:",
+                style={"color": header_color, "fontWeight": "bold"},
+            ),
+            html.Ul(
+                items,
+                style={"margin": "4px 0 0 0", "paddingLeft": "20px", "fontSize": "12px"},
+            ),
+        ]
+    )
 
 
 @callback(
@@ -159,7 +197,7 @@ def load_db_options(
         logger.info("load_db_options: parsing file %r (%d bytes encoded)", filename, len(contents))
         _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
-        database_options_dict = _parse_database_options_file(decoded, filename)
+        database_options_dict, issues = _parse_database_options_file(decoded, filename)
         logger.info(
             "load_db_options: parsed successfully, keys=%s",
             list(database_options_dict.keys()),
@@ -167,12 +205,7 @@ def load_db_options(
 
         ui_helper.save_cached_db_options(database_options_dict)
 
-        return (
-            database_options_dict,
-            html.Div(
-                f"Successfully loaded {filename}", style={"color": "green", "fontWeight": "bold"}
-            ),
-        )
+        return database_options_dict, _build_load_status(filename, issues)
 
     except Exception as e:
         logger.exception("load_db_options: failed to parse %r", filename)

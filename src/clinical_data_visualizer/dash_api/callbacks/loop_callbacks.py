@@ -8,11 +8,11 @@ import logging
 
 from dash import MATCH, Input, Output, Patch, State, callback, no_update
 
-from clinical_data_visualizer import helper
 from clinical_data_visualizer.dash_api.callbacks.data_callbacks import (
     LOOP_DATA_CACHE,
     format_time_range,
 )
+from clinical_data_visualizer.datasource.formatting.timezone import loop_time_to_display_strings
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +53,7 @@ def filter_loop_by_time(
         mask = (time_array >= t_start) & (time_array <= t_end)
         patch["data"][i]["x"] = trace_data["x"][mask].tolist()
         patch["data"][i]["y"] = trace_data["y"][mask].tolist()
-        patch["data"][i]["customdata"] = helper.loop_time_to_display_strings(
-            time_array[mask]
-        ).tolist()
+        patch["data"][i]["customdata"] = loop_time_to_display_strings(time_array[mask]).tolist()
 
     return patch
 

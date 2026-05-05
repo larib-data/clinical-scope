@@ -29,7 +29,11 @@ import sys
 from pathlib import Path
 
 import clinical_data_visualizer.constants as cst
-from clinical_data_visualizer import helper, logger_config, wrapper
+from clinical_data_visualizer import logger_config, wrapper
+from clinical_data_visualizer.config.parsing import (
+    build_patient_options,
+    load_database_options_from_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +56,7 @@ def _print_results(results: dict) -> None:
 
 # ==================================================================================================
 def cmd_patient(options: dict) -> None:
-    patient_options = helper.build_patient_options(
+    patient_options = build_patient_options(
         options["patient_folder"], options.get("path_patient_options")
     )
     if patient_options.get(cst.PatientOptions.QuickLoad.NAME, False):
@@ -61,7 +65,7 @@ def cmd_patient(options: dict) -> None:
             "step from the already loaded data"
         )
     path_db = options.get("path_database_options")
-    database_options = helper.load_database_options_from_path(Path(path_db)) if path_db else None
+    database_options = load_database_options_from_path(Path(path_db)) if path_db else None
 
     results = wrapper.extract_patient(
         options["patient_folder"],
@@ -81,7 +85,7 @@ def cmd_patient(options: dict) -> None:
 # ==================================================================================================
 def cmd_batch(options: dict) -> None:
     path_db = options.get("path_database_options")
-    database_options = helper.load_database_options_from_path(Path(path_db)) if path_db else None
+    database_options = load_database_options_from_path(Path(path_db)) if path_db else None
 
     batch_results = wrapper.batch_extract(
         Path(options["root_folder"]),

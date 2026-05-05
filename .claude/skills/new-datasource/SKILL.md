@@ -125,7 +125,7 @@ class PatientOptionsDataSourceRelative:
 ```
 
 Key rules:
-- `DATASOURCE_NAME` must equal the registry `NAME` in `datasource_list.py` (enforced at import time).
+- `DATASOURCE_NAME` must equal the registry `NAME` in `datasource/registry.py` (enforced at import time).
 - `FILE_KEYWORDS` ordered from most specific to least specific — used for disambiguation tie-breaking.
 - `FILE_EXTENSIONS` ordered by preference — first extension wins when multiple formats exist.
 - `source_options` controls default Plotly trace styling for all signals of this datasource.
@@ -140,9 +140,9 @@ from pathlib import Path
 
 import pandas as pd
 
-import clinical_data_visualizer.<datasource_name>.options as options_naming
-from clinical_data_visualizer import helper
-from clinical_data_visualizer.datasource_base import DataSourceBase
+import clinical_data_visualizer.datasource.sources.<datasource_name>.options as options_naming
+from clinical_data_visualizer.datasource.base import DataSourceBase
+from clinical_data_visualizer.datasource.timing import time_it
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ class <ClassName>DataSource(DataSourceBase):
     OPTIONS_MODULE = options_naming
 
     @classmethod
-    @helper.time_it
+    @time_it
     def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:
         # --- Load raw data ---
         # Adapt this section to the actual file format.
@@ -197,7 +197,7 @@ Critical patterns:
 - Override `_format()` only if post-load transformations are needed beyond timezone/timeshift/datetime-filter (which the base class already does).
 - The module-level `main()` function is required — it's the entry point called by the registry.
 - For **empty data**, return `pd.DataFrame(index=pd.DatetimeIndex([], tz=<tz>))` — never a plain `pd.DataFrame()`.
-- Use `@helper.time_it` decorator on `_load()` for performance logging.
+- Use `@time_it` decorator on `_load()` for performance logging (import from `clinical_data_visualizer.datasource.timing`).
 
 ### Starting-point adaptations
 
@@ -212,11 +212,11 @@ Inspect the raw files thoroughly. Write `_load()` based on what you find. Print 
 
 ## Step 3 — Register the datasource
 
-Edit `src/clinical_data_visualizer/datasource_list.py`:
+Edit `src/clinical_data_visualizer/datasource/registry.py`:
 
 1. **Add the import** (alphabetical among existing imports):
    ```python
-   from clinical_data_visualizer.<datasource_name> import find_load_format as _<datasource_name>
+   from clinical_data_visualizer.datasource.sources.<datasource_name> import find_load_format as _<datasource_name>
    ```
 
 2. **Add the inner class** inside `class DataSource:` (place it before `Other`, which should stay last):
@@ -372,7 +372,7 @@ Run these checks in order:
 
 ### 6a. Import check
 ```bash
-python -c "from clinical_data_visualizer.datasource_list import DataSource; print([d.NAME for d in DataSource.AVAILABLE])"
+python -c "from clinical_data_visualizer.datasource.registry import DataSource; print([d.NAME for d in DataSource.AVAILABLE])"
 ```
 Confirm the new datasource appears in the list.
 
@@ -390,8 +390,8 @@ No regressions in other datasources.
 
 ### 6d. Lint
 ```bash
-ruff check src/clinical_data_visualizer/<datasource_name>/
-ruff format --check src/clinical_data_visualizer/<datasource_name>/
+ruff check src/clinical_data_visualizer/datasource/sources/<datasource_name>/
+ruff format --check src/clinical_data_visualizer/datasource/sources/<datasource_name>/
 ```
 
 ### 6e. Quick smoke test with the inspect script
@@ -433,7 +433,7 @@ one-line format:
 ```markdown
 - `<datasource_name>` — <Description> (<file formats>); folder keyword: `<keyword>`
 ```
-Keep the list order aligned with `AVAILABLE` in `datasource_list.py`.
+Keep the list order aligned with `AVAILABLE` in `datasource/registry.py`.
 
 ### 7c. `README.md` (currently defers to the tutorial)
 
@@ -450,10 +450,10 @@ enumerate all datasources, add the new datasource entry there too (even if just 
 
 Print this checklist when done so the user can verify:
 
-- [ ] `src/clinical_data_visualizer/<name>/__init__.py` — created
-- [ ] `src/clinical_data_visualizer/<name>/options.py` — created
-- [ ] `src/clinical_data_visualizer/<name>/find_load_format.py` — created
-- [ ] `src/clinical_data_visualizer/datasource_list.py` — import added, inner class added, AVAILABLE updated
+- [ ] `src/clinical_data_visualizer/datasource/sources/<name>/__init__.py` — created
+- [ ] `src/clinical_data_visualizer/datasource/sources/<name>/options.py` — created
+- [ ] `src/clinical_data_visualizer/datasource/sources/<name>/find_load_format.py` — created
+- [ ] `src/clinical_data_visualizer/datasource/registry.py` — import added, inner class added, AVAILABLE updated
 - [ ] `example/example_patients/Patient_full/<folder>/` — example data added
 - [ ] `tests/datasource/conftest.py` — fixture added
 - [ ] `tests/datasource/test_<name>.py` — created

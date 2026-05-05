@@ -11,7 +11,7 @@ from clinical_data_visualizer.dash_api.callbacks.data_callbacks import (
     _status_badge,
     format_time_range,
 )
-from clinical_data_visualizer.inspection import ColumnInfo, DataSourceInspection
+from clinical_data_visualizer.datasource.inspection import ColumnInfo, DataSourceInspection
 
 # ---------------------------------------------------------------------------
 # _parse_database_options_file
@@ -21,9 +21,10 @@ from clinical_data_visualizer.inspection import ColumnInfo, DataSourceInspection
 class TestParseDbOptionsFile:
     def test_parse_json(self, example_database_options):
         content = json.dumps(example_database_options).encode("utf-8")
-        result = _parse_database_options_file(content, "test.json")
+        result, issues = _parse_database_options_file(content, "test.json")
         assert isinstance(result, dict)
         assert "philips_waves" in result
+        assert isinstance(issues, list)
 
     def test_parse_unsupported_extension(self):
         with pytest.raises(ValueError, match="Unsupported"):
@@ -34,8 +35,9 @@ class TestParseDbOptionsFile:
         if not xlsx_path.exists():
             pytest.skip("No example xlsx file")
         content = xlsx_path.read_bytes()
-        result = _parse_database_options_file(content, "test.xlsx")
+        result, issues = _parse_database_options_file(content, "test.xlsx")
         assert isinstance(result, dict)
+        assert isinstance(issues, list)
 
 
 # ---------------------------------------------------------------------------

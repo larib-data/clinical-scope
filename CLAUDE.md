@@ -52,28 +52,35 @@ src/clinical_data_visualizer/
 │   ├── styles.py           # Shared style constants (modal styles, etc.)
 │   ├── validation.py       # Input validation
 │   └── helper_api.py       # API helper functions
-├── <datasource>/           # Each data source has its own module:
-│   ├── __init__.py
-│   ├── options.py          # Source-specific options/constants
-│   └── find_load_format.py # Data loading & processing logic
-├── datasource_base.py      # Abstract base class for datasources
-├── datasource_list.py      # Registry of available datasources
+├── datasource/             # Datasource framework
+│   ├── base.py             # Abstract base class for datasources
+│   ├── registry.py         # Registry of available datasources
+│   ├── inspection.py       # Data inspection models & CSV export
+│   ├── timing.py           # time_it decorator for performance logging
+│   ├── formatting/
+│   │   └── timezone.py     # Timezone normalization utilities
+│   └── sources/            # One sub-package per data source:
+│       └── <source_name>/
+│           ├── __init__.py
+│           ├── options.py          # Source-specific options/constants
+│           └── find_load_format.py # Data loading & processing logic
+├── config/
+│   └── parsing.py          # High-level config file loading (JSON & XLSX)
+├── io/
+│   └── file_utils.py       # File discovery and I/O helpers
 ├── database_options_parser.py  # Normalize new/legacy JSON formats
 ├── database_options_xlsx.py    # XLSX → dict conversion
-├── inspection.py           # Data inspection models & CSV export
+├── hover_formatters.py     # Hover tooltip formatting helpers
 ├── signal_container.py     # Signal, PlotGroup, PlotModel data models
 ├── wrapper.py              # Main processing logic (visualization, extraction, inspection)
 ├── constants.py            # Global constants and option classes
-├── helper.py               # Utility functions
-├── utilities.py            # Additional utilities
-├── data_management.py      # Data management functions
 └── logger_config.py        # Logging configuration
 ```
 
 ### Supported Data Sources
 
 > Canonical doc: `docs/user_guide/tutorial.md` → *Patient Data & Supported Data Sources*.
-> Live registry: `src/clinical_data_visualizer/datasource_list.py::DataSource.AVAILABLE`.
+> Live registry: `src/clinical_data_visualizer/datasource/registry.py::DataSource.AVAILABLE`.
 
 - `philips_waves` — Philips waveform data (high-frequency signals).
 - `philips_numerics` — Philips numeric/parameter data.
@@ -219,7 +226,7 @@ step (module, options, loader, registration, example data, tests, snapshots, doc
 the exact patterns used by the existing sources. The summary below is for quick reference only —
 follow the skill for real work.
 
-1. Create a new module under `src/clinical_data_visualizer/<source_name>/` (`__init__.py`,
+1. Create a new module under `src/clinical_data_visualizer/datasource/sources/<source_name>/` (`__init__.py`,
    `options.py`, `find_load_format.py`).
 2. `options.py` must define `DATASOURCE_NAME`, `EXPECTED_FOLDER_NAME`, `FOLDER_KEYWORDS`,
    `FILE_KEYWORDS`, `FILE_EXTENSIONS` (ordered by preference), `MULTI_FILE`,
@@ -231,7 +238,7 @@ follow the skill for real work.
    Default `_find()`/`_format()`/`_extract_signals()`/`inspect()` cover the common path —
    typically you only implement `_load()`. `DataSourceBase._make_inspection(...)` is the base
    helper for `inspect()`; `OtherDataSource.inspect()` calls it once per file.
-4. Register in `datasource_list.py` with `@add_main_module` (keep `Other` last).
+4. Register in `datasource/registry.py` with `@add_main_module` (keep `Other` last).
 5. **Update docs**:
    - `docs/user_guide/tutorial.md` → *Patient Data & Supported Data Sources* (canonical table).
    - `CLAUDE.md` → *Supported Data Sources* bullet list above.
