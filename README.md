@@ -252,25 +252,27 @@ src/clinical_data_visualizer/
 ├── dash_api/               # Dash web application
 │   ├── core_api.py         # Main entry point, layout definition
 │   ├── ui_components.py    # UI component builders
-│   ├── callbacks/          # Dash callbacks (data, shape & loop handling)
-│   ├── shape_manager.py    # Annotation shape management
+│   ├── callbacks/          # Dash callbacks (data, annotation & loop handling)
+│   ├── annotations/        # Annotation model, persistence, and rendering
 │   ├── styles.py           # Shared style constants (modal styles, etc.)
 │   ├── validation.py       # Input validation
-│   ├── helper_api.py       # API helper functions
-│   └── datetime_utils.py   # Datetime utilities
-├── <datasource>/           # Each data source has its own module:
-│   ├── __init__.py
-│   ├── options.py          # Source-specific options/constants
-│   └── find_load_format.py # Data loading & processing logic
-├── datasource_base.py      # Abstract base class for datasources
-├── datasource_list.py      # Registry of available datasources
+│   └── helper_api.py       # API helper functions
+├── datasource/             # Datasource framework
+│   ├── base.py             # Abstract base class for datasources
+│   ├── registry.py         # Registry of available datasources
+│   ├── inspection.py       # Data inspection models & CSV export
+│   ├── timing.py           # time_it decorator for performance logging
+│   ├── formatting/         # Timezone normalization utilities
+│   └── sources/            # One sub-package per data source
+├── config/
+│   └── parsing.py          # High-level config file loading (JSON & XLSX)
+├── io/
+│   └── file_utils.py       # File discovery and I/O helpers
 ├── database_options_parser.py  # Normalize new/legacy JSON formats
 ├── database_options_xlsx.py    # XLSX → dict conversion
-├── inspection.py           # Data inspection models & CSV export
 ├── signal_container.py     # Signal, PlotGroup, PlotModel data models
 ├── wrapper.py              # Main processing logic (visualization, extraction, inspection)
 ├── constants.py            # Global constants and option classes
-├── helper.py               # Utility functions
 └── logger_config.py        # Logging configuration
 ```
 
