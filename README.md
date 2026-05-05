@@ -18,8 +18,8 @@ Interactive visualization dashboard for clinical physiological signals built wit
 
 1. Clone the repository:
 ```bash
-git clone git@gitlab.inria.fr:ajanin/clinicaldatavisualizer.git
-cd clinicaldatavisualizer
+git clone git@github.com:larib-data/clinical-scope.git
+cd clinical-scope
 ```
 
 2. Create and activate a virtual environment:

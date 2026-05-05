@@ -49,5 +49,5 @@ markers = [
 ]
 
 [project.urls]
-Homepage = "https://gitlab.inria.fr/ajanin/clinicaldatavisualizer"
-Repository = "https://gitlab.inria.fr/ajanin/clinicaldatavisualizer.git"
+Homepage = "https://github.com/larib-data/clinical-scope"
+Repository = "https://github.com/larib-data/clinical-scope.git"
