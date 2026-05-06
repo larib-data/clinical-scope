@@ -660,6 +660,10 @@ app.layout = html.Div(
 HOST = "127.0.0.1"
 PORT = 8050
 
-if __name__ == "__main__":
+def main() -> None:
     webbrowser.open_new_tab(f"http://{HOST}:{PORT}")
     app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
+
+
+if __name__ == "__main__":
+    main()

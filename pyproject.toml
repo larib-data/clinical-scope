@@ -34,6 +34,9 @@ dependencies = [
   "pytz",
 ]
 
+[project.scripts]
+clinical-scope = "clinical_scope.dash_api.core_api:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=9.0"]
 
