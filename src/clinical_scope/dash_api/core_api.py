@@ -574,6 +574,9 @@ app.layout = html.Div(
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
         html.Div(
+            id="patient-options-reload-status", style={"fontSize": "12px", "marginBottom": "8px"}
+        ),
+        html.Div(
             [
                 html.Button(
                     "Process visualization",
@@ -659,6 +662,7 @@ app.layout = html.Div(
 
 HOST = "127.0.0.1"
 PORT = 8050
+
 
 def main() -> None:
     webbrowser.open_new_tab(f"http://{HOST}:{PORT}")

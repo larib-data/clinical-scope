@@ -79,7 +79,21 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
     return html.Div(children=[label, input_component], style={"marginBottom": "8px"})
 
 
-def build_ui_and_schema_registry(options_class: Any, prefix: str) -> tuple[html.Div, dict]:
+def build_ui_and_schema_registry(
+    options_class: Any,
+    prefix: str,
+    extra_per_field: dict[str, list] | None = None,
+) -> tuple[html.Div, dict]:
+    """
+    Build UI and schema registry from an options class.
+
+    Args:
+        options_class: The options class defining the fields
+        prefix: Prefix for component IDs
+        extra_per_field: Optional dict mapping component ID to extra Dash components
+            to render inline (to the right) of that field's widget.
+
+    """
     components = []
     schema_lookup = {}
 
@@ -119,7 +133,17 @@ def build_ui_and_schema_registry(options_class: Any, prefix: str) -> tuple[html.
             components.append(row)
             i += 2
         else:
-            component = dash_widget_factory(schema_class, prefix)
+            widget = dash_widget_factory(schema_class, prefix)
+            extras = (extra_per_field or {}).get(comp_id)
+            if extras:
+                # Strip marginBottom from widget; outer row owns the spacing
+                widget.style = {k: v for k, v in widget.style.items() if k != "marginBottom"}
+                component = html.Div(
+                    [widget, *extras],
+                    style={"display": "flex", "alignItems": "center", "marginBottom": "8px"},
+                )
+            else:
+                component = widget
             components.append(component)
             i += 1
 

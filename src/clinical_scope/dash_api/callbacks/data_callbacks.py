@@ -23,8 +23,9 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.registry as datasource
 from clinical_scope import wrapper
 from clinical_scope.dash_api import helper_api as ui_helper
-from clinical_scope.dash_api import ui_components, validation
+from clinical_scope.dash_api import io, ui_components, validation
 from clinical_scope.dash_api.styles import (
+    BUTTON_RELOAD,
     CARD_STYLE,
     DATASOURCE_CARD_STYLE,
     INSPECTION_MODAL_STYLE_HIDDEN,
@@ -234,8 +235,16 @@ def build_patient_options_ui(
 
     # Global options
     components.append(html.H3("Global Patient Options", style=SECTION_HEADER_STYLE))
+    _reload_patient_btn = html.Button(
+        "Reload patient options",
+        id="reload-patient-options-btn",
+        n_clicks=0,
+        style={**BUTTON_RELOAD, "marginLeft": "8px", "marginRight": "0", "whiteSpace": "nowrap"},
+    )
     component, schema = ui_components.build_ui_and_schema_registry(
-        cst.PatientOptions, prefix="global"
+        cst.PatientOptions,
+        prefix="global",
+        extra_per_field={"global.data_folder": [_reload_patient_btn]},
     )
     components.append(html.Div(component, style=CARD_STYLE))
     schema_lookup = schema_lookup | schema
@@ -275,6 +284,56 @@ def build_patient_options_ui(
     schema_data = {k: v.__name__ for k, v in schema_lookup.items()}
 
     return components, schema_data
+
+
+@callback(
+    Output({"type": "patient-option", "name": ALL}, "value"),
+    Output("patient-options-reload-status", "children"),
+    Input("reload-patient-options-btn", "n_clicks"),
+    State({"type": "patient-option", "name": ALL}, "value"),
+    State({"type": "patient-option", "name": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def reload_patient_options(
+    n_clicks: int,
+    current_values: list[Any],
+    ids: list[dict[str, str]],
+) -> tuple[list[Any], Any]:
+    """Reload patient options from the saved JSON in the current patient folder."""
+    if not n_clicks:
+        raise PreventUpdate
+
+    values_by_id = {id_["name"]: val for id_, val in zip(ids, current_values, strict=False)}
+    data_folder = values_by_id.get("global.data_folder")
+
+    if not data_folder:
+        return current_values, html.Span("No patient folder specified.", style={"color": "#e67e00"})
+
+    try:
+        saved = io.load_patient_options(data_folder)
+    except (ValueError, TypeError) as e:
+        logger.warning("Failed to reload patient options: %s", e)
+        return current_values, html.Span(str(e), style={"color": "#dc3545"})
+    if saved is None:
+        return current_values, html.Span(
+            "No saved patient options found.", style={"color": "#e67e00"}
+        )
+
+    new_values = []
+    for id_, current_val in zip(ids, current_values, strict=False):
+        field_id = id_["name"]
+        parts = field_id.split(".")
+
+        if field_id == "global.data_folder":
+            new_values.append(current_val)  # keep the path the user typed
+        elif parts[0] == "global":
+            new_values.append(saved.get(parts[1], current_val))
+        elif parts[0] == "specific" and len(parts) == 3:  # noqa: PLR2004
+            new_values.append(saved.get(parts[1], {}).get(parts[2], current_val))
+        else:
+            new_values.append(current_val)
+
+    return new_values, ""
 
 
 def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
