@@ -658,7 +658,8 @@ class PlotModel:
             ]
             subplot_titles = [g.name for g in self.groups]
             fig_width = n_cols * subplot_height
-            extra_subplot_kwargs = {"horizontal_spacing": 0.05}
+            extra_subplot_kwargs = {"horizontal_spacing": 0.07}
+            title_gap_px = 90.0
         else:
             n_cols = 1  # Fixed
             n_rows = n_groups
@@ -668,11 +669,11 @@ class PlotModel:
             subplot_titles = [g.name for g in self.groups]
             fig_width = total_fig_height / n_rows if self.square_plot else None
             extra_subplot_kwargs = {}
+            # Aim for ~30 px between subplots to leave room for subplot titles.
+            # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
+            title_gap_px = 30.0
 
         self.computed_height = total_fig_height
-        # Aim for ~30 px between subplots to leave room for subplot titles.
-        # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
-        title_gap_px = 30.0
         spacing_from_height = (
             title_gap_px / total_fig_height if total_fig_height > 0 else min_spacing
         )
