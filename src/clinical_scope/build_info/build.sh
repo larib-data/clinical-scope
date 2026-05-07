@@ -99,6 +99,15 @@ else
     echo -e "${YELLOW}  Run docs/user_guide/build_pdf.sh to generate it first.${NC}"
 fi
 
+# Copy template patient data structure into the app bundle root
+TEMPLATE_FOLDER="$PROJECT_ROOT/example/template_patient_data_structure"
+if [ -d "$TEMPLATE_FOLDER" ]; then
+    cp -r "$TEMPLATE_FOLDER" "$DIST_PATH/$APP_NAME/"
+    echo -e "${GREEN}Template patient data structure copied to bundle.${NC}"
+else
+    echo -e "${YELLOW}Warning: Template folder not found at $TEMPLATE_FOLDER${NC}"
+fi
+
 echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Build Complete!${NC}"

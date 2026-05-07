@@ -66,6 +66,15 @@ jobs:
         shell: bash
         run: pyinstaller src/clinical_scope/build_info/core_api.spec --clean --distpath dist --noconfirm
 
+      - name: Add extra assets to bundle
+        shell: bash
+        run: |
+          python -c "
+          import shutil
+          shutil.copy('docs/user_guide/ClinicalScope_UserGuide.pdf', 'dist/ClinicalScope/')
+          shutil.copytree('example/template_patient_data_structure', 'dist/ClinicalScope/template_patient_data_structure')
+          "
+
       - name: Create zip archive
         shell: bash
         run: python -c "import shutil; shutil.make_archive('${{ matrix.artifact_name }}', 'zip', 'dist', 'ClinicalScope')"
