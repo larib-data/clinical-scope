@@ -6,6 +6,7 @@ reducing duplication across find_load_format.py files.
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -53,6 +54,9 @@ class DataSourceBase(ABC):
     FILE_NAME_DATAFRAME_LOADED: str = None  # e.g., "philips_waves_loaded.parquet"
     OPTIONS_MODULE = None  # The options module for this datasource
     ALLOW_QUICK_LOAD: bool = True  # Whether to allow quick loading
+    # When True and ALLOW_QUICK_LOAD is False, a symlink to the source file is created in the
+    # output folder instead of a parquet cache. Use for large files with trivial loading cost.
+    CREATE_SOURCE_SYMLINK: bool = False
 
     # Optional source_options for Signal creation
     SOURCE_OPTIONS: dict = None
@@ -71,6 +75,9 @@ class DataSourceBase(ABC):
         allow = getattr(opts, "ALLOW_QUICK_LOAD", None)
         if allow is not None:
             cls.ALLOW_QUICK_LOAD = allow
+        symlink = getattr(opts, "CREATE_SOURCE_SYMLINK", None)
+        if symlink is not None:
+            cls.CREATE_SOURCE_SYMLINK = symlink
 
     @classmethod
     def _find(cls, folder_path: Path) -> list[Path] | Path | None:
@@ -164,6 +171,8 @@ class DataSourceBase(ABC):
             df.shape[0],
             df.shape[1],
         )
+        if not write_cache and cls.CREATE_SOURCE_SYMLINK:
+            cls._create_source_symlink(file_path, dataframe_path.parent)
         return df, file_path_str
 
     @classmethod
@@ -174,6 +183,37 @@ class DataSourceBase(ABC):
             df.to_parquet(path_output)
         except Exception:
             logger.exception("Could not save the dataframe for future quick-reloading:")
+
+    @classmethod
+    def _create_source_symlink(cls, file_path: Path | list[Path], output_folder: Path) -> None:
+        """
+        Create a symlink in the output folder pointing to the source file(s).
+
+        Used by datasources that opt out of parquet caching (ALLOW_QUICK_LOAD=False) so the
+        output folder still contains a traceable reference to the exact file that was used.
+        """
+        files = file_path if isinstance(file_path, list) else [file_path]
+        try:
+            output_folder.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            logger.exception(
+                "[%s] Could not create output folder for symlink.", cls.DATASOURCE_NAME
+            )
+            return
+        for f in files:
+            symlink_path = output_folder / f.name
+            if symlink_path.is_symlink() or symlink_path.exists():
+                symlink_path.unlink()
+            try:
+                rel_target = Path(os.path.relpath(f, output_folder))
+                symlink_path.symlink_to(rel_target)
+                logger.info(
+                    "[%s] Symlinked source file: %s -> %s", cls.DATASOURCE_NAME, symlink_path, f
+                )
+            except Exception:
+                logger.exception(
+                    "[%s] Could not create symlink for '%s'.", cls.DATASOURCE_NAME, f
+                )
 
     @classmethod
     def _apply_timezone(

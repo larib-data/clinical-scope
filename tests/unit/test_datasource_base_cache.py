@@ -37,7 +37,13 @@ def _df_v2() -> pd.DataFrame:
     return pd.DataFrame({"col": [10.0, 20.0]}, index=idx)
 
 
-def _make_fake_source(fresh_df: pd.DataFrame, *, allow_quick_load: bool = True) -> type:
+def _make_fake_source(
+    fresh_df: pd.DataFrame,
+    *,
+    allow_quick_load: bool = True,
+    create_source_symlink: bool = False,
+    source_file: Path | None = None,
+) -> type:
     """
     Build a fresh ``DataSourceBase`` subclass per test.
 
@@ -46,19 +52,21 @@ def _make_fake_source(fresh_df: pd.DataFrame, *, allow_quick_load: bool = True) 
     save to ``path_output`` iff one was passed. That convention is the calling
     contract under test, so the fake replicates it deliberately.
     """
+    _source_file = source_file
 
     class _FakeSource(DataSourceBase):
         DATASOURCE_NAME = "fake_source"
         FILE_NAME_DATAFRAME_LOADED = "fake_source.parquet"
         ALLOW_QUICK_LOAD = allow_quick_load
+        CREATE_SOURCE_SYMLINK = create_source_symlink
 
         @classmethod
         def _find_folder(cls, folder_path: Path) -> Path:  # noqa: ARG003
             return folder_path
 
         @classmethod
-        def _find(cls, folder_path: Path) -> Path:  # noqa: ARG003
-            return folder_path / "raw_data.bin"
+        def _find(cls, folder_path: Path) -> Path:
+            return _source_file if _source_file is not None else folder_path / "raw_data.bin"
 
         @classmethod
         def _load(cls, file_path, path_output, **kwargs):  # noqa: ARG003
@@ -150,4 +158,49 @@ def test_allow_quick_load_false_never_writes_cache(patient_folder: Path) -> None
     pd.testing.assert_frame_equal(df, _df_v1(), check_freq=False)
     assert not cache_path.exists(), (
         "ALLOW_QUICK_LOAD=False is the per-datasource opt-out; no parquet should ever appear"
+    )
+
+
+# ---------------------------------------------------------------------------------------------------
+# Symlink behaviour: CREATE_SOURCE_SYMLINK=True creates a relative symlink in the output folder
+# ---------------------------------------------------------------------------------------------------
+def test_create_source_symlink_creates_symlink(tmp_path: Path) -> None:
+    """A non-caching datasource with CREATE_SOURCE_SYMLINK=True must leave a symlink."""
+    source_file = tmp_path / "raw_data.parquet"
+    _df_v1().to_parquet(source_file)
+
+    output_folder = tmp_path / cst.FOLDER_NAME_OUTPUT
+    output_folder.mkdir()
+
+    source = _make_fake_source(
+        _df_v1(),
+        allow_quick_load=False,
+        create_source_symlink=True,
+        source_file=source_file,
+    )
+    source._load_raw_dataframe(_patient_options(tmp_path, quick_load=False), database_options={})
+
+    symlink_path = output_folder / source_file.name
+    assert symlink_path.is_symlink(), "output folder must contain a symlink to the source file"
+    assert symlink_path.resolve() == source_file.resolve(), "symlink must resolve to source file"
+
+
+def test_create_source_symlink_false_leaves_no_symlink(tmp_path: Path) -> None:
+    """Default CREATE_SOURCE_SYMLINK=False must not create any symlink even when caching is off."""
+    source_file = tmp_path / "raw_data.parquet"
+    _df_v1().to_parquet(source_file)
+
+    output_folder = tmp_path / cst.FOLDER_NAME_OUTPUT
+    output_folder.mkdir()
+
+    source = _make_fake_source(
+        _df_v1(),
+        allow_quick_load=False,
+        create_source_symlink=False,
+        source_file=source_file,
+    )
+    source._load_raw_dataframe(_patient_options(tmp_path, quick_load=False), database_options={})
+
+    assert not any(p.is_symlink() for p in output_folder.iterdir()), (
+        "no symlink should appear when CREATE_SOURCE_SYMLINK is False"
     )
