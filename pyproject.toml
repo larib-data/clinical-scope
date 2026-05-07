@@ -38,7 +38,7 @@ dependencies = [
 clinical-scope = "clinical_scope.dash_api.core_api:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0"]
+dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
