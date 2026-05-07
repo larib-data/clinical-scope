@@ -37,6 +37,7 @@ a = Analysis(
 
         # --- Build tools (only needed to produce the bundle, not to run it) ---
         "altgraph", "macholib",
+        "setuptools", "pkg_resources", "pip", "jaraco",
 
         # --- Jupyter notebook ecosystem ---
         # dash_daq pulls in traitlets/comm/ipywidgets/IPython at import time, so those
