@@ -9,12 +9,13 @@ on:
 jobs:
   check:
     name: Python ${{ matrix.python-version }}
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: true
       matrix:
-        python-version: ["3.9", "3.12"]
+        python-version: ["3.11", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
