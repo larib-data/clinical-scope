@@ -108,6 +108,16 @@ else
     echo -e "${YELLOW}Warning: Template folder not found at $TEMPLATE_FOLDER${NC}"
 fi
 
+# Copy demo patient data into the app bundle
+DEMO_DATABASE="$PROJECT_ROOT/example/demo_database"
+if [ -d "$DEMO_DATABASE" ]; then
+    cp -r "$DEMO_DATABASE" "$DIST_PATH/$APP_NAME/"
+    rm -rf "$DIST_PATH/$APP_NAME/demo_database/demo_patient/clinical_scope_output"
+    echo -e "${GREEN}Demo database copied to bundle.${NC}"
+else
+    echo -e "${YELLOW}Warning: Demo database folder not found at $DEMO_DATABASE${NC}"
+fi
+
 echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Build Complete!${NC}"

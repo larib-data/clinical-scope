@@ -17,8 +17,8 @@ def project_root():
 
 @pytest.fixture(scope="session")
 def patient_full_path():
-    """Path to Patient_full with all datasources."""
-    return EXAMPLE_DIR / "example_patients" / "Patient_full"
+    """Path to demo_patient with all datasources."""
+    return EXAMPLE_DIR / "demo_database" / "demo_patient"
 
 
 @pytest.fixture(scope="session")

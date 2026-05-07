@@ -10,7 +10,7 @@ import pytest
 def ds_folder(patient_full_path, philips_numerics_cls):
     folder = philips_numerics_cls._find_folder(patient_full_path)
     if folder is None:
-        pytest.skip("philips_numerics folder not found in Patient_full")
+        pytest.skip("philips_numerics folder not found in demo_patient")
     return folder
 
 

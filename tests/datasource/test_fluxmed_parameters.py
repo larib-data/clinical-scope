@@ -10,7 +10,7 @@ import pytest
 def ds_folder(patient_full_path, fluxmed_parameters_cls):
     folder = fluxmed_parameters_cls._find_folder(patient_full_path)
     if folder is None:
-        pytest.skip("fluxmed_parameters folder not found in Patient_full")
+        pytest.skip("fluxmed_parameters folder not found in demo_patient")
     return folder
 
 

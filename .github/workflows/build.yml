@@ -73,6 +73,7 @@ jobs:
           import shutil
           shutil.copy('docs/user_guide/ClinicalScope_UserGuide.pdf', 'dist/ClinicalScope/')
           shutil.copytree('example/template_patient_data_structure', 'dist/ClinicalScope/template_patient_data_structure')
+          shutil.copytree('example/demo_database', 'dist/ClinicalScope/demo_database', ignore=shutil.ignore_patterns('clinical_scope_output'))
           "
 
       - name: Create zip archive

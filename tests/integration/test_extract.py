@@ -36,7 +36,7 @@ class TestExtractPatient:
 
         Expected failures (by design, not bugs):
         - 'other': extract() always returns None (multi-file datasource, use main() instead)
-        Patient_full has 10 datasource folders, so >= 9 successes is the realistic target
+        demo_patient has 10 datasource folders, so >= 9 successes is the realistic target
         when all folders load cleanly. Threshold is set to 8 to tolerate one unexpected failure.
         """
         successes = sum(1 for v in extract_results.values() if v is not None)

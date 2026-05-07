@@ -130,7 +130,9 @@ pytest tests/datasource/ --update-snapshots -m snapshot  # regenerate golden fil
 See `tests/README.md` for full command reference.
 
 ### Example data
-The example data in `example/example_patients/` is intentionally truncated to keep tests fast (~16 MB total).
+- `example/demo_database/` — self-contained demo shipped with the app: `database_options.xlsx` + `demo_patient/` (all 11 datasources, intentionally truncated). Mirrors real-world usage: upload the xlsx as config, point the data folder at `demo_patient/`.
+- `example/example_patients/` — edge-case test patients (`Patient_difficult_format`, `Patient_other`); used only by tests.
+
 Do not replace files with full-size originals. After changing example data, regenerate snapshots with `--update-snapshots`.
 
 ### Fixture scoping

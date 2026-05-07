@@ -10,7 +10,7 @@ import pytest
 def ds_folder(patient_full_path, syringe_cls):
     folder = syringe_cls._find_folder(patient_full_path)
     if folder is None:
-        pytest.skip("syringe folder not found in Patient_full")
+        pytest.skip("syringe folder not found in demo_patient")
     return folder
 
 

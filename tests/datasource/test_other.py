@@ -1,7 +1,7 @@
 """
 Tests for other (generic) datasource — auto datetime detection, per-file grouping.
 
-The 'other' datasource only exists in Patient_difficult_format, not Patient_full.
+The 'other' datasource only exists in Patient_difficult_format, not demo_patient.
 It has a custom main() that processes files individually rather than using _load().
 """
 

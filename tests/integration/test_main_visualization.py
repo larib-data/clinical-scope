@@ -93,7 +93,7 @@ class TestMainGlobalLoops:
         opts = copy.deepcopy(example_database_options)
         opts.setdefault("global", {})
         opts["global"].setdefault("loop", {})
-        # Use two signals from fluxmed_signals (qualified refs) — both present in Patient_full.
+        # Use two signals from fluxmed_signals (qualified refs) — both present in demo_patient.
         opts["global"]["loop"]["pv_loop"] = [
             "fluxmed_signals::Paw(cmH2O)",
             "fluxmed_signals::Volume(ml)",
