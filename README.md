@@ -33,6 +33,8 @@ source venv/bin/activate
 pip install -e .
 ```
 
+For development setup (running tests, linting, adding a datasource), see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Usage
 
 Run the Dash application:
