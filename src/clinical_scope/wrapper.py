@@ -13,6 +13,7 @@ from clinical_scope.database_options_parser import (
 )
 from clinical_scope.datasource import registry as datasource_list
 from clinical_scope.datasource.inspection import DataSourceInspection
+from clinical_scope.io.paths import get_annotations_path
 from clinical_scope.signal_container import (
     PlotGroup,
     PlotModel,
@@ -536,17 +537,15 @@ def load_annotations(path: str | Path) -> list[Annotation]:
     The path is interpreted as follows:
 
     1. **Ends with ``.json``** — treated as a direct JSON file path.
-    2. **Ends with ``clinical_scope_output``** — treated as a ``clinical_scope_output/`` folder;
-       annotations are loaded from ``<path>/annotations.json``.
-    3. **Any other path** — treated as a patient folder;
-       annotations are loaded from ``<path>/annotations.json``.
+    2. **Any other path** — treated as a patient folder;
+       annotations are loaded from ``<path>/clinical_scope_output/annotations.json``.
 
     Returns an empty list when the file does not exist or cannot be parsed.
     The file must contain a JSON dict with a list from key ``"annotations"`` key
     (e.g. ``{"annotations": [...]}``).
 
     Args:
-        path: Path to a JSON file, a ``clinical_scope_output/`` folder, or a patient folder.
+        path: Path to a JSON file or a patient folder.
 
     Returns:
         List of :class:`~clinical_scope.dash_api.annotations.model.Annotation`.
@@ -556,24 +555,13 @@ def load_annotations(path: str | Path) -> list[Annotation]:
     >>> from clinical_scope import load_annotations
     >>> # Direct JSON file
     >>> annotations = load_annotations("/path/to/annotations.json")
-    >>> # clinical_scope_output folder
-    >>> annotations = load_annotations("/data/Patient01/clinical_scope_output")
     >>> # Patient folder (standard layout)
     >>> annotations = load_annotations("/data/Patient01")
 
     """
     path = Path(path)
 
-    if path.suffix == ".json":
-        # Direct JSON file
-        resolved_path = path
-    elif path.name == cst.FOLDER_NAME_OUTPUT:
-        # clinical_scope_output folder
-        resolved_path = path / cst.ANNOTATION_FILE_NAME
-    else:
-        # Patient folder (standard layout)
-        resolved_path = path / cst.ANNOTATION_FILE_NAME
-
+    resolved_path = path if path.suffix == ".json" else get_annotations_path(path)
     return _load_annotations_from_path(resolved_path)
 
 

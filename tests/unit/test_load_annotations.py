@@ -1,10 +1,9 @@
 """
 Unit tests for the public load_annotations function in wrapper.py.
 
-Tests the auto-detection logic for the three source types:
+Tests the auto-detection logic for the two source types:
 1. Direct JSON file (path ends in .json)
-2. clinical_scope_output folder (path name is "clinical_scope_output")
-3. Patient folder (any other path)
+2. Patient folder (any other path) — resolves to <folder>/clinical_scope_output/annotations.json
 """
 
 from __future__ import annotations
@@ -76,23 +75,8 @@ class TestAutoDetection:
                 # Should load from the json_path directly, not json_path/annotations.json
                 mock.assert_called_once_with(json_path)
 
-    def test_clinical_scope_output_name_resolves_to_folder(self):
-        """Path whose name is 'clinical_scope_output' should be treated as a clinical_scope_output folder."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "clinical_scope_output"
-            output_path.mkdir()
-
-            with patch(
-                "clinical_scope.wrapper._load_annotations_from_path",
-                return_value=[],
-            ) as mock:
-                load_annotations(output_path)
-
-                # Should resolve to clinical_scope_output/annotations.json
-                mock.assert_called_once_with(output_path / "annotations.json")
-
     def test_other_path_resolves_to_patient_folder(self):
-        """Any other path should be treated as a patient folder."""
+        """Any non-JSON path should be treated as a patient folder."""
         with tempfile.TemporaryDirectory() as tmpdir:
             patient_path = Path(tmpdir) / "Patient01"
             patient_path.mkdir()
@@ -103,8 +87,10 @@ class TestAutoDetection:
             ) as mock:
                 load_annotations(patient_path)
 
-                # Should resolve to Patient01/annotations.json
-                mock.assert_called_once_with(patient_path / "annotations.json")
+                # Should resolve to Patient01/clinical_scope_output/annotations.json
+                mock.assert_called_once_with(
+                    patient_path / "clinical_scope_output" / "annotations.json"
+                )
 
 
 # ==================================================================================================

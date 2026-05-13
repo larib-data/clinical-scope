@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import clinical_scope.constants as cst
+from clinical_scope.io.paths import get_patient_options_path
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-
-def get_patient_options_path(patient_folder: str | Path) -> Path:
-    """Return the expected path for the saved patient options file."""
-    return Path(patient_folder) / cst.FOLDER_NAME_OUTPUT / "patient_options.json"
 
 
 def load_patient_options(patient_folder: str | Path) -> dict | None:

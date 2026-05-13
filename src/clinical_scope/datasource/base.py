@@ -30,6 +30,7 @@ from clinical_scope.io.file_utils import (
     folder_name_matches_keywords,
     save_df,
 )
+from clinical_scope.io.paths import get_datasource_cache_path
 from clinical_scope.signal_container import Signal
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,7 @@ class DataSourceBase(ABC):
 
         """
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        dataframe_path = folder_path / cst.FOLDER_NAME_OUTPUT / cls.FILE_NAME_DATAFRAME_LOADED
+        dataframe_path = get_datasource_cache_path(folder_path, cls.FILE_NAME_DATAFRAME_LOADED)
         quick_load_enabled = patient_options.get(cst.PatientOptions.QuickLoad.NAME, False)
         reuse_cache = cls.ALLOW_QUICK_LOAD and quick_load_enabled
         write_cache = cls.ALLOW_QUICK_LOAD
@@ -211,9 +212,7 @@ class DataSourceBase(ABC):
                     "[%s] Symlinked source file: %s -> %s", cls.DATASOURCE_NAME, symlink_path, f
                 )
             except Exception:
-                logger.exception(
-                    "[%s] Could not create symlink for '%s'.", cls.DATASOURCE_NAME, f
-                )
+                logger.exception("[%s] Could not create symlink for '%s'.", cls.DATASOURCE_NAME, f)
 
     @classmethod
     def _apply_timezone(

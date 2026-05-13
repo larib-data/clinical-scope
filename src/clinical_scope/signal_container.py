@@ -18,6 +18,7 @@ from clinical_scope.datasource.formatting.timezone import (
     to_float_seconds,
 )
 from clinical_scope.io.file_utils import get_column_name_from_pattern
+from clinical_scope.io.paths import get_visualization_path
 
 logger = logging.getLogger(__name__)
 
@@ -821,7 +822,7 @@ class PlotModel:
         if not plot_models:
             logger.warning("⚠️ PlotModel figure generation to html was called with empty list")
         data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        output_path = data_folder / cst.FOLDER_NAME_OUTPUT / cst.DEFAULT_NAME_VISUALIZATION
+        output_path = get_visualization_path(data_folder)
         fig_list = [plot_mod.figure for plot_mod in plot_models if plot_mod.figure is not None]
         start = time.perf_counter()
         print_out_figure(output_path, fig_list)

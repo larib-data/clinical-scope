@@ -43,6 +43,10 @@ from clinical_scope.datasource.inspection import (
     results_to_json,
     to_csv_string,
 )
+from clinical_scope.io.paths import (
+    get_database_options_path,
+    get_patient_options_path,
+)
 from clinical_scope.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
@@ -441,16 +445,11 @@ def process_visualization(
         )
 
     # Save JSON exactly as before
-    patient_options_path = (
-        Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_OUTPUT / "patient_options.json"
-    )
-    name_folder_visu = str(Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_OUTPUT)
+    data_folder = validated_dict["data_folder"]
+    patient_options_path = get_patient_options_path(data_folder)
+    name_folder_visu = str(data_folder)
     ui_helper.save_json(validated_dict, patient_options_path)
-    db_options_path = (
-        Path(validated_dict["data_folder"])
-        / cst.FOLDER_NAME_OUTPUT
-        / cst.DEFAULT_NAME_DATABASE_OPTIONS
-    )
+    db_options_path = get_database_options_path(data_folder)
     ui_helper.save_json(db_options, db_options_path)
 
     clear_visualization_caches()

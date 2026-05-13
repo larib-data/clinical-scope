@@ -5,6 +5,7 @@ DISPLAY_TIMEZONE = "Europe/Paris"
 
 DEFAULT_NAME_VISUALIZATION = "visualization.html"
 DEFAULT_NAME_DATABASE_OPTIONS = "database_options.json"
+DEFAULT_NAME_PATIENT_OPTIONS = "patient_options.json"
 DEFAULT_QUICK_LOAD = False
 ANNOTATION_FILE_NAME = "annotations.json"
 ANNOTATION_KEY = "annotations"
