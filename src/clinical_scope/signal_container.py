@@ -659,7 +659,7 @@ class PlotModel:
             ]
             subplot_titles = [g.name for g in self.groups]
             fig_width = n_cols * subplot_height
-            extra_subplot_kwargs = {"horizontal_spacing": 0.07}
+            extra_subplot_kwargs = {"horizontal_spacing": 0.13}
             title_gap_px = 90.0
         else:
             n_cols = 1  # Fixed
@@ -670,9 +670,9 @@ class PlotModel:
             subplot_titles = [g.name for g in self.groups]
             fig_width = total_fig_height / n_rows if self.square_plot else None
             extra_subplot_kwargs = {}
-            # Aim for ~30 px between subplots to leave room for subplot titles.
+            # Aim for ~80 px between subplots to leave room for subplot titles.
             # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
-            title_gap_px = 30.0
+            title_gap_px = 80.0
 
         self.computed_height = total_fig_height
         spacing_from_height = (
@@ -760,7 +760,6 @@ class PlotModel:
             modebar_remove=[
                 "select2d",
                 "lasso2d",
-                "autoScale2d",
             ]
         )
 

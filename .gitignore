@@ -36,6 +36,7 @@ logs/
 # Local testing and example
 **/clinical_scope_output/
 LOCAL_SCRIPT/*
+*_from_xlsx.json
 
 # IA
 PLANS/*

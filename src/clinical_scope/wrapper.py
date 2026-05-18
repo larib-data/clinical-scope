@@ -152,9 +152,19 @@ def main(
             for group_name, grouped_field_list in local_group.items():
                 try:
                     signals = [sig for sig in list_signal if sig.raw_name in grouped_field_list]
-                    if signals:
-                        pg = PlotGroup(name=group_name, signals=signals)
-                        plot_group_list.append(pg)
+                    loaded_names = {s.raw_name for s in signals}
+                    missing = [n for n in grouped_field_list if n not in loaded_names]
+                    if missing:
+                        logger.warning(
+                            "⚠️ Group '%s' in datasource '%s': signals not found: %s",
+                            group_name,
+                            name,
+                            missing,
+                        )
+                    if len(signals) >= 2:  # noqa: PLR2004
+                        plot_group_list.append(PlotGroup(name=group_name, signals=signals))
+                    elif len(signals) == 1:
+                        plot_group_list.append(PlotGroup.from_single_signal(signals[0]))
                 except Exception:
                     logger.exception(
                         "⚠️ Failed to create grouped PlotGroup '%s' in datasource '%s'.",
@@ -222,9 +232,21 @@ def main(
     for group_name, grouped_field_list in grouped_fields_global.items():
         try:
             signals = _resolve_signal_references(grouped_field_list, all_signal_list)
-            if signals:
+            n_missing = len(grouped_field_list) - len(signals)
+            if n_missing > 0:
+                logger.warning(
+                    "⚠️ Global group '%s': %d of %d signal(s) not found.",
+                    group_name,
+                    n_missing,
+                    len(grouped_field_list),
+                )
+            if len(signals) >= 2:  # noqa: PLR2004
                 plot_group_list.append(PlotGroup(name=group_name, signals=signals))
                 global_grouped_raw_names.update(s.raw_name for s in signals)
+            elif len(signals) == 1:
+                logger.info(
+                    "Global group '%s' degraded to 1 signal; shown individually.", group_name
+                )
         except Exception:
             logger.exception("⚠️ Failed to create global PlotGroup '%s'.", group_name)
 
