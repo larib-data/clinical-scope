@@ -7,6 +7,9 @@ on:
         description: 'Platforms to build (comma-separated: windows,macos-arm,macos-intel,linux). Use "all" to build all.'
         default: 'windows'
         type: string
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   setup:
@@ -18,7 +21,7 @@ jobs:
       - id: set-matrix
         shell: bash
         env:
-          PLATFORMS: ${{ inputs.platforms }}
+          PLATFORMS: ${{ github.event_name == 'push' && 'all' || inputs.platforms }}
         run: |
           python3 - <<'EOF'
           import json, os
@@ -26,7 +29,7 @@ jobs:
           runners = [
               {'os': 'windows-latest', 'artifact_name': 'ClinicalScope-windows-x86_64', 'key': 'windows'},
               {'os': 'macos-latest',   'artifact_name': 'ClinicalScope-macOS-arm64',    'key': 'macos-arm'},
-              {'os': 'macos-13',       'artifact_name': 'ClinicalScope-macOS-intel',    'key': 'macos-intel'},
+              # {'os': 'macos-13',       'artifact_name': 'ClinicalScope-macOS-intel',    'key': 'macos-intel'},  # wontfix (#27)
               {'os': 'ubuntu-latest',  'artifact_name': 'ClinicalScope-linux-x86_64',   'key': 'linux'},
           ]
           selected = [
@@ -80,8 +83,18 @@ jobs:
         shell: bash
         run: python -c "import shutil; shutil.make_archive('${{ matrix.artifact_name }}', 'zip', 'dist', 'ClinicalScope')"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_name }}.zip
           retention-days: 7
+
+      - name: Attach to GitHub Release (tag push)
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact_name }}.zip
+          draft: true
+          make_latest: false
