@@ -49,7 +49,9 @@ a = Analysis(
         "dash_extensions",       # installed, but our app does not use it
         "dataclass_wizard",      # installed, but our app does not use it
         "functional",            # installed, but our app does not use it
-        "more_itertools",        # installed, but our app does not use it
+        # NOTE: more_itertools intentionally NOT excluded — newer PyInstaller setuptools
+        # hooks alias it as a setuptools vendored package; excluding it here causes a
+        # ValueError("already imported as ExcludedModule") at build time.
 
         # --- Pydantic stack (not used by our app or its runtime deps) ---
         "pydantic", "pydantic_core", "annotated_types", "typing_inspection",
