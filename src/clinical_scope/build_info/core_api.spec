@@ -37,6 +37,7 @@ a = Analysis(
 
         # --- Build tools (only needed to produce the bundle, not to run it) ---
         "altgraph", "macholib",
+        "setuptools", "pkg_resources", "pip",
 
         # --- Jupyter notebook ecosystem ---
         # dash_daq pulls in traitlets/comm/ipywidgets/IPython at import time, so those
@@ -45,10 +46,9 @@ a = Analysis(
         "jupyterlab_widgets", "widgetsnbextension", "matplotlib_inline",
 
         # --- Installed but not imported anywhere in this project ---
-        "dash_extensions",       # installed, but our app does not use it
-        "dataclass_wizard",      # installed, but our app does not use it
-        "functional",            # installed, but our app does not use it
-        "more_itertools",        # installed, but our app does not use it
+        "dash_extensions",
+        "dataclass_wizard",
+        "functional",
 
         # --- Pydantic stack (not used by our app or its runtime deps) ---
         "pydantic", "pydantic_core", "annotated_types", "typing_inspection",

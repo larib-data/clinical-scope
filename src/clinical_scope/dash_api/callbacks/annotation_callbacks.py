@@ -45,7 +45,10 @@ from clinical_scope.dash_api.annotations.model import (
     Annotation,
     AnnotationType,
 )
-from clinical_scope.dash_api.annotations.renderer import build_figure_overlays
+from clinical_scope.dash_api.annotations.renderer import (
+    build_figure_overlays,
+    normalize_annotation_for_display,
+)
 from clinical_scope.dash_api.styles import (
     ANNOTATION_LIST_ROW,
     ANNOTATION_MODAL_STYLE_HIDDEN,
@@ -56,6 +59,7 @@ from clinical_scope.dash_api.styles import (
     BUTTON_ANNOTATION_SAVE,
     BUTTON_MODAL_CLOSE,
 )
+from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
 
 logger = logging.getLogger(__name__)
 
@@ -115,14 +119,23 @@ def _parse_yaxis_idx(yaxis_ref: str) -> int:
     return int(num_str) if num_str else 1
 
 
+def _fmt_ts(ts_str: str, display_tz: str | None) -> str:
+    """Format a stored tz-aware timestamp as a human-readable display-TZ string."""
+    naive = to_naive_display_ts(ts_str, display_tz)
+    return naive.replace("T", " ")
+
+
 def _format_position(modal_data: dict) -> str:
+    display_tz = modal_data.get("display_timezone")
     ann_type = modal_data.get("type", "")
     if ann_type == AnnotationType.TIME_EVENT.value:
-        return f"At: {modal_data.get('x', '')}"
+        return f"At: {_fmt_ts(modal_data.get('x', ''), display_tz)}"
     if ann_type == AnnotationType.TIME_WINDOW.value:
-        return f"From: {modal_data.get('x0', '')}  →  {modal_data.get('x1', '')}"
+        x0 = _fmt_ts(modal_data.get("x0", ""), display_tz)
+        x1 = _fmt_ts(modal_data.get("x1", ""), display_tz)
+        return f"From: {x0}  →  {x1}"
     if ann_type == AnnotationType.POINT.value:
-        x = modal_data.get("x", "")
+        x = _fmt_ts(modal_data.get("x", ""), display_tz)
         y = modal_data.get("y")
         t = modal_data.get("t")
         if y is None:
@@ -130,18 +143,20 @@ def _format_position(modal_data: dict) -> str:
         else:
             pos = f"At: x={x}  y={y:.4g}" if isinstance(y, float) else f"At: x={x}  y={y}"
         if t:
-            pos += f"  t={t}"
+            pos += f"  t={_fmt_ts(t, display_tz)}"
         return pos
     return ""
 
 
-def _format_x_short(x_val: str | None) -> str:
+def _format_x_short(x_val: str | None, display_tz: str | None = None) -> str:
     """Format an x value for compact display in the annotation list."""
     if not x_val:
         return ""
     with contextlib.suppress(Exception):
         ts = pd.Timestamp(x_val)
         if not pd.isna(ts):
+            if ts.tzinfo is not None and display_tz:
+                ts = ts.tz_convert(display_tz)
             return ts.strftime("%H:%M:%S")
     with contextlib.suppress(Exception):
         f = float(x_val)
@@ -169,13 +184,15 @@ def _build_swatch_styles(selected_color: str, swatch_ids: list[dict]) -> list[di
     return styles
 
 
-def _annotation_list_row(ann: Annotation, group_name: str | None = None) -> html.Div:
+def _annotation_list_row(
+    ann: Annotation, group_name: str | None = None, display_tz: str | None = None
+) -> html.Div:
     type_label = _TYPE_LABELS.get(ann.type.value, ann.type.value)
     icon = _TYPE_ICONS.get(ann.type.value, "?")
     display_label = ann.label or (group_name or f"({type_label})")
 
     x_val = ann.data.get("x") or ann.data.get("x0")
-    time_str = _format_x_short(x_val)
+    time_str = _format_x_short(x_val, display_tz)
     trace_str = (ann.trace_metadata or {}).get("display_name", "")
     scope_str = ann.subplot_name or "Global"
     info_parts = [p for p in [time_str, trace_str, scope_str] if p]
@@ -357,6 +374,7 @@ def _check_pending_x0(mode: dict, x_str: str, plot_name: str) -> tuple[bool, str
     State({"type": "graph-trace-map", "name": ALL}, "data"),
     State({"type": "graph", "name": ALL}, "id"),
     State("annotation-store", "data"),
+    State("display-timezone-store", "data"),
     prevent_initial_call=True,
 )
 def handle_graph_click(
@@ -366,6 +384,7 @@ def handle_graph_click(
     trace_map_list: list,
     graph_ids: list,
     annotations_raw: list,
+    display_timezone: str | None,
 ) -> tuple[dict, dict, dict, list, str, list]:
     """React to a graph click when annotation mode is active."""
     mode = mode or default_mode()
@@ -407,7 +426,7 @@ def handle_graph_click(
     }
 
     subplots_data = subplots_list[graph_idx] or {}
-    display_tz = subplots_data.get("display_timezone", cst.DISPLAY_TIMEZONE)
+    display_tz = display_timezone or cst.DISPLAY_TIMEZONE
     n_cols = subplots_data.get("n_cols", 1)
     subplot_rows = subplots_data.get("rows", [])
 
@@ -518,9 +537,7 @@ def handle_graph_click(
                 raw_t = point.get("customdata")
                 if raw_t:
                     with contextlib.suppress(Exception):
-                        data["t"] = (
-                            pd.Timestamp(str(raw_t)).tz_localize(cst.DISPLAY_TIMEZONE).isoformat()
-                        )
+                        data["t"] = pd.Timestamp(str(raw_t)).tz_localize(display_tz).isoformat()
             ann_subplot = subplot_name
         else:
             data = {"x": x_str, "xaxis": xaxis_ref}
@@ -571,6 +588,7 @@ def handle_graph_click(
             "auto_subplot_row": auto_subplot_row,
             "subplot_name": subplot_name,
             "suggested_color": suggested_color,
+            "display_timezone": display_tz,
         }
         if trace_metadata:
             modal_data["trace_metadata"] = trace_metadata
@@ -591,6 +609,7 @@ def handle_graph_click(
         "auto_subplot_row": auto_subplot_row,
         "subplot_name": subplot_name,
         "suggested_color": suggested_color,
+        "display_timezone": display_tz,
     }
     if ann_type == AnnotationType.POINT.value:
         modal_data["y"] = y_val
@@ -599,9 +618,7 @@ def handle_graph_click(
             raw_t = point.get("customdata")
             if raw_t:
                 with contextlib.suppress(Exception):
-                    modal_data["t"] = (
-                        pd.Timestamp(str(raw_t)).tz_localize(cst.DISPLAY_TIMEZONE).isoformat()
-                    )
+                    modal_data["t"] = pd.Timestamp(str(raw_t)).tz_localize(display_tz).isoformat()
     if trace_metadata:
         modal_data["trace_metadata"] = trace_metadata
 
@@ -790,6 +807,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
     Input("annotation-mode-store", "data"),
     State({"type": "graph", "name": ALL}, "id"),
     State({"type": "graph-subplots", "name": ALL}, "data"),
+    State("display-timezone-store", "data"),
     prevent_initial_call=True,
 )
 def render_annotations(
@@ -797,12 +815,17 @@ def render_annotations(
     mode: dict,
     graph_ids: list,
     subplots_list: list,
+    display_timezone: str | None,
 ) -> list:
     """Rebuild layout.shapes and layout.annotations for every visible graph using Patch()."""
     if not graph_ids:
         raise PreventUpdate
 
-    annotations = [Annotation.from_dict(d) for d in (annotations_raw or [])]
+    display_tz = display_timezone or cst.DISPLAY_TIMEZONE
+    annotations = [
+        normalize_annotation_for_display(Annotation.from_dict(d), display_tz)
+        for d in (annotations_raw or [])
+    ]
     mode = mode or default_mode()
     pending_x0 = mode.get("pending_x0")
     pending_plot = mode.get("pending_plot_name")
@@ -817,7 +840,10 @@ def render_annotations(
         subplot_title_annotations = subplots_data.get("subplot_annotations", [])
         is_loop = subplots_data.get("plot_type") == cst.PlotType.LOOP
 
-        graph_pending_x0 = pending_x0 if pending_plot == plot_name else None
+        raw_pending_x0 = pending_x0 if pending_plot == plot_name else None
+        graph_pending_x0 = (
+            to_naive_display_ts(raw_pending_x0, display_tz) if raw_pending_x0 else None
+        )
         subplot_rows = subplots_data.get("rows", [])
 
         shapes, all_annotations = build_figure_overlays(
@@ -954,11 +980,13 @@ def _group_header_row(
     Output("annotation-count-badge", "children"),
     Input("annotation-store", "data"),
     Input("annotation-expanded-groups-store", "data"),
+    State("display-timezone-store", "data"),
     prevent_initial_call=False,
 )
 def update_annotation_list(
     annotations_raw: list,
     expanded_groups: list,
+    display_timezone: str | None,
 ) -> tuple[list | html.Div, str]:
     """Rebuild the annotation list, always sorted by group with collapsible group sections."""
     annotations = [Annotation.from_dict(d) for d in (annotations_raw or [])]
@@ -1005,7 +1033,10 @@ def update_annotation_list(
         rows.append(_group_header_row(group, len(group_anns), is_expanded, is_hidden))
 
         if is_expanded:
-            rows.extend(_annotation_list_row(ann, group_name=group["name"]) for ann in group_anns)
+            rows.extend(
+                _annotation_list_row(ann, group_name=group["name"], display_tz=display_timezone)
+                for ann in group_anns
+            )
 
     # Ungrouped annotations at the bottom
     if ungrouped:
@@ -1023,7 +1054,7 @@ def update_annotation_list(
                     },
                 )
             )
-        rows.extend(_annotation_list_row(ann) for ann in ungrouped)
+        rows.extend(_annotation_list_row(ann, display_tz=display_timezone) for ann in ungrouped)
 
     count_text = f"{len(annotations)} annotation{'s' if len(annotations) != 1 else ''}"
     panel = html.Div(

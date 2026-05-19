@@ -6,6 +6,7 @@ reducing duplication across find_load_format.py files.
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from clinical_scope.io.file_utils import (
     folder_name_matches_keywords,
     save_df,
 )
+from clinical_scope.io.paths import get_datasource_cache_path
 from clinical_scope.signal_container import Signal
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,9 @@ class DataSourceBase(ABC):
     FILE_NAME_DATAFRAME_LOADED: str = None  # e.g., "philips_waves_loaded.parquet"
     OPTIONS_MODULE = None  # The options module for this datasource
     ALLOW_QUICK_LOAD: bool = True  # Whether to allow quick loading
+    # When True and ALLOW_QUICK_LOAD is False, a symlink to the source file is created in the
+    # output folder instead of a parquet cache. Use for large files with trivial loading cost.
+    CREATE_SOURCE_SYMLINK: bool = False
 
     # Optional source_options for Signal creation
     SOURCE_OPTIONS: dict = None
@@ -71,6 +76,9 @@ class DataSourceBase(ABC):
         allow = getattr(opts, "ALLOW_QUICK_LOAD", None)
         if allow is not None:
             cls.ALLOW_QUICK_LOAD = allow
+        symlink = getattr(opts, "CREATE_SOURCE_SYMLINK", None)
+        if symlink is not None:
+            cls.CREATE_SOURCE_SYMLINK = symlink
 
     @classmethod
     def _find(cls, folder_path: Path) -> list[Path] | Path | None:
@@ -134,11 +142,12 @@ class DataSourceBase(ABC):
 
         """
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        dataframe_path = folder_path / cst.FOLDER_NAME_OUTPUT / cls.FILE_NAME_DATAFRAME_LOADED
+        dataframe_path = get_datasource_cache_path(folder_path, cls.FILE_NAME_DATAFRAME_LOADED)
         quick_load_enabled = patient_options.get(cst.PatientOptions.QuickLoad.NAME, False)
-        should_cache = cls.ALLOW_QUICK_LOAD and quick_load_enabled
+        reuse_cache = cls.ALLOW_QUICK_LOAD and quick_load_enabled
+        write_cache = cls.ALLOW_QUICK_LOAD
 
-        if should_cache and dataframe_path.is_file():
+        if reuse_cache and dataframe_path.is_file():
             logger.info("[%s] Quick loading from cache.", cls.DATASOURCE_NAME)
             return cls._quick_load(dataframe_path), str(dataframe_path)
 
@@ -154,7 +163,7 @@ class DataSourceBase(ABC):
         logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
         df = cls._load(
             file_path,
-            dataframe_path if should_cache else None,
+            dataframe_path if write_cache else None,
             database_options_specific=database_options,
         )
         logger.info(
@@ -163,6 +172,8 @@ class DataSourceBase(ABC):
             df.shape[0],
             df.shape[1],
         )
+        if not write_cache and cls.CREATE_SOURCE_SYMLINK:
+            cls._create_source_symlink(file_path, dataframe_path.parent)
         return df, file_path_str
 
     @classmethod
@@ -173,6 +184,35 @@ class DataSourceBase(ABC):
             df.to_parquet(path_output)
         except Exception:
             logger.exception("Could not save the dataframe for future quick-reloading:")
+
+    @classmethod
+    def _create_source_symlink(cls, file_path: Path | list[Path], output_folder: Path) -> None:
+        """
+        Create a symlink in the output folder pointing to the source file(s).
+
+        Used by datasources that opt out of parquet caching (ALLOW_QUICK_LOAD=False) so the
+        output folder still contains a traceable reference to the exact file that was used.
+        """
+        files = file_path if isinstance(file_path, list) else [file_path]
+        try:
+            output_folder.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            logger.exception(
+                "[%s] Could not create output folder for symlink.", cls.DATASOURCE_NAME
+            )
+            return
+        for f in files:
+            symlink_path = output_folder / f.name
+            if symlink_path.is_symlink() or symlink_path.exists():
+                symlink_path.unlink()
+            try:
+                rel_target = Path(os.path.relpath(f, output_folder))
+                symlink_path.symlink_to(rel_target)
+                logger.info(
+                    "[%s] Symlinked source file: %s -> %s", cls.DATASOURCE_NAME, symlink_path, f
+                )
+            except Exception:
+                logger.exception("[%s] Could not create symlink for '%s'.", cls.DATASOURCE_NAME, f)
 
     @classmethod
     def _apply_timezone(
@@ -202,8 +242,15 @@ class DataSourceBase(ABC):
         datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
         datetime_start = pd.Timestamp(datetime_start) if datetime_start else None
         datetime_end = pd.Timestamp(datetime_end) if datetime_end else None
+        display_timezone = patient_options.get(
+            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+        )
         return filter_data_by_timestamps(
-            df, time_start=datetime_start, time_end=datetime_end, filter_date=filter_date
+            df,
+            time_start=datetime_start,
+            time_end=datetime_end,
+            filter_date=filter_date,
+            display_timezone=display_timezone,
         )
 
     @classmethod
@@ -352,9 +399,20 @@ class DataSourceBase(ABC):
         # Format data
         df = cls._format(df, patient_options, database_options)
 
+        # Inject global display_timezone into the per-datasource sub-dict so
+        # _extract_signals (and Signal.time_series_from_dataframe) can read it.
+        patient_options_for_signals = {
+            **patient_options_specific,
+            cst.PatientOptions.DisplayTimezone.NAME: patient_options.get(
+                cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+            ),
+        }
+
         # Extract signals
         signals = cls._extract_signals(
-            df, patient_options=patient_options_specific, database_options_specific=database_options
+            df,
+            patient_options=patient_options_for_signals,
+            database_options_specific=database_options,
         )
         logger.info("🔬 [%s] Extracted %d signal(s).", cls.DATASOURCE_NAME, len(signals))
         return signals
@@ -450,8 +508,11 @@ class DataSourceBase(ABC):
         configured_fields = set(
             database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY, list(signals.keys()))
         )
+        display_timezone = patient_options.get(
+            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+        )
 
-        df_raw_display = _to_display_tz(df_raw)
+        df_raw_display = _to_display_tz(df_raw, display_timezone=display_timezone)
         raw_date_range = _date_range(df_raw_display)
 
         try:
@@ -467,7 +528,7 @@ class DataSourceBase(ABC):
                 columns=_column_infos(df_raw_display, df_raw_display, configured_fields),
             )
 
-        df_filtered_display = _to_display_tz(df_filtered)
+        df_filtered_display = _to_display_tz(df_filtered, display_timezone=display_timezone)
         return DataSourceInspection(
             datasource_name=datasource_name,
             status="ok",

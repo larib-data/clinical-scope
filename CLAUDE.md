@@ -139,6 +139,10 @@ Do not replace files with full-size originals. After changing example data, rege
 Datasource test files use `scope="module"` for `formatted_df` (shared between `TestFormat` and `TestSnapshot`).
 Tests only read DataFrames — they do not mutate them.
 
+### CI (GitHub Actions)
+Workflow: `.github/workflows/ci.yml` — triggers on push to `main` and PRs targeting `main` (skipped on draft PRs).
+Matrix: Python 3.11 and 3.13. Steps: `ruff format --check`, `ruff check`, `pytest`.
+
 ## Code Style
 
 - **Linter/Formatter**: Ruff (`ruff check`, `ruff format`)

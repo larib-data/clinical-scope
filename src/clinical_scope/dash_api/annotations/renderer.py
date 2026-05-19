@@ -21,7 +21,10 @@ Design notes
 
 from __future__ import annotations
 
+import dataclasses
+
 from clinical_scope.dash_api.annotations.model import Annotation, AnnotationType
+from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
 
 # ---------------------------------------------------------------------------
 # Helper: axis reference strings
@@ -198,6 +201,34 @@ def _point_label(ann: Annotation) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Timezone normalization (tz-aware stored → naive display-TZ for Plotly)
+# ---------------------------------------------------------------------------
+
+
+def normalize_annotation_for_display(ann: Annotation, display_tz: str) -> Annotation:
+    """
+    Return a copy of *ann* with x values converted to naive display-TZ wall-clock strings.
+
+    Trace x-data uses timezone-naive datetime64 (wall-clock in display TZ).  Annotation x
+    values are stored as tz-aware ISO strings.  Converting here keeps rendering correct
+    regardless of the UTC offset and is idempotent for already-naive values.
+    """
+    data = dict(ann.data)
+    if ann.type == AnnotationType.TIME_EVENT:
+        if "x" in data:
+            data["x"] = to_naive_display_ts(data["x"], display_tz)
+    elif ann.type == AnnotationType.TIME_WINDOW:
+        if "x0" in data:
+            data["x0"] = to_naive_display_ts(data["x0"], display_tz)
+        if "x1" in data:
+            data["x1"] = to_naive_display_ts(data["x1"], display_tz)
+    elif ann.type == AnnotationType.POINT and "x" in data:
+        # time-series POINT: x is a timestamp; loop POINT: x is numeric (unchanged by to_naive)
+        data["x"] = to_naive_display_ts(data["x"], display_tz)
+    return dataclasses.replace(ann, data=data)
+
+
+# ---------------------------------------------------------------------------
 # Preview shape (pending time-window first click)
 # ---------------------------------------------------------------------------
 
@@ -268,7 +299,10 @@ def build_figure_overlays(
     Parameters
     ----------
     annotations
-        All annotations (will be filtered to this ``plot_name``).
+        All annotations (will be filtered to this ``plot_name``).  Callers are
+        responsible for pre-normalising annotation timestamps to naive display-TZ
+        wall-clock strings (via :func:`normalize_annotations_for_display`) before
+        passing them here.
     plot_name
         Name of the target PlotModel.
     subplot_annotations
@@ -279,7 +313,8 @@ def build_figure_overlays(
         graph-subplots store.  Used to resolve ``ann.subplot_name`` to a row
         index.  Annotations whose subplot no longer exists are silently skipped.
     pending_x0
-        If set, a grey preview line is added at this x position.
+        If set, a grey preview line is added at this x position.  Must already
+        be a naive display-TZ string if it represents a datetime.
     pending_xref
         x-axis reference for the preview line.
 

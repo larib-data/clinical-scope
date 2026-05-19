@@ -23,8 +23,9 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.registry as datasource
 from clinical_scope import wrapper
 from clinical_scope.dash_api import helper_api as ui_helper
-from clinical_scope.dash_api import ui_components, validation
+from clinical_scope.dash_api import io, ui_components, validation
 from clinical_scope.dash_api.styles import (
+    BUTTON_RELOAD,
     CARD_STYLE,
     DATASOURCE_CARD_STYLE,
     INSPECTION_MODAL_STYLE_HIDDEN,
@@ -41,6 +42,10 @@ from clinical_scope.datasource.inspection import (
     results_from_json,
     results_to_json,
     to_csv_string,
+)
+from clinical_scope.io.paths import (
+    get_database_options_path,
+    get_patient_options_path,
 )
 from clinical_scope.signal_container import PlotModel
 
@@ -234,8 +239,16 @@ def build_patient_options_ui(
 
     # Global options
     components.append(html.H3("Global Patient Options", style=SECTION_HEADER_STYLE))
+    _reload_patient_btn = html.Button(
+        "Reload patient options",
+        id="reload-patient-options-btn",
+        n_clicks=0,
+        style={**BUTTON_RELOAD, "marginLeft": "8px", "marginRight": "0", "whiteSpace": "nowrap"},
+    )
     component, schema = ui_components.build_ui_and_schema_registry(
-        cst.PatientOptions, prefix="global"
+        cst.PatientOptions,
+        prefix="global",
+        extra_per_field={"global.data_folder": [_reload_patient_btn]},
     )
     components.append(html.Div(component, style=CARD_STYLE))
     schema_lookup = schema_lookup | schema
@@ -275,6 +288,56 @@ def build_patient_options_ui(
     schema_data = {k: v.__name__ for k, v in schema_lookup.items()}
 
     return components, schema_data
+
+
+@callback(
+    Output({"type": "patient-option", "name": ALL}, "value"),
+    Output("patient-options-reload-status", "children"),
+    Input("reload-patient-options-btn", "n_clicks"),
+    State({"type": "patient-option", "name": ALL}, "value"),
+    State({"type": "patient-option", "name": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def reload_patient_options(
+    n_clicks: int,
+    current_values: list[Any],
+    ids: list[dict[str, str]],
+) -> tuple[list[Any], Any]:
+    """Reload patient options from the saved JSON in the current patient folder."""
+    if not n_clicks:
+        raise PreventUpdate
+
+    values_by_id = {id_["name"]: val for id_, val in zip(ids, current_values, strict=False)}
+    data_folder = values_by_id.get("global.data_folder")
+
+    if not data_folder:
+        return current_values, html.Span("No patient folder specified.", style={"color": "#e67e00"})
+
+    try:
+        saved = io.load_patient_options(data_folder)
+    except (ValueError, TypeError) as e:
+        logger.warning("Failed to reload patient options: %s", e)
+        return current_values, html.Span(str(e), style={"color": "#dc3545"})
+    if saved is None:
+        return current_values, html.Span(
+            "No saved patient options found.", style={"color": "#e67e00"}
+        )
+
+    new_values = []
+    for id_, current_val in zip(ids, current_values, strict=False):
+        field_id = id_["name"]
+        parts = field_id.split(".")
+
+        if field_id == "global.data_folder":
+            new_values.append(current_val)  # keep the path the user typed
+        elif parts[0] == "global":
+            new_values.append(saved.get(parts[1], current_val))
+        elif parts[0] == "specific" and len(parts) == 3:  # noqa: PLR2004
+            new_values.append(saved.get(parts[1], {}).get(parts[2], current_val))
+        else:
+            new_values.append(current_val)
+
+    return new_values, ""
 
 
 def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
@@ -331,6 +394,7 @@ def resample_on_zoom(relayout: dict[str, Any], resampler_uid: str | None) -> Any
     Output("validation-errors", "children"),
     Output("process-status", "children"),
     Output("folder-visu-path", "data"),
+    Output("display-timezone-store", "data"),
     Output("process-progress-interval", "disabled", allow_duplicate=True),
     Output("process-progress", "children", allow_duplicate=True),
     Input("process-button", "n_clicks"),
@@ -346,7 +410,7 @@ def process_visualization(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
-) -> tuple[Any, Any, Any, str | None, bool, str]:
+) -> tuple[Any, Any, Any, str | None, str | None, bool, str]:
     """Process visualization request with validated patient options."""
     interval_off, progress_clear = True, ""
     if not db_options:
@@ -355,6 +419,7 @@ def process_visualization(
             "Database options not loaded",
             None,
             None,
+            no_update,
             interval_off,
             progress_clear,
         )
@@ -377,21 +442,17 @@ def process_visualization(
             html.Ul([html.Li(e) for e in errors]),
             None,
             None,
+            no_update,
             interval_off,
             progress_clear,
         )
 
     # Save JSON exactly as before
-    patient_options_path = (
-        Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_OUTPUT / "patient_options.json"
-    )
-    name_folder_visu = str(Path(validated_dict["data_folder"]) / cst.FOLDER_NAME_OUTPUT)
+    data_folder = validated_dict["data_folder"]
+    patient_options_path = get_patient_options_path(data_folder)
+    name_folder_visu = str(data_folder)
     ui_helper.save_json(validated_dict, patient_options_path)
-    db_options_path = (
-        Path(validated_dict["data_folder"])
-        / cst.FOLDER_NAME_OUTPUT
-        / cst.DEFAULT_NAME_DATABASE_OPTIONS
-    )
+    db_options_path = get_database_options_path(data_folder)
     ui_helper.save_json(db_options, db_options_path)
 
     clear_visualization_caches()
@@ -403,6 +464,9 @@ def process_visualization(
         PROCESS_PROGRESS.update({"current": current, "total": total, "current_datasource": name})
 
     logger.info("Processing visualization request for: %s", validated_dict.get("data_folder", "?"))
+    display_timezone = validated_dict.get(
+        cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+    )
     try:
         model = wrapper.main(
             patient_options=validated_dict,
@@ -410,7 +474,7 @@ def process_visualization(
             progress_callback=_on_progress,
         )
         PlotModel.to_html(model, validated_dict)
-        graphs = _build_graphs(model)
+        graphs = _build_graphs(model, display_timezone=display_timezone)
     except Exception as e:
         logger.exception("Could not make the plot: ")
         return (
@@ -428,6 +492,7 @@ def process_visualization(
                 style={"color": "red"},
             ),
             None,
+            no_update,
             interval_off,
             progress_clear,
         )
@@ -443,6 +508,7 @@ def process_visualization(
             style={"color": "green"},
         ),
         name_folder_visu,
+        display_timezone,
         interval_off,
         progress_clear,
     )
@@ -759,15 +825,20 @@ def poll_process_progress(n_intervals: int) -> Any:  # noqa: ARG001
 _ONE_DAY_SECONDS = 86400
 
 
-def _build_slider_marks(t_min: float, duration: float, n_marks: int = 5) -> dict[float, str]:
+def _build_slider_marks(
+    t_min: float,
+    duration: float,
+    n_marks: int = 5,
+    display_timezone: str | None = None,
+) -> dict[float, str]:
     """
     Build evenly-spaced marks for a RangeSlider using relative-second keys.
 
     Keys are seconds offset from t_min (0 … duration).
-    Labels are absolute clock times in DISPLAY_TIMEZONE so the user sees
-    human-readable timestamps, not raw numbers.
+    Labels are absolute clock times in the configured display timezone so the
+    user sees human-readable timestamps, not raw numbers.
     """
-    display_tz = ZoneInfo(cst.DISPLAY_TIMEZONE)
+    display_tz = ZoneInfo(display_timezone or cst.DISPLAY_TIMEZONE)
     fmt = "%m/%d %H:%M" if duration > _ONE_DAY_SECONDS else "%H:%M:%S"
     marks = {}
     for i in range(n_marks + 1):
@@ -777,16 +848,16 @@ def _build_slider_marks(t_min: float, duration: float, n_marks: int = 5) -> dict
     return marks
 
 
-def format_time_range(t_start: float, t_end: float) -> str:
-    """Format a time range as a human-readable string in DISPLAY_TIMEZONE."""
-    display_tz = ZoneInfo(cst.DISPLAY_TIMEZONE)
+def format_time_range(t_start: float, t_end: float, display_timezone: str | None = None) -> str:
+    """Format a time range as a human-readable string in the configured display timezone."""
+    display_tz = ZoneInfo(display_timezone or cst.DISPLAY_TIMEZONE)
     dt_start = datetime.fromtimestamp(t_start, tz=UTC).astimezone(display_tz)
     dt_end = datetime.fromtimestamp(t_end, tz=UTC).astimezone(display_tz)
     fmt = "%Y-%m-%d %H:%M:%S"
     return f"{dt_start.strftime(fmt)}  —  {dt_end.strftime(fmt)}"
 
 
-def _build_graphs(model: Any) -> list[html.Div]:
+def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.Div]:
     """
     Build list of dcc.Graph + dcc.Store components from model.
 
@@ -796,6 +867,7 @@ def _build_graphs(model: Any) -> list[html.Div]:
 
     Loop figures get a time-range slider for interactive time filtering.
     """
+    display_timezone = display_timezone or cst.DISPLAY_TIMEZONE
     graphs = []
 
     for mod in model:
@@ -905,7 +977,6 @@ def _build_graphs(model: Any) -> list[html.Div]:
             "subplot_annotations": subplot_title_annotations,
             "plot_type": mod.plot_type,
             "n_cols": n_cols_layout,
-            "display_timezone": cst.DISPLAY_TIMEZONE,
         }
 
         children = [
@@ -951,13 +1022,17 @@ def _build_graphs(model: Any) -> list[html.Div]:
             # offsets back to absolute epoch seconds for display/masking.
             # Convert to native Python float for orjson serialization safety.
             t_min_f = float(t_min_global) if np.isfinite(t_min_global) else 0.0
-            LOOP_DATA_CACHE[loop_uid] = {"traces": trace_data, "t_min": t_min_f}
+            LOOP_DATA_CACHE[loop_uid] = {
+                "traces": trace_data,
+                "t_min": t_min_f,
+                "display_timezone": display_timezone,
+            }
             children.append(dcc.Store(id={"type": "loop-store", "name": mod.name}, data=loop_uid))
 
             if np.isfinite(t_min_global) and t_min_global < t_max_global:
                 duration = float(t_max_global) - t_min_f
                 step = 1
-                marks = _build_slider_marks(t_min_f, duration)
+                marks = _build_slider_marks(t_min_f, duration, display_timezone=display_timezone)
 
                 children.append(
                     html.Div(
@@ -982,7 +1057,11 @@ def _build_graphs(model: Any) -> list[html.Div]:
                                 tooltip=None,
                             ),
                             html.Div(
-                                format_time_range(t_min_f, t_min_f + duration),
+                                format_time_range(
+                                    t_min_f,
+                                    t_min_f + duration,
+                                    display_timezone=display_timezone,
+                                ),
                                 id={"type": "loop-time-display", "name": mod.name},
                                 style={
                                     "textAlign": "center",

@@ -545,6 +545,7 @@ app.layout = html.Div(
         dcc.Store(id="annotation-modal-data", data={}),
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),
+        dcc.Store(id="display-timezone-store", data=None),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
         html.Div(
@@ -573,6 +574,9 @@ app.layout = html.Div(
         html.Hr(),
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
+        html.Div(
+            id="patient-options-reload-status", style={"fontSize": "12px", "marginBottom": "8px"}
+        ),
         html.Div(
             [
                 html.Button(
@@ -660,6 +664,11 @@ app.layout = html.Div(
 HOST = "127.0.0.1"
 PORT = 8050
 
-if __name__ == "__main__":
+
+def main() -> None:
     webbrowser.open_new_tab(f"http://{HOST}:{PORT}")
     app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
+
+
+if __name__ == "__main__":
+    main()

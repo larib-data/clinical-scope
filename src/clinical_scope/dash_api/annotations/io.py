@@ -18,10 +18,14 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import clinical_scope.constants as cst
 from clinical_scope.dash_api.annotations.model import Annotation
+from clinical_scope.io.paths import get_annotations_path
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 ANNOTATION_KEY = cst.ANNOTATION_KEY
 
@@ -30,18 +34,13 @@ logger = logging.getLogger(__name__)
 ANNOTATION_FILE_NAME = cst.ANNOTATION_FILE_NAME
 
 
-def get_annotation_path(patient_folder: str | Path) -> Path:
-    """Return the expected path for the annotation file."""
-    return Path(patient_folder) / ANNOTATION_FILE_NAME
-
-
 def save_annotations(annotations: list[Annotation], patient_folder: str | Path) -> Path:
     """
-    Write annotations to ``<patient_folder>/annotations.json`` as a list in a JSON.
+    Write annotations to ``<patient_folder>/clinical_scope_output/annotations.json``.
 
     Returns the path that was written.
     """
-    path = get_annotation_path(patient_folder)
+    path = get_annotations_path(patient_folder)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(

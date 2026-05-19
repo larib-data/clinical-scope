@@ -18,6 +18,7 @@ from clinical_scope.datasource.formatting.timezone import (
     to_float_seconds,
 )
 from clinical_scope.io.file_utils import get_column_name_from_pattern
+from clinical_scope.io.paths import get_visualization_path
 
 logger = logging.getLogger(__name__)
 
@@ -100,12 +101,13 @@ class PlotOptions:
     plot_height: int = 300
     plot_type: str | None = None
     plot_priority: float | None = None
+    display_timezone: str = field(default_factory=lambda: cst.DISPLAY_TIMEZONE)
 
     def __post_init__(self) -> None:
         """Initialize PlotOptions with default values."""
         if self.y_unit_name is None:
             self.y_unit_name = (
-                cst.DatabaseOptions.Signal.DEFAULT_UNIT
+                cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
             )  # authorizing None here produce terrible results later
         if self.plot_type is None:
             logger.warning("PlotOptions.plot_type should not be initialized to None")
@@ -160,6 +162,12 @@ class PlotOptions:
             [sig.trace_options.plot_options for sig in signals]
         )
 
+        display_timezone = get_unique_or_raise(
+            [sig.trace_options.plot_options.display_timezone for sig in signals],
+            "display_timezone",
+            context="PlotOptions from signals",
+        )
+
         # --- Initialize combined PlotOptions ---
         combined = PlotOptions(
             y_axis_title=y_axis_title,
@@ -172,6 +180,7 @@ class PlotOptions:
             plot_type=plot_type,
             square_plot=square_plot,
             plot_priority=plot_priority,
+            display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
         )
 
         logger.debug(
@@ -263,6 +272,7 @@ class Signal:
         database_options_specific: dict[str, Any],
         source_options: dict[str, Any],
         plot_type: str,
+        display_timezone: str | None = None,
     ) -> "TraceOptions":
         """Build trace options from database and source options."""
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
@@ -275,7 +285,7 @@ class Signal:
         additional_plot_options = {
             k: v for k, v in plot_options_dict.items() if k in valid_keys_plot_options
         }
-        sig_cst = cst.DatabaseOptions.Signal
+        sig_cst = cst.DatabaseOptions.SignalConfig
         name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
         range_signal_plot = sig.get(sig_cst.RANGE)
         y_unit_name = sig.get(sig_cst.UNIT, sig_cst.DEFAULT_UNIT)
@@ -301,6 +311,7 @@ class Signal:
             y_unit_name=y_unit_name,
             plot_type=plot_type,
             plot_priority=plot_priority,
+            display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
             # Any other field
             **additional_plot_options,
         )
@@ -336,7 +347,7 @@ class Signal:
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
         sig = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
-        sig_cst = cst.DatabaseOptions.Signal
+        sig_cst = cst.DatabaseOptions.SignalConfig
         name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
         unit_conversion_factor = sig.get(sig_cst.UNIT_CONVERSION, sig_cst.DEFAULT_UNIT_CONVERSION)
         p_global = numerics.get(
@@ -374,11 +385,15 @@ class Signal:
             y=y,
             timezone=timezone,  # Store the timezone information
         )
+        display_timezone = patient_options.get(
+            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+        )
         trace_options = cls._build_trace_options(
             raw_signal_name,
             database_options_specific,
             source_options,
             plot_type=cst.PlotType.TIME_SERIES,
+            display_timezone=display_timezone,
         )
         metadata = Metadata(
             period_resampling=p,
@@ -447,6 +462,14 @@ class Signal:
         timing["interpolation"] = time.perf_counter() - start
         start = time.perf_counter()
         data = Data(x=y_x, y=y_y, timezone=None, loop_time_axis=x_common)
+        display_timezone = get_unique_or_raise(
+            [
+                signal_x.trace_options.plot_options.display_timezone,
+                signal_y.trace_options.plot_options.display_timezone,
+            ],
+            "display_timezone",
+            context="loop_from_signals",
+        )
         plot_options = PlotOptions(
             plot_type=cst.PlotType.LOOP,
             x_unit_name=signal_x.trace_options.plot_options.y_unit_name,
@@ -458,6 +481,7 @@ class Signal:
             show_legend=False,
             square_plot=True,
             plot_height=600,
+            display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
         )
         trace_options = TraceOptions(plot_options=plot_options)
         timing["data_trace_initialization"] = time.perf_counter() - start
@@ -486,9 +510,10 @@ class Signal:
         if self.trace is not None:
             logger.warning("Trace of %s will be overwritten", self.name)
         # Convert timezone-naive numpy datetime to the desired timezone
+        display_tz = self.trace_options.plot_options.display_timezone
         if self.data.timezone is not None:
             self.data.x, self.data.timezone = change_ndarray_timezone(
-                self.data.x, self.data.timezone, cst.DISPLAY_TIMEZONE
+                self.data.x, self.data.timezone, display_tz
             )
 
         x = self.data.x
@@ -514,7 +539,9 @@ class Signal:
         )
         y_unit_name = self.trace_options.plot_options.y_unit_name
         y_unit_suffix = (
-            f" {y_unit_name}" if y_unit_name != cst.DatabaseOptions.Signal.DEFAULT_UNIT else ""
+            f" {y_unit_name}"
+            if y_unit_name != cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
+            else ""
         )
 
         # Magic keyword in hover_template → pre-compute customdata strings
@@ -534,15 +561,19 @@ class Signal:
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
             _x_unit_suffix = (
-                f" {x_unit_name}" if x_unit_name != cst.DatabaseOptions.Signal.DEFAULT_UNIT else ""
+                f" {x_unit_name}"
+                if x_unit_name != cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
+                else ""
             )
             # Keyword formatters (fraction, percentage, …) only cover one axis,
             # so they are intentionally ignored for loops to avoid asymmetric display.
             if self.data.loop_time_axis is not None and len(self.data.loop_time_axis) > 0:
-                customdata = loop_time_to_display_strings(self.data.loop_time_axis)
+                customdata = loop_time_to_display_strings(
+                    self.data.loop_time_axis, display_timezone=display_tz
+                )
                 _tz_abbr = (
                     pd.to_datetime(self.data.loop_time_axis[0], unit="s", utc=True)
-                    .tz_convert(cst.DISPLAY_TIMEZONE)
+                    .tz_convert(display_tz)
                     .tzname()
                 )
                 hovertemplate = (
@@ -658,7 +689,8 @@ class PlotModel:
             ]
             subplot_titles = [g.name for g in self.groups]
             fig_width = n_cols * subplot_height
-            extra_subplot_kwargs = {"horizontal_spacing": 0.05}
+            extra_subplot_kwargs = {"horizontal_spacing": 0.13}
+            title_gap_px = 90.0
         else:
             n_cols = 1  # Fixed
             n_rows = n_groups
@@ -668,11 +700,11 @@ class PlotModel:
             subplot_titles = [g.name for g in self.groups]
             fig_width = total_fig_height / n_rows if self.square_plot else None
             extra_subplot_kwargs = {}
+            # Aim for ~80 px between subplots to leave room for subplot titles.
+            # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
+            title_gap_px = 80.0
 
         self.computed_height = total_fig_height
-        # Aim for ~30 px between subplots to leave room for subplot titles.
-        # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
-        title_gap_px = 30.0
         spacing_from_height = (
             title_gap_px / total_fig_height if total_fig_height > 0 else min_spacing
         )
@@ -758,7 +790,6 @@ class PlotModel:
             modebar_remove=[
                 "select2d",
                 "lasso2d",
-                "autoScale2d",
             ]
         )
 
@@ -820,7 +851,7 @@ class PlotModel:
         if not plot_models:
             logger.warning("⚠️ PlotModel figure generation to html was called with empty list")
         data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        output_path = data_folder / cst.FOLDER_NAME_OUTPUT / cst.DEFAULT_NAME_VISUALIZATION
+        output_path = get_visualization_path(data_folder)
         fig_list = [plot_mod.figure for plot_mod in plot_models if plot_mod.figure is not None]
         start = time.perf_counter()
         print_out_figure(output_path, fig_list)

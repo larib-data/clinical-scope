@@ -44,6 +44,7 @@ def filter_loop_by_time(
     t_min = cache["t_min"]
     t_start = t_min + slider_value[0]
     t_end = t_min + slider_value[1]
+    display_timezone = cache.get("display_timezone")
 
     patch = Patch()
     for i, trace_data in enumerate(cache["traces"]):
@@ -53,7 +54,9 @@ def filter_loop_by_time(
         mask = (time_array >= t_start) & (time_array <= t_end)
         patch["data"][i]["x"] = trace_data["x"][mask].tolist()
         patch["data"][i]["y"] = trace_data["y"][mask].tolist()
-        patch["data"][i]["customdata"] = loop_time_to_display_strings(time_array[mask]).tolist()
+        patch["data"][i]["customdata"] = loop_time_to_display_strings(
+            time_array[mask], display_timezone=display_timezone
+        ).tolist()
 
     return patch
 
@@ -74,4 +77,9 @@ def update_time_display(slider_value: list[float], loop_uid: str | None) -> str:
         return no_update
 
     t_min = cache["t_min"]
-    return format_time_range(t_min + slider_value[0], t_min + slider_value[1])
+    display_timezone = cache.get("display_timezone")
+    return format_time_range(
+        t_min + slider_value[0],
+        t_min + slider_value[1],
+        display_timezone=display_timezone,
+    )

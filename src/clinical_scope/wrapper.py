@@ -13,6 +13,7 @@ from clinical_scope.database_options_parser import (
 )
 from clinical_scope.datasource import registry as datasource_list
 from clinical_scope.datasource.inspection import DataSourceInspection
+from clinical_scope.io.paths import get_annotations_path
 from clinical_scope.signal_container import (
     PlotGroup,
     PlotModel,
@@ -151,9 +152,19 @@ def main(
             for group_name, grouped_field_list in local_group.items():
                 try:
                     signals = [sig for sig in list_signal if sig.raw_name in grouped_field_list]
-                    if signals:
-                        pg = PlotGroup(name=group_name, signals=signals)
-                        plot_group_list.append(pg)
+                    loaded_names = {s.raw_name for s in signals}
+                    missing = [n for n in grouped_field_list if n not in loaded_names]
+                    if missing:
+                        logger.warning(
+                            "⚠️ Group '%s' in datasource '%s': signals not found: %s",
+                            group_name,
+                            name,
+                            missing,
+                        )
+                    if len(signals) >= 2:  # noqa: PLR2004
+                        plot_group_list.append(PlotGroup(name=group_name, signals=signals))
+                    elif len(signals) == 1:
+                        plot_group_list.append(PlotGroup.from_single_signal(signals[0]))
                 except Exception:
                     logger.exception(
                         "⚠️ Failed to create grouped PlotGroup '%s' in datasource '%s'.",
@@ -221,9 +232,21 @@ def main(
     for group_name, grouped_field_list in grouped_fields_global.items():
         try:
             signals = _resolve_signal_references(grouped_field_list, all_signal_list)
-            if signals:
+            n_missing = len(grouped_field_list) - len(signals)
+            if n_missing > 0:
+                logger.warning(
+                    "⚠️ Global group '%s': %d of %d signal(s) not found.",
+                    group_name,
+                    n_missing,
+                    len(grouped_field_list),
+                )
+            if len(signals) >= 2:  # noqa: PLR2004
                 plot_group_list.append(PlotGroup(name=group_name, signals=signals))
                 global_grouped_raw_names.update(s.raw_name for s in signals)
+            elif len(signals) == 1:
+                logger.info(
+                    "Global group '%s' degraded to 1 signal; shown individually.", group_name
+                )
         except Exception:
             logger.exception("⚠️ Failed to create global PlotGroup '%s'.", group_name)
 
@@ -536,17 +559,15 @@ def load_annotations(path: str | Path) -> list[Annotation]:
     The path is interpreted as follows:
 
     1. **Ends with ``.json``** — treated as a direct JSON file path.
-    2. **Ends with ``clinical_scope_output``** — treated as a ``clinical_scope_output/`` folder;
-       annotations are loaded from ``<path>/annotations.json``.
-    3. **Any other path** — treated as a patient folder;
-       annotations are loaded from ``<path>/annotations.json``.
+    2. **Any other path** — treated as a patient folder;
+       annotations are loaded from ``<path>/clinical_scope_output/annotations.json``.
 
     Returns an empty list when the file does not exist or cannot be parsed.
     The file must contain a JSON dict with a list from key ``"annotations"`` key
     (e.g. ``{"annotations": [...]}``).
 
     Args:
-        path: Path to a JSON file, a ``clinical_scope_output/`` folder, or a patient folder.
+        path: Path to a JSON file or a patient folder.
 
     Returns:
         List of :class:`~clinical_scope.dash_api.annotations.model.Annotation`.
@@ -556,24 +577,13 @@ def load_annotations(path: str | Path) -> list[Annotation]:
     >>> from clinical_scope import load_annotations
     >>> # Direct JSON file
     >>> annotations = load_annotations("/path/to/annotations.json")
-    >>> # clinical_scope_output folder
-    >>> annotations = load_annotations("/data/Patient01/clinical_scope_output")
     >>> # Patient folder (standard layout)
     >>> annotations = load_annotations("/data/Patient01")
 
     """
     path = Path(path)
 
-    if path.suffix == ".json":
-        # Direct JSON file
-        resolved_path = path
-    elif path.name == cst.FOLDER_NAME_OUTPUT:
-        # clinical_scope_output folder
-        resolved_path = path / cst.ANNOTATION_FILE_NAME
-    else:
-        # Patient folder (standard layout)
-        resolved_path = path / cst.ANNOTATION_FILE_NAME
-
+    resolved_path = path if path.suffix == ".json" else get_annotations_path(path)
     return _load_annotations_from_path(resolved_path)
 
 
