@@ -113,7 +113,7 @@ class DatabaseOptions:
     )
 
     # --- Per-signal configuration (inside "signals" → "<raw_name>" dict) ---
-    class Signal:
+    class SignalConfig:
         LABEL = "label"
         UNIT = "unit"
         UNIT_CONVERSION = "unit_conversion"

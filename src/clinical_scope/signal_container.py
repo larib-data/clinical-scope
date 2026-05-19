@@ -107,7 +107,7 @@ class PlotOptions:
         """Initialize PlotOptions with default values."""
         if self.y_unit_name is None:
             self.y_unit_name = (
-                cst.DatabaseOptions.Signal.DEFAULT_UNIT
+                cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
             )  # authorizing None here produce terrible results later
         if self.plot_type is None:
             logger.warning("PlotOptions.plot_type should not be initialized to None")
@@ -285,7 +285,7 @@ class Signal:
         additional_plot_options = {
             k: v for k, v in plot_options_dict.items() if k in valid_keys_plot_options
         }
-        sig_cst = cst.DatabaseOptions.Signal
+        sig_cst = cst.DatabaseOptions.SignalConfig
         name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
         range_signal_plot = sig.get(sig_cst.RANGE)
         y_unit_name = sig.get(sig_cst.UNIT, sig_cst.DEFAULT_UNIT)
@@ -347,7 +347,7 @@ class Signal:
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
         sig = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
-        sig_cst = cst.DatabaseOptions.Signal
+        sig_cst = cst.DatabaseOptions.SignalConfig
         name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
         unit_conversion_factor = sig.get(sig_cst.UNIT_CONVERSION, sig_cst.DEFAULT_UNIT_CONVERSION)
         p_global = numerics.get(
@@ -539,7 +539,9 @@ class Signal:
         )
         y_unit_name = self.trace_options.plot_options.y_unit_name
         y_unit_suffix = (
-            f" {y_unit_name}" if y_unit_name != cst.DatabaseOptions.Signal.DEFAULT_UNIT else ""
+            f" {y_unit_name}"
+            if y_unit_name != cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
+            else ""
         )
 
         # Magic keyword in hover_template → pre-compute customdata strings
@@ -559,7 +561,9 @@ class Signal:
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
             _x_unit_suffix = (
-                f" {x_unit_name}" if x_unit_name != cst.DatabaseOptions.Signal.DEFAULT_UNIT else ""
+                f" {x_unit_name}"
+                if x_unit_name != cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
+                else ""
             )
             # Keyword formatters (fraction, percentage, …) only cover one axis,
             # so they are intentionally ignored for loops to avoid asymmetric display.

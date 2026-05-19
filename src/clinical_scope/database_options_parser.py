@@ -84,7 +84,7 @@ def _check_unknown_keys(section: dict, path_prefix: str, issues: list[Validation
     for raw_name, sig_opts in signals.items():
         if not isinstance(sig_opts, dict):
             continue
-        unknown_sig = set(sig_opts.keys()) - cst.DatabaseOptions.Signal.KNOWN_KEYS
+        unknown_sig = set(sig_opts.keys()) - cst.DatabaseOptions.SignalConfig.KNOWN_KEYS
         if unknown_sig:
             issues.append(
                 ValidationIssue(
@@ -92,14 +92,14 @@ def _check_unknown_keys(section: dict, path_prefix: str, issues: list[Validation
                     path=f"{path_prefix}.signals.{raw_name}",
                     message=(
                         f"Unknown keys: {sorted(unknown_sig)}. "
-                        f"Expected: {sorted(cst.DatabaseOptions.Signal.KNOWN_KEYS)}"
+                        f"Expected: {sorted(cst.DatabaseOptions.SignalConfig.KNOWN_KEYS)}"
                     ),
                 )
             )
 
 
 def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
-    sig_cst = cst.DatabaseOptions.Signal
+    sig_cst = cst.DatabaseOptions.SignalConfig
 
     signals_raw = section.get(cst.DatabaseOptions.SIGNALS)
     if signals_raw is not None and not isinstance(signals_raw, dict):
@@ -174,7 +174,7 @@ def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue])
 def _check_redundant_entries(
     section: dict, path_prefix: str, issues: list[ValidationIssue]
 ) -> None:
-    sig_cst = cst.DatabaseOptions.Signal
+    sig_cst = cst.DatabaseOptions.SignalConfig
     signals = section.get(cst.DatabaseOptions.SIGNALS)
     if not signals or not isinstance(signals, dict):
         return
