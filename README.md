@@ -60,9 +60,9 @@ clinical-scope
 
 For the full developer setup (tests, linting, adding a datasource), see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Screenshot
+## Demo
 
-![ClinicalScope — interactive signal viewer with annotation tools](docs/user_guide/images/InteractivePlot.png)
+![ClinicalScope demo](docs/user_guide/images/demo.gif)
 
 ## Quickstart
 
