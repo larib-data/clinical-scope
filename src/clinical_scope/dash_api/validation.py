@@ -6,6 +6,7 @@ and type checking.
 """
 
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 
@@ -31,6 +32,12 @@ def _validate_by_type(
     try:
         if api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
             pd.Timestamp(value)
+
+        elif api_type == cst.ApiType.TIMEZONE:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, KeyError):
+                return f"is not a valid IANA timezone: {value!r}"
 
         elif api_type == cst.ApiType.INT:
             int(value)

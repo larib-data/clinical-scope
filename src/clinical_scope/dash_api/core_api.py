@@ -545,6 +545,7 @@ app.layout = html.Div(
         dcc.Store(id="annotation-modal-data", data={}),
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),
+        dcc.Store(id="display-timezone-store", data=None),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
         html.Div(

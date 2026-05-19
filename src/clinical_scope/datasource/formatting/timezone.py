@@ -64,6 +64,7 @@ def filter_data_by_timestamps(
     time_start: pd.Timestamp | None,
     time_end: pd.Timestamp | None,
     filter_date: bool = True,
+    display_timezone: str | None = None,
 ) -> pd.DataFrame:
     """Filter data between time_start and time_end timestamps using a hardcoded library timezone."""
     if not pd.api.types.is_datetime64_any_dtype(data.index):
@@ -71,6 +72,7 @@ def filter_data_by_timestamps(
         return data
 
     filtered = data.copy()
+    tz = display_timezone or cst.DISPLAY_TIMEZONE
 
     # Ensure index is in the library timezone
     if filtered.index.tz is None:
@@ -81,12 +83,12 @@ def filter_data_by_timestamps(
     # Localize or convert input timestamps
     if time_start is not None:
         if time_start.tzinfo is None:
-            time_start = time_start.tz_localize(cst.DISPLAY_TIMEZONE)
+            time_start = time_start.tz_localize(tz)
         time_start = time_start.tz_convert(cst.LIBRARY_TZ)
 
     if time_end is not None:
         if time_end.tzinfo is None:
-            time_end = time_end.tz_localize(cst.DISPLAY_TIMEZONE)
+            time_end = time_end.tz_localize(tz)
         time_end = time_end.tz_convert(cst.LIBRARY_TZ)
 
     if not filter_date:
@@ -136,7 +138,9 @@ def change_ndarray_timezone(
 
 # ==================================================================================================
 def loop_time_to_display_strings(
-    utc_float_seconds: np.ndarray, fmt: str = "%Y-%m-%d %H:%M:%S"
+    utc_float_seconds: np.ndarray,
+    fmt: str = "%Y-%m-%d %H:%M:%S",
+    display_timezone: str | None = None,
 ) -> np.ndarray:
     """
     Convert an array of UTC epoch float seconds to display-timezone datetime strings.
@@ -144,10 +148,40 @@ def loop_time_to_display_strings(
     Used for loop hover customdata and slider-callback customdata so both come
     from a single, testable conversion path.
     """
-    dt_display = pd.to_datetime(utc_float_seconds, unit="s", utc=True).tz_convert(
-        cst.DISPLAY_TIMEZONE
-    )
+    tz = display_timezone or cst.DISPLAY_TIMEZONE
+    dt_display = pd.to_datetime(utc_float_seconds, unit="s", utc=True).tz_convert(tz)
     return np.array(dt_display.strftime(fmt))
+
+
+# ==================================================================================================
+def to_naive_display_ts(ts_str: str, display_timezone: str | None = None) -> str:
+    """
+    Convert a tz-aware ISO timestamp to a naive string in display-TZ wall-clock time.
+
+    Plotly trace x-data is stored as timezone-naive datetime64 (wall-clock in display TZ,
+    produced by :func:`change_ndarray_timezone`).  Annotation x values are stored as tz-aware
+    ISO strings.  This converts them to the same naive format so Plotly aligns shapes and
+    annotations correctly with the trace data.  Non-datetime values (e.g. loop-plot numeric x)
+    are returned unchanged.
+    """
+    tz = display_timezone or cst.DISPLAY_TIMEZONE
+    try:
+        ts = pd.Timestamp(ts_str)
+    except (ValueError, TypeError, OverflowError):
+        # ts_str is not a parseable datetime (e.g. a numeric loop-plot x value) — expected path.
+        return ts_str
+    try:
+        if pd.isna(ts) or ts.tzinfo is None:
+            return ts_str
+        return ts.tz_convert(tz).tz_localize(None).isoformat()
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "Could not convert annotation timestamp %r to display timezone %r",
+            ts_str,
+            tz,
+            exc_info=True,
+        )
+        return ts_str
 
 
 # ==================================================================================================
@@ -207,9 +241,9 @@ def fmt_ts(ts: object) -> str:
         return str(ts)
 
 
-def _to_display_tz(df: pd.DataFrame) -> pd.DataFrame:
+def _to_display_tz(df: pd.DataFrame, display_timezone: str | None = None) -> pd.DataFrame:
     """
-    Return a shallow copy of *df* with its index converted to ``DISPLAY_TIMEZONE``.
+    Return a shallow copy of *df* with its index converted to the display timezone.
 
     Used in :meth:`DataSourceBase.inspect` so that reported timestamps match
     the timezone shown in the Dash plots.  The copy is shallow (data arrays are
@@ -218,8 +252,9 @@ def _to_display_tz(df: pd.DataFrame) -> pd.DataFrame:
     """
     if not (isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None):
         return df
+    tz = display_timezone or cst.DISPLAY_TIMEZONE
     result = df.copy(deep=False)
-    result.index = df.index.tz_convert(cst.DISPLAY_TIMEZONE)
+    result.index = df.index.tz_convert(tz)
     return result
 
 

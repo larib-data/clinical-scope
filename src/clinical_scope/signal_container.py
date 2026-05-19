@@ -101,6 +101,7 @@ class PlotOptions:
     plot_height: int = 300
     plot_type: str | None = None
     plot_priority: float | None = None
+    display_timezone: str = field(default_factory=lambda: cst.DISPLAY_TIMEZONE)
 
     def __post_init__(self) -> None:
         """Initialize PlotOptions with default values."""
@@ -161,6 +162,12 @@ class PlotOptions:
             [sig.trace_options.plot_options for sig in signals]
         )
 
+        display_timezone = get_unique_or_raise(
+            [sig.trace_options.plot_options.display_timezone for sig in signals],
+            "display_timezone",
+            context="PlotOptions from signals",
+        )
+
         # --- Initialize combined PlotOptions ---
         combined = PlotOptions(
             y_axis_title=y_axis_title,
@@ -173,6 +180,7 @@ class PlotOptions:
             plot_type=plot_type,
             square_plot=square_plot,
             plot_priority=plot_priority,
+            display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
         )
 
         logger.debug(
@@ -264,6 +272,7 @@ class Signal:
         database_options_specific: dict[str, Any],
         source_options: dict[str, Any],
         plot_type: str,
+        display_timezone: str | None = None,
     ) -> "TraceOptions":
         """Build trace options from database and source options."""
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
@@ -302,6 +311,7 @@ class Signal:
             y_unit_name=y_unit_name,
             plot_type=plot_type,
             plot_priority=plot_priority,
+            display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
             # Any other field
             **additional_plot_options,
         )
@@ -375,11 +385,15 @@ class Signal:
             y=y,
             timezone=timezone,  # Store the timezone information
         )
+        display_timezone = patient_options.get(
+            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+        )
         trace_options = cls._build_trace_options(
             raw_signal_name,
             database_options_specific,
             source_options,
             plot_type=cst.PlotType.TIME_SERIES,
+            display_timezone=display_timezone,
         )
         metadata = Metadata(
             period_resampling=p,
@@ -448,6 +462,14 @@ class Signal:
         timing["interpolation"] = time.perf_counter() - start
         start = time.perf_counter()
         data = Data(x=y_x, y=y_y, timezone=None, loop_time_axis=x_common)
+        display_timezone = get_unique_or_raise(
+            [
+                signal_x.trace_options.plot_options.display_timezone,
+                signal_y.trace_options.plot_options.display_timezone,
+            ],
+            "display_timezone",
+            context="loop_from_signals",
+        )
         plot_options = PlotOptions(
             plot_type=cst.PlotType.LOOP,
             x_unit_name=signal_x.trace_options.plot_options.y_unit_name,
@@ -459,6 +481,7 @@ class Signal:
             show_legend=False,
             square_plot=True,
             plot_height=600,
+            display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
         )
         trace_options = TraceOptions(plot_options=plot_options)
         timing["data_trace_initialization"] = time.perf_counter() - start
@@ -487,9 +510,10 @@ class Signal:
         if self.trace is not None:
             logger.warning("Trace of %s will be overwritten", self.name)
         # Convert timezone-naive numpy datetime to the desired timezone
+        display_tz = self.trace_options.plot_options.display_timezone
         if self.data.timezone is not None:
             self.data.x, self.data.timezone = change_ndarray_timezone(
-                self.data.x, self.data.timezone, cst.DISPLAY_TIMEZONE
+                self.data.x, self.data.timezone, display_tz
             )
 
         x = self.data.x
@@ -540,10 +564,12 @@ class Signal:
             # Keyword formatters (fraction, percentage, …) only cover one axis,
             # so they are intentionally ignored for loops to avoid asymmetric display.
             if self.data.loop_time_axis is not None and len(self.data.loop_time_axis) > 0:
-                customdata = loop_time_to_display_strings(self.data.loop_time_axis)
+                customdata = loop_time_to_display_strings(
+                    self.data.loop_time_axis, display_timezone=display_tz
+                )
                 _tz_abbr = (
                     pd.to_datetime(self.data.loop_time_axis[0], unit="s", utc=True)
-                    .tz_convert(cst.DISPLAY_TIMEZONE)
+                    .tz_convert(display_tz)
                     .tzname()
                 )
                 hovertemplate = (

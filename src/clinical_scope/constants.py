@@ -18,6 +18,7 @@ class ApiType:
     BOOL = "bool"
     TIMESTAMP = "timestamp"
     DAY = "day"
+    TIMEZONE = "timezone"
     PATH_FOLDER = "path_folder"
     PATH_FILE = "path_file"
 
@@ -31,8 +32,16 @@ class PatientOptions:
         MANDATORY = True
         DESCRIPTION = "Path to data (folder)"
 
-    class DatetimeStart:
+    class DisplayTimezone:
         ORDER = 2
+        NAME = "display_timezone"
+        API_TYPE = ApiType.TIMEZONE
+        DEFAULT = DISPLAY_TIMEZONE
+        MANDATORY = False
+        DESCRIPTION = "Display timezone (IANA name)"
+
+    class DatetimeStart:
+        ORDER = 3
         NAME = "datetime_start"
         API_TYPE = ApiType.TIMESTAMP
         DEFAULT = ""
@@ -40,7 +49,7 @@ class PatientOptions:
         DESCRIPTION = "Time start filter"
 
     class DatetimeEnd:
-        ORDER = 3
+        ORDER = 4
         NAME = "datetime_end"
         API_TYPE = ApiType.TIMESTAMP
         DEFAULT = ""
@@ -48,7 +57,7 @@ class PatientOptions:
         DESCRIPTION = "Time end filter"
 
     class QuickLoad:
-        ORDER = 4
+        ORDER = 5
         NAME = "quick_load"
         API_TYPE = ApiType.BOOL
         DEFAULT = True

@@ -394,6 +394,7 @@ def resample_on_zoom(relayout: dict[str, Any], resampler_uid: str | None) -> Any
     Output("validation-errors", "children"),
     Output("process-status", "children"),
     Output("folder-visu-path", "data"),
+    Output("display-timezone-store", "data"),
     Output("process-progress-interval", "disabled", allow_duplicate=True),
     Output("process-progress", "children", allow_duplicate=True),
     Input("process-button", "n_clicks"),
@@ -409,7 +410,7 @@ def process_visualization(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
-) -> tuple[Any, Any, Any, str | None, bool, str]:
+) -> tuple[Any, Any, Any, str | None, str | None, bool, str]:
     """Process visualization request with validated patient options."""
     interval_off, progress_clear = True, ""
     if not db_options:
@@ -418,6 +419,7 @@ def process_visualization(
             "Database options not loaded",
             None,
             None,
+            no_update,
             interval_off,
             progress_clear,
         )
@@ -440,6 +442,7 @@ def process_visualization(
             html.Ul([html.Li(e) for e in errors]),
             None,
             None,
+            no_update,
             interval_off,
             progress_clear,
         )
@@ -461,6 +464,9 @@ def process_visualization(
         PROCESS_PROGRESS.update({"current": current, "total": total, "current_datasource": name})
 
     logger.info("Processing visualization request for: %s", validated_dict.get("data_folder", "?"))
+    display_timezone = validated_dict.get(
+        cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+    )
     try:
         model = wrapper.main(
             patient_options=validated_dict,
@@ -468,7 +474,7 @@ def process_visualization(
             progress_callback=_on_progress,
         )
         PlotModel.to_html(model, validated_dict)
-        graphs = _build_graphs(model)
+        graphs = _build_graphs(model, display_timezone=display_timezone)
     except Exception as e:
         logger.exception("Could not make the plot: ")
         return (
@@ -486,6 +492,7 @@ def process_visualization(
                 style={"color": "red"},
             ),
             None,
+            no_update,
             interval_off,
             progress_clear,
         )
@@ -501,6 +508,7 @@ def process_visualization(
             style={"color": "green"},
         ),
         name_folder_visu,
+        display_timezone,
         interval_off,
         progress_clear,
     )
@@ -817,15 +825,20 @@ def poll_process_progress(n_intervals: int) -> Any:  # noqa: ARG001
 _ONE_DAY_SECONDS = 86400
 
 
-def _build_slider_marks(t_min: float, duration: float, n_marks: int = 5) -> dict[float, str]:
+def _build_slider_marks(
+    t_min: float,
+    duration: float,
+    n_marks: int = 5,
+    display_timezone: str | None = None,
+) -> dict[float, str]:
     """
     Build evenly-spaced marks for a RangeSlider using relative-second keys.
 
     Keys are seconds offset from t_min (0 … duration).
-    Labels are absolute clock times in DISPLAY_TIMEZONE so the user sees
-    human-readable timestamps, not raw numbers.
+    Labels are absolute clock times in the configured display timezone so the
+    user sees human-readable timestamps, not raw numbers.
     """
-    display_tz = ZoneInfo(cst.DISPLAY_TIMEZONE)
+    display_tz = ZoneInfo(display_timezone or cst.DISPLAY_TIMEZONE)
     fmt = "%m/%d %H:%M" if duration > _ONE_DAY_SECONDS else "%H:%M:%S"
     marks = {}
     for i in range(n_marks + 1):
@@ -835,16 +848,16 @@ def _build_slider_marks(t_min: float, duration: float, n_marks: int = 5) -> dict
     return marks
 
 
-def format_time_range(t_start: float, t_end: float) -> str:
-    """Format a time range as a human-readable string in DISPLAY_TIMEZONE."""
-    display_tz = ZoneInfo(cst.DISPLAY_TIMEZONE)
+def format_time_range(t_start: float, t_end: float, display_timezone: str | None = None) -> str:
+    """Format a time range as a human-readable string in the configured display timezone."""
+    display_tz = ZoneInfo(display_timezone or cst.DISPLAY_TIMEZONE)
     dt_start = datetime.fromtimestamp(t_start, tz=UTC).astimezone(display_tz)
     dt_end = datetime.fromtimestamp(t_end, tz=UTC).astimezone(display_tz)
     fmt = "%Y-%m-%d %H:%M:%S"
     return f"{dt_start.strftime(fmt)}  —  {dt_end.strftime(fmt)}"
 
 
-def _build_graphs(model: Any) -> list[html.Div]:
+def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.Div]:
     """
     Build list of dcc.Graph + dcc.Store components from model.
 
@@ -854,6 +867,7 @@ def _build_graphs(model: Any) -> list[html.Div]:
 
     Loop figures get a time-range slider for interactive time filtering.
     """
+    display_timezone = display_timezone or cst.DISPLAY_TIMEZONE
     graphs = []
 
     for mod in model:
@@ -963,7 +977,6 @@ def _build_graphs(model: Any) -> list[html.Div]:
             "subplot_annotations": subplot_title_annotations,
             "plot_type": mod.plot_type,
             "n_cols": n_cols_layout,
-            "display_timezone": cst.DISPLAY_TIMEZONE,
         }
 
         children = [
@@ -1009,13 +1022,17 @@ def _build_graphs(model: Any) -> list[html.Div]:
             # offsets back to absolute epoch seconds for display/masking.
             # Convert to native Python float for orjson serialization safety.
             t_min_f = float(t_min_global) if np.isfinite(t_min_global) else 0.0
-            LOOP_DATA_CACHE[loop_uid] = {"traces": trace_data, "t_min": t_min_f}
+            LOOP_DATA_CACHE[loop_uid] = {
+                "traces": trace_data,
+                "t_min": t_min_f,
+                "display_timezone": display_timezone,
+            }
             children.append(dcc.Store(id={"type": "loop-store", "name": mod.name}, data=loop_uid))
 
             if np.isfinite(t_min_global) and t_min_global < t_max_global:
                 duration = float(t_max_global) - t_min_f
                 step = 1
-                marks = _build_slider_marks(t_min_f, duration)
+                marks = _build_slider_marks(t_min_f, duration, display_timezone=display_timezone)
 
                 children.append(
                     html.Div(
@@ -1040,7 +1057,11 @@ def _build_graphs(model: Any) -> list[html.Div]:
                                 tooltip=None,
                             ),
                             html.Div(
-                                format_time_range(t_min_f, t_min_f + duration),
+                                format_time_range(
+                                    t_min_f,
+                                    t_min_f + duration,
+                                    display_timezone=display_timezone,
+                                ),
                                 id={"type": "loop-time-display", "name": mod.name},
                                 style={
                                     "textAlign": "center",

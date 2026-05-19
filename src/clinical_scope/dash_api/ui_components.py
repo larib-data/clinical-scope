@@ -37,13 +37,14 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
 
     component_id = f"{component_id_prefix}.{name}"
 
-    label = html.Label(description, style={"width": "200px", "display": "inline-block"})
+    label = html.Label(description, style={"width": "300px", "display": "inline-block"})
 
     if t == cst.ApiType.BOOL:
         input_component = dcc.Checklist(
             options=[{"label": "", "value": True}],
             value=[True] if default else [],
             id={"type": "patient-option", "name": component_id},
+            style={"display": "inline-block", "verticalAlign": "middle"},
         )
 
     elif t in (cst.ApiType.INT, cst.ApiType.FLOAT):
@@ -70,6 +71,15 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
             placeholder="Path...",
             id={"type": "patient-option", "name": component_id},
             style={"width": "500px"},
+        )
+
+    elif t == cst.ApiType.TIMEZONE:
+        input_component = dcc.Input(
+            type="text",
+            value=default,
+            placeholder="e.g. Europe/Paris",
+            id={"type": "patient-option", "name": component_id},
+            style={"width": "300px"},
         )
 
     else:

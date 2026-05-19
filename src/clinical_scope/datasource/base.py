@@ -242,8 +242,15 @@ class DataSourceBase(ABC):
         datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
         datetime_start = pd.Timestamp(datetime_start) if datetime_start else None
         datetime_end = pd.Timestamp(datetime_end) if datetime_end else None
+        display_timezone = patient_options.get(
+            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+        )
         return filter_data_by_timestamps(
-            df, time_start=datetime_start, time_end=datetime_end, filter_date=filter_date
+            df,
+            time_start=datetime_start,
+            time_end=datetime_end,
+            filter_date=filter_date,
+            display_timezone=display_timezone,
         )
 
     @classmethod
@@ -392,9 +399,20 @@ class DataSourceBase(ABC):
         # Format data
         df = cls._format(df, patient_options, database_options)
 
+        # Inject global display_timezone into the per-datasource sub-dict so
+        # _extract_signals (and Signal.time_series_from_dataframe) can read it.
+        patient_options_for_signals = {
+            **patient_options_specific,
+            cst.PatientOptions.DisplayTimezone.NAME: patient_options.get(
+                cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+            ),
+        }
+
         # Extract signals
         signals = cls._extract_signals(
-            df, patient_options=patient_options_specific, database_options_specific=database_options
+            df,
+            patient_options=patient_options_for_signals,
+            database_options_specific=database_options,
         )
         logger.info("🔬 [%s] Extracted %d signal(s).", cls.DATASOURCE_NAME, len(signals))
         return signals
@@ -490,8 +508,11 @@ class DataSourceBase(ABC):
         configured_fields = set(
             database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY, list(signals.keys()))
         )
+        display_timezone = patient_options.get(
+            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+        )
 
-        df_raw_display = _to_display_tz(df_raw)
+        df_raw_display = _to_display_tz(df_raw, display_timezone=display_timezone)
         raw_date_range = _date_range(df_raw_display)
 
         try:
@@ -507,7 +528,7 @@ class DataSourceBase(ABC):
                 columns=_column_infos(df_raw_display, df_raw_display, configured_fields),
             )
 
-        df_filtered_display = _to_display_tz(df_filtered)
+        df_filtered_display = _to_display_tz(df_filtered, display_timezone=display_timezone)
         return DataSourceInspection(
             datasource_name=datasource_name,
             status="ok",
