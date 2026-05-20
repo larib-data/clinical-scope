@@ -790,6 +790,7 @@ class PlotModel:
             modebar_remove=[
                 "select2d",
                 "lasso2d",
+                "autoScale2d",
             ]
         )
 
