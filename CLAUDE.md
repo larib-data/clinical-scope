@@ -318,3 +318,4 @@ Repo-specific skills live under `.claude/skills/`. Invoke with `/skill-name`.
 | `/new-datasource` | Add a new medical device / file format as a datasource module |
 | `/organize-patient-folder` | Reorganize a dump of clinical files into the correct per-datasource folder structure |
 | `/generate-database-options` | Generate a `database_options.json` config by inspecting available signals in a patient folder |
+| `/anonymize-timeseries` | De-identify clinical timeseries files (CSV/parquet/XML/JSON) so they can be committed as example data |
