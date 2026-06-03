@@ -62,5 +62,10 @@ def edf_cls():
 
 
 @pytest.fixture(scope="session")
+def icca_cls():
+    return _get_datasource_class("icca")
+
+
+@pytest.fixture(scope="session")
 def other_cls():
     return _get_datasource_class("other")
