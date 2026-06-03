@@ -166,6 +166,7 @@ folder-discovery / skill logic refers to.
 | Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single file | High-frequency respiratory waveforms |
 | Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single file | Respiratory parameters (Vt, RR, PEEP, etc.) |
 | Syringe | `syringe` | `syringe` | `.parquet`, `.csv` | Single file | Infusion rates and volumes |
+| ICCA | `icca` | `icca` | `.csv`, `.parquet` | Single file | High-density anesthesia signals (long-format, pivoted by `attributeId`) |
 | Other (Generic) | `other` | `other` | `.csv`, `.parquet` | All files (one entry **per file**) | Any time-series with a datetime column |
 
 **Single file** sources expect exactly one data file per folder. When several formats coexist
