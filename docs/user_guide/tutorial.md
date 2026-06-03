@@ -151,6 +151,7 @@ Servo-U, `.xml` for Mindray Scope).
 | Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single file | High-frequency respiratory waveforms |
 | Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single file | Respiratory parameters (Vt, RR, PEEP, etc.) |
 | EDF / EDF+ | `edf` | `edf` | `.edf` | All files | Any signal an amplifier or recorder exports as EDF (typically EEG) |
+| ICCA | `icca` | `icca` | `.csv`, `.parquet` | Single file | High-density anesthesia signals (long-format, pivoted by `attributeId`) |
 | Other (Generic) | `other` | `other` | `.parquet`, `.csv` | All files (one entry **per file**) | Any time-series with a datetime column |
 
 **Single file** sources expect exactly one data file per folder. When several formats coexist
