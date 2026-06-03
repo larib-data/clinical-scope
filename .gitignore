@@ -47,3 +47,5 @@ PLANS/*
 # mattpocock skills
 docs/agents/
 .scratch/
+# (not ready yet to be commited)
+docs/adr/*
