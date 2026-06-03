@@ -15,6 +15,7 @@ from clinical_scope.datasource.sources.fluxmed_parameters import (
 from clinical_scope.datasource.sources.fluxmed_signals import (
     find_load_format as _fluxmed_signals,
 )
+from clinical_scope.datasource.sources.icca import find_load_format as _icca
 from clinical_scope.datasource.sources.mindray_respi_numerics import (
     find_load_format as _mindray_respi_num,
 )
@@ -134,6 +135,13 @@ class DataSource:
         MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
+    @add_main_module(_icca)
+    class Icca:
+        NAME = "icca"
+        DESCRIPTION = "ICCA - anesthesia"
+        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        OPTIONS: object
+
     @add_main_module(_other)
     class Other:
         NAME = "other"
@@ -151,6 +159,7 @@ class DataSource:
         MindRayRespiWaves,
         MindRayScope,
         Edf,
+        Icca,
         Other,
     )
 
