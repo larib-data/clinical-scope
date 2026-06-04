@@ -34,6 +34,7 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
     default = schema_class.DEFAULT
     description = schema_class.DESCRIPTION
     name = schema_class.NAME
+    placeholder = getattr(schema_class, "PLACEHOLDER", None)
 
     component_id = f"{component_id_prefix}.{name}"
 
@@ -51,15 +52,16 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
         input_component = dcc.Input(
             type="number",
             value=default,
+            placeholder=placeholder,
             id={"type": "patient-option", "name": component_id},
             style={"width": "300px"},
         )
 
-    elif t in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
+    elif t in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY, cst.ApiType.TIMEZONE):
         input_component = dcc.Input(
             type="text",
             value=default,
-            placeholder="YYYY-MM-DD HH:MM:SS",
+            placeholder=placeholder,
             id={"type": "patient-option", "name": component_id},
             style={"width": "300px"},
         )
@@ -68,18 +70,9 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
         input_component = dcc.Input(
             type="text",
             value=default,
-            placeholder="Path...",
+            placeholder=placeholder,
             id={"type": "patient-option", "name": component_id},
             style={"width": "500px"},
-        )
-
-    elif t == cst.ApiType.TIMEZONE:
-        input_component = dcc.Input(
-            type="text",
-            value=default,
-            placeholder="e.g. Europe/Paris",
-            id={"type": "patient-option", "name": component_id},
-            style={"width": "300px"},
         )
 
     else:

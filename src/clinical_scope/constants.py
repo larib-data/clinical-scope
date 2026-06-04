@@ -10,6 +10,9 @@ DEFAULT_QUICK_LOAD = False
 ANNOTATION_FILE_NAME = "annotations.json"
 ANNOTATION_KEY = "annotations"
 
+PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"
+PLACEHOLDER_DAY = "YYYY-MM-DD"
+
 
 class ApiType:
     # To know how type should be interpreted in the API
@@ -30,7 +33,8 @@ class PatientOptions:
         API_TYPE = ApiType.PATH_FOLDER
         DEFAULT = ""
         MANDATORY = True
-        DESCRIPTION = "Path to data (folder)"
+        DESCRIPTION = "Patient folder (not a file)"
+        PLACEHOLDER = "e.g. /path/to/patient_007  — the folder, not a .parquet file"
 
     class DisplayTimezone:
         ORDER = 2
@@ -39,6 +43,7 @@ class PatientOptions:
         DEFAULT = DISPLAY_TIMEZONE
         MANDATORY = False
         DESCRIPTION = "Display timezone (IANA name)"
+        PLACEHOLDER = "e.g. Europe/Paris"
 
     class DatetimeStart:
         ORDER = 3
@@ -47,6 +52,7 @@ class PatientOptions:
         DEFAULT = ""
         MANDATORY = False
         DESCRIPTION = "Time start filter"
+        PLACEHOLDER = PLACEHOLDER_TIMESTAMP
 
     class DatetimeEnd:
         ORDER = 4
@@ -55,6 +61,7 @@ class PatientOptions:
         DEFAULT = ""
         MANDATORY = False
         DESCRIPTION = "Time end filter"
+        PLACEHOLDER = PLACEHOLDER_TIMESTAMP
 
     class QuickLoad:
         ORDER = 5
