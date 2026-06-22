@@ -24,6 +24,14 @@ obligations.
 
 ---
 
+Note that the application's log files (under "logs/") may record the file
+system paths you open, and such paths can themselves contain identifiers
+(e.g. a patient folder name). Treat the "logs/" folder as potentially
+sensitive and remove or review it before sharing it (for instance when
+sending a bug report).
+
+---
+
 ClinicalScope is licensed under the Apache License 2.0; see the accompanying
 LICENSE file.
 Copyright 2026 Assistance Publique – Hôpitaux de Paris. Developed by Alexis

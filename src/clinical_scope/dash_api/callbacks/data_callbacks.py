@@ -387,6 +387,12 @@ def _build_data_folder_preview(value: str | None) -> Any:
             "You can still Process once the path is correct.",
             style=_PREVIEW_WARN,
         )
+    except Exception:
+        logger.exception("Patient-folder preview failed")
+        return html.Span(
+            "⚠ Couldn't check this path",
+            style=_PREVIEW_WARN,
+        )
 
 
 def _inspect_patient_folder(path: Path) -> Any:

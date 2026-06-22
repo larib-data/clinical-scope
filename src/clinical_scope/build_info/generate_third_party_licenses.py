@@ -317,8 +317,11 @@ def discover_native_libs(internal: Path) -> list[Path]:
     return standalone
 
 
+PSF_TODO = "*** TODO: paste PSF License text. https://docs.python.org/3/license.html ***"
+
+
 def find_psf_text() -> str:
-    """Return the CPython PSF license text, or a pointer if not found on disk."""
+    """Return the CPython PSF license text, or ``PSF_TODO`` if not found on disk."""
     base = Path(sys.base_prefix)
     ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
     candidates = [
@@ -329,7 +332,7 @@ def find_psf_text() -> str:
     for c in candidates:
         if c.is_file():
             return c.read_text(encoding="utf-8", errors="replace").rstrip()
-    return "*** TODO: paste PSF License text. https://docs.python.org/3/license.html ***"
+    return PSF_TODO
 
 
 def native_section(internal: Path) -> tuple[str, list[str]]:
@@ -371,6 +374,9 @@ def native_section(internal: Path) -> tuple[str, list[str]]:
         lines += ["-" * 78, f"{disp}  ({', '.join(sorted(set(files)))})", "-" * 78, notice, ""]
 
     # Embedded interpreter (PSF) -- always present in a PyInstaller bundle.
+    psf_text = find_psf_text()
+    if psf_text == PSF_TODO:
+        unknown.append("CPython PSF license text (interpreter)")
     interp_files = f"  ({', '.join(sorted(set(interpreter_libs)))})" if interpreter_libs else ""
     lines += [
         "-" * 78,
@@ -380,7 +386,7 @@ def native_section(internal: Path) -> tuple[str, list[str]]:
         "License: Python Software Foundation License Version 2 (PSF-2.0).",
         "Copyright (c) 2001-present Python Software Foundation. All Rights Reserved.",
         "",
-        find_psf_text(),
+        psf_text,
         "",
     ]
 

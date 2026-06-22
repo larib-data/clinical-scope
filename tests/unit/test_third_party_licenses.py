@@ -143,6 +143,13 @@ class TestNativeLibResolution:
         _, unrecognised = _native_section_for(tmp_path, ["libreadline.so.8"])
         assert "libreadline.so.8" in unrecognised
 
+    def test_missing_psf_license_is_flagged(self, tmp_path, monkeypatch):
+        """A bundle whose interpreter license can't be found must fail, not ship a TODO."""
+        monkeypatch.setattr(gen, "find_psf_text", lambda: gen.PSF_TODO)
+        text, unrecognised = _native_section_for(tmp_path, [])
+        assert any("PSF" in u for u in unrecognised)
+        assert gen.PSF_TODO in text
+
 
 class TestReadlineExcludedFromBundle:
     """The actual fix: readline never enters the bundle in the first place."""
