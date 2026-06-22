@@ -19,7 +19,9 @@ The package is not yet released on pypi or is public. The current readme is a pr
   <a href="https://pypi.org/project/clinical-scope/">
     <img src="https://img.shields.io/pypi/pyversions/clinical-scope" alt="Python versions" />
   </a>
-  <img src="https://img.shields.io/badge/license-TBD-lightgrey" alt="License" />
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" />
+  </a>
 </p>
 
 ---
@@ -185,3 +187,9 @@ If you use ClinicalScope in academic work, please cite:
 ```
 
 A [`CITATION.cff`](CITATION.cff) file is also provided for GitHub's *Cite this repository* button.
+
+## License
+
+ClinicalScope is licensed under the [Apache License 2.0](LICENSE).
+
+Copyright © 2026 Assistance Publique – Hôpitaux de Paris. Developed by Alexis Janin.

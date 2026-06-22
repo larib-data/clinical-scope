@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,9 +8,10 @@ version = "0.3.0"
 description = "Interactive visualization dashboard for clinical physiological signals"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
   {name = "Alexis Janin", email = "alexis.janin@inria.fr"},
-  {name = "Alexis Janin", email = "alexis_janin1@yahoo.com"},
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -39,7 +40,7 @@ dependencies = [
 clinical-scope = "clinical_scope.dash_api.core_api:main"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "ruff"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
