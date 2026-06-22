@@ -52,6 +52,12 @@ a = Analysis(
 
         # --- Pydantic stack (not used by our app or its runtime deps) ---
         "pydantic", "pydantic_core", "annotated_types", "typing_inspection",
+
+        # --- GNU Readline (GPL-3) ---
+        # The stdlib `readline` extension links GNU Readline (libreadline.so.8 on
+        # Linux) -- a GPL-3 lib in an otherwise attribution-only bundle. Unused by
+        # this web app, so excluding it keeps the GPL out. No-op where absent.
+        "readline", "rlcompleter",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

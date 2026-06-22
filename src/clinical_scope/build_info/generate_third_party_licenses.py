@@ -42,6 +42,32 @@ BUILD_ONLY = {
 
 LIC_HINTS = ("license", "licence", "copying", "notice", "authors")
 
+# Copyleft policy for the build warning. Attribution discharges permissive
+# licenses and weak file-level copyleft (MPL-2.0). Strong copyleft adds source
+# obligations an attribution-only bundle can't meet -> flagged for review.
+STRONG_COPYLEFT = (
+    "affero",
+    "agpl",
+    "lgpl",
+    "gpl",
+    "eclipse public",
+    "epl-",
+    "cddl",
+    "sspl",
+    "common public",
+    "cpl-",
+    "share-alike",
+    "sharealike",
+    "cc-by-sa",
+)
+WEAK_COPYLEFT = ("mozilla public", "mpl-2", "mpl 2")  # noted, not flagged
+# Longer ``License`` values are inlined license text, not an identifier -> skip.
+MAX_LICENSE_ID_LEN = 80
+
+# Strong-copyleft dists a human reviewed and accepts (name -> reason); listed here
+# silences the warning, strong-copyleft and absent is reported as unexpected.
+ACCEPTED_COPYLEFT: dict[str, str] = {}
+
 # Standalone native shared libraries -> (display name, license notice). Keyed by
 # a lowercase filename-stem prefix; matched across platforms (.dylib/.so/.dll).
 # Extend this map when a build introduces a native lib not listed here.
@@ -83,6 +109,89 @@ NATIVE_LICENSES: dict[str, tuple[str, str]] = {
     "libffi": ("libffi", "License: MIT. https://github.com/libffi/libffi"),
     "libtcl": ("Tcl", "License: Tcl/Tk BSD-style license. https://www.tcl.tk"),
     "libtk": ("Tk", "License: Tcl/Tk BSD-style license. https://www.tcl.tk"),
+    # OpenBLAS, vendored into NumPy/SciPy wheels (same file stem on every OS):
+    "libscipy_openblas": (
+        "OpenBLAS",
+        "License: BSD 3-Clause. Copyright (c) 2011-present, The OpenBLAS contributors.\n"
+        "https://github.com/OpenMathLib/OpenBLAS/blob/develop/LICENSE",
+    ),
+    # Windows drops the `lib` prefix, so these mirror the lib* keys above.
+    "arrow": (
+        "Apache Arrow C++",
+        "License: Apache License 2.0. The full Apache-2.0 text and Arrow's NOTICE\n"
+        'are reproduced above in the "pyarrow" section (same project).',
+    ),
+    "parquet": (
+        "Apache Parquet C++ (part of Apache Arrow)",
+        'License: Apache License 2.0. See the "pyarrow" section above.',
+    ),
+    "sqlite3": (
+        "SQLite",
+        "SQLite is in the public domain. https://www.sqlite.org/copyright.html",
+    ),
+    "pywintypes": (
+        "pywin32 (pywintypes)",
+        "License: PSF License (BSD-style). Copyright (c) Mark Hammond and contributors.\n"
+        "https://github.com/mhammond/pywin32",
+    ),
+    # Linux GCC runtime libs; the GCC Runtime Library Exception permits non-GPL use.
+    "libgcc": (
+        "GCC runtime libraries",
+        "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
+        "Exception), which permits distribution with independent software.\n"
+        "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org",
+    ),
+    "libstdc++": (
+        "GCC runtime libraries",
+        "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
+        "Exception), which permits distribution with independent software.\n"
+        "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org",
+    ),
+    "libgfortran": (
+        "GCC runtime libraries",
+        "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
+        "Exception), which permits distribution with independent software.\n"
+        "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org",
+    ),
+    "libquadmath": (
+        "GCC libquadmath",
+        "License: LGPL-2.1-or-later. Copyright (c) Free Software Foundation, Inc.\n"
+        "https://gcc.gnu.org/onlinedocs/libquadmath/",
+    ),
+    "libtinfo": (
+        "ncurses (libtinfo)",
+        "License: MIT-style (ncurses license). Copyright (c) Free Software\n"
+        "Foundation, Inc. https://invisible-island.net/ncurses/",
+    ),
+    "libuuid": (
+        "util-linux libuuid",
+        "License: BSD 3-Clause. Copyright (c) Theodore Ts'o.\n"
+        "https://github.com/util-linux/util-linux",
+    ),
+    # GNU Readline is deliberately absent: GPL-3, excluded at build time (see the
+    # spec's `readline` exclude). Its absence makes any re-bundling surface as an
+    # UNRECOGNISED warning instead of being silently attributed.
+    # Windows Microsoft C/C++ runtimes, redistributable under the VS / SDK terms.
+    "vcruntime": (
+        "Microsoft Visual C++ Runtime",
+        "License: Microsoft Visual C++ Redistributable (distributable code).\n"
+        "Copyright (c) Microsoft Corporation. https://visualstudio.microsoft.com",
+    ),
+    "msvcp140": (
+        "Microsoft Visual C++ Runtime",
+        "License: Microsoft Visual C++ Redistributable (distributable code).\n"
+        "Copyright (c) Microsoft Corporation. https://visualstudio.microsoft.com",
+    ),
+    "api-ms-win": (
+        "Microsoft Universal C Runtime (UCRT)",
+        "License: Microsoft Windows SDK distributable code (Universal CRT).\n"
+        "Copyright (c) Microsoft Corporation. https://learn.microsoft.com",
+    ),
+    "ucrtbase": (
+        "Microsoft Universal C Runtime (UCRT)",
+        "License: Microsoft Windows SDK distributable code (Universal CRT).\n"
+        "Copyright (c) Microsoft Corporation. https://learn.microsoft.com",
+    ),
 }
 
 # Packages that ship no license file upstream -> supply a notice by hand here.
@@ -98,17 +207,44 @@ def norm(name: str) -> str:
     return (name or "").lower().replace("_", "-")
 
 
-def harvest_python_packages() -> tuple[list[str], list[str], list[str]]:
+def classify_license(dist: im.Distribution) -> tuple[str, str] | None:
+    """
+    Classify a distribution's license as copyleft, if it is.
+
+    Returns ``(severity, label)`` (severity ``"strong"``/``"weak"``) or ``None``
+    for permissive/unknown. Reads the standardized ``License ::`` trove
+    classifiers plus a short ``License``/``License-Expression`` field; a long
+    ``License`` value (inlined license text) is skipped so it can't false-match.
+    """
+    md = dist.metadata
+    parts = [
+        v
+        for k in ("License-Expression", "License")
+        if (v := md.get(k)) and len(v) < MAX_LICENSE_ID_LEN
+    ]
+    parts += [c for c in md.get_all("Classifier") or [] if c.startswith("License")]
+    blob = " ; ".join(parts).lower()
+    label = "; ".join(parts) or "?"
+    if any(m in blob for m in STRONG_COPYLEFT):
+        return "strong", label
+    if any(m in blob for m in WEAK_COPYLEFT):
+        return "weak", label
+    return None
+
+
+def harvest_python_packages() -> tuple[list[str], list[str], list[str], list[tuple[str, str, str]]]:
     """
     Collect license sections for the running interpreter's distributions.
 
-    Returns ``(sections, covered, missing)``.
+    Returns ``(sections, covered, missing, copyleft)`` where ``copyleft`` lists
+    ``(severity, name-version, label)`` for non-permissive components.
     """
     excluded = {norm(b) for b in BUILD_ONLY}
     seen: set[str] = set()
     sections: list[str] = []
     covered: list[str] = []
     missing: list[str] = []
+    copyleft: list[tuple[str, str, str]] = []
 
     dists = sorted(im.distributions(), key=lambda d: norm(d.metadata.get("Name") or ""))
     for d in dists:
@@ -117,6 +253,9 @@ def harvest_python_packages() -> tuple[list[str], list[str], list[str]]:
         if n in excluded or n in seen:
             continue
         seen.add(n)
+        verdict = classify_license(d)
+        if verdict and not (verdict[0] == "strong" and n in ACCEPTED_COPYLEFT):
+            copyleft.append((verdict[0], f"{name} {d.version}", verdict[1]))
         texts = _license_texts(d)
         if not texts:
             body = MANUAL_PKG.get(
@@ -127,7 +266,7 @@ def harvest_python_packages() -> tuple[list[str], list[str], list[str]]:
             continue
         sections.append(_block(f"{name}  {d.version}", texts))
         covered.append(f"{name} {d.version}")
-    return sections, covered, missing
+    return sections, covered, missing, copyleft
 
 
 def _license_texts(dist: im.Distribution) -> list[tuple[str, str]]:
@@ -210,10 +349,17 @@ def native_section(internal: Path) -> tuple[str, list[str]]:
         "Discovered for THIS platform's build (re-run per platform).",
         "",
     ]
+    # The interpreter's own shared lib (libpython*.so / python3*.dll) is covered
+    # by the PSF block below, so route it there instead of flagging it.
+    interpreter_prefixes = ("libpython", "python3")
     matched: dict[str, tuple[str, list[str]]] = {}
+    interpreter_libs: list[str] = []
     unknown: list[str] = []
     for p in standalone:
         stem = p.name.lower()
+        if stem.startswith(interpreter_prefixes):
+            interpreter_libs.append(p.name)
+            continue
         hit = next((k for k in NATIVE_LICENSES if stem.startswith(k)), None)
         if hit:
             disp, notice = NATIVE_LICENSES[hit]
@@ -225,10 +371,11 @@ def native_section(internal: Path) -> tuple[str, list[str]]:
         lines += ["-" * 78, f"{disp}  ({', '.join(sorted(set(files)))})", "-" * 78, notice, ""]
 
     # Embedded interpreter (PSF) -- always present in a PyInstaller bundle.
+    interp_files = f"  ({', '.join(sorted(set(interpreter_libs)))})" if interpreter_libs else ""
     lines += [
         "-" * 78,
         f"CPython {sys.version_info.major}.{sys.version_info.minor} interpreter "
-        "(Python, base_library.zip, interpreter shared lib)",
+        f"(Python, base_library.zip, interpreter shared library){interp_files}",
         "-" * 78,
         "License: Python Software Foundation License Version 2 (PSF-2.0).",
         "Copyright (c) 2001-present Python Software Foundation. All Rights Reserved.",
@@ -286,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f"no _internal/ under {args.bundle_root} -- is this a built bundle?")
     out = args.output or (args.bundle_root / "THIRD_PARTY_LICENSES.txt")
 
-    sections, covered, missing = harvest_python_packages()
+    sections, covered, missing, copyleft = harvest_python_packages()
     native_text, unrecognised = native_section(internal)
     out.write_text(
         build_header(len(covered), len(missing)) + "".join(sections) + native_text,
@@ -299,10 +446,19 @@ def main(argv: list[str] | None = None) -> int:
     if unrecognised:
         print(f"  UNRECOGNISED NATIVE LIBS: {', '.join(sorted(unrecognised))}")
 
-    # Warn-only by design (see build_info/README.md): a fresh dependency must not
-    # block an iterative build, but unresolved attribution must not pass silently
-    # either -- so signal it via a non-zero exit code that build.sh surfaces.
-    return 1 if (missing or unrecognised) else 0
+    strong = [c for c in copyleft if c[0] == "strong"]
+    weak = [c for c in copyleft if c[0] == "weak"]
+    if weak:
+        print(f"  weak copyleft (OK to ship unmodified): {', '.join(c[1] for c in weak)}")
+    if strong:
+        print("  UNEXPECTED STRONG-COPYLEFT PACKAGES -- review before publishing:")
+        for _, nv, label in strong:
+            print(f"    {nv}  [{label}]")
+
+    # Warn-only by design (see build_info/README.md): unresolved attribution or a
+    # new strong-copyleft dep must not pass silently, so signal via a non-zero exit
+    # code that build.sh surfaces -- without blocking an iterative build.
+    return 1 if (missing or unrecognised or strong) else 0
 
 
 if __name__ == "__main__":
