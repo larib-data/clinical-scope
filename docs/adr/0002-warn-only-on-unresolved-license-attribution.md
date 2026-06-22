@@ -20,8 +20,10 @@ Fail-fast guarantees no release ever ships with an attribution gap, but it block
 
 The non-zero exit is what makes warn-only trustworthy: the gap becomes a real signal (an exit code a human or a future CI step can branch on) rather than a line of stdout. Iterative builds are never blocked; the release build's gap is impossible to scroll past.
 
+The same policy applies to the CI build (`.github/workflows/build.yml`, which reconstructs the same artifact on a tag push / manual dispatch): the generator's non-zero exit is turned into a GitHub `::warning::` annotation rather than a failed job. Two reasons it stays warn-only there too: (1) the `NATIVE_LICENSES` map is currently populated only for the macOS-arm build, so the Windows/Linux runners will legitimately emit `*** TODO` entries until their native libs are mapped, and failing would block all releases on a known, in-progress gap; (2) CI publishes a **draft** release, so a human still reviews the artifact before it goes public — the gate is preserved.
+
 ## Consequences
 
-- **Easier:** adding a dependency never blocks a local build; the developer sees exactly which package/lib needs a notice and resolves it before cutting the release.
-- **Harder / accepted trade-offs:** nothing *mechanically* prevents a release with `*** TODO` markers still in the file — the gate relies on a human heeding the warning. Acceptable while releases are cut by hand by a single maintainer.
-- **Revisit if:** releases are ever automated in CI. There, no human watches the build log, so the safer default flips to fail-fast — wire the generator's non-zero exit to fail the release job (the exit code is already there for it).
+- **Easier:** adding a dependency never blocks a local or CI build; the developer/maintainer sees exactly which package/lib needs a notice and resolves it before publishing.
+- **Harder / accepted trade-offs:** nothing *mechanically* prevents a draft release carrying `*** TODO` markers — the gate relies on a human heeding the warning/annotation before publishing the draft. Acceptable while a maintainer reviews each draft release by hand.
+- **Revisit toward fail-fast if:** release *publishing* (not just building) becomes automatic, removing the human draft-review gate; at that point wire the generator's non-zero exit to fail the release job. This becomes safe to do once `NATIVE_LICENSES` covers every CI platform, so the only remaining non-zero exits are genuine new gaps.

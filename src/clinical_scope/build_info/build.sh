@@ -89,64 +89,19 @@ mkdir -p "$DIST_PATH"
 # Run PyInstaller
 pyinstaller "$SPEC_FILE" --clean --distpath "$DIST_PATH" --noconfirm
 
-# Copy user guide PDF into the app bundle root (next to executable)
-USER_GUIDE_PDF="$PROJECT_ROOT/docs/user_guide/ClinicalScope_UserGuide.pdf"
-if [ -f "$USER_GUIDE_PDF" ]; then
-    cp "$USER_GUIDE_PDF" "$DIST_PATH/$APP_NAME/"
-    echo -e "${GREEN}User guide PDF copied to bundle.${NC}"
-else
-    echo -e "${YELLOW}Warning: User guide PDF not found at $USER_GUIDE_PDF${NC}"
-    echo -e "${YELLOW}  Run docs/user_guide/build_pdf.sh to generate it first.${NC}"
-fi
-
-# Copy disclaimer and license into the app bundle root (next to executable)
-DISCLAIMER_FILE="$PROJECT_ROOT/DISCLAIMER.txt"
-if [ -f "$DISCLAIMER_FILE" ]; then
-    cp "$DISCLAIMER_FILE" "$DIST_PATH/$APP_NAME/"
-    echo -e "${GREEN}Disclaimer copied to bundle.${NC}"
-else
-    echo -e "${YELLOW}Warning: Disclaimer not found at $DISCLAIMER_FILE${NC}"
-fi
-
-LICENSE_FILE="$PROJECT_ROOT/LICENSE"
-if [ -f "$LICENSE_FILE" ]; then
-    cp "$LICENSE_FILE" "$DIST_PATH/$APP_NAME/"
-    echo -e "${GREEN}License copied to bundle.${NC}"
-else
-    echo -e "${YELLOW}Warning: License not found at $LICENSE_FILE${NC}"
-fi
-
-# Copy template patient data structure into the app bundle root
-TEMPLATE_FOLDER="$PROJECT_ROOT/example/template_patient_data_structure"
-if [ -d "$TEMPLATE_FOLDER" ]; then
-    cp -r "$TEMPLATE_FOLDER" "$DIST_PATH/$APP_NAME/"
-    echo -e "${GREEN}Template patient data structure copied to bundle.${NC}"
-else
-    echo -e "${YELLOW}Warning: Template folder not found at $TEMPLATE_FOLDER${NC}"
-fi
-
-# Copy demo patient data into the app bundle
-DEMO_DATABASE="$PROJECT_ROOT/example/demo_database"
-if [ -d "$DEMO_DATABASE" ]; then
-    cp -r "$DEMO_DATABASE" "$DIST_PATH/$APP_NAME/"
-    rm -rf "$DIST_PATH/$APP_NAME/demo_database/demo_patient/clinical_scope_output"
-    echo -e "${GREEN}Demo database copied to bundle.${NC}"
-else
-    echo -e "${YELLOW}Warning: Demo database folder not found at $DEMO_DATABASE${NC}"
-fi
-
-# Generate third-party license notices for everything bundled in _internal/.
+# Copy static assets into the bundle and (re)generate THIRD_PARTY_LICENSES.txt.
+# Shared with the CI build via assemble_bundle.py so the asset list lives once.
 # Run with the SAME interpreter that produced the build so the package set matches.
 echo ""
-echo -e "${YELLOW}Generating third-party license notices...${NC}"
-# A non-zero exit means unresolved attribution (missing notices / unrecognised
-# native libs) -- the file is still written, but warn loudly. Warn-only on
-# purpose: it must not block iterative builds, only flag gaps before a release.
-if python "$SCRIPT_DIR/generate_third_party_licenses.py" --bundle-root "$DIST_PATH/$APP_NAME"; then
-    echo -e "${GREEN}THIRD_PARTY_LICENSES.txt written to bundle.${NC}"
+echo -e "${YELLOW}Assembling bundle (assets + license notices)...${NC}"
+# A non-zero exit means an unresolved item (a missing asset, or an unrecognised
+# native lib / package with no license file). Warn-only on purpose: it must not
+# block iterative builds, only flag gaps before a release (see ADR-0002).
+if python "$SCRIPT_DIR/assemble_bundle.py" --bundle-root "$DIST_PATH/$APP_NAME"; then
+    echo -e "${GREEN}Bundle assets and THIRD_PARTY_LICENSES.txt written.${NC}"
 else
-    echo -e "${RED}Warning: THIRD_PARTY_LICENSES.txt has unresolved attribution \
-(see TODO entries above) -- resolve before cutting a release.${NC}"
+    echo -e "${RED}Warning: bundle has unresolved items (missing asset or license \
+TODO, see output above) -- resolve before cutting a release.${NC}"
 fi
 
 echo ""
