@@ -44,8 +44,9 @@ def save_json(data_json: dict[str, Any], json_path: Path) -> None:
 
 
 # ==================================================================================================
-# a bit like quick fixes, for windows, for know place at the code where we want a function that tolerate '"' and delete them  # noqa: E501
+# Normalise a pasted path: drop wrapping quotes/whitespace, expand ~ (backslashes kept).
 def format_path(path: str) -> Path:
+    path = path.strip()
     path = path.replace('"', "")
     path = path.replace("'", "")
-    return Path(path)
+    return Path(path.strip()).expanduser()

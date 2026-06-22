@@ -85,6 +85,8 @@ Full command reference in `tests/README.md`.
 
 Ruff (`ruff check src/`, `ruff format src/`). Line length 100 (Python only — Markdown prose is not column-wrapped), double quotes, target Python 3.12 (3.9+ compatible), D213 docstrings (summary on second line).
 
+Keep inline comments concise — one line where possible; explain the non-obvious *why*, not the *what*. Reserve longer prose for docstrings.
+
 ## Logs
 
 Gitignored under `logs/`: `logs/app/dash_api.log` (app), `logs/scripts/` (scripts).

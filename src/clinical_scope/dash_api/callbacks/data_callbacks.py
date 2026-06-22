@@ -6,6 +6,7 @@ and processing visualizations.
 """
 
 import base64
+import concurrent.futures
 import json
 import logging
 from datetime import UTC, datetime
@@ -350,6 +351,15 @@ _PREVIEW_OK = {"color": "#28a745"}
 _PREVIEW_WARN = {"color": "#e67e00"}
 _PREVIEW_ERROR = {"color": "#dc3545"}
 
+# A slow/dead share can make is_dir()/iterdir() block, so the scan runs in a worker
+# thread and we give up after this long rather than hang the request.
+_PREVIEW_SCAN_TIMEOUT_S = 2.0
+# Module-level pool: a timed-out scan is abandoned, not joined (a stuck OS call can't be
+# interrupted), so we never block on shutdown; max_workers bounds how many can pile up.
+_PREVIEW_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="folder-preview"
+)
+
 
 def _build_data_folder_preview(value: str | None) -> Any:
     """
@@ -359,13 +369,28 @@ def _build_data_folder_preview(value: str | None) -> Any:
     path until Process fails, it names the device subfolders found (or explains why none
     were), so the user learns to point at the patient folder, not a data file.
 
-    Advisory only — any filesystem error degrades to a soft hint, never an exception,
-    since real validation still runs on Process.
+    Advisory only — any filesystem error degrades to a soft hint, never an exception, and
+    a slow share is capped by a timeout, since real validation still runs on Process.
     """
     if not value or not str(value).strip():
         return ""
 
     path = ui_helper.format_path(value)
+    try:
+        return _PREVIEW_EXECUTOR.submit(_inspect_patient_folder, path).result(
+            timeout=_PREVIEW_SCAN_TIMEOUT_S
+        )
+    except concurrent.futures.TimeoutError:
+        logger.warning("Patient-folder preview timed out scanning %r", value)
+        return html.Span(
+            "⏳ Still reading this folder — it may be a slow or unresponsive drive. "
+            "You can still Process once the path is correct.",
+            style=_PREVIEW_WARN,
+        )
+
+
+def _inspect_patient_folder(path: Path) -> Any:
+    """Scan *path* and return the preview Span. Runs in a worker thread (see caller)."""
     try:
         if path.is_file():
             return html.Span(
@@ -373,8 +398,7 @@ def _build_data_folder_preview(value: str | None) -> Any:
                 f"{path.parent.parent} ?)",
                 style=_PREVIEW_ERROR,
             )
-        # A file extension on a non-directory is a red flag: it's almost certainly a data file
-        # (e.g. a .parquet path pasted from another machine, so is_file() is False here).
+        # A suffix but no such directory: almost certainly a data file, not the folder.
         if path.suffix and not path.is_dir():
             return html.Span(
                 f"⚠ '{path.name}' looks like a file, not a folder. Pick the patient folder, not a "
@@ -399,7 +423,7 @@ def _build_data_folder_preview(value: str | None) -> Any:
                 other_subfolders.append(sub.name)
     except OSError as exc:
         # e.g. a restricted network share that exists but can't be listed.
-        logger.warning("Could not inspect patient folder %r: %s", value, exc)
+        logger.warning("Could not inspect patient folder %r: %s", str(path), exc)
         return html.Span(
             "⚠ Couldn't read this folder (permission or path issue).", style=_PREVIEW_WARN
         )

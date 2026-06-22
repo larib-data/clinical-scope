@@ -71,6 +71,7 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
             type="text",
             value=default,
             placeholder=placeholder,
+            debounce=0.5,
             id={"type": "patient-option", "name": component_id},
             style={"width": "500px"},
         )
