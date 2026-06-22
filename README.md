@@ -188,6 +188,18 @@ If you use ClinicalScope in academic work, please cite:
 
 A [`CITATION.cff`](CITATION.cff) file is also provided for GitHub's *Cite this repository* button.
 
+## Disclaimer
+
+### Research Use Only — Not a Medical Device
+
+This software is provided exclusively for scientific research purposes. It is not a medical device within the meaning of Regulation (EU) 2017/745 (MDR) and has not undergone CE marking, conformity assessment, or any regulatory authorization (CE, FDA, or other).
+
+It must not be used for the diagnosis, monitoring, treatment, or prevention of disease, nor for any clinical decision concerning a patient. The visualizations, annotations, and formats it produces are not validated for clinical purposes, and any use beyond research is the sole responsibility of the user, who must carry out their own validation.
+
+### Personal Data and GDPR
+
+This software processes physiological signals that may constitute health data — i.e. personal data falling within the special categories of Article 9 of Regulation (EU) 2016/679 (GDPR). By deploying or using this software on data, you act as the data controller and assume all corresponding obligations.
+
 ## License
 
 ClinicalScope is licensed under the [Apache License 2.0](LICENSE).

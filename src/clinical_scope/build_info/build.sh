@@ -99,6 +99,23 @@ else
     echo -e "${YELLOW}  Run docs/user_guide/build_pdf.sh to generate it first.${NC}"
 fi
 
+# Copy disclaimer and license into the app bundle root (next to executable)
+DISCLAIMER_FILE="$PROJECT_ROOT/DISCLAIMER.txt"
+if [ -f "$DISCLAIMER_FILE" ]; then
+    cp "$DISCLAIMER_FILE" "$DIST_PATH/$APP_NAME/"
+    echo -e "${GREEN}Disclaimer copied to bundle.${NC}"
+else
+    echo -e "${YELLOW}Warning: Disclaimer not found at $DISCLAIMER_FILE${NC}"
+fi
+
+LICENSE_FILE="$PROJECT_ROOT/LICENSE"
+if [ -f "$LICENSE_FILE" ]; then
+    cp "$LICENSE_FILE" "$DIST_PATH/$APP_NAME/"
+    echo -e "${GREEN}License copied to bundle.${NC}"
+else
+    echo -e "${YELLOW}Warning: License not found at $LICENSE_FILE${NC}"
+fi
+
 # Copy template patient data structure into the app bundle root
 TEMPLATE_FOLDER="$PROJECT_ROOT/example/template_patient_data_structure"
 if [ -d "$TEMPLATE_FOLDER" ]; then
