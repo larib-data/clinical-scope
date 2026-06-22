@@ -135,6 +135,20 @@ else
     echo -e "${YELLOW}Warning: Demo database folder not found at $DEMO_DATABASE${NC}"
 fi
 
+# Generate third-party license notices for everything bundled in _internal/.
+# Run with the SAME interpreter that produced the build so the package set matches.
+echo ""
+echo -e "${YELLOW}Generating third-party license notices...${NC}"
+# A non-zero exit means unresolved attribution (missing notices / unrecognised
+# native libs) -- the file is still written, but warn loudly. Warn-only on
+# purpose: it must not block iterative builds, only flag gaps before a release.
+if python "$SCRIPT_DIR/generate_third_party_licenses.py" --bundle-root "$DIST_PATH/$APP_NAME"; then
+    echo -e "${GREEN}THIRD_PARTY_LICENSES.txt written to bundle.${NC}"
+else
+    echo -e "${RED}Warning: THIRD_PARTY_LICENSES.txt has unresolved attribution \
+(see TODO entries above) -- resolve before cutting a release.${NC}"
+fi
+
 echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Build Complete!${NC}"
