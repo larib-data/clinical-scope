@@ -1,5 +1,5 @@
 {
-    "data_folder": "/Volumes/Data/ProjetVisu/Ramage/Patient1",
+    "data_folder": "/path/to/your/patient_folder",
     "datetime_start": null,
     "datetime_end": null,
     "quick_load": false,
