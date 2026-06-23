@@ -6,7 +6,7 @@ This folder contains the PyInstaller configuration and build scripts for creatin
 
 1. **Python environment** with all dependencies installed:
    ```bash
-   source /Users/alexis/Codes/clinical_scope_venv/bin/activate
+   source .venv/bin/activate
    pip install -e .
    ```
 

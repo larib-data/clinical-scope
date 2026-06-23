@@ -1,5 +1,5 @@
 {
-    "data_folder": "/Volumes/Data/ProjetVisu/Ramage/Patient1",
+    "data_folder": "/path/to/your/patient_folder",
     "datetime_start": null,
     "datetime_end": null,
     "quick_load": false,
@@ -10,6 +10,6 @@
         "time_shift": 20.0
     },
     "eit": {
-        "day": "2024-10-08"
+        "day": "2004-10-08"
     }
 }

@@ -800,14 +800,11 @@ If signals from different sources appear misaligned in time:
 - Check the terminal window for error messages.
 - Log files are available in the `logs/` directory.
 - Ensure the data files are not corrupted or truncated.
-- If you think you are facing a real bug, please report it. (to the author `@alexis_janin1@yahoo.com` or on github)
-<!-- Be careful to update the mail when leaving inria -->
-<!-- Add github link when it will be available -->
+- If you think you are facing a real bug, please report it on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
 
 ## Known limitation
 
-These may or may not be tackled in the future, depending on the needs of the users. Feel free to ask for one of the below or any other feature demand/bug report on the github page. 
-<!-- Add github link when it will be available -->
+These may or may not be tackled in the future, depending on the needs of the users. Feel free to ask for one of the below or any other feature demand/bug report on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
 
 - No timeshift inside a datasource, e.g. if 2 timeseries from `philips_waves` are not aligned, this currently can't be solved in the app.
 - Display timezone in plots is hardcoded to Europe/Paris. This will be modified.

@@ -56,6 +56,8 @@ clinical-scope          # opens http://127.0.0.1:8050
 ```bash
 git clone https://github.com/larib-data/clinical-scope.git
 cd clinical-scope
+python -m venv .venv              # create a virtual environment
+source .venv/bin/activate         # Windows: .venv\Scripts\activate
 pip install -e .
 clinical-scope
 ```
