@@ -6,6 +6,7 @@ and processing visualizations.
 """
 
 import base64
+import concurrent.futures
 import json
 import logging
 from datetime import UTC, datetime
@@ -251,6 +252,12 @@ def build_patient_options_ui(
         extra_per_field={"global.data_folder": [_reload_patient_btn]},
     )
     components.append(html.Div(component, style=CARD_STYLE))
+    components.append(
+        html.Div(
+            id="data-folder-preview",
+            style={"margin": "-4px 0 12px 4px", "fontSize": "13px"},
+        )
+    )
     schema_lookup = schema_lookup | schema
 
     # Per-datasource options
@@ -338,6 +345,128 @@ def reload_patient_options(
             new_values.append(current_val)
 
     return new_values, ""
+
+
+_PREVIEW_OK = {"color": "#28a745"}
+_PREVIEW_WARN = {"color": "#e67e00"}
+_PREVIEW_ERROR = {"color": "#dc3545"}
+
+# A slow/dead share can make is_dir()/iterdir() block, so the scan runs in a worker
+# thread and we give up after this long rather than hang the request.
+_PREVIEW_SCAN_TIMEOUT_S = 2.0
+# Module-level pool: a timed-out scan is abandoned, not joined (a stuck OS call can't be
+# interrupted), so we never block on shutdown; max_workers bounds how many can pile up.
+_PREVIEW_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="folder-preview"
+)
+
+
+def _build_data_folder_preview(value: str | None) -> Any:
+    """
+    Reflect back what the typed patient-folder path actually contains.
+
+    Teaches the folder-vs-file distinction live: instead of silently accepting a wrong
+    path until Process fails, it names the device subfolders found (or explains why none
+    were), so the user learns to point at the patient folder, not a data file.
+
+    Advisory only — any filesystem error degrades to a soft hint, never an exception, and
+    a slow share is capped by a timeout, since real validation still runs on Process.
+    """
+    if not value or not str(value).strip():
+        return ""
+
+    path = ui_helper.format_path(value)
+    try:
+        return _PREVIEW_EXECUTOR.submit(_inspect_patient_folder, path).result(
+            timeout=_PREVIEW_SCAN_TIMEOUT_S
+        )
+    except concurrent.futures.TimeoutError:
+        logger.warning("Patient-folder preview timed out scanning %r", value)
+        return html.Span(
+            "⏳ Still reading this folder — it may be a slow or unresponsive drive. "
+            "You can still Process once the path is correct.",
+            style=_PREVIEW_WARN,
+        )
+    except Exception:
+        logger.exception("Patient-folder preview failed")
+        return html.Span(
+            "⚠ Couldn't check this path",
+            style=_PREVIEW_WARN,
+        )
+
+
+def _inspect_patient_folder(path: Path) -> Any:
+    """Scan *path* and return the preview Span. Runs in a worker thread (see caller)."""
+    try:
+        if path.is_file():
+            return html.Span(
+                "⚠ That's a file, not a folder. Pick the patient folder (maybe its parent? "
+                f"{path.parent.parent} ?)",
+                style=_PREVIEW_ERROR,
+            )
+        # A suffix but no such directory: almost certainly a data file, not the folder.
+        if path.suffix and not path.is_dir():
+            return html.Span(
+                f"⚠ '{path.name}' looks like a file, not a folder. Pick the patient folder, not a "
+                "data file.",
+                style=_PREVIEW_ERROR,
+            )
+        if not path.is_dir():
+            return html.Span("⚠ This folder doesn't exist.", style=_PREVIEW_WARN)
+
+        # If the path itself is named like a device folder, the user went one level too deep.
+        ds_self = datasource.detect_datasource_from_folder(path)
+
+        found = []
+        other_subfolders = []
+        for sub in sorted(path.iterdir()):
+            if not sub.is_dir() or sub.name == cst.FOLDER_NAME_OUTPUT:
+                continue
+            ds = datasource.detect_datasource_from_folder(sub)
+            if ds is not None:
+                found.append(ds.DESCRIPTION)
+            else:
+                other_subfolders.append(sub.name)
+    except OSError as exc:
+        # e.g. a restricted network share that exists but can't be listed.
+        logger.warning("Could not inspect patient folder %r: %s", str(path), exc)
+        return html.Span(
+            "⚠ Couldn't read this folder (permission or path issue).", style=_PREVIEW_WARN
+        )
+
+    if found:
+        return html.Span(
+            f"✓ Found {len(found)} device folder(s): {', '.join(found)}.",
+            style=_PREVIEW_OK,
+        )
+    if ds_self is not None:
+        return html.Span(
+            f"⚠ This looks like a '{ds_self.DESCRIPTION}' device folder, not a patient folder. "
+            f"Pick the patient folder (maybe its parent? {path.parent} ?)",
+            style=_PREVIEW_WARN,
+        )
+    if other_subfolders:
+        names = ", ".join(other_subfolders)
+        return html.Span(
+            f"⚠ This doesn't look like a patient folder — its subfolders ({names}) don't match "
+            f"any known device. A patient folder holds one subfolder per device.",
+            style=_PREVIEW_WARN,
+        )
+    return html.Span(
+        "⚠ This doesn't look like a patient folder — it contains no device subfolders. "
+        "A patient folder holds one subfolder per device (monitor, ventilator, …).",
+        style=_PREVIEW_WARN,
+    )
+
+
+@callback(
+    Output("data-folder-preview", "children"),
+    Input({"type": "patient-option", "name": "global.data_folder"}, "value"),
+    prevent_initial_call=True,
+)
+def preview_data_folder(value: str | None) -> Any:
+    """Update the live preview under the data-folder field as the user types/pastes."""
+    return _build_data_folder_preview(value)
 
 
 def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:

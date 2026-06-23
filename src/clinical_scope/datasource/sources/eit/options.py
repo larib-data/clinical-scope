@@ -65,3 +65,4 @@ class PatientOptionsDataSourceRelative:
         DEFAULT = ""
         MANDATORY = False
         DESCRIPTION = "Day of EIT recording"
+        PLACEHOLDER = cst.PLACEHOLDER_DAY

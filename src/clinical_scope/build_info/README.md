@@ -52,9 +52,17 @@ pyinstaller src/clinical_scope/build_info/core_api.spec --clean --distpath build
 builded_app/
 └── macOS_arm/
     └── ClinicalScope/
-        ├── ClinicalScope    # Main executable
+        ├── ClinicalScope            # Main executable
+        ├── LICENSE                  # Project license (copied from repo root if present)
+        ├── THIRD_PARTY_LICENSES.txt # Bundled dependency notices (auto-generated)
         └── _internal/               # Dependencies
 ```
+
+## License notices
+
+After PyInstaller runs, the bundle is finished by `assemble_bundle.py` (shared by `build.sh` and the CI build workflow, so the step lives in one place): it copies the static assets in and runs `generate_third_party_licenses.py` to write `THIRD_PARTY_LICENSES.txt` — required because PyInstaller redistributes dependency code/libraries but strips their licenses. It harvests license texts from the **build interpreter's** installed packages (so run the build from the venv that produced it) and scans `_internal/` for native libraries. The native-library license map inside the script is **hand-maintained**: an unrecognised native lib is flagged as `*** TODO` in the output (and an `UNRECOGNISED NATIVE LIBRARIES` block), so re-check it per platform and after dependency changes.
+
+If anything is unresolved (a package with no license file, or an unrecognised native lib) the script still writes the file but exits non-zero, which `build.sh` surfaces as a warning without failing the build — resolve the `*** TODO` entries before cutting a release. Rationale in [ADR-0002](../../../docs/adr/0002-warn-only-on-unresolved-license-attribution.md).
 
 ## Running the Built App
 

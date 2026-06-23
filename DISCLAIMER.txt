@@ -1,0 +1,38 @@
+ClinicalScope - Disclaimer
+==========================
+
+RESEARCH USE ONLY - NOT A MEDICAL DEVICE
+
+This software is provided exclusively for scientific research purposes. It
+is not a medical device within the meaning of Regulation (EU) 2017/745
+(MDR) and has not undergone CE marking, conformity assessment, or any
+regulatory authorization (CE, FDA, or other).
+
+It must not be used for the diagnosis, monitoring, treatment, or prevention
+of disease, nor for any clinical decision concerning a patient. The
+visualizations, annotations, and formats it produces are not validated for
+clinical purposes, and any use beyond research is the sole responsibility of
+the user, who must carry out their own validation.
+
+PERSONAL DATA AND GDPR
+
+This software processes physiological signals that may constitute health
+data - i.e. personal data falling within the special categories of Article 9
+of Regulation (EU) 2016/679 (GDPR). By deploying or using this software on
+data, you act as the data controller and assume all corresponding
+obligations.
+
+---
+
+Note that the application's log files (under "logs/") may record the file
+system paths you open, and such paths can themselves contain identifiers
+(e.g. a patient folder name). Treat the "logs/" folder as potentially
+sensitive and remove or review it before sharing it (for instance when
+sending a bug report).
+
+---
+
+ClinicalScope is licensed under the Apache License 2.0; see the accompanying
+LICENSE file.
+Copyright 2026 Assistance Publique – Hôpitaux de Paris. Developed by Alexis
+Janin.

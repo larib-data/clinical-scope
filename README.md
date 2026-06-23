@@ -1,193 +1,119 @@
-# Clinical Scope
+# Warning
 
-Interactive visualization dashboard for clinical physiological signals built with Dash.
+The package is not yet released on pypi or is public. The current readme is a prep for when it will be the case.
 
-## Features
+# ClinicalScope
 
-- Visualize time series of physiological signals from multiple clinical data sources
-- Support for common clinical formats (Philips, Servo-U, FluxMed, EIT, Mindray, syringe pumps)
-  plus a generic **"Other"** source that auto-discovers any CSV/Parquet file with a datetime column
-- **Inspect** patient folders to preview columns, point counts, and time ranges before plotting
-  (with CSV export)
-- **Cross-datasource phase loops** via `global.loop` for combined pressure/volume/flow plots
-- Live per-datasource progress feedback during processing and inspection
-- Interactive annotations and shape drawing on plots
-- Export visualizations to HTML
+<p align="center">
+  <strong>Multi-source time-series signal visualization for research, mainly in ICU and Machine Learning</strong><br>
+  <em>Format · Visualize · Annotate · Export — no code required</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/larib-data/clinical-scope/actions/workflows/ci.yml">
+    <img src="https://github.com/larib-data/clinical-scope/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  </a>
+  <a href="https://pypi.org/project/clinical-scope/">
+    <img src="https://img.shields.io/pypi/v/clinical-scope" alt="PyPI version" />
+  </a>
+  <a href="https://pypi.org/project/clinical-scope/">
+    <img src="https://img.shields.io/pypi/pyversions/clinical-scope" alt="Python versions" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" />
+  </a>
+</p>
+
+---
+
+**ClinicalScope** is an open-source, browser-based dashboard for visualizing, annotating, and extracting time-series data. Its primary domain is ICU monitoring — loading recordings from multiple clinical devices simultaneously (Philips monitors, Servo-U ventilators, EIT systems, FluxMed, Mindray, syringe pumps) — but its annotation and extraction pipeline is designed for any time-series data, making it equally useful for machine learning workflows that require labeled datasets.
 
 ## Installation
 
-1. Clone the repository:
+### Pre-built application (recommended)
+
+Download the latest release for your platform from the **[Releases page](https://github.com/larib-data/clinical-scope/releases/latest)**:
+
+| Platform | File |
+|---|---|
+| Windows | `ClinicalScope-windows-x86_64.zip` |
+| macOS (Apple Silicon) | `ClinicalScope-macOS-arm64.zip` |
+| Linux | `ClinicalScope-linux-x86_64.zip` |
+
+Unzip and run the `ClinicalScope` executable — no Python installation required. Each bundle includes the user guide PDF and a demo database to get started immediately.
+
+### From PyPI (Python users)
+
 ```bash
-git clone git@github.com:larib-data/clinical-scope.git
+pip install clinical-scope
+clinical-scope          # opens http://127.0.0.1:8050
+```
+
+> Requires Python 3.11–3.13.
+
+### From source (developers)
+
+```bash
+git clone https://github.com/larib-data/clinical-scope.git
 cd clinical-scope
-```
-
-2. Create and activate a virtual environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-3. Install the package:
-```bash
 pip install -e .
+clinical-scope
 ```
 
-For development setup (running tests, linting, adding a datasource), see [CONTRIBUTING.md](CONTRIBUTING.md).
+For the full developer setup (tests, linting, adding a datasource), see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Usage
+## Demo
 
-Run the Dash application:
-```bash
-python src/clinical_scope/dash_api/core_api.py
-```
+![ClinicalScope demo](docs/user_guide/images/demo.gif)
 
-The application will open in your browser at `http://127.0.0.1:8050`.
+## Quickstart
 
-### Workflow
+1. **Download** — get the latest release from the [Releases page](https://github.com/larib-data/clinical-scope/releases/latest) and unzip it
+2. **Run** — launch the `ClinicalScope` executable; your browser opens at `http://127.0.0.1:8050`
+3. **Load config** — click **Default visualization (all sources)** to use built-in defaults, or upload a `database_options.json` / `.xlsx` config file
+4. **Set data folder** — enter the path to your patient folder (or point to the bundled `demo_database/demo_patient/` to try it immediately)
+5. **Process** — click **Process visualization**; interactive plots appear in the browser
+6. **Annotate** — draw time events, windows, or point annotations, then click **Save**
 
-**Option 1: Default Visualization (Quick Start)**
-1. Click "Default visualization (all sources)" button
-   - Automatically loads all available data sources with their default settings
-   - No `database_options.json` file needed
-2. Configure patient options (data folder, time range, etc.)
-3. Click "Process visualization" to generate the interactive plots
-4. Use the drawing tools to annotate time points or regions of interest
+## Documentation
 
-**Option 2: Reload Last Config (Daily Workflow)**
-1. If a custom config was previously uploaded, a grey **"Reload last config"** button appears automatically on startup
-2. Click it to instantly restore the last used configuration — no file browsing needed
-3. Configure patient options and click "Process visualization"
+The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for everything beyond the Quickstart.
 
-**Option 3: Custom Configuration**
-1. Upload a `database_options.json` (or `.xlsx`) file specifying which data sources to use and their display settings
-2. Configure patient options (data folder, time range, signals to display, etc.)
-3. Click "Process visualization" to generate the interactive plots
-4. Use the drawing tools to annotate time points or regions of interest
+| Resource | Covers |
+|---|---|
+| [User guide](docs/user_guide/tutorial.md) | Data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, Python API |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, running tests, linting, adding a new datasource |
 
-### Inspecting Data
+## Supported Data Sources
 
-Before running a full visualization you can click the teal **"Inspect data"** button (or run
-`scripts/inspect_patient_data.py`) to see which data sources were detected, what columns are
-available, their point counts, and their time ranges — with a CSV export. See the tutorial
-section *Processing the Visualization → Inspect Data* for details.
+| Data Source | Device / Format | Folder Keywords | File Types | Typical Signals |
+|---|---|---|---|---|
+| Philips Waves | Philips waveform | `philips`, `waves` | `.parquet`, `.csv` | ART, PAP, CO₂, respiratory pressure/volume |
+| Philips Numerics | Philips parameters | `philips`, `numerics` | `.parquet`, `.csv` | Heart rate, SpO₂, FiO₂, blood pressure |
+| EIT | PulmoVista `.asc` | `eit` | `.asc` | Global/local impedance, impedance percentages |
+| FluxMed Signals | FluxMed waveforms | `fluxmed`, `signals` | `.parquet`, `.txt`, `.csv` | Respiratory waveforms |
+| FluxMed Parameters | FluxMed parameters | `fluxmed`, `parameters` | `.parquet`, `.txt`, `.csv` | Respiratory parameters |
+| Servo-U | Servo-U ventilator `.sta` | `servo` | `.sta` | Ventilator waveforms and settings |
+| Mindray Scope | Mindray monitor | `mindray` | `.xml`, `.csv` | ECG, SpO₂, pressure waveforms |
+| Mindray Respi Waves | Mindray respiratory | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | High-frequency respiratory waveforms |
+| Mindray Respi Numerics | Mindray respiratory | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Vt, RR, PEEP, and more |
+| Syringe | Syringe pump | `syringe` | `.parquet`, `.csv` | Infusion rates and volumes |
+| Other (Generic) | Any CSV / Parquet | `other` | `.csv`, `.parquet` | Any time-series with a datetime column |
 
-> **Note:** The "Default visualization" mode enables all registered data sources with their
-> default display configurations — see the [tutorial](docs/user_guide/tutorial.md) section
-> "Patient Data & Supported Data Sources" for the full list. You can still upload a custom
-> `database_options.json` later to override this.
-
-### Local Config Cache — Privacy Note
-
-When a custom configuration file is uploaded successfully, it is automatically saved to:
-
-```
-~/.clinical_scope/last_database_options.json
-```
-
-**What this file should contains:** signal metadata only — display names, units, colors, field mappings, and groupings. **DO NOT include any patient data, file paths.**
-
-To delete the cache, simply remove the file or the `~/.clinical_scope/` folder.
-
-## Patient Data Folder Organization
-
-Each patient's data folder must be organized with **one subfolder per data source**. The application expects specific folder names for each type of clinical data.
-
-### Required Folder Structure
-
-```
-Patient1/                        # Root patient folder (configure in patient_options)
-├── philips_waves/               # Philips waveform data (.parquet files)
-├── philips_numerics/            # Philips numeric/parameter data
-├── eit/                         # EIT PulmoVista data (.asc files)
-├── fluxmed_signals/             # FluxMed waveform data
-├── fluxmed_parameters/          # FluxMed parameter data
-├── servo_u/                     # Servo-U ventilator data (.sta files)
-├── mindray_scope/               # Mindray scope data (.xml or .csv files)
-├── mindray_respi_waves/         # Mindray respiratory waveforms (.parquet or .csv)
-├── mindray_respi_numerics/      # Mindray respiratory parameters (.parquet or .csv)
-├── syringe/                     # Syringe pump data
-├── other/                       # Generic data (.csv or .parquet files)
-└── clinical_scope_output/                    # Auto-generated: cached data and outputs
-```
-
-### Data Source Folder Names
-
-Folder names are **flexible** — they just need to contain the required keywords
-(case-insensitive, any separator). A few examples:
-
-| Data Source | Required Keywords | Recommended Name |
-|-------------|-------------------|------------------|
-| **Philips Waves** | `philips`, `waves` | `philips_waves` |
-| **EIT (PulmoVista)** | `eit` | `eit` |
-| **Other (Generic)** | `other` | `other` |
-
-The complete list of data sources, their folder keywords, accepted file extensions, and
-discovery modes is in the tutorial — see
-[`docs/user_guide/tutorial.md`](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources*.
-
-**Single file** sources expect exactly one data file per folder. When multiple files are present,
-the application resolves ambiguity automatically:
-
-1. Only files with accepted extensions are considered (other files are ignored).
-2. If the same stem exists in multiple formats (e.g., `data.csv` + `data.parquet`), the most
-   preferred extension is kept (first in the list of accepted extensions).
-3. If multiple stems remain, the application returns no match and logs a warning.
-
-**All files** sources load every matching file in the folder and concatenate them. The
-**Other** source is a special multi-file source: each file is treated as an independent
-entry keyed by its stem (`other::<stem>` in `database_options`), so `waves.parquet` becomes
-`other::waves`, `numerics.csv` becomes `other::numerics`, etc.
-
-### Folder Naming Rules
-
-✅ **Valid naming:**
-- All required keywords must be present in the folder name
-- Case-insensitive: `fluxmed_parameters`, `FluxMed_Parameters`, `FLUXMED-PARAMETERS` all work
-- Any separator: `_`, `-`, space, or none
-- Any order: `fluxmed_parameters` or `parameters_fluxmed` both work
-
-❌ **Invalid naming:**
-- Missing keywords: `fluxmed` alone won't match `fluxmed_parameters` (missing "parameters")
-- Partial keywords: `flux` won't match (must be complete word "fluxmed")
-
-### Notes
-
-- **Only include folders for available data sources** - empty folders are fine but not required
-- The `clinical_scope_output/` folder is automatically created for caching processed data (`.parquet` files) and visualization outputs
-- Using the recommended names provides the best performance (exact match is checked first)
-
-### Example
-
-If you only have Philips waves and EIT data:
-
-```
-/path/to/patients/Patient001/
-├── philips_waves/
-│   └── waves_data.parquet
-├── eit/
-│   ├── recording_001.asc
-│   └── recording_002.asc
-└── clinical_scope_output/              # Created automatically
-    ├── philips_waves.parquet
-    └── eit.parquet
-```
+Each patient folder should contain one subfolder per data source. See the [user guide](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* for folder naming rules and configuration details.
 
 ## Standalone Data Processing
 
-The library provides three layered functions for preprocessing patient data (running
-find → load → format) without opening the Dash UI.  Raw parquet caches are always
-written to `<data_folder>/clinical_scope_output/` automatically.  Pass `save_folder` to also save
-the formatted output.
+ClinicalScope can run the full `find → load → format` pipeline without opening the UI, either via Python or command-line scripts. Raw parquet caches are always written to `<data_folder>/clinical_scope_output/` automatically; pass `save_folder` to also save formatted output elsewhere.
 
 ### Python API
 
 ```python
 from pathlib import Path
 from clinical_scope import extract_datasource, extract_patient, batch_extract
-from clinical_scope.helper import load_database_options_from_path
+from clinical_scope.config.parsing import load_database_options_from_path
 
-db_options = load_database_options_from_path(Path("example/option_files/database_options.json"))
+db_options = load_database_options_from_path(Path("database_options.json"))
 
 # 1. Single datasource subfolder (auto-detects type from folder name)
 df = extract_datasource(
@@ -215,19 +141,14 @@ batch = batch_extract(
 # batch = {"Patient01": {"philips_waves": DataFrame, ...}, "Patient02": {...}, ...}
 
 # Explicit list variant
-batch = batch_extract(
-    ["/data/Patient01", "/data/Patient02"],
-    db_options,
-)
+batch = batch_extract(["/data/Patient01", "/data/Patient02"], db_options)
 ```
 
-Set `"quick_load": true` in `patient_options` to reuse previously cached parquet files
-on subsequent runs.
+Set `"quick_load": true` in `patient_options` to reuse previously cached parquet files on subsequent runs.
 
-### Scripts
+### CLI Scripts
 
-All three scripts share the same CLI pattern: a required `patient_folder` positional
-argument, with optional `--database-options`, `--patient-options` and `--verbose` flags.
+All three scripts share the same pattern: a required `patient_folder` positional argument plus optional `--database-options`, `--patient-options`, and `--verbose` flags.
 
 ```bash
 # Extract (find + load + format) without plots
@@ -241,42 +162,46 @@ python scripts/inspect_patient_data.py /data/Patient01 --database-options db.jso
 
 # Visualize (generates HTML)
 python scripts/visualization_patient_data.py /data/Patient01 --verbose
-python scripts/visualization_patient_data.py /data/Patient01 --database-options db.json --debug --verbose
+python scripts/visualization_patient_data.py /data/Patient01 --database-options db.json
 ```
 
-Omit `--database-options` to use all available datasources with their defaults.
-Use `--patient-options opts.json` to pass datetime range, time shift, quick_load, etc.
+Omit `--database-options` to use all available datasources with their defaults. Use `--patient-options opts.json` to pass datetime range, time shift, `quick_load`, etc.
 
-## Project Structure
+## Contributing
 
-```
-src/clinical_scope/
-├── dash_api/               # Dash web application
-│   ├── core_api.py         # Main entry point, layout definition
-│   ├── ui_components.py    # UI component builders
-│   ├── callbacks/          # Dash callbacks (data, annotation & loop handling)
-│   ├── annotations/        # Annotation model, persistence, and rendering
-│   ├── styles.py           # Shared style constants (modal styles, etc.)
-│   ├── validation.py       # Input validation
-│   └── helper_api.py       # API helper functions
-├── datasource/             # Datasource framework
-│   ├── base.py             # Abstract base class for datasources
-│   ├── registry.py         # Registry of available datasources
-│   ├── inspection.py       # Data inspection models & CSV export
-│   ├── timing.py           # time_it decorator for performance logging
-│   ├── formatting/         # Timezone normalization utilities
-│   └── sources/            # One sub-package per data source
-├── config/
-│   └── parsing.py          # High-level config file loading (JSON & XLSX)
-├── io/
-│   └── file_utils.py       # File discovery and I/O helpers
-├── database_options_parser.py  # Normalize new/legacy JSON formats
-├── database_options_xlsx.py    # XLSX → dict conversion
-├── signal_container.py     # Signal, PlotGroup, PlotModel data models
-├── wrapper.py              # Main processing logic (visualization, extraction, inspection)
-├── constants.py            # Global constants and option classes
-└── logger_config.py        # Logging configuration
+Contributions are welcome — bug reports, new data sources, and documentation improvements. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, running tests, linting, and the PR process.
+
+## Citation
+
+If you use ClinicalScope in academic work, please cite:
+
+```bibtex
+@software{clinicalscope2026,
+  author    = {Janin, Alexis},
+  title     = {{ClinicalScope}: Interactive Visualization Dashboard for Clinical Physiological Signals},
+  url       = {https://github.com/larib-data/clinical-scope},
+  version   = {0.3.0},
+  year      = {2026},
+  % doi     = {10.5281/zenodo.XXXXXXX},  % TODO: fill after Zenodo deposit (#46)
+}
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for a more detailed architecture overview and
-[`docs/user_guide/tutorial.md`](docs/user_guide/tutorial.md) for the user-facing guide.
+A [`CITATION.cff`](CITATION.cff) file is also provided for GitHub's *Cite this repository* button.
+
+## Disclaimer
+
+### Research Use Only — Not a Medical Device
+
+This software is provided exclusively for scientific research purposes. It is not a medical device within the meaning of Regulation (EU) 2017/745 (MDR) and has not undergone CE marking, conformity assessment, or any regulatory authorization (CE, FDA, or other).
+
+It must not be used for the diagnosis, monitoring, treatment, or prevention of disease, nor for any clinical decision concerning a patient. The visualizations, annotations, and formats it produces are not validated for clinical purposes, and any use beyond research is the sole responsibility of the user, who must carry out their own validation.
+
+### Personal Data and GDPR
+
+This software processes physiological signals that may constitute health data — i.e. personal data falling within the special categories of Article 9 of Regulation (EU) 2016/679 (GDPR). By deploying or using this software on data, you act as the data controller and assume all corresponding obligations.
+
+## License
+
+ClinicalScope is licensed under the [Apache License 2.0](LICENSE).
+
+Copyright © 2026 Assistance Publique – Hôpitaux de Paris. Developed by Alexis Janin.

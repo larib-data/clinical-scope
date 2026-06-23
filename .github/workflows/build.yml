@@ -69,15 +69,16 @@ jobs:
         shell: bash
         run: pyinstaller src/clinical_scope/build_info/core_api.spec --clean --distpath dist --noconfirm
 
-      - name: Add extra assets to bundle
+      # Copy static assets into the bundle and write THIRD_PARTY_LICENSES.txt.
+      # Shared with build.sh via assemble_bundle.py so the asset list lives once.
+      # Warn-only (ADR-0002): a non-zero exit (missing asset, or PyInstaller-
+      # stripped dependency licenses needing a map entry) becomes an annotation
+      # rather than a failed job -- the release is a draft a human reviews first.
+      - name: Assemble bundle (assets + license notices)
         shell: bash
         run: |
-          python -c "
-          import shutil
-          shutil.copy('docs/user_guide/ClinicalScope_UserGuide.pdf', 'dist/ClinicalScope/')
-          shutil.copytree('example/template_patient_data_structure', 'dist/ClinicalScope/template_patient_data_structure')
-          shutil.copytree('example/demo_database', 'dist/ClinicalScope/demo_database', ignore=shutil.ignore_patterns('clinical_scope_output'))
-          "
+          python src/clinical_scope/build_info/assemble_bundle.py --bundle-root dist/ClinicalScope \
+            || echo "::warning::Bundle for ${{ matrix.artifact_name }} has unresolved items (missing asset or TODO license entries) -- review before publishing the release."
 
       - name: Create zip archive
         shell: bash

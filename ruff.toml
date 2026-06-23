@@ -72,6 +72,9 @@ unfixable = []
     "ANN001",
     "ANN201",
 ]
+"src/clinical_scope/build_info/*" = [
+    "T201", # build CLI prints progress to the console
+]
 
 "API/app.ipynb" = [
     "PLW0602",
