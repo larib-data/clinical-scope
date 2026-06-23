@@ -36,10 +36,7 @@ Ask the user for:
 
 If answers are already clear from context, proceed without asking. Be smart about inferring — if you can read the example folder and files, you can often derive the folder keywords, file keywords, extensions, and signal info without asking.
 
-**Environment**: always activate the venv before running any Python or pytest commands:
-```bash
-source /Users/alexis/Codes/clinical_visu_venv/bin/activate
-```
+**Environment**: always activate your virtual environment before running any Python or pytest commands.
 
 ## Step 1 — Understand the raw data
 
