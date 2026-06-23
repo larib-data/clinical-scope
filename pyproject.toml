@@ -10,7 +10,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 authors = [
   {name = "Alexis Janin", email = "alexis.janin@inria.fr"},
-  {name = "Alexis Janin", email = "alexis_janin1@yahoo.com"},
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

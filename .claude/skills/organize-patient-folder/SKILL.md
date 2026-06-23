@@ -30,7 +30,7 @@ If both are already clear from context, proceed without asking.
 Run this to get the authoritative datasource list (folder keywords, file keywords, extensions):
 
 ```bash
-source /Users/alexis/Codes/clinical_visu_venv/bin/activate && python3 - <<'EOF'
+python3 - <<'EOF'
 import json
 from clinical_scope.datasource_list import DataSource
 

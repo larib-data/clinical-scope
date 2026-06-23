@@ -800,9 +800,7 @@ If signals from different sources appear misaligned in time:
 - Check the terminal window for error messages.
 - Log files are available in the `logs/` directory.
 - Ensure the data files are not corrupted or truncated.
-- If you think you are facing a real bug, please report it. (to the author `@alexis_janin1@yahoo.com` or on github)
-<!-- Be careful to update the mail when leaving inria -->
-<!-- Add github link when it will be available -->
+- If you think you are facing a real bug, please report it on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
 
 ## Known limitation
 

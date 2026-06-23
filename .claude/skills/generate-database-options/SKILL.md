@@ -20,7 +20,6 @@ If all answers are clear from context, proceed without asking.
 Run the existing inspect script to get the full signal list:
 
 ```bash
-source /Users/alexis/Codes/clinical_visu_venv/bin/activate
 python scripts/inspect_patient_data.py <patient_folder> \
     [--database-options <existing_db_options_path>] \
     --output-csv /tmp/clinical_scope_inspection.csv \

@@ -6,7 +6,7 @@ Interactive visualization dashboard for clinical physiological signals built wit
 
 ```bash
 # Activate the virtual environment
-source /Users/alexis/Codes/clinical_visu_venv/bin/activate
+source .venv/bin/activate
 
 # Install the package in editable mode
 pip install -e .
