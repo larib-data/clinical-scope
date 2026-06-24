@@ -19,6 +19,11 @@ hiddenimports = []
 hiddenimports += collect_submodules("dash")
 hiddenimports += collect_submodules("dash_daq")
 hiddenimports += collect_submodules("clinical_scope")
+# dash >= 4.3 imports pydantic at startup (dash/types.py); pydantic v2 loads its
+# compiled pydantic_core and some submodules via dynamic imports the crawler misses.
+hiddenimports += collect_submodules("pydantic")
+hiddenimports += collect_submodules("pydantic_core")
+datas += collect_data_files("pydantic")
 
 a = Analysis(
     ['../dash_api/core_api.py'],
@@ -49,9 +54,6 @@ a = Analysis(
         "dash_extensions",
         "dataclass_wizard",
         "functional",
-
-        # --- Pydantic stack (not used by our app or its runtime deps) ---
-        "pydantic", "pydantic_core", "annotated_types", "typing_inspection",
 
         # --- GNU Readline (GPL-3) ---
         # The stdlib `readline` extension links GNU Readline (libreadline.so.8 on
