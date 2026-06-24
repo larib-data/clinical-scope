@@ -1,7 +1,3 @@
-# Warning
-
-The package is not yet released on pypi or is public. The current readme is a prep for when it will be the case.
-
 # ClinicalScope
 
 <p align="center">
