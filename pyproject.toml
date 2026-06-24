@@ -58,3 +58,4 @@ markers = [
 [project.urls]
 Homepage = "https://github.com/larib-data/clinical-scope"
 Repository = "https://github.com/larib-data/clinical-scope.git"
+DOI = "https://doi.org/10.5281/zenodo.20830140"

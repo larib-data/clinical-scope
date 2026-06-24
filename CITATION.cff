@@ -9,7 +9,8 @@ authors:
     email: alexis.janin@inria.fr
     affiliation: "Assistance Publique – Hôpitaux de Paris"
 version: 0.4.2
-date-released: "2026-05-19"
+doi: "10.5281/zenodo.20830140"
+date-released: "2026-06-24"
 license: Apache-2.0
 repository-code: "https://github.com/larib-data/clinical-scope"
 url: "https://github.com/larib-data/clinical-scope"
@@ -20,7 +21,5 @@ keywords:
   - visualization
   - time-series
   - dash
-# Fields to add before v1.0.0 public release:
-#   doi: "10.5281/zenodo.XXXXXXX"   (after Zenodo deposit — see issue #46)
 # Fields to add after paper publication:
 #   preferred-citation:   (JOSS or other venue — see issue #47)

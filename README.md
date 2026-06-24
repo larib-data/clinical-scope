@@ -18,6 +18,9 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" />
   </a>
+  <a href="https://doi.org/10.5281/zenodo.20830140">
+    <img src="https://zenodo.org/badge/1228930537.svg" alt="DOI" />
+  </a>
 </p>
 
 ---
@@ -180,7 +183,7 @@ If you use ClinicalScope in academic work, please cite:
   url       = {https://github.com/larib-data/clinical-scope},
   version   = {0.4.2},
   year      = {2026},
-  % doi     = {10.5281/zenodo.XXXXXXX},  % TODO: fill after Zenodo deposit (#46)
+  doi       = {10.5281/zenodo.20830140},
 }
 ```
 
