@@ -1,10 +1,7 @@
 name: Publish to TestPyPI
 
-# Manual trigger — run from the Actions tab to validate the release
-# pipeline against TestPyPI before publishing for real. TestPyPI is a
-# separate instance with its own account and Trusted Publisher config;
-# it rejects re-uploads of an existing version, so bump to a .devN
-# suffix (e.g. 0.4.2.dev0) each time you iterate.
+# Manual dry-run of the release pipeline against TestPyPI.
+# Release procedure (incl. how to install + verify): docs/RELEASING.md
 on:
   workflow_dispatch:
 

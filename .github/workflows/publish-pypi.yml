@@ -1,9 +1,8 @@
 name: Publish to PyPI
 
-# Fires when a GitHub Release is published (not on draft creation).
-# Typical flow: push a v* tag -> build.yml drafts a Release with the
-# standalone executables -> you review and click "Publish release" ->
-# this workflow builds the wheel + sdist and uploads them to PyPI.
+# Fires when a GitHub Release is published (not on draft creation):
+# builds the wheel + sdist and uploads them to PyPI.
+# Full release procedure: docs/RELEASING.md
 on:
   release:
     types: [published]
