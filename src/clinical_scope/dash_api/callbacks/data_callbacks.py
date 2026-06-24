@@ -1008,6 +1008,13 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             uid = str(uuid4())
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig
+            # TEMPORARY WORKAROUND (dash >= 4.2.0 zoom regression, dash PR #3785):
+            # applying a data-only Patch to a dcc.Graph now re-syncs layout and discards
+            # the user's live zoom, so resampling on zoom snaps the axes back. A constant
+            # uirevision tells plotly.js to preserve zoom/pan across the data update. Scoped
+            # to `uid` so a fresh Process (new figure) still resets the view. Remove once
+            # dash or plotly-resampler restores layout-preserving partial updates.
+            fig.update_layout(uirevision=uid)
 
         # Set explicit CSS height so the container matches the figure's intended
         # height.  Without this, Plotly's default autosize=True sizes the figure
