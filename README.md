@@ -182,7 +182,7 @@ If you use ClinicalScope in academic work, please cite:
   author    = {Janin, Alexis},
   title     = {{ClinicalScope}: Interactive Visualization Dashboard for Clinical Physiological Signals},
   url       = {https://github.com/larib-data/clinical-scope},
-  version   = {0.4.1},
+  version   = {0.4.2},
   year      = {2026},
   % doi     = {10.5281/zenodo.XXXXXXX},  % TODO: fill after Zenodo deposit (#46)
 }
