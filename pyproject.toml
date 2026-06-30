@@ -45,6 +45,9 @@ dev = ["pytest", "ruff"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"clinical_scope.dash_api" = ["assets/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
