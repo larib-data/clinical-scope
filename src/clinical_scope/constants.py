@@ -36,8 +36,18 @@ class PatientOptions:
         DESCRIPTION = "Patient folder (not a file)"
         PLACEHOLDER = "e.g. /path/to/patient_007  — the folder, not a .parquet file"
 
-    class DisplayTimezone:
+    class OutputRoot:
         ORDER = 2
+        NAME = "output_root"
+        API_TYPE = ApiType.PATH_FOLDER
+        DEFAULT = ""
+        MANDATORY = False
+        DESCRIPTION = "Output root (empty to write inside the patient folder)"
+        # Output goes to <output_root>/<patient_folder_name>/clinical_scope_output/.
+        PLACEHOLDER = "e.g. /clinical_scope_output — needed if input folder is read-only"
+
+    class DisplayTimezone:
+        ORDER = 3
         NAME = "display_timezone"
         API_TYPE = ApiType.TIMEZONE
         DEFAULT = DISPLAY_TIMEZONE
@@ -46,7 +56,7 @@ class PatientOptions:
         PLACEHOLDER = "e.g. Europe/Paris"
 
     class DatetimeStart:
-        ORDER = 3
+        ORDER = 4
         NAME = "datetime_start"
         API_TYPE = ApiType.TIMESTAMP
         DEFAULT = ""
@@ -55,7 +65,7 @@ class PatientOptions:
         PLACEHOLDER = PLACEHOLDER_TIMESTAMP
 
     class DatetimeEnd:
-        ORDER = 4
+        ORDER = 5
         NAME = "datetime_end"
         API_TYPE = ApiType.TIMESTAMP
         DEFAULT = ""
@@ -64,7 +74,7 @@ class PatientOptions:
         PLACEHOLDER = PLACEHOLDER_TIMESTAMP
 
     class QuickLoad:
-        ORDER = 5
+        ORDER = 6
         NAME = "quick_load"
         API_TYPE = ApiType.BOOL
         DEFAULT = True

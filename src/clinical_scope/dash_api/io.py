@@ -14,16 +14,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def load_patient_options(patient_folder: str | Path) -> dict | None:
+def load_patient_options(
+    patient_folder: str | Path, output_root: str | Path | None = None
+) -> dict | None:
     """
-    Load patient_options.json from <patient_folder>/clinical_scope_output/.
+    Load patient_options.json from the patient's clinical_scope_output/ folder.
+
+    When ``output_root`` is set the file is read from
+    ``<output_root>/<patient_folder_name>/clinical_scope_output/`` instead of inside the
+    patient folder (mirrors how it was written under redirection — see ADR 0003).
 
     Returns None if the file does not exist (expected: no history yet).
     Raises ValueError if the file exists but cannot be parsed or is not a dict.
     Extra or missing fields relative to the current database options are
     left to the caller to handle — this function returns the raw dict as-is.
     """
-    path = get_patient_options_path(patient_folder)
+    path = get_patient_options_path(patient_folder, output_root)
     if not path.exists():
         logger.info("No saved patient options at %s", path)
         return None

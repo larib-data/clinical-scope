@@ -52,3 +52,21 @@ class TestLoadPatientOptions:
         self._write_opts(tmp_path, opts)
         result = load_patient_options(tmp_path)
         assert result == opts
+
+    def test_output_root_round_trip(self, tmp_path):
+        """Saved under the redirected path, the options load back via output_root (ADR 0003)."""
+        patient_folder = tmp_path / "data" / "patient_007"
+        output_root = tmp_path / "scratch"
+        opts = {"data_folder": str(patient_folder), "output_root": str(output_root)}
+
+        dest = get_patient_options_path(patient_folder, output_root)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(opts))
+
+        # The redirected file lives outside the patient folder...
+        assert (
+            dest == output_root / "patient_007" / "clinical_scope_output" / "patient_options.json"
+        )
+        # ...so a legacy (no-root) read finds nothing, but a root-aware read succeeds.
+        assert load_patient_options(patient_folder) is None
+        assert load_patient_options(patient_folder, output_root) == opts

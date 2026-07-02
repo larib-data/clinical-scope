@@ -46,6 +46,7 @@ from clinical_scope.datasource.inspection import (
 )
 from clinical_scope.io.paths import (
     get_database_options_path,
+    get_output_base,
     get_patient_options_path,
 )
 from clinical_scope.signal_container import PlotModel
@@ -244,12 +245,26 @@ def build_patient_options_ui(
         "Reload patient options",
         id="reload-patient-options-btn",
         n_clicks=0,
-        style={**BUTTON_RELOAD, "marginLeft": "8px", "marginRight": "0", "whiteSpace": "nowrap"},
+        style={
+            **BUTTON_RELOAD,
+            "marginLeft": "8px",
+            "marginRight": "0",
+        },
+    )
+    _reload_status = html.Div(
+        id="patient-options-reload-status",
+        style={
+            "fontSize": "12px",
+            "marginLeft": "8px",
+            "width": "320px",
+            "display": "flex",
+            "flexDirection": "column",
+        },
     )
     component, schema = ui_components.build_ui_and_schema_registry(
         cst.PatientOptions,
         prefix="global",
-        extra_per_field={"global.data_folder": [_reload_patient_btn]},
+        extra_per_field={"global.data_folder": [_reload_patient_btn, _reload_status]},
     )
     components.append(html.Div(component, style=CARD_STYLE))
     components.append(
@@ -316,19 +331,24 @@ def reload_patient_options(
 
     values_by_id = {id_["name"]: val for id_, val in zip(ids, current_values, strict=False)}
     data_folder = values_by_id.get("global.data_folder")
+    output_root = values_by_id.get("global.output_root") or None
 
     if not data_folder:
         return current_values, html.Span("No patient folder specified.", style={"color": "#e67e00"})
 
     try:
-        saved = io.load_patient_options(data_folder)
+        saved = io.load_patient_options(data_folder, output_root)
     except (ValueError, TypeError) as e:
         logger.warning("Failed to reload patient options: %s", e)
-        return current_values, html.Span(str(e), style={"color": "#dc3545"})
-    if saved is None:
         return current_values, html.Span(
-            "No saved patient options found.", style={"color": "#e67e00"}
+            str(e), style={"color": "#dc3545", "wordBreak": "break-all"}
         )
+    if saved is None:
+        looked_in = get_patient_options_path(data_folder, output_root).parent
+        return current_values, [
+            html.Span("No saved patient options found in:", style={"color": "#e67e00"}),
+            html.Span(str(looked_in), style={"color": "#e67e00", "wordBreak": "break-all"}),
+        ]
 
     new_values = []
     for id_, current_val in zip(ids, current_values, strict=False):
@@ -576,12 +596,12 @@ def process_visualization(
             progress_clear,
         )
 
-    # Save JSON exactly as before
     data_folder = validated_dict["data_folder"]
-    patient_options_path = get_patient_options_path(data_folder)
-    name_folder_visu = str(data_folder)
+    output_root = validated_dict.get(cst.PatientOptions.OutputRoot.NAME) or None
+    patient_options_path = get_patient_options_path(data_folder, output_root)
+    name_folder_visu = str(get_output_base(data_folder, output_root))
     ui_helper.save_json(validated_dict, patient_options_path)
-    db_options_path = get_database_options_path(data_folder)
+    db_options_path = get_database_options_path(data_folder, output_root)
     ui_helper.save_json(db_options, db_options_path)
 
     clear_visualization_caches()

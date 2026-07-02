@@ -38,7 +38,9 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
 
     component_id = f"{component_id_prefix}.{name}"
 
-    label = html.Label(description, style={"width": "300px", "display": "inline-block"})
+    label = html.Label(
+        description, style={"width": "300px", "display": "inline-block", "flexShrink": "0"}
+    )
 
     if t == cst.ApiType.BOOL:
         input_component = dcc.Checklist(
@@ -71,16 +73,19 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
             type="text",
             value=default,
             placeholder=placeholder,
-            debounce=0.5,
+            debounce=0.1,
             id={"type": "patient-option", "name": component_id},
-            style={"width": "500px"},
+            style={"width": "450px", "flexShrink": "0"},
         )
 
     else:
         msg = f"Unsupported API_TYPE: {t}"
         raise ValueError(msg)
 
-    return html.Div(children=[label, input_component], style={"marginBottom": "8px"})
+    container_style = {"marginBottom": "8px"}
+    if t in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
+        container_style |= {"display": "flex", "alignItems": "center"}
+    return html.Div(children=[label, input_component], style=container_style)
 
 
 def build_ui_and_schema_registry(
@@ -140,11 +145,10 @@ def build_ui_and_schema_registry(
             widget = dash_widget_factory(schema_class, prefix)
             extras = (extra_per_field or {}).get(comp_id)
             if extras:
-                # Strip marginBottom from widget; outer row owns the spacing
                 widget.style = {k: v for k, v in widget.style.items() if k != "marginBottom"}
                 component = html.Div(
                     [widget, *extras],
-                    style={"display": "flex", "alignItems": "center", "marginBottom": "8px"},
+                    style={"display": "flex", "alignItems": "flex-start", "marginBottom": "8px"},
                 )
             else:
                 component = widget

@@ -852,7 +852,8 @@ class PlotModel:
         if not plot_models:
             logger.warning("⚠️ PlotModel figure generation to html was called with empty list")
         data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        output_path = get_visualization_path(data_folder)
+        output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
+        output_path = get_visualization_path(data_folder, output_root)
         fig_list = [plot_mod.figure for plot_mod in plot_models if plot_mod.figure is not None]
         start = time.perf_counter()
         print_out_figure(output_path, fig_list)

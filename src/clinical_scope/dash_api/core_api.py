@@ -575,9 +575,6 @@ app.layout = html.Div(
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
         html.Div(
-            id="patient-options-reload-status", style={"fontSize": "12px", "marginBottom": "8px"}
-        ),
-        html.Div(
             [
                 html.Button(
                     "Process visualization",

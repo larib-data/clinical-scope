@@ -511,10 +511,13 @@ subfolder each time you click "Process visualization".
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `data_folder` | string | — | Path to the patient's root data folder (required) |
+| `output_root` | string | `""` | Writable folder for output when the data folder is read-only. Leave empty to write inside the patient folder. When set, all output goes to `<output_root>/<patient_folder_name>/clinical_scope_output/`. |
 | `datetime_start` | string or null | null | Start of the time window (`YYYY-MM-DD HH:MM:SS`). Leave empty to use all available data. |
 | `datetime_end` | string or null | null | End of the time window. Leave empty to use all available data. |
 | `quick_load` | boolean | false | Reuse previously cached `.parquet` files in `clinical_scope_output/` |
 | `<source_name>` | object | — | Per-source options block (e.g., `time_shift`, `day`) |
+
+> **`output_root` (read-only data folders).** Set this when the patient folder lives on a read-only mount and ClinicalScope cannot write its `clinical_scope_output/` cache, annotations, or saved configs in place. Output is rehomed to `<output_root>/<patient_folder_name>/clinical_scope_output/` — the same layout, one level deeper. Because `output_root` then mirrors a Database (one subfolder per patient), point readers at it: `load_database_annotations("<output_root>")` and batch `save_folder` reads work unchanged. Use **one `output_root` per Database** — two different Databases sharing a patient-folder name (e.g. `patient_01`) under the same root would collide.
 
 ## database_options.json {#database_optionsjson}
 
@@ -808,3 +811,4 @@ These may or may not be tackled in the future, depending on the needs of the use
 
 - No timeshift inside a datasource, e.g. if 2 timeseries from `philips_waves` are not aligned, this currently can't be solved in the app.
 - Display timezone in plots is hardcoded to Europe/Paris. This will be modified.
+- `output_root` keys each patient by its folder name only, so two different Databases that share a patient-folder name (e.g. `patient_01`) under the **same** `output_root` overwrite each other. Use one `output_root` per Database.

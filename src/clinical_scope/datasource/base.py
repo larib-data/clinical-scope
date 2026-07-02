@@ -142,7 +142,10 @@ class DataSourceBase(ABC):
 
         """
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        dataframe_path = get_datasource_cache_path(folder_path, cls.FILE_NAME_DATAFRAME_LOADED)
+        output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
+        dataframe_path = get_datasource_cache_path(
+            folder_path, cls.FILE_NAME_DATAFRAME_LOADED, output_root
+        )
         quick_load_enabled = patient_options.get(cst.PatientOptions.QuickLoad.NAME, False)
         reuse_cache = cls.ALLOW_QUICK_LOAD and quick_load_enabled
         write_cache = cls.ALLOW_QUICK_LOAD
