@@ -44,6 +44,7 @@ from clinical_scope.datasource.inspection import (
     results_to_json,
     to_csv_string,
 )
+from clinical_scope.io.file_utils import folder_has_real_content
 from clinical_scope.io.paths import (
     get_database_options_path,
     get_output_base,
@@ -438,15 +439,18 @@ def _inspect_patient_folder(path: Path) -> Any:
         ds_self = datasource.detect_datasource_from_folder(path)
 
         found = []
+        empty = []
         other_subfolders = []
         for sub in sorted(path.iterdir()):
             if not sub.is_dir() or sub.name == cst.FOLDER_NAME_OUTPUT:
                 continue
             ds = datasource.detect_datasource_from_folder(sub)
-            if ds is not None:
+            if ds is None:
+                other_subfolders.append(sub.name)
+            elif folder_has_real_content(sub):
                 found.append(ds.DESCRIPTION)
             else:
-                other_subfolders.append(sub.name)
+                empty.append(ds.DESCRIPTION)
     except OSError as exc:
         # e.g. a restricted network share that exists but can't be listed.
         logger.warning("Could not inspect patient folder %r: %s", str(path), exc)
@@ -454,11 +458,13 @@ def _inspect_patient_folder(path: Path) -> Any:
             "⚠ Couldn't read this folder (permission or path issue).", style=_PREVIEW_WARN
         )
 
-    if found:
-        return html.Span(
-            f"✓ Found {len(found)} device folder(s): {', '.join(found)}.",
-            style=_PREVIEW_OK,
-        )
+    if found or empty:
+        msg = ""
+        if found:
+            msg += f"✓ Found {len(found)} device folder(s): {', '.join(found)}."
+        if empty:
+            msg += f" ({len(empty)} recognized but empty: {', '.join(empty)})"
+        return html.Span(msg.strip(), style=_PREVIEW_OK if found else _PREVIEW_WARN)
     if ds_self is not None:
         return html.Span(
             f"⚠ This looks like a '{ds_self.DESCRIPTION}' device folder, not a patient folder. "

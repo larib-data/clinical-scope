@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 
+import clinical_scope.constants as cst
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,6 +47,20 @@ def folder_name_matches_keywords(folder_name: str, keywords: list[str]) -> bool:
     """Check if *folder_name* contains every keyword (case-insensitive)."""
     name_lower = folder_name.lower()
     return all(kw.lower() in name_lower for kw in keywords)
+
+
+# ==================================================================================================
+_JUNK_FILENAME_RE = re.compile("|".join(cst.JUNK_FILENAME_PATTERNS))
+
+
+def is_junk_file(path: Path) -> bool:
+    """Return True if *path* is VCS/OS housekeeping cruft (e.g. ``.gitkeep``), not real data."""
+    return bool(_JUNK_FILENAME_RE.match(path.name))
+
+
+def folder_has_real_content(folder_path: Path) -> bool:
+    """Return True if *folder_path* contains at least one non-junk file (not recursive)."""
+    return any(f.is_file() and not is_junk_file(f) for f in folder_path.iterdir())
 
 
 # ==================================================================================================
@@ -93,10 +109,8 @@ def find_files(
             f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in suffix_set
         ]
     else:
-        # No extension filter: all files are candidates.
-        # NOTE: if a datasource defines FILE_EXTENSIONS = [] with MULTI_FILE = False,
-        # junk files (.DS_Store, etc.) will be included here. Always define FILE_EXTENSIONS.
-        matches = [f for f in folder_path.iterdir() if f.is_file()]
+        # No extension filter: all non-junk files are candidates.
+        matches = [f for f in folder_path.iterdir() if f.is_file() and not is_junk_file(f)]
 
     if not matches:
         logger.warning("No file for '%s' found in folder '%s'.", datasource_name, folder_path)

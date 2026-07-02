@@ -1,5 +1,16 @@
 FOLDER_NAME_OUTPUT = "clinical_scope_output"
 
+# Filesystem cruft to ignore when scanning a folder for real data files (each entry a regex).
+JUNK_FILENAME_PATTERNS = frozenset(
+    {
+        r"^\..*",  # dotfiles: macOS .DS_Store/._*, git .gitkeep, Linux .directory/.Trash-*
+        r"^Thumbs\.db$",  # Windows thumbnail cache
+        r"^desktop\.ini$",  # Windows folder-view settings
+        r"^System Volume Information$",  # Windows restore-point folder
+        r"^\$RECYCLE\.BIN$",  # Windows recycle bin folder
+    }
+)
+
 LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"
 
