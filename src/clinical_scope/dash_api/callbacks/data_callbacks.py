@@ -313,18 +313,27 @@ def build_patient_options_ui(
     return components, schema_data
 
 
+def _widget_default(schema_class: Any) -> Any:
+    """Return the schema default in the shape the Dash widget expects (see dash_widget_factory)."""
+    if schema_class.API_TYPE == cst.ApiType.BOOL:
+        return [True] if schema_class.DEFAULT else []
+    return schema_class.DEFAULT
+
+
 @callback(
     Output({"type": "patient-option", "name": ALL}, "value"),
     Output("patient-options-reload-status", "children"),
     Input("reload-patient-options-btn", "n_clicks"),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
+    State("schema-registry", "data"),
     prevent_initial_call=True,
 )
 def reload_patient_options(
     n_clicks: int,
     current_values: list[Any],
     ids: list[dict[str, str]],
+    schema_data: dict[str, str],
 ) -> tuple[list[Any], Any]:
     """Reload patient options from the saved JSON in the current patient folder."""
     if not n_clicks:
@@ -351,19 +360,23 @@ def reload_patient_options(
             html.Span(str(looked_in), style={"color": "#e67e00", "wordBreak": "break-all"}),
         ]
 
+    schema_class_lookup = _rehydrate_schema_classes(schema_data or {})
+
     new_values = []
     for id_, current_val in zip(ids, current_values, strict=False):
         field_id = id_["name"]
         parts = field_id.split(".")
+        schema_class = schema_class_lookup.get(field_id)
+        default = _widget_default(schema_class) if schema_class else None
 
-        if field_id == "global.data_folder":
-            new_values.append(current_val)  # keep the path the user typed
+        if field_id in ("global.data_folder", "global.output_root"):
+            new_values.append(current_val)  # keep the paths used to locate the saved file
         elif parts[0] == "global":
-            new_values.append(saved.get(parts[1], current_val))
+            new_values.append(saved.get(parts[1], default))
         elif parts[0] == "specific" and len(parts) == 3:  # noqa: PLR2004
-            new_values.append(saved.get(parts[1], {}).get(parts[2], current_val))
+            new_values.append(saved.get(parts[1], {}).get(parts[2], default))
         else:
-            new_values.append(current_val)
+            new_values.append(default)
 
     return new_values, ""
 
