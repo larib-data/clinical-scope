@@ -8,94 +8,12 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.other.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.inspection import DataSourceInspection
+from clinical_scope.io.file_utils import set_datetime_index
 from clinical_scope.signal_container import (
     Signal,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _detect_and_set_datetime_index(df: pd.DataFrame) -> pd.DataFrame | None:
-    """
-    Detect a datetime column and set it as the DataFrame index.
-
-    Strategy:
-    1. If index is already DatetimeIndex, return as-is.
-    2. Search columns by name (case-insensitive) against CANDIDATE_LIST.
-    3. For each candidate: accept datetime64 directly, skip numeric columns,
-       try parsing string/object columns with validation.
-    4. Last resort: try every non-numeric column.
-    5. Return None if nothing works (file will be skipped).
-    """
-    if isinstance(df.index, pd.DatetimeIndex):
-        return df
-
-    candidates = options_naming.CANDIDATE_LIST_DATETIME_COLUMN
-    col_lower_map = {col.lower().strip(): col for col in df.columns}
-
-    # Step 2-3: Search by candidate name
-    for candidate_name in candidates:
-        actual_col = col_lower_map.get(candidate_name)
-        if actual_col is None:
-            continue
-
-        series = df[actual_col]
-
-        if pd.api.types.is_datetime64_any_dtype(series):
-            return df.set_index(actual_col)
-
-        if pd.api.types.is_numeric_dtype(series):
-            logger.debug(
-                "Skipping candidate column '%s': numeric dtype (likely relative time)",
-                actual_col,
-            )
-            continue
-
-        parsed = _try_parse_datetime_column(series)
-        if parsed is not None:
-            df[actual_col] = parsed
-            return df.set_index(actual_col)
-
-    # Step 4: Last resort — try every non-numeric column
-    for col in df.columns:
-        series = df[col]
-        if pd.api.types.is_numeric_dtype(series):
-            continue
-        if pd.api.types.is_datetime64_any_dtype(series):
-            return df.set_index(col)
-
-        parsed = _try_parse_datetime_column(series)
-        if parsed is not None:
-            logger.info("Using column '%s' as datetime index (last-resort detection)", col)
-            df[col] = parsed
-            return df.set_index(col)
-
-    return None
-
-
-def _try_parse_datetime_column(series: pd.Series) -> pd.Series | None:
-    """
-    Try to parse a Series as datetime with validation.
-
-    Validates that >50% of values are non-NaT and all parsed years are in [2000, 2100].
-    """
-    min_valid_year = 2000
-    max_valid_year = 2100
-
-    try:
-        parsed = pd.to_datetime(series, errors="coerce")
-    except (ValueError, TypeError, OverflowError):
-        return None
-
-    valid_mask = parsed.notna()
-    if valid_mask.sum() < 0.5 * len(parsed):
-        return None
-
-    years = parsed[valid_mask].dt.year
-    if (years < min_valid_year).any() or (years > max_valid_year).any():
-        return None
-
-    return parsed
 
 
 def _load_single_file(file_path: Path) -> pd.DataFrame:
@@ -218,13 +136,11 @@ class OtherDataSource(DataSourceBase):
             try:
                 df = _load_single_file(file_path)
 
-                result = _detect_and_set_datetime_index(df)
-                if result is None:
-                    logger.warning(
-                        "No datetime index detected in '%s', skipping file", file_path.name
-                    )
+                try:
+                    df = set_datetime_index(df)
+                except ValueError as exc:
+                    logger.warning("Skipping file '%s': %s", file_path.name, exc)
                     continue
-                df = result
 
                 # Convert remaining columns to numeric, drop all-NaN columns
                 for col in df.columns:
@@ -348,14 +264,15 @@ class OtherDataSource(DataSourceBase):
 
             try:
                 df = _load_single_file(fp)
-                df = _detect_and_set_datetime_index(df)
-                if df is None:
+                try:
+                    df = set_datetime_index(df)
+                except ValueError as exc:
                     logger.warning("inspect: no datetime index in '%s', skipping", fp.name)
                     results.append(
                         DataSourceInspection(
                             datasource_name=inspection_name,
                             status="load_error",
-                            error_message="No datetime index detected",
+                            error_message=str(exc),
                             file_path=str(fp),
                         )
                     )

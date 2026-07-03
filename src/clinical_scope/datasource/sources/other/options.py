@@ -10,8 +10,6 @@ ALLOW_QUICK_LOAD = False
 FILE_NAME_DATAFRAME_LOADED = "other.parquet"
 DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 
-CANDIDATE_LIST_DATETIME_COLUMN = ["datetime", "timestamp", "time", "date", "date_time"]
-
 
 class DatabaseOptionsAdditionalInformations:
     TIMEZONE = "timezone"

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 FOLDER_NAME_OUTPUT = "clinical_scope_output"
 
 # Filesystem cruft to ignore when scanning a folder for real data files (each entry a regex).
@@ -23,6 +25,41 @@ ANNOTATION_KEY = "annotations"
 
 PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"
 PLACEHOLDER_DAY = "YYYY-MM-DD"
+
+
+class DatetimeColumnDetection:
+    """Tiered name search + content validation for auto-detecting a datetime column (ADR 0004)."""
+
+    # Exact-match names tried first (union of the lists formerly spread across datasources).
+    # Bare "time" (and its translations) is deliberately *not* here: real device exports use
+    # it for both absolute timestamps and relative elapsed-seconds offsets (e.g. fluxmed's own
+    # raw format: Time/Tiempo/Tempo/Temps/Zeit is elapsed seconds, added to a filename-derived
+    # start_time). It's still detected, just demoted to the lower-confidence substring tier
+    # below, so a more explicit name (e.g. "datetime_utc") wins first when both are present.
+    EXACT_NAMES: ClassVar[list[str]] = [
+        "datetime_utc",
+        "datetime",
+        "date_datetime",
+        "time_datetime",
+        "timestamp",
+        "date_time",
+        "date",
+    ]
+
+    # Substring buckets, highest to lowest confidence; each entry a regex pattern string.
+    # "time"/its translations exclude timeout/timezone/timestamp-style false positives.
+    SUBSTRING_TIERS: ClassVar[list[str]] = [
+        r"datetime",
+        r"timestamp",
+        r"date",
+        r"utc",
+        r"time(?!out|zone|stamp)",
+        r"tiempo|tempo|temps|zeit",
+    ]
+
+    MIN_VALID_FRACTION = 0.9  # parseable with year in [MIN_YEAR, MAX_YEAR]
+    MIN_SORTED_FRACTION = 0.9  # consecutive non-decreasing (tolerates device buffering jitter)
+    MIN_YEAR, MAX_YEAR = 1990, 2100
 
 
 class ApiType:

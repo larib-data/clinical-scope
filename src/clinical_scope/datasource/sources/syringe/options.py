@@ -8,8 +8,6 @@ FILE_EXTENSIONS = [".parquet", ".csv"]
 MULTI_FILE = False
 FILE_NAME_DATAFRAME_LOADED = "syringe.parquet"
 
-CANDIDATE_LIST_DATETIME_COLUMN = ["time", "datetime", "date_time", "date"]
-
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
 source_options = {

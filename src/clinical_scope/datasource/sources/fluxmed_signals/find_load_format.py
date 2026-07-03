@@ -8,6 +8,7 @@ import pandas as pd
 import clinical_scope.datasource.sources.fluxmed_signals.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_utils import load_parquet_with_datetime_index
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class FluxmedSignalsDataSource(DataSourceBase):
     @time_it
     def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
-            df = pd.read_parquet(file_path)
+            df = load_parquet_with_datetime_index(file_path)
         elif file_path.suffix.lower() in [".txt", ".csv"]:
             # Extract timestamp from filename
             filename = file_path.name

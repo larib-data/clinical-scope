@@ -7,6 +7,7 @@ and loading CSV files with datetime indices.
 
 import logging
 import re
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -170,36 +171,137 @@ def find_files(
 
 
 # ==================================================================================================
-def find_datetime_col(columns: list[str]) -> str | None:
-    """Find the best datetime column by priority: exact matches, then partial matches."""
-    lower_map = {c.lower(): c for c in columns}
+# Datetime-column detection (ADR 0004): tiered name search gated by content validation.
+# Name lists and validation thresholds live in constants.py (DATETIME_* constants).
 
-    # Priority 1: exact matches (highest to lowest priority)
-    for name in ["datetime", "date_datetime", "time_datetime", "timestamp", "date"]:
-        if name in lower_map:
-            return lower_map[name]
+_DATETIME_SUBSTRING_TIER_RES = [
+    re.compile(pattern) for pattern in cst.DatetimeColumnDetection.SUBSTRING_TIERS
+]
 
-    # Priority 2: contains "datetime"
-    for col in columns:
-        if "datetime" in col.lower():
-            return col
 
-    # Priority 3: contains "timestamp"
-    for col in columns:
-        if "timestamp" in col.lower():
-            return col
+def _validate_parsed_datetimes(parsed: pd.Series) -> bool:
+    """Gate a parsed datetime Series: ≥90% valid in-range values, ≥90% non-decreasing."""
+    if len(parsed) == 0:
+        return False
+    valid = parsed.dropna()
+    in_range = valid[
+        (valid.dt.year >= cst.DatetimeColumnDetection.MIN_YEAR)
+        & (valid.dt.year <= cst.DatetimeColumnDetection.MAX_YEAR)
+    ]
+    if len(in_range) < cst.DatetimeColumnDetection.MIN_VALID_FRACTION * len(parsed):
+        return False
+    if len(in_range) > 1:
+        sorted_fraction = (in_range.diff().iloc[1:] >= pd.Timedelta(0)).mean()
+        if sorted_fraction < cst.DatetimeColumnDetection.MIN_SORTED_FRACTION:
+            return False
+    return True
 
-    # Priority 4: contains "date"
-    for col in columns:
-        if "date" in col.lower():
-            return col
 
-    # Priority 5: contains "time" (but not "timeout", "timer", etc.)
-    for col in columns:
-        if re.search(r"time(?!out|r|stamp)", col.lower()):
-            return col
+def _try_parse_datetime_column(series: pd.Series) -> pd.Series | None:
+    """Parse a non-numeric Series as datetimes; return the parsed Series or None if gated out."""
+    if pd.api.types.is_datetime64_any_dtype(series):
+        parsed = series
+    else:
+        try:
+            # Probing arbitrary columns triggers pandas' "could not infer format"
+            # warning on every garbage candidate — noise, not signal, here.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                parsed = pd.to_datetime(series, errors="coerce")
+        except (ValueError, TypeError, OverflowError):
+            return None
+    return parsed if _validate_parsed_datetimes(parsed) else None
 
-    return None
+
+def _pick_best_candidate(passing: list[tuple[str, pd.Series]]) -> tuple[str, pd.Series]:
+    """
+    Tiebreak same-tier candidates that all passed validation.
+
+    Prefer the highest uniqueness (penalizes batchy DB-artifact columns), then
+    utc-named columns (unambiguous vs DST-prone naive-local), then column order.
+    A utc-named winner that's still tz-naive after parsing gets localized to UTC.
+    """
+    best_uniqueness = max(parsed.nunique() for _, parsed in passing)
+    top = [(col, parsed) for col, parsed in passing if parsed.nunique() == best_uniqueness]
+    utc_named = [(col, parsed) for col, parsed in top if "utc" in str(col).lower()]
+    col, parsed = (utc_named or top)[0]
+    if "utc" in str(col).lower() and parsed.dt.tz is None:
+        parsed = parsed.dt.tz_localize("UTC")
+    return col, parsed
+
+
+def _find_datetime_col_parsed(df: pd.DataFrame) -> tuple[str, pd.Series]:
+    """
+    Detect the datetime column, returning ``(column_name, parsed_series)``.
+
+    Walks the name tiers (exact, then substring buckets), validating content at every
+    tier; numeric columns are deferred to the epoch tier. Raises ValueError when no
+    column passes validation (fail loudly — never guess a time axis).
+    """
+    lower_names = {col: str(col).lower().strip() for col in df.columns}
+
+    # Name tiers: one tier per exact name (in priority order), then each substring
+    # bucket — each name/pattern is its own tier so list order is a real priority,
+    # not just documentation; a lower-priority name never competes via uniqueness
+    # against a higher-priority one that's also present and valid.
+    name_tiers = [
+        [col for col in df.columns if lower_names[col] == name]
+        for name in cst.DatetimeColumnDetection.EXACT_NAMES
+    ]
+    name_tiers += [
+        [col for col in df.columns if pattern.search(lower_names[col])]
+        for pattern in _DATETIME_SUBSTRING_TIER_RES
+    ]
+    # Widen tier: every column, ignoring name (numeric ones still deferred to epoch tier).
+    name_tiers.append(list(df.columns))
+
+    for tier in name_tiers:
+        passing = [
+            (col, parsed)
+            for col in tier
+            if not pd.api.types.is_numeric_dtype(df[col])
+            and (parsed := _try_parse_datetime_column(df[col])) is not None
+        ]
+        if passing:
+            return _pick_best_candidate(passing)
+
+    # Numeric-epoch tier, tried last: nanosecond epochs only (~1.6e18 is unambiguous
+    # against real measurement data), gated by the same validation.
+    epoch_passing = []
+    for col in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        try:
+            parsed = pd.to_datetime(df[col], unit="ns", errors="coerce")
+        except (ValueError, TypeError, OverflowError):
+            continue
+        if _validate_parsed_datetimes(parsed):
+            epoch_passing.append((col, parsed))
+    if epoch_passing:
+        return _pick_best_candidate(epoch_passing)
+
+    msg = (
+        "No datetime column detected: no column passed content validation "
+        f"(≥90% parseable in [{cst.DatetimeColumnDetection.MIN_YEAR}, "
+        f"{cst.DatetimeColumnDetection.MAX_YEAR}], ≥90% non-decreasing). "
+        f"Columns: {list(df.columns)}"
+    )
+    raise ValueError(msg)
+
+
+def set_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return *df* indexed by its detected datetime column.
+
+    Short-circuits when the index is already a DatetimeIndex; otherwise detects,
+    parses, and sets the best-validated datetime column (raises if none passes).
+    """
+    if isinstance(df.index, pd.DatetimeIndex):
+        return df
+    col, parsed = _find_datetime_col_parsed(df)
+    df = df.copy()
+    df[col] = parsed
+    return df.set_index(col)
 
 
 # ==================================================================================================
@@ -209,19 +311,32 @@ def load_csv_with_datetime_index(
     """
     Load a CSV file and set a datetime column as the index.
 
-    When *dt_col* is ``None``, auto-detects the best datetime column from
-    headers (single pass: reads full file, then sets the index in-memory).
+    When *dt_col* is ``None``, auto-detects the datetime column with
+    ``set_datetime_index`` (raises if no column passes validation).
     """
     if dt_col is not None:
         return pd.read_csv(file_path, index_col=dt_col, parse_dates=True, **kwargs)
 
-    # Single-pass: read everything, then detect and set index in-memory
-    df = pd.read_csv(file_path, **kwargs)
-    detected = find_datetime_col(df.columns.tolist())
-    idx_col = detected if detected is not None else df.columns[0]
+    return set_datetime_index(pd.read_csv(file_path, **kwargs))
 
-    df[idx_col] = pd.to_datetime(df[idx_col])
-    return df.set_index(idx_col)
+
+# ==================================================================================================
+def load_parquet_with_datetime_index(
+    file_path: str | Path, dt_col: str | None = None, **kwargs
+) -> pd.DataFrame:
+    """
+    Load a parquet file and ensure it is indexed by datetime.
+
+    Files already carrying a DatetimeIndex (e.g. written by our own extract) are
+    returned as-is; otherwise the datetime column is detected with
+    ``set_datetime_index`` (raises if no column passes validation). *dt_col*
+    bypasses detection and sets that column directly.
+    """
+    df = pd.read_parquet(file_path, **kwargs)
+    if dt_col is not None:
+        df[dt_col] = pd.to_datetime(df[dt_col])
+        return df.set_index(dt_col)
+    return set_datetime_index(df)
 
 
 # ==================================================================================================

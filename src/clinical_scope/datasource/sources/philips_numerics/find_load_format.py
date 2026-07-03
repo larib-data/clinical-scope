@@ -6,7 +6,10 @@ import pandas as pd
 import clinical_scope.datasource.sources.philips_numerics.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import load_csv_with_datetime_index
+from clinical_scope.io.file_utils import (
+    load_csv_with_datetime_index,
+    load_parquet_with_datetime_index,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +23,7 @@ class PhilipsNumericsDataSource(DataSourceBase):
     @time_it
     def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         if file_path.suffix.lower() == ".parquet":
-            df = pd.read_parquet(file_path)
+            df = load_parquet_with_datetime_index(file_path)
         elif file_path.suffix.lower() == ".csv":
             df = load_csv_with_datetime_index(file_path)
         else:

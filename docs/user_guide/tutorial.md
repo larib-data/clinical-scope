@@ -196,9 +196,7 @@ for users who already have well formatted data.
 - Columns within a file are exposed as `<stem>::<column_name>` so names stay globally
   unique (important for cross-datasource groups and loops).
 
-**Datetime column auto-detection.** The loader tries the common names first
-(`datetime`, `timestamp`, `time`, `date`, `date_time` — case-insensitive). If none match,
-it falls back to scanning non-numeric columns for parseable timestamps.
+**Datetime column auto-detection.** The loader automatically finds your file's datetime column by name and content, including common non-English names — no configuration needed. If no column can be confidently identified as a timestamp, the file is skipped (with a warning) rather than guessed at.
 
 **Per-file configuration.** In `database_options`, use `other::<stem>` keys — one block per
 file — exactly like any other datasource:

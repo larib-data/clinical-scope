@@ -96,6 +96,7 @@ Gitignored under `logs/`: `logs/app/dash_api.log` (app), `logs/scripts/` (script
 - **Issue tracker** — markdown files under `.scratch/`; see `docs/agents/issue-tracker.md`.
 - **Triage labels** — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`; see `docs/agents/triage-labels.md`.
 - **Domain docs** — single-context repo: `CONTEXT.md` (domain glossary) + `docs/adr/` at root; see `docs/agents/domain.md`.
+- **Doc audience** — `README.md` / `docs/user_guide/tutorial.md` are clinician-facing: state behavior, not implementation; never link to `docs/adr/`, `CONTEXT.md`, or CLAUDE.md from them.
 - **Project skills** (`.claude/skills/`, invoke with `/name`):
 
 | Skill | When to use |
