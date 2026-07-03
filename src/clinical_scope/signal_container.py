@@ -835,17 +835,16 @@ class PlotModel:
 
     @staticmethod
     def assign_plot_model(plot_group_list: list[PlotGroup]) -> list["PlotModel"]:
-        """Assign plot groups to plot models by plot type."""
+        """Assign plot groups to plot models by plot type, ordered."""
         groups = {}
         for plot_group in plot_group_list:
-            plot_type = plot_group.plot_options.plot_type
-            if plot_type not in groups:
-                groups[plot_type] = [plot_group]
-            else:
-                groups[plot_type].append(plot_group)
-        return [
-            PlotModel(groups=common_plot_group_list) for common_plot_group_list in groups.values()
-        ]
+            groups.setdefault(plot_group.plot_options.plot_type, []).append(plot_group)
+        page_order = cst.PlotType.PAGE_ORDER
+        ordered = sorted(
+            groups,
+            key=lambda pt: page_order.index(pt) if pt in page_order else len(page_order),
+        )
+        return [PlotModel(groups=groups[plot_type]) for plot_type in ordered]
 
     @staticmethod
     def to_html(plot_models: list["PlotModel"], patient_options: dict[str, Any]) -> None:

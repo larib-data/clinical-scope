@@ -289,6 +289,18 @@ class TestPlotModel:
         assert len(models) == 1
         assert models[0].plot_type == "time_series"
 
+    def test_assign_plot_model_time_series_first_even_if_loop_encountered_first(self):
+        # Global grouping in wrapper.main appends global TS groups after loops and
+        # removes the absorbed singles, so a loop can end up first in the list.
+        # Page order must stay deterministic: time_series model before loop model.
+        sig_x = _make_signal(raw_name="sig_x")
+        sig_y = _make_signal(raw_name="sig_y")
+        pg_loop = PlotGroup.from_single_signal(Signal.loop_from_signals(sig_x, sig_y, name="PV"))
+        pg_ts = PlotGroup.from_single_signal(_make_signal())
+
+        models = PlotModel.assign_plot_model([pg_loop, pg_ts])
+        assert [m.plot_type for m in models] == ["time_series", "loop"]
+
     def test_to_figure_returns_go_figure(self):
         sig = _make_signal()
         pg = PlotGroup.from_single_signal(sig)

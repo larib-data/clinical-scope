@@ -87,6 +87,8 @@ Ruff (`ruff check src/`, `ruff format src/`). Line length 100 (Python only — M
 
 Keep inline comments concise — one line where possible; explain the non-obvious *why*, **not** the *what*. Reserve longer prose for docstrings.
 
+Shared literal values (option keys, plot types, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today.
+
 ## Logs
 
 Gitignored under `logs/`: `logs/app/dash_api.log` (app), `logs/scripts/` (scripts).

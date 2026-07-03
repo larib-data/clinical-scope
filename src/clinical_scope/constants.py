@@ -230,6 +230,12 @@ class PlotType:
     TIME_SERIES = "time_series"
     LOOP = "loop"
 
+    # Page order of the plot models (top to bottom); types not listed here go last.
+    PAGE_ORDER = (
+        TIME_SERIES,  # time-series subplots on top
+        LOOP,  # loop plots below
+    )
+
 
 if PlotType.LOOP != DatabaseOptions.LOOP:
     msg = "No idea if that would work. Error here to warn you"
