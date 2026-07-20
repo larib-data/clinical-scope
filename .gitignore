@@ -38,6 +38,8 @@ logs/
 LOCAL_SCRIPT/*
 *_from_xlsx.json
 
+/tmp
+
 # IA
 PLANS/*
 # QWEN.md — now a symlink to CLAUDE.md

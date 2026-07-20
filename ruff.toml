@@ -71,6 +71,7 @@ unfixable = []
 "scripts/*" = [
     "ANN001",
     "ANN201",
+    "T201", # CLI scripts print to the console by design
 ]
 "src/clinical_scope/build_info/*" = [
     "T201", # build CLI prints progress to the console
