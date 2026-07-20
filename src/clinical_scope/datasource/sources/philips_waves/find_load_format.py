@@ -21,9 +21,20 @@ class PhilipsWavesDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:
+        patient_options = kwargs.get("patient_options")
+        database_options_specific = kwargs.get("database_options_specific") or {}
+
         if file_path.suffix.lower() == ".parquet":
-            df = load_parquet_with_datetime_index(file_path)
+            bounds_fn = None
+            if patient_options is not None and cls.ALLOW_DATETIME_PUSHDOWN:
+
+                def bounds_fn(index_tz):  # noqa: ANN001, ANN202
+                    return cls._pushdown_bounds(
+                        patient_options, database_options_specific, index_tz
+                    )
+
+            df = load_parquet_with_datetime_index(file_path, bounds_fn=bounds_fn)
         elif file_path.suffix.lower() == ".csv":
             df = load_csv_with_datetime_index(file_path)
         else:

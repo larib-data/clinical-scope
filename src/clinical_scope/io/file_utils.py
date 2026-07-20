@@ -8,9 +8,12 @@ and loading CSV files with datetime indices.
 import logging
 import re
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 import clinical_scope.constants as cst
 
@@ -230,6 +233,30 @@ def _pick_best_candidate(passing: list[tuple[str, pd.Series]]) -> tuple[str, pd.
     return col, parsed
 
 
+def _name_tiers(columns: list[str]) -> list[list[str]]:
+    """
+    Build the datetime-column name-priority tiers (exact names, then substring buckets).
+
+    Shared by full-frame detection (:func:`_find_datetime_col_parsed`) and
+    schema-only detection (:func:`_detect_datetime_column_from_parquet`), so both walk
+    the same priority order without duplicating it. Each name/pattern is its own tier
+    so list order is a real priority: a lower-priority name never competes via
+    uniqueness against a higher-priority one that's also present and valid.
+    """
+    lower_names = {col: str(col).lower().strip() for col in columns}
+    tiers = [
+        [col for col in columns if lower_names[col] == name]
+        for name in cst.DatetimeColumnDetection.EXACT_NAMES
+    ]
+    tiers += [
+        [col for col in columns if pattern.search(lower_names[col])]
+        for pattern in _DATETIME_SUBSTRING_TIER_RES
+    ]
+    # Widen tier: every column, ignoring name (numeric ones still deferred to epoch tier).
+    tiers.append(list(columns))
+    return tiers
+
+
 def _find_datetime_col_parsed(df: pd.DataFrame) -> tuple[str, pd.Series]:
     """
     Detect the datetime column, returning ``(column_name, parsed_series)``.
@@ -238,24 +265,7 @@ def _find_datetime_col_parsed(df: pd.DataFrame) -> tuple[str, pd.Series]:
     tier; numeric columns are deferred to the epoch tier. Raises ValueError when no
     column passes validation (fail loudly — never guess a time axis).
     """
-    lower_names = {col: str(col).lower().strip() for col in df.columns}
-
-    # Name tiers: one tier per exact name (in priority order), then each substring
-    # bucket — each name/pattern is its own tier so list order is a real priority,
-    # not just documentation; a lower-priority name never competes via uniqueness
-    # against a higher-priority one that's also present and valid.
-    name_tiers = [
-        [col for col in df.columns if lower_names[col] == name]
-        for name in cst.DatetimeColumnDetection.EXACT_NAMES
-    ]
-    name_tiers += [
-        [col for col in df.columns if pattern.search(lower_names[col])]
-        for pattern in _DATETIME_SUBSTRING_TIER_RES
-    ]
-    # Widen tier: every column, ignoring name (numeric ones still deferred to epoch tier).
-    name_tiers.append(list(df.columns))
-
-    for tier in name_tiers:
+    for tier in _name_tiers(list(df.columns)):
         passing = [
             (col, parsed)
             for col in tier
@@ -287,6 +297,187 @@ def _find_datetime_col_parsed(df: pd.DataFrame) -> tuple[str, pd.Series]:
         f"Columns: {list(df.columns)}"
     )
     raise ValueError(msg)
+
+
+# ==================================================================================================
+# Parquet datetime row-pushdown (issue #57): prune out-of-window rows at read time via
+# row-group statistics, instead of loading the full file and filtering afterwards.
+
+
+def resolve_stored_datetime_index(path: Path) -> tuple[str, str | None] | None:
+    """
+    Return the parquet file's materialized DatetimeIndex column and tz, if any.
+
+    ``(index_column_name, tz)`` if *path* already stores a materialized DatetimeIndex
+    column (e.g. written by our own ``to_parquet``), else ``None``. ``tz`` is ``None``
+    for a tz-naive stored index. Returns ``None`` (not a
+    materialized index) for a plain ``RangeIndex`` — pandas records that as a
+    descriptor dict rather than a physical column name.
+    """
+    schema = pq.ParquetFile(path).schema_arrow
+    pandas_metadata = schema.pandas_metadata
+    if not pandas_metadata:
+        return None
+    index_cols = pandas_metadata.get("index_columns") or []
+    if len(index_cols) != 1 or not isinstance(index_cols[0], str):
+        return None
+    col = index_cols[0]
+    field = schema.field(col)
+    if not pa.types.is_timestamp(field.type):
+        return None
+    return col, (str(field.type.tz) if field.type.tz else None)
+
+
+def _is_numeric_pa_type(field_type: pa.DataType) -> bool:
+    """
+    Schema-only "numeric, defer to the epoch tier" predicate for a pyarrow field type.
+
+    Must agree with :func:`_find_datetime_col_parsed`'s ``pd.api.types.is_numeric_dtype``
+    check on every dtype that can appear in a clinical parquet export — the two datetime
+    detectors (schema-only vs. full-frame) rely on picking the same candidate column.
+    See :class:`tests.datasource.test_datetime_pushdown.TestNumericTypeClassificationAgreement`.
+    """
+    return pa.types.is_integer(field_type) or pa.types.is_floating(field_type)
+
+
+def _detect_datetime_column_from_parquet(
+    path: Path,
+) -> tuple[str, str, str | None, bool] | None:
+    """
+    Detect the datetime column of a parquet file without a materialized index.
+
+    Mirrors :func:`_find_datetime_col_parsed`'s tiered name search, but reads only
+    each tier's candidate columns (progressively widening) to validate content,
+    rather than loading the whole file upfront.
+
+    Returns ``(column_name, kind, tz, physically_naive)`` where *kind* is
+    ``"timestamp"`` (direct range filter, *tz* set for tz-aware columns) or
+    ``"epoch_ns"`` (nanosecond-epoch numeric column, *tz* is ``None``) — both safe for
+    an unambiguous parquet row filter. Any other resolved type (e.g. a string datetime
+    column, unparsed) is not pushdown-safe and yields ``None``, so the caller falls
+    back to a full unfiltered read.
+
+    *tz* is the *semantic* timezone (from :func:`_pick_best_candidate`, which
+    force-localizes a tz-naive utc-named column to UTC — matching what
+    :func:`set_datetime_index` does downstream) and can therefore diverge from the
+    column's on-disk type, which stays physically tz-naive. *physically_naive* flags
+    that case so the caller can strip the tz label back off before filtering — pyarrow
+    filter values must match the physical on-disk type exactly.
+    """
+    schema = pq.ParquetFile(path).schema_arrow
+
+    def _is_numeric(col: str) -> bool:
+        return _is_numeric_pa_type(schema.field(col).type)
+
+    columns = list(schema.names)
+    for tier in _name_tiers(columns):
+        candidates = [col for col in tier if not _is_numeric(col)]
+        if not candidates:
+            continue
+        sample = pd.read_parquet(path, columns=candidates)
+        passing = [
+            (col, parsed)
+            for col in candidates
+            if (parsed := _try_parse_datetime_column(sample[col])) is not None
+        ]
+        if passing:
+            col, parsed = _pick_best_candidate(passing)
+            field_type = schema.field(col).type
+            if pa.types.is_timestamp(field_type):
+                # Use the resolved parsed tz, not the raw physical field's — _pick_best_candidate
+                # force-localizes utc-named naive columns to UTC, matching what the real pipeline
+                # (set_datetime_index) later does, and the row-filter bounds must agree with that.
+                # The physical on-disk type stays naive though, so flag it for the caller.
+                tz = parsed.dt.tz
+                return col, "timestamp", (str(tz) if tz else None), field_type.tz is None
+            return col, "other", None, False
+
+    numeric_cols = [col for col in columns if _is_numeric(col)]
+    if numeric_cols:
+        sample = pd.read_parquet(path, columns=numeric_cols)
+        epoch_passing = []
+        for col in numeric_cols:
+            try:
+                parsed = pd.to_datetime(sample[col], unit="ns", errors="coerce")
+            except (ValueError, TypeError, OverflowError):
+                continue
+            if _validate_parsed_datetimes(parsed):
+                epoch_passing.append((col, parsed))
+        if epoch_passing:
+            col, _parsed = _pick_best_candidate(epoch_passing)
+            return col, "epoch_ns", None, True
+
+    return None
+
+
+def read_parquet_with_datetime_pushdown(
+    path: Path,
+    bounds_fn: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None],
+) -> pd.DataFrame:
+    """
+    Read a parquet file, pushing a datetime window down as a row filter when possible.
+
+    *bounds_fn* is called with the resolved datetime column's timezone (``None`` if
+    tz-naive or epoch-based) and must return conservative-loose ``(start, end)``
+    bounds expressed in that same tz — either side may be ``None`` — or ``None`` if no
+    window is set. Tries, in order: the file's own materialized DatetimeIndex column
+    (no data read yet), then a tiered name-based scan reading only candidate columns
+    (mirrors :func:`set_datetime_index`'s detection). Falls back to an unfiltered full
+    read when no window is set, detection doesn't resolve, or the resolved column's
+    type can't be range-compared unambiguously (e.g. a string datetime column) —
+    under-pruning only costs a few extra rows, so a fallback is always correctness-safe.
+    """
+    stored_index = resolve_stored_datetime_index(path)
+    if stored_index is not None:
+        col, tz = stored_index
+        kind = "timestamp"
+        physically_naive = tz is None
+    else:
+        detected = _detect_datetime_column_from_parquet(path)
+        if detected is None:
+            return pd.read_parquet(path)
+        col, kind, tz, physically_naive = detected
+
+    bounds = bounds_fn(tz if kind == "timestamp" else None)
+    if bounds is None or kind == "other":
+        return pd.read_parquet(path)
+
+    start, end = bounds
+    if kind == "epoch_ns":
+        start = None if start is None else start.value
+        end = None if end is None else end.value
+    elif kind == "timestamp" and physically_naive:
+        # tz may be a *semantic* tz forced by name detection (e.g. a naive column named
+        # "*utc*") while the on-disk column itself has no stored tz — bounds_fn then
+        # returns tz-aware bounds that pyarrow can't compare against the physical type.
+        # Strip the tz label (keep the wall-clock reading) to match the physical column.
+        if start is not None and start.tzinfo is not None:
+            start = start.tz_localize(None)
+        if end is not None and end.tzinfo is not None:
+            end = end.tz_localize(None)
+
+    filters = [
+        f
+        for f in [
+            (col, ">=", start) if start is not None else None,
+            (col, "<=", end) if end is not None else None,
+        ]
+        if f is not None
+    ]
+    if not filters:
+        return pd.read_parquet(path)
+
+    total_rows = pq.ParquetFile(path).metadata.num_rows
+    df = pd.read_parquet(path, filters=filters)
+    pruned_pct = 100 * (1 - len(df) / total_rows) if total_rows else 0.0
+    logger.info(
+        "Parquet pushdown on '%s': read %d/%d rows (%.0f%% pruned).",
+        path,
+        len(df),
+        total_rows,
+        pruned_pct,
+    )
+    return df
 
 
 def set_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -322,7 +513,11 @@ def load_csv_with_datetime_index(
 
 # ==================================================================================================
 def load_parquet_with_datetime_index(
-    file_path: str | Path, dt_col: str | None = None, **kwargs
+    file_path: str | Path,
+    dt_col: str | None = None,
+    bounds_fn: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
+    | None = None,
+    **kwargs,
 ) -> pd.DataFrame:
     """
     Load a parquet file and ensure it is indexed by datetime.
@@ -330,9 +525,14 @@ def load_parquet_with_datetime_index(
     Files already carrying a DatetimeIndex (e.g. written by our own extract) are
     returned as-is; otherwise the datetime column is detected with
     ``set_datetime_index`` (raises if no column passes validation). *dt_col*
-    bypasses detection and sets that column directly.
+    bypasses detection and sets that column directly. *bounds_fn*, if given (and
+    *dt_col* is not), pushes the datetime window down as a row filter at read time —
+    see :func:`read_parquet_with_datetime_pushdown`.
     """
-    df = pd.read_parquet(file_path, **kwargs)
+    if bounds_fn is not None and dt_col is None:
+        df = read_parquet_with_datetime_pushdown(Path(file_path), bounds_fn)
+    else:
+        df = pd.read_parquet(file_path, **kwargs)
     if dt_col is not None:
         df[dt_col] = pd.to_datetime(df[dt_col])
         return df.set_index(dt_col)

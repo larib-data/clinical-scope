@@ -185,6 +185,23 @@ def to_naive_display_ts(ts_str: str, display_timezone: str | None = None) -> str
 
 
 # ==================================================================================================
+def _resolve_effective_tz(
+    database_options_specific: dict,
+    options_module,  # noqa: ANN001
+    default_tz: str,
+) -> str:
+    """Return the database_options timezone override if set, else default_tz."""
+    override = None
+    if options_module and hasattr(options_module, "DatabaseOptionsAdditionalInformations"):
+        additional_info_class = options_module.DatabaseOptionsAdditionalInformations
+        if hasattr(additional_info_class, "TIMEZONE"):
+            override = database_options_specific.get(
+                cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
+            ).get(additional_info_class.TIMEZONE)
+    return override if override is not None else default_tz
+
+
+# ==================================================================================================
 def apply_timezone_to_dataframe(
     df: pd.DataFrame,
     database_options_specific: dict,
@@ -193,7 +210,6 @@ def apply_timezone_to_dataframe(
 ) -> pd.DataFrame:
     """Apply timezone to DataFrame index if not already set."""
     override_timezone = None
-
     if options_module and hasattr(options_module, "DatabaseOptionsAdditionalInformations"):
         additional_info_class = options_module.DatabaseOptionsAdditionalInformations
         if hasattr(additional_info_class, "TIMEZONE"):
@@ -201,7 +217,7 @@ def apply_timezone_to_dataframe(
                 cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
             ).get(additional_info_class.TIMEZONE)
 
-    timezone = override_timezone if override_timezone is not None else default_timezone
+    timezone = _resolve_effective_tz(database_options_specific, options_module, default_timezone)
 
     if not isinstance(df.index, pd.DatetimeIndex):
         logger.warning(

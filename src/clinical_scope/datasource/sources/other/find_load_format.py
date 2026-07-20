@@ -1,5 +1,6 @@
 import csv
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -8,7 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.other.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.inspection import DataSourceInspection
-from clinical_scope.io.file_utils import set_datetime_index
+from clinical_scope.io.file_utils import read_parquet_with_datetime_pushdown, set_datetime_index
 from clinical_scope.signal_container import (
     Signal,
 )
@@ -16,11 +17,22 @@ from clinical_scope.signal_container import (
 logger = logging.getLogger(__name__)
 
 
-def _load_single_file(file_path: Path) -> pd.DataFrame:
-    """Load a single CSV or parquet file into a DataFrame."""
+def _load_single_file(
+    file_path: Path,
+    bounds_fn: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
+    | None = None,
+) -> pd.DataFrame:
+    """
+    Load a single CSV or parquet file into a DataFrame.
+
+    *bounds_fn*, if given, pushes a set datetime window down as a parquet row filter
+    (issue #57) — ignored for CSV, which can't skip rows without a full scan.
+    """
     suffix = file_path.suffix.lower()
 
     if suffix == ".parquet":
+        if bounds_fn is not None:
+            return read_parquet_with_datetime_pushdown(file_path, bounds_fn)
         return pd.read_parquet(file_path)
 
     if suffix == ".csv":
@@ -134,7 +146,16 @@ class OtherDataSource(DataSourceBase):
 
         for file_path in file_paths:
             try:
-                df = _load_single_file(file_path)
+                file_stem = file_path.stem
+                file_config = per_file_options.get(file_stem, {})
+
+                bounds_fn = None
+                if cls.ALLOW_DATETIME_PUSHDOWN:
+
+                    def bounds_fn(index_tz, _file_config=file_config):  # noqa: ANN001, ANN202
+                        return cls._pushdown_bounds(patient_options, _file_config, index_tz)
+
+                df = _load_single_file(file_path, bounds_fn=bounds_fn)
 
                 try:
                     df = set_datetime_index(df)
@@ -142,27 +163,29 @@ class OtherDataSource(DataSourceBase):
                     logger.warning("Skipping file '%s': %s", file_path.name, exc)
                     continue
 
-                # Convert remaining columns to numeric, drop all-NaN columns
+                # Convert remaining columns to numeric
                 for col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-                df = df.dropna(axis=1, how="all")
-
-                if df.empty or len(df.columns) == 0:
-                    logger.warning("No numeric columns in '%s', skipping file", file_path.name)
-                    continue
 
                 # Remove duplicate timestamps
                 df = df[~df.index.duplicated(keep="first")]
                 df = df.sort_index()
-
-                file_stem = file_path.stem
-                file_config = per_file_options.get(file_stem, {})
 
                 # Apply formatting (timezone, time shift, datetime filter) with per-file opts
                 df = cls._format(df, patient_options, file_config)
 
                 if df.empty:
                     logger.warning("No data after filtering in '%s', skipping file", file_path.name)
+                    continue
+
+                # Drop all-NaN columns *after* the datetime filter: a pushed-down read only
+                # narrows which rows are fetched from disk (issue #57), so a column's presence
+                # must be judged on the same final window regardless of whether pushdown ran —
+                # otherwise a signal with data outside a narrow window could vanish only when
+                # pushdown happens to trigger.
+                df = df.dropna(axis=1, how="all")
+                if df.empty or len(df.columns) == 0:
+                    logger.warning("No numeric columns in '%s', skipping file", file_path.name)
                     continue
 
                 # Determine which columns to expose as signals

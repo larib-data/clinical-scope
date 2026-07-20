@@ -16,6 +16,10 @@ JUNK_FILENAME_PATTERNS = frozenset(
 LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"
 
+# Safety pad added around parquet row-pushdown bounds (issue #57): bounds are deliberately
+# conservative-loose, since _filter_by_datetime remains the authoritative cut afterwards.
+DATETIME_PUSHDOWN_BUFFER_SECONDS = 1.0
+
 DEFAULT_NAME_VISUALIZATION = "visualization.html"
 DEFAULT_NAME_DATABASE_OPTIONS = "database_options.json"
 DEFAULT_NAME_PATIENT_OPTIONS = "patient_options.json"

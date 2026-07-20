@@ -15,6 +15,7 @@ import pandas as pd
 import clinical_scope.constants as cst
 from clinical_scope.datasource.formatting.timezone import (
     _date_range,
+    _resolve_effective_tz,
     _to_display_tz,
     apply_timezone_to_dataframe,
     filter_data_by_timestamps,
@@ -28,6 +29,7 @@ from clinical_scope.datasource.timing import time_it
 from clinical_scope.io.file_utils import (
     find_files,
     folder_name_matches_keywords,
+    read_parquet_with_datetime_pushdown,
     save_df,
 )
 from clinical_scope.io.paths import get_datasource_cache_path
@@ -58,6 +60,10 @@ class DataSourceBase(ABC):
     # When True and ALLOW_QUICK_LOAD is False, a symlink to the source file is created in the
     # output folder instead of a parquet cache. Use for large files with trivial loading cost.
     CREATE_SOURCE_SYMLINK: bool = False
+    # Whether a set datetime_start/datetime_end window may be pushed down as a parquet row
+    # filter at read time (issue #57). Opt out when the source can't express its own filtering
+    # as a min/max range (e.g. EIT's time-of-day filter_date=False).
+    ALLOW_DATETIME_PUSHDOWN: bool = True
 
     # Optional source_options for Signal creation
     SOURCE_OPTIONS: dict = None
@@ -79,6 +85,9 @@ class DataSourceBase(ABC):
         symlink = getattr(opts, "CREATE_SOURCE_SYMLINK", None)
         if symlink is not None:
             cls.CREATE_SOURCE_SYMLINK = symlink
+        allow_pushdown = getattr(opts, "ALLOW_DATETIME_PUSHDOWN", None)
+        if allow_pushdown is not None:
+            cls.ALLOW_DATETIME_PUSHDOWN = allow_pushdown
 
     @classmethod
     def _find(cls, folder_path: Path) -> list[Path] | Path | None:
@@ -123,18 +132,114 @@ class DataSourceBase(ABC):
         """
 
     @classmethod
-    def _quick_load(cls, path_dataframe: Path) -> pd.DataFrame:
-        """Load previously saved DataFrame from parquet file."""
-        return pd.read_parquet(path_dataframe)
+    def _pushdown_bounds(
+        cls,
+        patient_options: dict,
+        database_options_specific: dict,
+        index_tz: str | None,
+    ) -> tuple[pd.Timestamp | None, pd.Timestamp | None] | None:
+        """
+        Compute conservative-loose datetime bounds for parquet row-pushdown (issue #57).
+
+        Returns ``None`` when no window is set (nothing to push down). Otherwise
+        returns ``(start, end)`` — either side may be ``None`` for a one-sided window —
+        expressed in *index_tz* if given, or tz-naive source-local time (via
+        ``OPTIONS_MODULE.DATA_SOURCE_DEFAULT_TIMEZONE``, honoring a database_options
+        override) when *index_tz* is ``None``.
+
+        Bounds are intentionally loose (± buffer, time_shift inverted): ``_filter_by_datetime``
+        remains the authoritative cut downstream, so under-pruning only costs a few
+        extra rows while over-pruning (silent data loss) is impossible by construction.
+        """
+        datetime_start = patient_options.get(cst.PatientOptions.DatetimeStart.NAME)
+        datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
+        if not datetime_start and not datetime_end:
+            return None
+
+        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
+        time_shift = patient_options_specific.get(
+            cls.OPTIONS_MODULE.PatientOptionsDataSourceRelative.TimeShift.NAME, 0.0
+        )
+        shift_td = pd.Timedelta(seconds=time_shift)
+        buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
+        display_timezone = patient_options.get(
+            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+        )
+
+        def _to_aware(raw: str | None) -> pd.Timestamp | None:
+            if not raw:
+                return None
+            ts = pd.Timestamp(raw)
+            return ts if ts.tzinfo is not None else ts.tz_localize(display_timezone)
+
+        start_aware = _to_aware(datetime_start)
+        end_aware = _to_aware(datetime_end)
+
+        if index_tz is None:
+            if not hasattr(cls.OPTIONS_MODULE, "DATA_SOURCE_DEFAULT_TIMEZONE"):
+                return None
+            index_tz = _resolve_effective_tz(
+                database_options_specific,
+                cls.OPTIONS_MODULE,
+                cls.OPTIONS_MODULE.DATA_SOURCE_DEFAULT_TIMEZONE,
+            )
+            pre_start = (
+                None
+                if start_aware is None
+                else (start_aware - shift_td).tz_convert(index_tz).tz_localize(None) - buffer
+            )
+            pre_end = (
+                None
+                if end_aware is None
+                else (end_aware - shift_td).tz_convert(index_tz).tz_localize(None) + buffer
+            )
+        else:
+            pre_start = (
+                None
+                if start_aware is None
+                else (start_aware - shift_td).tz_convert(index_tz) - buffer
+            )
+            pre_end = (
+                None if end_aware is None else (end_aware - shift_td).tz_convert(index_tz) + buffer
+            )
+
+        return pre_start, pre_end
+
+    @classmethod
+    def _quick_load(
+        cls,
+        path_dataframe: Path,
+        patient_options: dict | None = None,
+        database_options_specific: dict | None = None,
+    ) -> pd.DataFrame:
+        """
+        Load previously saved DataFrame from parquet file.
+
+        Pushes a set datetime window down as a row filter when *patient_options* is
+        given and ``ALLOW_DATETIME_PUSHDOWN`` is set — pass ``patient_options=None``
+        to force a full read (used by ``inspect()``, which needs the whole file).
+        """
+        if patient_options is None or not cls.ALLOW_DATETIME_PUSHDOWN:
+            return pd.read_parquet(path_dataframe)
+        return read_parquet_with_datetime_pushdown(
+            path_dataframe,
+            bounds_fn=lambda index_tz: cls._pushdown_bounds(
+                patient_options, database_options_specific or {}, index_tz
+            ),
+        )
 
     @classmethod
     def _load_raw_dataframe(
         cls,
         patient_options: dict,
         database_options: dict,
+        apply_datetime_pushdown: bool = True,
     ) -> tuple[pd.DataFrame | None, str | None]:
         """
         Find, locate, and load the raw DataFrame for this datasource.
+
+        *apply_datetime_pushdown* set to ``False`` bypasses parquet row-pushdown
+        (used by ``inspect()``, which needs the full raw file for date-range stats).
 
         Returns:
             (df, file_path_str) on success, (None, None) if file not found.
@@ -152,7 +257,12 @@ class DataSourceBase(ABC):
 
         if reuse_cache and dataframe_path.is_file():
             logger.info("[%s] Quick loading from cache.", cls.DATASOURCE_NAME)
-            return cls._quick_load(dataframe_path), str(dataframe_path)
+            df = cls._quick_load(
+                dataframe_path,
+                patient_options=patient_options if apply_datetime_pushdown else None,
+                database_options_specific=database_options,
+            )
+            return df, str(dataframe_path)
 
         search_folder = cls._find_folder(folder_path)
         if search_folder is None:
@@ -168,6 +278,7 @@ class DataSourceBase(ABC):
             file_path,
             dataframe_path if write_cache else None,
             database_options_specific=database_options,
+            patient_options=patient_options if apply_datetime_pushdown else None,
         )
         logger.info(
             "📥 [%s] Loaded: %d rows x %d columns.",
@@ -572,7 +683,9 @@ class DataSourceBase(ABC):
 
         file_path_str = None
         try:
-            df_raw, file_path_str = cls._load_raw_dataframe(patient_options, db_opts_for_load)
+            df_raw, file_path_str = cls._load_raw_dataframe(
+                patient_options, db_opts_for_load, apply_datetime_pushdown=False
+            )
         except Exception as exc:
             logger.exception("[%s] inspect: load failed.", cls.DATASOURCE_NAME)
             return DataSourceInspection(

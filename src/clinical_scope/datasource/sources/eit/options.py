@@ -10,6 +10,11 @@ FILE_NAME_DATAFRAME_LOADED = "eit.parquet"
 
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
+# EIT filters by time-of-day (filter_date=False), which a min/max datetime range predicate
+# can't express — opt out of parquet row-pushdown (issue #57); it still uses the quick-load
+# cache path (ALLOW_QUICK_LOAD unset, defaults True), just without the row filter.
+ALLOW_DATETIME_PUSHDOWN = False
+
 # Many names here should be moved in example_eit_options.json file
 Time_column_label = "Time"
 
