@@ -150,7 +150,7 @@ class OtherDataSource(DataSourceBase):
                 file_config = per_file_options.get(file_stem, {})
 
                 bounds_fn = None
-                if cls.ALLOW_DATETIME_PUSHDOWN:
+                if cls.ALLOW_DATETIME_PUSHDOWN and cls._has_datetime_window(patient_options):
 
                     def bounds_fn(index_tz, _file_config=file_config):  # noqa: ANN001, ANN202
                         return cls._pushdown_bounds(patient_options, _file_config, index_tz)

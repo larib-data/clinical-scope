@@ -27,7 +27,11 @@ class PhilipsWavesDataSource(DataSourceBase):
 
         if file_path.suffix.lower() == ".parquet":
             bounds_fn = None
-            if patient_options is not None and cls.ALLOW_DATETIME_PUSHDOWN:
+            if (
+                patient_options is not None
+                and cls.ALLOW_DATETIME_PUSHDOWN
+                and cls._has_datetime_window(patient_options)
+            ):
 
                 def bounds_fn(index_tz):  # noqa: ANN001, ANN202
                     return cls._pushdown_bounds(

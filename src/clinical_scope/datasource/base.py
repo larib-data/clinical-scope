@@ -131,6 +131,14 @@ class DataSourceBase(ABC):
 
         """
 
+    @staticmethod
+    def _has_datetime_window(patient_options: dict) -> bool:
+        """Whether a datetime window is set — the precondition for any row-pushdown."""
+        return bool(
+            patient_options.get(cst.PatientOptions.DatetimeStart.NAME)
+            or patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
+        )
+
     @classmethod
     def _pushdown_bounds(
         cls,
@@ -216,10 +224,15 @@ class DataSourceBase(ABC):
         Load previously saved DataFrame from parquet file.
 
         Pushes a set datetime window down as a row filter when *patient_options* is
-        given and ``ALLOW_DATETIME_PUSHDOWN`` is set — pass ``patient_options=None``
-        to force a full read (used by ``inspect()``, which needs the whole file).
+        given, ``ALLOW_DATETIME_PUSHDOWN`` is set, and a window is actually set —
+        otherwise a full read (no window ⇒ nothing to prune). Pass
+        ``patient_options=None`` to force a full read (``inspect()`` needs every row).
         """
-        if patient_options is None or not cls.ALLOW_DATETIME_PUSHDOWN:
+        if (
+            patient_options is None
+            or not cls.ALLOW_DATETIME_PUSHDOWN
+            or not cls._has_datetime_window(patient_options)
+        ):
             return pd.read_parquet(path_dataframe)
         return read_parquet_with_datetime_pushdown(
             path_dataframe,
