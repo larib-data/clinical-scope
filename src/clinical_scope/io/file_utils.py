@@ -340,6 +340,34 @@ def _is_numeric_pa_type(field_type: pa.DataType) -> bool:
     return pa.types.is_integer(field_type) or pa.types.is_floating(field_type)
 
 
+def _sample_parquet_columns(parquet_file: pq.ParquetFile, columns: list[str]) -> pd.DataFrame:
+    """
+    Read a bounded, spread sample of *columns* for datetime detection.
+
+    Reads whole row groups (parquet's random-access unit) evenly spread across the file,
+    head-slicing each to ``SAMPLE_ROWS_PER_BLOCK`` — contiguous slices preserve duplicate-value
+    runs, so the uniqueness and sorted checks in :func:`_pick_best_candidate` /
+    :func:`_validate_parsed_datetimes` stay meaningful. The whole file is read only when it
+    fits the decode budget or has a single row group. When it has several, at least
+    ``SAMPLE_MIN_GROUPS`` are sampled even if the budget alone would pick fewer (huge row
+    groups), so detection always sees two independent places.
+    """
+    md = parquet_file.metadata
+    n_groups = md.num_row_groups
+    cst_det = cst.DatetimeColumnDetection
+    if n_groups <= 1 or md.num_rows <= cst_det.SAMPLE_MAX_ROW_DECODED:
+        return parquet_file.read(columns=columns).to_pandas()
+
+    rows_per_group = md.row_group(0).num_rows
+    budget_groups = max(1, cst_det.SAMPLE_MAX_ROW_DECODED // rows_per_group)
+    n = min(cst_det.SAMPLE_MAX_GROUPS, n_groups, budget_groups)
+    n = max(n, min(cst_det.SAMPLE_MIN_GROUPS, n_groups))  # ≥2 places when ≥2 groups exist
+    indices = sorted({round(k * (n_groups - 1) / (n - 1)) for k in range(n)})
+    block = cst_det.SAMPLE_ROWS_PER_BLOCK
+    tables = [parquet_file.read_row_group(i, columns=columns).slice(0, block) for i in indices]
+    return pa.concat_tables(tables).to_pandas()
+
+
 def _detect_datetime_column_from_parquet(
     path: Path,
 ) -> tuple[str, str, str | None, bool] | None:
@@ -348,7 +376,7 @@ def _detect_datetime_column_from_parquet(
 
     Mirrors :func:`_find_datetime_col_parsed`'s tiered name search, but reads only
     each tier's candidate columns (progressively widening) to validate content,
-    rather than loading the whole file upfront.
+    rather than loading the whole file uparquet_fileront.
 
     Returns ``(column_name, kind, tz, physically_naive)`` where *kind* is
     ``"timestamp"`` (direct range filter, *tz* set for tz-aware columns) or
@@ -363,8 +391,22 @@ def _detect_datetime_column_from_parquet(
     column's on-disk type, which stays physically tz-naive. *physically_naive* flags
     that case so the caller can strip the tz label back off before filtering — pyarrow
     filter values must match the physical on-disk type exactly.
+
+    Candidate columns are validated on a bounded sample (:func:`_sample_parquet_columns`),
+    not the whole file, so this pick can diverge from the downstream full-frame
+    :func:`set_datetime_index` — which would filter one column and index another (silent row
+    loss). To stay safe, detection only ever consults the **highest-priority tier that has any
+    named candidate**, and commits only if that tier yields **exactly one** sample-validated
+    column; otherwise it abstains (returns ``None`` → full read, full-frame decides):
+
+    - **zero passing** there — a higher-priority column we couldn't confirm on the sample
+      (e.g. valid over the whole file but garbage in exactly the sampled row groups) may still
+      validate on the full frame and outrank any lower-tier pick, so we must not look lower.
+    - **more than one** — the sample-based uniqueness tiebreak in :func:`_pick_best_candidate`
+      isn't stable, so the pick could differ from the full frame's.
     """
-    schema = pq.ParquetFile(path).schema_arrow
+    parquet_file = pq.ParquetFile(path)
+    schema = parquet_file.schema_arrow
 
     def _is_numeric(col: str) -> bool:
         return _is_numeric_pa_type(schema.field(col).type)
@@ -374,27 +416,28 @@ def _detect_datetime_column_from_parquet(
         candidates = [col for col in tier if not _is_numeric(col)]
         if not candidates:
             continue
-        sample = pd.read_parquet(path, columns=candidates)
+        sample = _sample_parquet_columns(parquet_file, candidates)
         passing = [
             (col, parsed)
             for col in candidates
             if (parsed := _try_parse_datetime_column(sample[col])) is not None
         ]
-        if passing:
-            col, parsed = _pick_best_candidate(passing)
-            field_type = schema.field(col).type
-            if pa.types.is_timestamp(field_type):
-                # Use the resolved parsed tz, not the raw physical field's — _pick_best_candidate
-                # force-localizes utc-named naive columns to UTC, matching what the real pipeline
-                # (set_datetime_index) later does, and the row-filter bounds must agree with that.
-                # The physical on-disk type stays naive though, so flag it for the caller.
-                tz = parsed.dt.tz
-                return col, "timestamp", (str(tz) if tz else None), field_type.tz is None
-            return col, "other", None, False
+        if len(passing) != 1:
+            return None
+        col, parsed = _pick_best_candidate(passing)
+        field_type = schema.field(col).type
+        if pa.types.is_timestamp(field_type):
+            # Use the resolved parsed tz, not the raw physical field's — _pick_best_candidate
+            # force-localizes utc-named naive columns to UTC, matching what the real pipeline
+            # (set_datetime_index) later does, and the row-filter bounds must agree with that.
+            # The physical on-disk type stays naive though, so flag it for the caller.
+            tz = parsed.dt.tz
+            return col, "timestamp", (str(tz) if tz else None), field_type.tz is None
+        return col, "other", None, False
 
     numeric_cols = [col for col in columns if _is_numeric(col)]
     if numeric_cols:
-        sample = pd.read_parquet(path, columns=numeric_cols)
+        sample = _sample_parquet_columns(parquet_file, numeric_cols)
         epoch_passing = []
         for col in numeric_cols:
             try:
@@ -403,6 +446,8 @@ def _detect_datetime_column_from_parquet(
                 continue
             if _validate_parsed_datetimes(parsed):
                 epoch_passing.append((col, parsed))
+        if len(epoch_passing) > 1:  # no named tier hid a candidate here — only the tiebreak can
+            return None
         if epoch_passing:
             col, _parsed = _pick_best_candidate(epoch_passing)
             return col, "epoch_ns", None, True

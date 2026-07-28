@@ -51,9 +51,10 @@ SHAPE_DETECT_COLUMN = "detect_column"  # RangeIndex + datetime column → detect
 SHAPES = (SHAPE_STORED_INDEX, SHAPE_DETECT_COLUMN)
 
 SCENARIO_NO_WINDOW = "no_window"  # regression sentinel: pushdown can only add overhead here
+SCENARIO_LARGE_WINDOW = "large_window"  # testing if detection is efficient
 SCENARIO_TIGHT = "tight"  # ~5% two-sided window: where pruning should pay off most
 SCENARIO_OUTSIDE = "outside_range"  # window before all data: everything prunes away
-SCENARIOS = (SCENARIO_NO_WINDOW, SCENARIO_TIGHT, SCENARIO_OUTSIDE)
+SCENARIOS = (SCENARIO_NO_WINDOW, SCENARIO_LARGE_WINDOW, SCENARIO_TIGHT, SCENARIO_OUTSIDE)
 
 _DATASOURCE = "philips_waves"  # no quick-load cache, reads the raw file every run
 _DT_COLUMN = "timestamp"  # detect_column shape: the column detection must discover
@@ -146,7 +147,10 @@ def _window_for_scenario(scenario: str, t_min: pd.Timestamp, t_max: pd.Timestamp
     if scenario == SCENARIO_NO_WINDOW:
         return {}
     span = t_max - t_min
-    if scenario == SCENARIO_TIGHT:
+    if scenario == SCENARIO_LARGE_WINDOW:
+        start = t_min + span * 0.005
+        end = t_min + span * 0.9
+    elif scenario == SCENARIO_TIGHT:
         start = t_min + span * 0.475
         end = t_min + span * 0.525
     else:  # SCENARIO_OUTSIDE — fully before the data

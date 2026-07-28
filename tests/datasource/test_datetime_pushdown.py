@@ -12,10 +12,17 @@ from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import clinical_scope.constants as cst
-from clinical_scope.io.file_utils import _is_numeric_pa_type, read_parquet_with_datetime_pushdown
+from clinical_scope.io.file_utils import (
+    _detect_datetime_column_from_parquet,
+    _find_datetime_col_parsed,
+    _is_numeric_pa_type,
+    load_parquet_with_datetime_index,
+    read_parquet_with_datetime_pushdown,
+)
 
 OTHER_DIR = (
     Path(__file__).resolve().parent.parent.parent
@@ -450,6 +457,104 @@ class TestOtherDatetimeColumnDetectionTimezoneOverride:
             other_sig = target_disabled[sig.raw_name]
             assert list(sig.data.x) == list(other_sig.data.x)
             assert list(sig.data.y) == list(other_sig.data.y)
+
+
+class TestSampledDetection:
+    """
+    Fix B (issue #57): schema-only detection validates a bounded, spread sample of row
+    groups instead of the whole file, and abstains when a sample can't pick unambiguously.
+    """
+
+    def test_spread_sample_still_detects_across_many_row_groups(self, tmp_path, monkeypatch):
+        """A tiny budget forces the multi-group spread path; detection must still resolve."""
+        det = cst.DatetimeColumnDetection
+        # Shrink the budget/block so a small file exercises the spread read, not the
+        # whole-file short-circuit (real files trip this only above 1M rows).
+        monkeypatch.setattr(det, "SAMPLE_MAX_ROW_DECODED", 100)
+        monkeypatch.setattr(det, "SAMPLE_ROWS_PER_BLOCK", 50)
+
+        path = tmp_path / "multi.parquet"
+        n = 2_000
+        df = pd.DataFrame(
+            {"timestamp": pd.date_range("2020-01-01", periods=n, freq="1s"), "value": range(n)}
+        )
+        df.to_parquet(path, row_group_size=100)  # 20 row groups
+        assert pq.ParquetFile(path).num_row_groups > 1  # spread path is actually exercised
+
+        detected = _detect_datetime_column_from_parquet(path)
+        assert detected is not None
+        col, kind, _tz, _naive = detected
+        assert (col, kind) == ("timestamp", "timestamp")
+
+    def test_two_datetime_columns_in_one_tier_abstains_and_reads_all(self, tmp_path):
+        """
+        Two columns matching the same name tier both validate → the sample can't be trusted
+        to pick the one the full-frame detector would, so detection abstains (None) and the
+        windowed read falls back to a full unfiltered read — never silently dropping rows.
+        """
+        path = tmp_path / "ambiguous.parquet"
+        n = 100
+        df = pd.DataFrame(
+            {
+                "timestamp_a": pd.date_range("2020-01-01", periods=n, freq="1s"),
+                "timestamp_b": pd.date_range("2021-06-01", periods=n, freq="1s"),
+                "value": range(n),
+            }
+        )
+        df.to_parquet(path)  # default RangeIndex → detection path, not stored-index
+
+        assert _detect_datetime_column_from_parquet(path) is None
+
+        start = pd.Timestamp("2020-01-01 00:00:10")
+        end = pd.Timestamp("2020-01-01 00:00:20")
+        actual = read_parquet_with_datetime_pushdown(path, bounds_fn=lambda _tz: (start, end))
+        pd.testing.assert_frame_equal(actual, pd.read_parquet(path))
+
+    def test_higher_tier_column_hidden_by_sample_does_not_desync(self, tmp_path, monkeypatch):
+        """
+        The limit case (ADR 0004 tension): a higher-priority datetime column that is valid
+        over the *whole* file but garbage in exactly the sampled row groups. Sampled detection
+        can't see it, so pushdown filters on the lower-priority ``timestamp``, while the
+        authoritative full-frame detector indexes on ``datetime`` — filtering one column and
+        indexing another silently drops rows. A windowed (pushdown) read must equal the
+        full-read-then-filter result.
+        """
+        det = cst.DatetimeColumnDetection
+        # Force the spread path to sample only the first and last row groups.
+        monkeypatch.setattr(det, "SAMPLE_MAX_ROW_DECODED", 100)
+        monkeypatch.setattr(det, "SAMPLE_ROWS_PER_BLOCK", 100)
+
+        n_groups, group = 30, 100
+        n = n_groups * group
+        ts = pd.date_range("2020-01-01", periods=n, freq="1min")  # 'timestamp': lower tier, clean
+        datetime_strs = (ts + pd.Timedelta(hours=1)).astype(str).to_numpy(dtype=object)
+        # 'datetime': higher tier, valid everywhere except the two sampled groups (0 and last).
+        datetime_strs[:group] = "not-a-date"
+        datetime_strs[(n_groups - 1) * group :] = "not-a-date"
+        df = pd.DataFrame({"datetime": datetime_strs, "timestamp": ts, "value": range(n)})
+        path = tmp_path / "pathological.parquet"
+        df.to_parquet(path, row_group_size=group)
+        assert pq.ParquetFile(path).num_row_groups == n_groups
+
+        # The file genuinely has a valid higher-priority 'datetime' column (garbage only in the
+        # sampled groups), so the authoritative full-frame detector indexes on it...
+        assert _find_datetime_col_parsed(pd.read_parquet(path))[0] == "datetime"
+        # ...while sampled pushdown can't confirm it and must abstain — never pick 'timestamp'
+        # and prune on it (the desync). Abstaining falls back to a full read.
+        assert _detect_datetime_column_from_parquet(path) is None
+
+        # Window over the middle (valid) region, expressed on the authoritative 'datetime' axis.
+        start = pd.Timestamp("2020-01-01 10:00:00")
+        end = pd.Timestamp("2020-01-01 13:00:00")
+
+        enabled = load_parquet_with_datetime_index(path, bounds_fn=lambda _tz: (start, end))
+        disabled = load_parquet_with_datetime_index(path)  # no pushdown → full read
+
+        # The authoritative datetime-window cut (_filter_by_datetime) runs on both downstream.
+        enabled = enabled[(enabled.index >= start) & (enabled.index <= end)]
+        disabled = disabled[(disabled.index >= start) & (disabled.index <= end)]
+
+        pd.testing.assert_frame_equal(enabled, disabled)
 
 
 class TestInspectIgnoresPushdownWindow:

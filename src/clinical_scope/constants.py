@@ -65,6 +65,12 @@ class DatetimeColumnDetection:
     MIN_SORTED_FRACTION = 0.9  # consecutive non-decreasing (tolerates device buffering jitter)
     MIN_YEAR, MAX_YEAR = 1990, 2100
 
+    # Bounded-sample sizing for schema-only parquet detection
+    SAMPLE_MIN_GROUPS = 2  # floor when the file has ≥2 groups: two places guard against a fluke
+    SAMPLE_MAX_GROUPS = 20  # upper bound on row groups sampled (budget/file size may cut it)
+    SAMPLE_ROWS_PER_BLOCK = 100_000  # rows validated per group (head slice of each)
+    SAMPLE_MAX_ROW_DECODED = 1_000_000  # cap on rows decoded, but always ≥ 2 groups (below)
+
 
 class ApiType:
     # To know how type should be interpreted in the API
