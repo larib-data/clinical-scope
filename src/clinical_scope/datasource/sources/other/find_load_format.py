@@ -9,7 +9,11 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.other.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.inspection import DataSourceInspection
-from clinical_scope.io.file_utils import read_parquet_with_datetime_pushdown, set_datetime_index
+from clinical_scope.io.file_utils import (
+    deduplicate_then_sort_index,
+    read_parquet_with_datetime_pushdown,
+    set_datetime_index,
+)
 from clinical_scope.signal_container import (
     Signal,
 )
@@ -167,9 +171,8 @@ class OtherDataSource(DataSourceBase):
                 for col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
 
-                # Remove duplicate timestamps
-                df = df[~df.index.duplicated(keep="first")]
-                df = df.sort_index()
+                # Remove duplicate timestamps (keep first in file order), then sort
+                df = deduplicate_then_sort_index(df)
 
                 # Apply formatting (timezone, time shift, datetime filter) with per-file opts
                 df = cls._format(df, patient_options, file_config)
@@ -305,7 +308,7 @@ class OtherDataSource(DataSourceBase):
                 # _make_inspection/_column_infos can report them with raw_point_count=0.
                 for col in list(df.columns):
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-                df = df[~df.index.duplicated(keep="first")].sort_index()
+                df = deduplicate_then_sort_index(df)
 
                 results.append(
                     cls._make_inspection(df, patient_options, file_config, inspection_name, str(fp))

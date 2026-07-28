@@ -9,7 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.eit.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import get_column_name_from_pattern
+from clinical_scope.io.file_utils import deduplicate_then_sort_index, get_column_name_from_pattern
 
 logger = logging.getLogger(__name__)
 
@@ -316,8 +316,7 @@ class EITDataSource(DataSourceBase):
             file_path_list, database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
         )
 
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep="first")]
+        df = deduplicate_then_sort_index(df)
         if path_output is not None:
             cls._save_dataframe(df, path_output)
         return df

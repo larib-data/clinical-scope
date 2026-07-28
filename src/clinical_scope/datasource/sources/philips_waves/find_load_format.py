@@ -7,6 +7,7 @@ import clinical_scope.datasource.sources.philips_waves.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
 from clinical_scope.io.file_utils import (
+    deduplicate_then_sort_index,
     load_csv_with_datetime_index,
     load_parquet_with_datetime_index,
 )
@@ -44,8 +45,7 @@ class PhilipsWavesDataSource(DataSourceBase):
         else:
             msg = f"file_path extension was neither '.csv' nor '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(msg)
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep="first")]
+        df = deduplicate_then_sort_index(df)
 
         if path_output is not None:
             cls._save_dataframe(df, path_output)

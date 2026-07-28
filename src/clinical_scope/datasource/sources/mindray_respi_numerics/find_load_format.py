@@ -8,6 +8,7 @@ import clinical_scope.datasource.sources.mindray_respi_numerics.options as optio
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.formatting.timezone import apply_timezone_to_dataframe
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +66,8 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         # Convert index to datetime
         df_pivoted.index = pd.to_datetime(df_pivoted.index)
 
-        # Sort by timestamp
-        df_pivoted = df_pivoted.sort_index()
-
-        # Remove duplicate timestamps (keep first)
-        df_pivoted = df_pivoted[~df_pivoted.index.duplicated(keep="first")]
+        # Sort by timestamp and remove duplicate timestamps (keep first)
+        df_pivoted = deduplicate_then_sort_index(df_pivoted)
 
         # Apply timezone if needed
         df_pivoted = apply_timezone_to_dataframe(

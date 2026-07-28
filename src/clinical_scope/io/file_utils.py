@@ -540,6 +540,22 @@ def set_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
     return df.set_index(col)
 
 
+def deduplicate_then_sort_index(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Drop duplicate index entries (keep first) *then* sort by index.
+
+    Deduplicating first keeps the first row in file order on a timestamp
+    collision, which a non-stable ``sort_index`` would decide arbitrarily.
+    Skips either step when already satisfied (device exports are usually
+    already sorted and unique).
+    """
+    if not df.index.is_unique:
+        df = df[~df.index.duplicated(keep="first")]
+    if not df.index.is_monotonic_increasing:
+        df = df.sort_index()
+    return df
+
+
 # ==================================================================================================
 def load_csv_with_datetime_index(
     file_path: str | Path, dt_col: str | None = None, **kwargs

@@ -10,6 +10,7 @@ import clinical_scope.datasource.sources.mindray_respi_waves.options as options_
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.formatting.timezone import apply_timezone_to_dataframe
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,7 @@ class MindRayRespiWavesDataSource(DataSourceBase):
         )
 
         df_pivoted.columns = df_pivoted.columns.get_level_values(0)
-        df_pivoted = df_pivoted.sort_index()
-        df_pivoted = df_pivoted[~df_pivoted.index.duplicated(keep="first")]
+        df_pivoted = deduplicate_then_sort_index(df_pivoted)
 
         # Apply timezone if needed
         df_pivoted = apply_timezone_to_dataframe(

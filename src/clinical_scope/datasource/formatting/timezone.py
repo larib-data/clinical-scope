@@ -71,7 +71,8 @@ def filter_data_by_timestamps(
         logger.warning("Data index is not datetime. Skipping filtering.")
         return data
 
-    filtered = data.copy()
+    # Shallow copy since below only rebinds the index or row-filters, never mutates columns.
+    filtered = data.copy(deep=False)
     tz = display_timezone or cst.DISPLAY_TIMEZONE
 
     # Ensure index is in the library timezone

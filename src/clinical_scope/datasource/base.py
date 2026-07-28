@@ -390,7 +390,8 @@ class DataSourceBase(ABC):
 
         Override this method for datasource-specific formatting needs.
         """
-        df = df.copy()
+        # Shallow copy since below only rebinds df.index or row-filters, never mutates columns.
+        df = df.copy(deep=False)
 
         # Apply timezone if needed (most datasources need this)
         if hasattr(cls.OPTIONS_MODULE, "DATA_SOURCE_DEFAULT_TIMEZONE"):
