@@ -43,7 +43,7 @@ def main(option_dict: dict) -> None:
     verbose = option_dict["verbose"]
 
     if verbose:
-        print(to_text_summary(results))  # noqa: T201
+        print(to_text_summary(results))
 
     # --- optional CSV output ---
     output_csv = option_dict.get("output_csv")
@@ -53,7 +53,7 @@ def main(option_dict: dict) -> None:
         output_path.write_text(to_csv_string(results), encoding="utf-8")
         logger.info("Inspection CSV written to: %s", output_path)
         if verbose:
-            print(f"CSV written to: {output_path}")  # noqa: T201
+            print(f"CSV written to: {output_path}")
 
     logger.info("Script finished successfully.")
 
