@@ -11,7 +11,8 @@ from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.inspection import DataSourceInspection
 from clinical_scope.io.file_utils import (
     deduplicate_then_sort_index,
-    read_parquet_with_datetime_pushdown,
+    make_columns_fn,
+    read_parquet_pruned,
     set_datetime_index,
 )
 from clinical_scope.signal_container import (
@@ -25,18 +26,20 @@ def _load_single_file(
     file_path: Path,
     bounds_fn: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
     | None = None,
+    columns_fn: Callable[[list[str]], list[str] | None] | None = None,
 ) -> pd.DataFrame:
     """
     Load a single CSV or parquet file into a DataFrame.
 
-    *bounds_fn*, if given, pushes a set datetime window down as a parquet row filter
-    (issue #57) — ignored for CSV, which can't skip rows without a full scan.
+    *bounds_fn* pushes a datetime window down as a parquet row filter;
+    *columns_fn* prunes unconfigured columns at read time.
+    Both are ignored for CSV (no partial scan possible).
     """
     suffix = file_path.suffix.lower()
 
     if suffix == ".parquet":
-        if bounds_fn is not None:
-            return read_parquet_with_datetime_pushdown(file_path, bounds_fn)
+        if bounds_fn is not None or columns_fn is not None:
+            return read_parquet_pruned(file_path, bounds_fn=bounds_fn, columns_fn=columns_fn)
         return pd.read_parquet(file_path)
 
     if suffix == ".csv":
@@ -159,7 +162,9 @@ class OtherDataSource(DataSourceBase):
                     def bounds_fn(index_tz, _file_config=file_config):  # noqa: ANN001, ANN202
                         return cls._pushdown_bounds(patient_options, _file_config, index_tz)
 
-                df = _load_single_file(file_path, bounds_fn=bounds_fn)
+                df = _load_single_file(
+                    file_path, bounds_fn=bounds_fn, columns_fn=make_columns_fn(file_config)
+                )
 
                 try:
                     df = set_datetime_index(df)

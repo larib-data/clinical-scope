@@ -300,8 +300,6 @@ def _find_datetime_col_parsed(df: pd.DataFrame) -> tuple[str, pd.Series]:
 
 
 # ==================================================================================================
-# Parquet datetime row-pushdown (issue #57): prune out-of-window rows at read time via
-# row-group statistics, instead of loading the full file and filtering afterwards.
 
 
 def resolve_stored_datetime_index(path: Path) -> tuple[str, str | None] | None:
@@ -455,47 +453,20 @@ def _detect_datetime_column_from_parquet(
     return None
 
 
-def read_parquet_with_datetime_pushdown(
-    path: Path,
-    bounds_fn: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None],
-) -> pd.DataFrame:
-    """
-    Read a parquet file, pushing a datetime window down as a row filter when possible.
-
-    *bounds_fn* is called with the resolved datetime column's timezone (``None`` if
-    tz-naive or epoch-based) and must return conservative-loose ``(start, end)``
-    bounds expressed in that same tz — either side may be ``None`` — or ``None`` if no
-    window is set. Tries, in order: the file's own materialized DatetimeIndex column
-    (no data read yet), then a tiered name-based scan reading only candidate columns
-    (mirrors :func:`set_datetime_index`'s detection). Falls back to an unfiltered full
-    read when no window is set, detection doesn't resolve, or the resolved column's
-    type can't be range-compared unambiguously (e.g. a string datetime column) —
-    under-pruning only costs a few extra rows, so a fallback is always correctness-safe.
-    """
-    stored_index = resolve_stored_datetime_index(path)
-    if stored_index is not None:
-        col, tz = stored_index
-        kind = "timestamp"
-        physically_naive = tz is None
-    else:
-        detected = _detect_datetime_column_from_parquet(path)
-        if detected is None:
-            return pd.read_parquet(path)
-        col, kind, tz, physically_naive = detected
-
-    bounds = bounds_fn(tz if kind == "timestamp" else None)
-    if bounds is None or kind == "other":
-        return pd.read_parquet(path)
-
+def _build_datetime_row_filters(
+    col: str,
+    kind: str,
+    physically_naive: bool,
+    bounds: tuple[pd.Timestamp | None, pd.Timestamp | None],
+) -> list[tuple] | None:
+    """Turn resolved ``(start, end)`` bounds into pyarrow row filters, or ``None`` if empty."""
     start, end = bounds
     if kind == "epoch_ns":
         start = None if start is None else start.value
         end = None if end is None else end.value
     elif kind == "timestamp" and physically_naive:
-        # tz may be a *semantic* tz forced by name detection (e.g. a naive column named
-        # "*utc*") while the on-disk column itself has no stored tz — bounds_fn then
-        # returns tz-aware bounds that pyarrow can't compare against the physical type.
-        # Strip the tz label (keep the wall-clock reading) to match the physical column.
+        # A naive column may carry a semantic tz from name detection (e.g. "*utc*"); strip the
+        # tz label so the wall-clock bounds match the physical, tz-naive on-disk column.
         if start is not None and start.tzinfo is not None:
             start = start.tz_localize(None)
         if end is not None and end.tzinfo is not None:
@@ -509,11 +480,79 @@ def read_parquet_with_datetime_pushdown(
         ]
         if f is not None
     ]
-    if not filters:
-        return pd.read_parquet(path)
+    return filters or None
+
+
+def read_parquet_pruned(
+    path: Path,
+    bounds_fn: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
+    | None = None,
+    columns_fn: Callable[[list[str]], list[str] | None] | None = None,
+) -> pd.DataFrame:
+    """
+    Read a parquet file, pruning out-of-window rows *and* unconfigured columns at read time.
+
+    Two orthogonal prunings, each safe on its own:
+
+    - **Rows** — *bounds_fn* receives the datetime column's tz (``None`` if tz-naive/epoch)
+      and returns loose ``(start, end)`` bounds in that tz (either side may be ``None``), or
+      ``None`` for no window. Applied only for a range-comparable datetime column; otherwise
+      the read is unfiltered (under-pruning only costs extra rows).
+    - **Columns** — *columns_fn* receives the file's column names and returns the subset to
+      read (a superset of the finally-selected signals), or ``None`` to read all. Independent
+      of any window — the common case is a wide cache with no window set.
+
+    Index-safe: a materialized DatetimeIndex is auto-restored by pandas even when omitted;
+    a non-materialized datetime column is unioned back so ``set_datetime_index`` still finds
+    it; if that column can't be resolved, column pruning is skipped (never drop the time axis).
+    """
+    file_columns = pq.ParquetFile(path).schema_arrow.names
+    requested_cols = None if columns_fn is None else columns_fn(list(file_columns))
+
+    stored_index = resolve_stored_datetime_index(path)
+    materialized = stored_index is not None
+    want_pushdown = bounds_fn is not None
+
+    # Resolve the datetime column only when needed (row filter, or protecting a
+    # non-materialized time axis); detection samples data, so skip it otherwise.
+    col = kind = tz = None
+    physically_naive = False
+    if want_pushdown or (requested_cols is not None and not materialized):
+        if materialized:
+            col, tz = stored_index
+            kind = "timestamp"
+            physically_naive = tz is None
+        else:
+            detected = _detect_datetime_column_from_parquet(path)
+            if detected is not None:
+                col, kind, tz, physically_naive = detected
+
+    columns_to_read = requested_cols
+    if columns_to_read is not None and not materialized:
+        if col is None:
+            columns_to_read = None  # unknown datetime axis → don't risk dropping it, read all
+        elif col not in columns_to_read:
+            columns_to_read = [col, *columns_to_read]  # keep the time axis in the read
+
+    filters = None
+    if want_pushdown and col is not None and kind is not None and kind != "other":
+        bounds = bounds_fn(tz if kind == "timestamp" else None)
+        if bounds is not None:
+            filters = _build_datetime_row_filters(col, kind, physically_naive, bounds)
+
+    if columns_to_read is not None:
+        logger.debug(
+            "Parquet column pruning on '%s': reading %d/%d columns.",
+            path,
+            len(columns_to_read),
+            len(file_columns),
+        )
+
+    if filters is None:
+        return pd.read_parquet(path, columns=columns_to_read)
 
     total_rows = pq.ParquetFile(path).metadata.num_rows
-    df = pd.read_parquet(path, filters=filters)
+    df = pd.read_parquet(path, filters=filters, columns=columns_to_read)
     pruned_pct = 100 * (1 - len(df) / total_rows) if total_rows else 0.0
     logger.info(
         "Parquet pushdown on '%s': read %d/%d rows (%.0f%% pruned).",
@@ -578,43 +617,107 @@ def load_parquet_with_datetime_index(
     dt_col: str | None = None,
     bounds_fn: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
     | None = None,
+    columns_fn: Callable[[list[str]], list[str] | None] | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """
     Load a parquet file and ensure it is indexed by datetime.
 
-    Files already carrying a DatetimeIndex (e.g. written by our own extract) are
-    returned as-is; otherwise the datetime column is detected with
-    ``set_datetime_index`` (raises if no column passes validation). *dt_col*
-    bypasses detection and sets that column directly. *bounds_fn*, if given (and
-    *dt_col* is not), pushes the datetime window down as a row filter at read time —
-    see :func:`read_parquet_with_datetime_pushdown`.
+    Files already carrying a DatetimeIndex are returned as-is; otherwise the datetime column
+    is detected with ``set_datetime_index`` (raises if none passes validation).
+
+    *dt_col* names the datetime column explicitly, bypassing detection. Column pruning
+    (*columns_fn*) still applies then — *dt_col* is always kept in the read — but row pushdown
+    (*bounds_fn*) does not, since an explicit column may still need parsing before it is
+    range-comparable. Without *dt_col*, both prunings go through :func:`read_parquet_pruned`.
     """
-    if bounds_fn is not None and dt_col is None:
-        df = read_parquet_with_datetime_pushdown(Path(file_path), bounds_fn)
-    else:
-        df = pd.read_parquet(file_path, **kwargs)
     if dt_col is not None:
+        columns = None
+        if columns_fn is not None:
+            file_columns = pq.ParquetFile(file_path).schema_arrow.names
+            columns = columns_fn(list(file_columns))
+            if columns is not None and dt_col not in columns:
+                columns = [dt_col, *columns]  # keep the time axis in the read
+        df = pd.read_parquet(file_path, columns=columns, **kwargs)
         df[dt_col] = pd.to_datetime(df[dt_col])
         return df.set_index(dt_col)
+
+    if bounds_fn is not None or columns_fn is not None:
+        df = read_parquet_pruned(Path(file_path), bounds_fn=bounds_fn, columns_fn=columns_fn)
+    else:
+        df = pd.read_parquet(file_path, **kwargs)
     return set_datetime_index(df)
 
 
 # ==================================================================================================
+def _wildcard_matches(pattern: str, columns: pd.Index | list[str]) -> list[str] | None:
+    """
+    Prefix-match *columns* for a trailing-``*`` wildcard; ``None`` if *pattern* is a literal.
+
+    Single definition of what a ``*`` matches, shared by :func:`get_column_name_from_pattern`
+    and :func:`_pruned_columns` so their wildcard handling can't drift. ``None`` (literal) is
+    distinct from ``[]`` (wildcard with zero matches) — each caller handles literals its own way.
+    """
+    if not (pattern and pattern.endswith(cst.DatabaseOptions.WILDCARD_SUFFIX)):
+        return None
+    prefix = pattern.rstrip(cst.DatabaseOptions.WILDCARD_SUFFIX)
+    return [col for col in columns if col.startswith(prefix)]
+
+
 def get_column_name_from_pattern(columns: pd.Index | list[str], pattern: str) -> str | None:
     """Find a column name matching a pattern (supports wildcard suffix '*')."""
-    if pattern[-1] == "*":
-        prefix = pattern.rstrip("*")
-        matching_columns = [col for col in columns if col.startswith(prefix)]
+    matching_columns = _wildcard_matches(pattern, columns)
+    if matching_columns is None:
+        return pattern  # literal: assume the caller-supplied name is the column
 
-        if len(matching_columns) == 1:
-            return matching_columns[0]
-        if len(matching_columns) == 0:
-            logger.warning("No column found in dataframe from the pattern %s", pattern)
-        else:
-            logger.warning(
-                "More than one column found in dataframe with the pattern %s. -> Ignored", pattern
-            )
+    if len(matching_columns) == 1:
+        return matching_columns[0]
+    if len(matching_columns) == 0:
+        logger.warning("No column found in dataframe from the pattern %s", pattern)
+    else:
+        logger.warning(
+            "More than one column found in dataframe with the pattern %s. -> Ignored", pattern
+        )
+    return None
+
+
+# ==================================================================================================
+def _pruned_columns(field_display: list[str] | None, file_columns: list[str]) -> list[str] | None:
+    """
+    Resolve which parquet columns to read for a set of configured signal patterns.
+
+    Pure column-name logic (no data read). Shares :func:`_wildcard_matches` with
+    :func:`get_column_name_from_pattern`, so the result is by construction a superset of the
+    columns that matcher finally selects — every 0/1/2+ match count, and thus every warning,
+    is identical to a full read.
+
+    - wildcard ``pre*`` → all file columns starting with ``pre`` (1)
+    - literal → included iff present (an absent name in ``columns=`` would raise) (2)
+    - *field_display* absent (``None``) → ``None`` ⇒ read all columns (3)
+    """
+    if field_display is None: # (3)
         return None
-    # Could not find any pattern, consider there was none
-    return pattern
+    selected: list[str] = []
+    seen: set[str] = set()
+    for pattern in field_display:
+        matches = _wildcard_matches(pattern, file_columns)
+        if matches is None: # (2)
+            matches = [pattern] if pattern in file_columns else []
+        for name in matches: # (1)
+            if name not in seen:
+                seen.add(name)
+                selected.append(name)
+    return selected
+
+
+def make_columns_fn(
+    database_options_specific: dict | None,
+) -> Callable[[list[str]], list[str] | None]:
+    """
+    Build a *columns_fn* for :func:`read_parquet_pruned` from a datasource's options.
+
+    Centralizes the ``field_display`` lookup shared by every parquet call site. The returned
+    closure defers pattern resolution until the file's columns are known.
+    """
+    field_display = (database_options_specific or {}).get(cst.DatabaseOptions.FIELD_DISPLAY)
+    return lambda file_columns: _pruned_columns(field_display, file_columns)

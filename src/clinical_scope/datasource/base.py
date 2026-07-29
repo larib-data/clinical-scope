@@ -29,7 +29,8 @@ from clinical_scope.datasource.timing import time_it
 from clinical_scope.io.file_utils import (
     find_files,
     folder_name_matches_keywords,
-    read_parquet_with_datetime_pushdown,
+    make_columns_fn,
+    read_parquet_pruned,
     save_df,
 )
 from clinical_scope.io.paths import get_datasource_cache_path
@@ -221,24 +222,31 @@ class DataSourceBase(ABC):
         database_options_specific: dict | None = None,
     ) -> pd.DataFrame:
         """
-        Load previously saved DataFrame from parquet file.
+        Load a previously saved DataFrame from parquet, pruning rows and columns.
 
-        Pushes a set datetime window down as a row filter when *patient_options* is
-        given, ``ALLOW_DATETIME_PUSHDOWN`` is set, and a window is actually set —
-        otherwise a full read (no window ⇒ nothing to prune). Pass
-        ``patient_options=None`` to force a full read (``inspect()`` needs every row).
+        Column pruning always applies: each cached frame is one column per signal, so
+        ``field_display`` selects exactly the columns read off disk. Row pushdown is
+        orthogonal and additionally gated on ``ALLOW_DATETIME_PUSHDOWN`` plus a set window.
+
+        ``patient_options=None`` (``inspect()``) skips row pushdown; inspect also strips
+        ``field_display`` upstream, so every column is then read.
         """
+        database_options_specific = database_options_specific or {}
+
+        bounds_fn = None
         if (
-            patient_options is None
-            or not cls.ALLOW_DATETIME_PUSHDOWN
-            or not cls._has_datetime_window(patient_options)
+            patient_options is not None
+            and cls.ALLOW_DATETIME_PUSHDOWN
+            and cls._has_datetime_window(patient_options)
         ):
-            return pd.read_parquet(path_dataframe)
-        return read_parquet_with_datetime_pushdown(
+
+            def bounds_fn(index_tz):  # noqa: ANN001, ANN202
+                return cls._pushdown_bounds(patient_options, database_options_specific, index_tz)
+
+        return read_parquet_pruned(
             path_dataframe,
-            bounds_fn=lambda index_tz: cls._pushdown_bounds(
-                patient_options, database_options_specific or {}, index_tz
-            ),
+            bounds_fn=bounds_fn,
+            columns_fn=make_columns_fn(database_options_specific),
         )
 
     @classmethod

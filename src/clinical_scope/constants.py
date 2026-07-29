@@ -183,6 +183,9 @@ class DatabaseOptions:
     LOOP = "loop"
     FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
 
+    # Trailing marker that turns a field_display entry into a prefix wildcard (e.g. "Local 1*").
+    WILDCARD_SUFFIX = "*"
+
     KNOWN_SECTION_KEYS = frozenset(
         {SIGNALS, FIELD_DISPLAY, NUMERICS, ADDITIONAL_INFORMATIONS, GROUPED_FIELDS, LOOP, FILES}
     )
