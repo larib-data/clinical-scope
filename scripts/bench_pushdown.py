@@ -1,24 +1,37 @@
 """
-Parquet datetime-pushdown benchmark harness (issue #57).
+Parquet read-pruning benchmark harness (issue #57 row pushdown, #58 column pruning).
 
-Measures wall-time and process memory of a windowed ``philips_waves.extract`` on
-large synthetic parquet fixtures, so the datetime row-pushdown work can be validated
-before vs. after by a manual ``git stash`` A/B:
+Measures wall-time and process memory of a ``philips_waves.extract`` on large synthetic
+parquet fixtures. Each ``(shape, scenario)`` case is one extract: the datetime-window
+scenarios exercise row pushdown, and the ``partial_cols`` scenario exercises column pruning
+(no window, ~1/4 of the columns configured). Validate a change before vs. after by a manual
+``git stash`` A/B:
 
     python scripts/bench_pushdown.py --size-gb 2 --out before.json   # git-stash state (HEAD)
-    git stash pop                                                    # bring pushdown back
+    git stash pop                                                    # bring pruning back
     python scripts/bench_pushdown.py --size-gb 2 --out after.json
     python scripts/bench_pushdown.py --diff before.json after.json
 
+The A/B — not a cold cache — is what makes the numbers trustworthy. Both runs execute the
+identical script and regenerate identical fixtures, so every ``(shape, scenario)`` cell sits
+at the same point in the same file-access sequence and therefore carries the *same* OS
+page-cache temperature in both arms; that nuisance term cancels in the before/after ratio, so
+no cache drop (``sudo purge``) is needed. The tradeoff: with the file warm in both arms the
+ratio counts CPU + memory-bandwidth savings but omits the disk-read savings of a true cold
+first load, so it is a conservative *lower bound* on the real-world win.
+
 Design constraints (do not break these — they are what makes the stash A/B valid):
 
-* It drives only ``DataSource.extract(patient_options, {})`` — the one entry point whose
-  signature is identical at HEAD and in the working tree. It must NOT import any pushdown
-  internal (``read_parquet_with_datetime_pushdown``, ``bounds_fn``,
-  ``ALLOW_DATETIME_PUSHDOWN``); none of those exist at HEAD, and importing one would stop
-  the script from even running against the baseline.
+* It drives only ``DataSource.extract(patient_options, database_options)`` — the one entry
+  point whose signature is identical at HEAD and in the working tree. The ``field_display``
+  it passes to select columns is simply ignored by a pre-#58 baseline (which reads every
+  column), so the very same call is a valid A/B for column pruning too. It must NOT import
+  any pruning internal (``read_parquet_pruned``, ``_pruned_columns``, ``bounds_fn``,
+  ``ALLOW_DATETIME_PUSHDOWN``); none exist at HEAD, and importing one would stop the script
+  from even running against the baseline.
 * Each case is measured in a fresh ``spawn`` subprocess, so peak RSS starts from a clean
-  interpreter and pyarrow's memory pool from one case can't bleed into the next.
+  interpreter and pyarrow's memory pool from one case can't bleed into the next. (It does
+  *not* reset the OS page cache, which is process-independent — hence the A/B note above.)
 * Peak memory is sampled from process RSS (psutil), not ``tracemalloc`` — pyarrow allocates
   its read buffers in C++ off the Python heap, which ``tracemalloc`` never sees.
 
@@ -54,7 +67,16 @@ SCENARIO_NO_WINDOW = "no_window"  # regression sentinel: pushdown can only add o
 SCENARIO_LARGE_WINDOW = "large_window"  # testing if detection is efficient
 SCENARIO_TIGHT = "tight"  # ~5% two-sided window: where pruning should pay off most
 SCENARIO_OUTSIDE = "outside_range"  # window before all data: everything prunes away
-SCENARIOS = (SCENARIO_NO_WINDOW, SCENARIO_LARGE_WINDOW, SCENARIO_TIGHT, SCENARIO_OUTSIDE)
+SCENARIO_PARTIAL_COLS = "partial_cols"  # no-window column-pruning case (#58)
+SCENARIOS = (
+    SCENARIO_PARTIAL_COLS,
+    SCENARIO_NO_WINDOW,
+    SCENARIO_LARGE_WINDOW,
+    SCENARIO_TIGHT,
+    SCENARIO_OUTSIDE,
+)
+
+_COLUMN_KEEP_FRACTION = 4  # partial_cols configures 1/this of the value columns
 
 _DATASOURCE = "philips_waves"  # no quick-load cache, reads the raw file every run
 _DT_COLUMN = "timestamp"  # detect_column shape: the column detection must discover
@@ -144,7 +166,8 @@ def _build_patient_folder(
 
 def _window_for_scenario(scenario: str, t_min: pd.Timestamp, t_max: pd.Timestamp) -> dict[str, str]:
     """Return the ``datetime_start``/``datetime_end`` patient-option keys for *scenario*."""
-    if scenario == SCENARIO_NO_WINDOW:
+    # Both read the full row range; partial_cols carries no window so it isolates column pruning.
+    if scenario in (SCENARIO_NO_WINDOW, SCENARIO_PARTIAL_COLS):
         return {}
     span = t_max - t_min
     if scenario == SCENARIO_LARGE_WINDOW:
@@ -153,9 +176,12 @@ def _window_for_scenario(scenario: str, t_min: pd.Timestamp, t_max: pd.Timestamp
     elif scenario == SCENARIO_TIGHT:
         start = t_min + span * 0.475
         end = t_min + span * 0.525
-    else:  # SCENARIO_OUTSIDE — fully before the data
+    elif scenario == SCENARIO_OUTSIDE:  # fully before the data → everything prunes away
         start = t_min - pd.Timedelta(days=10)
         end = t_min - pd.Timedelta(days=5)
+    else:
+        msg = f"unknown scenario: {scenario!r}"
+        raise ValueError(msg)
     # Naive wall-clock strings + display_timezone=UTC, mirroring the real UI/config path.
     fmt = "%Y-%m-%d %H:%M:%S"
     return {
@@ -164,10 +190,28 @@ def _window_for_scenario(scenario: str, t_min: pd.Timestamp, t_max: pd.Timestamp
     }
 
 
+def _database_options_for_scenario(scenario: str, num_columns: int) -> dict:
+    """
+    Return the ``database_options`` (2nd ``extract`` arg) for *scenario*.
+
+    Only ``partial_cols`` configures a ``field_display`` — ~1/``_COLUMN_KEEP_FRACTION`` of the
+    value columns, by bare name (``col_0 … col_{N-1}``, both shapes), mirroring a real signal
+    config. The datetime axis is never listed; the reader re-adds it, so the time column always
+    survives. A pre-#58 baseline ignores this key and reads every column — which is exactly what
+    makes the before/after a valid A/B for column pruning.
+    """
+    if scenario != SCENARIO_PARTIAL_COLS:
+        return {}
+    keep = max(1, num_columns // _COLUMN_KEEP_FRACTION)
+    return {"field_display": [f"col_{i}" for i in range(keep)]}
+
+
 # ==================================================================================================
 # Measurement (one fresh subprocess per case → clean peak RSS)
 # ==================================================================================================
-def _measure_worker(queue: mp.Queue, patient_dir: str, window: dict[str, str]) -> None:
+def _measure_worker(
+    queue: mp.Queue, patient_dir: str, window: dict[str, str], database_options: dict
+) -> None:
     """Run a single windowed extract, reporting time + RSS back through *queue*."""
     # Worker-local so the parent process and `--diff` mode stay light: no psutil (dev-only dep)
     # and no clinical_scope import until a case is actually measured in this spawned subprocess.
@@ -201,7 +245,7 @@ def _measure_worker(queue: mp.Queue, patient_dir: str, window: dict[str, str]) -
         **window,
     }
     t0 = time.perf_counter()
-    df = datasource.extract(patient_options, {})
+    df = datasource.extract(patient_options, database_options)
     elapsed = time.perf_counter() - t0
     retained = proc.memory_info().rss
 
@@ -219,11 +263,13 @@ def _measure_worker(queue: mp.Queue, patient_dir: str, window: dict[str, str]) -
     )
 
 
-def _measure_case(patient_dir: Path, window: dict[str, str]) -> dict:
+def _measure_case(patient_dir: Path, window: dict[str, str], database_options: dict) -> dict:
     """Measure one (shape x scenario) case in an isolated spawn subprocess."""
     ctx = mp.get_context("spawn")
     queue: mp.Queue = ctx.Queue()
-    worker = ctx.Process(target=_measure_worker, args=(queue, str(patient_dir), window))
+    worker = ctx.Process(
+        target=_measure_worker, args=(queue, str(patient_dir), window, database_options)
+    )
     worker.start()
     result = queue.get()  # blocks until the worker reports (or dies → surfaces as an error)
     worker.join()
@@ -292,8 +338,9 @@ def _run(args: argparse.Namespace) -> None:
         )
         for scenario in SCENARIOS:
             window = _window_for_scenario(scenario, t_min, t_max)
+            db_options = _database_options_for_scenario(scenario, args.num_columns)
             print(f"  measuring {shape} / {scenario} ...", flush=True)
-            metrics = _measure_case(patient_dir, window)
+            metrics = _measure_case(patient_dir, window, db_options)
             results.append({"shape": shape, "scenario": scenario, **metrics})
 
     print()
@@ -342,7 +389,10 @@ def _diff(before_path: str, after_path: str) -> None:
             f"{a['shape']:<14}{a['scenario']:<15}{time_x:>9.2f}{peak_x:>9.2f}"
             f"{b['peak_mb']:>11.1f}{a['peak_mb']:>10.1f}"
         )
-    print("\n(x > 1.0 = after is faster / lighter; expect a win on the 'tight' scenario.)")
+    print(
+        "\n(x > 1.0 = after is faster / lighter; row pruning wins on 'tight', "
+        "column pruning on 'partial_cols'.)"
+    )
 
 
 # ==================================================================================================
