@@ -11,6 +11,7 @@ import clinical_scope.datasource.sources.mindray_scope.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.formatting.timezone import apply_timezone_to_dataframe
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -280,10 +281,10 @@ class MindRayScopeDataSource(DataSourceBase):
 
                 df_list.append(df_local)
 
-        df_list = [df.sort_index() for df in df_list]
+        # concat(axis=1) aligns by label and the merged frame is sorted below, so a
+        # per-frame pre-sort here is wasted copies.
         df = pd.concat(df_list, axis=1)
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep="first")]
+        df = deduplicate_then_sort_index(df)
         if optimize_storage_dtypes:
             df = _optimize_df_types(df)
 

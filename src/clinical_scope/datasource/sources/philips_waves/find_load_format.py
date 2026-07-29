@@ -7,8 +7,10 @@ import clinical_scope.datasource.sources.philips_waves.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
 from clinical_scope.io.file_utils import (
+    deduplicate_then_sort_index,
     load_csv_with_datetime_index,
     load_parquet_with_datetime_index,
+    make_column_selector,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,16 +23,24 @@ class PhilipsWavesDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:
+        patient_options = kwargs.get("patient_options")
+        database_options_specific = kwargs.get("database_options_specific") or {}
+
         if file_path.suffix.lower() == ".parquet":
-            df = load_parquet_with_datetime_index(file_path)
+            df = load_parquet_with_datetime_index(
+                file_path,
+                compute_bounds=cls._make_bounds_computer(
+                    patient_options, database_options_specific
+                ),
+                select_columns=make_column_selector(database_options_specific),
+            )
         elif file_path.suffix.lower() == ".csv":
             df = load_csv_with_datetime_index(file_path)
         else:
             msg = f"file_path extension was neither '.csv' nor '.parquet'. Input: '{file_path}'"
             raise NotImplementedError(msg)
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep="first")]
+        df = deduplicate_then_sort_index(df)
 
         if path_output is not None:
             cls._save_dataframe(df, path_output)

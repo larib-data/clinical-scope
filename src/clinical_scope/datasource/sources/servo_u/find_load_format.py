@@ -9,6 +9,7 @@ import pandas as pd
 import clinical_scope.datasource.sources.servo_u.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +165,7 @@ class ServoUDataSource(DataSourceBase):
             all_dfs.append(df_local)
 
         df = pd.concat(all_dfs)
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep="first")]
+        df = deduplicate_then_sort_index(df)
         if path_output is not None:
             cls._save_dataframe(df, path_output)
         return df

@@ -1,5 +1,6 @@
 import csv
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -8,7 +9,12 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.other.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.inspection import DataSourceInspection
-from clinical_scope.io.file_utils import set_datetime_index
+from clinical_scope.io.file_utils import (
+    deduplicate_then_sort_index,
+    make_column_selector,
+    read_parquet_pruned,
+    set_datetime_index,
+)
 from clinical_scope.signal_container import (
     Signal,
 )
@@ -16,11 +22,26 @@ from clinical_scope.signal_container import (
 logger = logging.getLogger(__name__)
 
 
-def _load_single_file(file_path: Path) -> pd.DataFrame:
-    """Load a single CSV or parquet file into a DataFrame."""
+def _load_single_file(
+    file_path: Path,
+    compute_bounds: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
+    | None = None,
+    select_columns: Callable[[list[str]], list[str] | None] | None = None,
+) -> pd.DataFrame:
+    """
+    Load a single CSV or parquet file into a DataFrame.
+
+    *compute_bounds* pushes a datetime window down as a parquet row filter;
+    *select_columns* prunes unconfigured columns at read time.
+    Both are ignored for CSV (no partial scan possible).
+    """
     suffix = file_path.suffix.lower()
 
     if suffix == ".parquet":
+        if compute_bounds is not None or select_columns is not None:
+            return read_parquet_pruned(
+                file_path, compute_bounds=compute_bounds, select_columns=select_columns
+            )
         return pd.read_parquet(file_path)
 
     if suffix == ".csv":
@@ -134,7 +155,14 @@ class OtherDataSource(DataSourceBase):
 
         for file_path in file_paths:
             try:
-                df = _load_single_file(file_path)
+                file_stem = file_path.stem
+                file_config = per_file_options.get(file_stem, {})
+
+                df = _load_single_file(
+                    file_path,
+                    compute_bounds=cls._make_bounds_computer(patient_options, file_config),
+                    select_columns=make_column_selector(file_config),
+                )
 
                 try:
                     df = set_datetime_index(df)
@@ -142,27 +170,25 @@ class OtherDataSource(DataSourceBase):
                     logger.warning("Skipping file '%s': %s", file_path.name, exc)
                     continue
 
-                # Convert remaining columns to numeric, drop all-NaN columns
+                # Convert remaining columns to numeric
                 for col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-                df = df.dropna(axis=1, how="all")
 
-                if df.empty or len(df.columns) == 0:
-                    logger.warning("No numeric columns in '%s', skipping file", file_path.name)
-                    continue
-
-                # Remove duplicate timestamps
-                df = df[~df.index.duplicated(keep="first")]
-                df = df.sort_index()
-
-                file_stem = file_path.stem
-                file_config = per_file_options.get(file_stem, {})
+                # Remove duplicate timestamps (keep first in file order), then sort
+                df = deduplicate_then_sort_index(df)
 
                 # Apply formatting (timezone, time shift, datetime filter) with per-file opts
                 df = cls._format(df, patient_options, file_config)
 
                 if df.empty:
                     logger.warning("No data after filtering in '%s', skipping file", file_path.name)
+                    continue
+
+                # Drop all-NaN columns *after* the datetime filter so a column's presence is
+                # judged on the final window, not on whether row-pushdown narrowed the read (#57).
+                df = df.dropna(axis=1, how="all")
+                if df.empty or len(df.columns) == 0:
+                    logger.warning("No numeric columns in '%s', skipping file", file_path.name)
                     continue
 
                 # Determine which columns to expose as signals
@@ -282,7 +308,7 @@ class OtherDataSource(DataSourceBase):
                 # _make_inspection/_column_infos can report them with raw_point_count=0.
                 for col in list(df.columns):
                     df[col] = pd.to_numeric(df[col], errors="coerce")
-                df = df[~df.index.duplicated(keep="first")].sort_index()
+                df = deduplicate_then_sort_index(df)
 
                 results.append(
                     cls._make_inspection(df, patient_options, file_config, inspection_name, str(fp))

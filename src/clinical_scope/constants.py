@@ -16,6 +16,10 @@ JUNK_FILENAME_PATTERNS = frozenset(
 LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"
 
+# Safety pad added around parquet row-pushdown bounds (issue #57): bounds are deliberately
+# conservative-loose, since _filter_by_datetime remains the authoritative cut afterwards.
+DATETIME_PUSHDOWN_BUFFER_SECONDS = 1.0
+
 DEFAULT_NAME_VISUALIZATION = "visualization.html"
 DEFAULT_NAME_DATABASE_OPTIONS = "database_options.json"
 DEFAULT_NAME_PATIENT_OPTIONS = "patient_options.json"
@@ -60,6 +64,12 @@ class DatetimeColumnDetection:
     MIN_VALID_FRACTION = 0.9  # parseable with year in [MIN_YEAR, MAX_YEAR]
     MIN_SORTED_FRACTION = 0.9  # consecutive non-decreasing (tolerates device buffering jitter)
     MIN_YEAR, MAX_YEAR = 1990, 2100
+
+    # Bounded-sample sizing for schema-only parquet detection
+    SAMPLE_MIN_GROUPS = 2  # floor when the file has ≥2 groups: two places guard against a fluke
+    SAMPLE_MAX_GROUPS = 20  # upper bound on row groups sampled (budget/file size may cut it)
+    SAMPLE_ROWS_PER_BLOCK = 100_000  # rows validated per group (head slice of each)
+    SAMPLE_MAX_ROW_DECODED = 1_000_000  # cap on rows decoded, but always ≥ 2 groups (below)
 
 
 class ApiType:
@@ -172,6 +182,9 @@ class DatabaseOptions:
     GROUPED_FIELDS = "grouped_fields"
     LOOP = "loop"
     FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
+
+    # Trailing marker that turns a field_display entry into a prefix wildcard (e.g. "Local 1*").
+    WILDCARD_SUFFIX = "*"
 
     KNOWN_SECTION_KEYS = frozenset(
         {SIGNALS, FIELD_DISPLAY, NUMERICS, ADDITIONAL_INFORMATIONS, GROUPED_FIELDS, LOOP, FILES}
