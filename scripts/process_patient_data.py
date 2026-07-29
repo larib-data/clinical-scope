@@ -100,9 +100,7 @@ def cmd_batch(options: dict) -> None:
 
         total = len(batch_results)
         with_data = sum(1 for r in batch_results.values() if any(v is not None for v in r.values()))
-        print(
-            f"\n{with_data}/{total} patient folder(s) had at least one successful datasource."
-        )
+        print(f"\n{with_data}/{total} patient folder(s) had at least one successful datasource.")
         if options.get("output_folder"):
             print(f"Outputs written to: {options['output_folder']}")
 

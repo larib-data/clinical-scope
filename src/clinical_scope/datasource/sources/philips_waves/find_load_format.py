@@ -10,7 +10,7 @@ from clinical_scope.io.file_utils import (
     deduplicate_then_sort_index,
     load_csv_with_datetime_index,
     load_parquet_with_datetime_index,
-    make_columns_fn,
+    make_column_selector,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,22 +28,12 @@ class PhilipsWavesDataSource(DataSourceBase):
         database_options_specific = kwargs.get("database_options_specific") or {}
 
         if file_path.suffix.lower() == ".parquet":
-            bounds_fn = None
-            if (
-                patient_options is not None
-                and cls.ALLOW_DATETIME_PUSHDOWN
-                and cls._has_datetime_window(patient_options)
-            ):
-
-                def bounds_fn(index_tz):  # noqa: ANN001, ANN202
-                    return cls._pushdown_bounds(
-                        patient_options, database_options_specific, index_tz
-                    )
-
             df = load_parquet_with_datetime_index(
                 file_path,
-                bounds_fn=bounds_fn,
-                columns_fn=make_columns_fn(database_options_specific),
+                compute_bounds=cls._make_bounds_computer(
+                    patient_options, database_options_specific
+                ),
+                select_columns=make_column_selector(database_options_specific),
             )
         elif file_path.suffix.lower() == ".csv":
             df = load_csv_with_datetime_index(file_path)

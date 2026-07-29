@@ -8,6 +8,7 @@ reducing duplication across find_load_format.py files.
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -29,7 +30,7 @@ from clinical_scope.datasource.timing import time_it
 from clinical_scope.io.file_utils import (
     find_files,
     folder_name_matches_keywords,
-    make_columns_fn,
+    make_column_selector,
     read_parquet_pruned,
     save_df,
 )
@@ -215,6 +216,31 @@ class DataSourceBase(ABC):
         return pre_start, pre_end
 
     @classmethod
+    def _make_bounds_computer(
+        cls,
+        patient_options: dict | None,
+        database_options_specific: dict,
+    ) -> Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None] | None:
+        """
+        Build the row-pushdown *compute_bounds* callable, or ``None`` when pushdown doesn't apply.
+
+        Centralizes the pushdown gate shared by every parquet call site: returns ``None`` (no row
+        filter) unless this source allows pushdown *and* a datetime window is set. Passing
+        ``patient_options=None`` (``inspect()``) yields ``None`` — inspect never prunes rows.
+        """
+        if (
+            patient_options is None
+            or not cls.ALLOW_DATETIME_PUSHDOWN
+            or not cls._has_datetime_window(patient_options)
+        ):
+            return None
+
+        def compute_bounds(index_tz):  # noqa: ANN001, ANN202
+            return cls._pushdown_bounds(patient_options, database_options_specific, index_tz)
+
+        return compute_bounds
+
+    @classmethod
     def _quick_load(
         cls,
         path_dataframe: Path,
@@ -233,20 +259,10 @@ class DataSourceBase(ABC):
         """
         database_options_specific = database_options_specific or {}
 
-        bounds_fn = None
-        if (
-            patient_options is not None
-            and cls.ALLOW_DATETIME_PUSHDOWN
-            and cls._has_datetime_window(patient_options)
-        ):
-
-            def bounds_fn(index_tz):  # noqa: ANN001, ANN202
-                return cls._pushdown_bounds(patient_options, database_options_specific, index_tz)
-
         return read_parquet_pruned(
             path_dataframe,
-            bounds_fn=bounds_fn,
-            columns_fn=make_columns_fn(database_options_specific),
+            compute_bounds=cls._make_bounds_computer(patient_options, database_options_specific),
+            select_columns=make_column_selector(database_options_specific),
         )
 
     @classmethod

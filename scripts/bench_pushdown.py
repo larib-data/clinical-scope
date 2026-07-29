@@ -26,7 +26,7 @@ Design constraints (do not break these — they are what makes the stash A/B val
   point whose signature is identical at HEAD and in the working tree. The ``field_display``
   it passes to select columns is simply ignored by a pre-#58 baseline (which reads every
   column), so the very same call is a valid A/B for column pruning too. It must NOT import
-  any pruning internal (``read_parquet_pruned``, ``_pruned_columns``, ``bounds_fn``,
+  any pruning internal (``read_parquet_pruned``, ``_pruned_columns``, ``compute_bounds``,
   ``ALLOW_DATETIME_PUSHDOWN``); none exist at HEAD, and importing one would stop the script
   from even running against the baseline.
 * Each case is measured in a fresh ``spawn`` subprocess, so peak RSS starts from a clean

@@ -132,7 +132,7 @@ class TestReadParquetPrunedMaterializedIndex:
         full = pd.read_parquet(MATERIALIZED_PARQUET)
         actual = read_parquet_pruned(
             MATERIALIZED_PARQUET,
-            columns_fn=lambda names: _pruned_columns(field_display, names),
+            select_columns=lambda names: _pruned_columns(field_display, names),
         )
         assert list(actual.columns) == _expected_cols(full, field_display)
         # check_column_type off: an all-pruned frame's empty columns Index has inferred dtype
@@ -143,7 +143,7 @@ class TestReadParquetPrunedMaterializedIndex:
     def test_absent_field_display_reads_all(self):
         full = pd.read_parquet(MATERIALIZED_PARQUET)
         actual = read_parquet_pruned(
-            MATERIALIZED_PARQUET, columns_fn=lambda names: _pruned_columns(None, names)
+            MATERIALIZED_PARQUET, select_columns=lambda names: _pruned_columns(None, names)
         )
         pd.testing.assert_frame_equal(actual, full)
 
@@ -152,8 +152,8 @@ class TestReadParquetPrunedMaterializedIndex:
         start, end = full.index[10], full.index[20]
         actual = read_parquet_pruned(
             MATERIALIZED_PARQUET,
-            bounds_fn=lambda _tz: (start, end),
-            columns_fn=lambda names: _pruned_columns(["BIS/BIS"], names),
+            compute_bounds=lambda _tz: (start, end),
+            select_columns=lambda names: _pruned_columns(["BIS/BIS"], names),
         )
         expected = full.loc[(full.index >= start) & (full.index <= end), ["BIS/BIS"]]
         pd.testing.assert_frame_equal(actual, expected)
@@ -181,7 +181,7 @@ class TestReadParquetPrunedNonMaterializedIndex:
         path = _make_nonmaterialized_parquet(tmp_path)
         full = pd.read_parquet(path)
         actual = read_parquet_pruned(
-            path, columns_fn=lambda names: _pruned_columns(field_display, names)
+            path, select_columns=lambda names: _pruned_columns(field_display, names)
         )
         # The detected datetime column ('timestamp') is always unioned in, even for 0 matches.
         assert "timestamp" in actual.columns

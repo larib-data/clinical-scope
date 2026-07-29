@@ -11,7 +11,7 @@ from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.inspection import DataSourceInspection
 from clinical_scope.io.file_utils import (
     deduplicate_then_sort_index,
-    make_columns_fn,
+    make_column_selector,
     read_parquet_pruned,
     set_datetime_index,
 )
@@ -24,22 +24,24 @@ logger = logging.getLogger(__name__)
 
 def _load_single_file(
     file_path: Path,
-    bounds_fn: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
+    compute_bounds: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
     | None = None,
-    columns_fn: Callable[[list[str]], list[str] | None] | None = None,
+    select_columns: Callable[[list[str]], list[str] | None] | None = None,
 ) -> pd.DataFrame:
     """
     Load a single CSV or parquet file into a DataFrame.
 
-    *bounds_fn* pushes a datetime window down as a parquet row filter;
-    *columns_fn* prunes unconfigured columns at read time.
+    *compute_bounds* pushes a datetime window down as a parquet row filter;
+    *select_columns* prunes unconfigured columns at read time.
     Both are ignored for CSV (no partial scan possible).
     """
     suffix = file_path.suffix.lower()
 
     if suffix == ".parquet":
-        if bounds_fn is not None or columns_fn is not None:
-            return read_parquet_pruned(file_path, bounds_fn=bounds_fn, columns_fn=columns_fn)
+        if compute_bounds is not None or select_columns is not None:
+            return read_parquet_pruned(
+                file_path, compute_bounds=compute_bounds, select_columns=select_columns
+            )
         return pd.read_parquet(file_path)
 
     if suffix == ".csv":
@@ -156,14 +158,10 @@ class OtherDataSource(DataSourceBase):
                 file_stem = file_path.stem
                 file_config = per_file_options.get(file_stem, {})
 
-                bounds_fn = None
-                if cls.ALLOW_DATETIME_PUSHDOWN and cls._has_datetime_window(patient_options):
-
-                    def bounds_fn(index_tz, _file_config=file_config):  # noqa: ANN001, ANN202
-                        return cls._pushdown_bounds(patient_options, _file_config, index_tz)
-
                 df = _load_single_file(
-                    file_path, bounds_fn=bounds_fn, columns_fn=make_columns_fn(file_config)
+                    file_path,
+                    compute_bounds=cls._make_bounds_computer(patient_options, file_config),
+                    select_columns=make_column_selector(file_config),
                 )
 
                 try:
@@ -186,11 +184,8 @@ class OtherDataSource(DataSourceBase):
                     logger.warning("No data after filtering in '%s', skipping file", file_path.name)
                     continue
 
-                # Drop all-NaN columns *after* the datetime filter: a pushed-down read only
-                # narrows which rows are fetched from disk (issue #57), so a column's presence
-                # must be judged on the same final window regardless of whether pushdown ran —
-                # otherwise a signal with data outside a narrow window could vanish only when
-                # pushdown happens to trigger.
+                # Drop all-NaN columns *after* the datetime filter so a column's presence is
+                # judged on the final window, not on whether row-pushdown narrowed the read (#57).
                 df = df.dropna(axis=1, how="all")
                 if df.empty or len(df.columns) == 0:
                     logger.warning("No numeric columns in '%s', skipping file", file_path.name)

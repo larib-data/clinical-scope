@@ -65,7 +65,7 @@ class TestReadParquetWithDatetimePushdownLowLevel:
     def test_two_sided_window_matches_reference_slice(self, path, tz):
         start = pd.Timestamp("2004-09-20 00:00:00", tz=tz)
         end = pd.Timestamp("2004-09-25 00:00:00", tz=tz)
-        actual = read_parquet_pruned(path, bounds_fn=lambda _tz: (start, end))
+        actual = read_parquet_pruned(path, compute_bounds=lambda _tz: (start, end))
         expected = _reference_slice(path, start, end)
         pd.testing.assert_frame_equal(actual, expected)
         assert 0 < len(actual) < len(pd.read_parquet(path))
@@ -79,7 +79,7 @@ class TestReadParquetWithDatetimePushdownLowLevel:
     )
     def test_one_sided_start_only(self, path, tz):
         start = pd.Timestamp("2004-10-15 00:00:00", tz=tz)
-        actual = read_parquet_pruned(path, bounds_fn=lambda _tz: (start, None))
+        actual = read_parquet_pruned(path, compute_bounds=lambda _tz: (start, None))
         expected = _reference_slice(path, start, None)
         pd.testing.assert_frame_equal(actual, expected)
 
@@ -92,7 +92,7 @@ class TestReadParquetWithDatetimePushdownLowLevel:
     )
     def test_one_sided_end_only(self, path, tz):
         end = pd.Timestamp("2004-09-16 00:00:00", tz=tz)
-        actual = read_parquet_pruned(path, bounds_fn=lambda _tz: (None, end))
+        actual = read_parquet_pruned(path, compute_bounds=lambda _tz: (None, end))
         expected = _reference_slice(path, None, end)
         pd.testing.assert_frame_equal(actual, expected)
 
@@ -106,7 +106,7 @@ class TestReadParquetWithDatetimePushdownLowLevel:
     def test_window_fully_outside_data_range_is_empty_but_matches(self, path, tz):
         start = pd.Timestamp("1990-01-01", tz=tz)
         end = pd.Timestamp("1990-01-02", tz=tz)
-        actual = read_parquet_pruned(path, bounds_fn=lambda _tz: (start, end))
+        actual = read_parquet_pruned(path, compute_bounds=lambda _tz: (start, end))
         expected = _reference_slice(path, start, end)
         assert len(actual) == 0
         pd.testing.assert_frame_equal(actual, expected)
@@ -124,31 +124,31 @@ class TestReadParquetWithDatetimePushdownLowLevel:
         # consecutive samples — the shape of gap a too-tight buffer could get wrong.
         start = pd.Timestamp("2004-09-15 08:12:40", tz=tz)
         end = pd.Timestamp("2004-09-15 08:13:00", tz=tz)
-        actual = read_parquet_pruned(path, bounds_fn=lambda _tz: (start, end))
+        actual = read_parquet_pruned(path, compute_bounds=lambda _tz: (start, end))
         expected = _reference_slice(path, start, end)
         assert len(actual) == 0
         pd.testing.assert_frame_equal(actual, expected)
 
     def test_no_bounds_returns_full_unfiltered_read(self):
         actual = read_parquet_pruned(
-            TZ_AWARE_STORED_INDEX_PARQUET, bounds_fn=lambda _tz: None
+            TZ_AWARE_STORED_INDEX_PARQUET, compute_bounds=lambda _tz: None
         )
         expected = pd.read_parquet(TZ_AWARE_STORED_INDEX_PARQUET)
         pd.testing.assert_frame_equal(actual, expected)
 
-    def test_bounds_fn_receives_stored_index_tz(self):
-        """The resolved tz of the materialized index is passed to bounds_fn, not guessed."""
+    def test_compute_bounds_receives_stored_index_tz(self):
+        """The resolved tz of the materialized index is passed to compute_bounds, not guessed."""
         seen_tz = []
 
-        def bounds_fn(tz):
+        def compute_bounds(tz):
             seen_tz.append(tz)
             return None
 
-        read_parquet_pruned(TZ_AWARE_STORED_INDEX_PARQUET, bounds_fn)
+        read_parquet_pruned(TZ_AWARE_STORED_INDEX_PARQUET, compute_bounds)
         assert seen_tz == ["Europe/Paris"]
 
         seen_tz.clear()
-        read_parquet_pruned(TZ_NAIVE_STORED_INDEX_PARQUET, bounds_fn)
+        read_parquet_pruned(TZ_NAIVE_STORED_INDEX_PARQUET, compute_bounds)
         assert seen_tz == [None]
 
 
@@ -507,7 +507,7 @@ class TestSampledDetection:
 
         start = pd.Timestamp("2020-01-01 00:00:10")
         end = pd.Timestamp("2020-01-01 00:00:20")
-        actual = read_parquet_pruned(path, bounds_fn=lambda _tz: (start, end))
+        actual = read_parquet_pruned(path, compute_bounds=lambda _tz: (start, end))
         pd.testing.assert_frame_equal(actual, pd.read_parquet(path))
 
     def test_higher_tier_column_hidden_by_sample_does_not_desync(self, tmp_path, monkeypatch):
@@ -547,7 +547,7 @@ class TestSampledDetection:
         start = pd.Timestamp("2020-01-01 10:00:00")
         end = pd.Timestamp("2020-01-01 13:00:00")
 
-        enabled = load_parquet_with_datetime_index(path, bounds_fn=lambda _tz: (start, end))
+        enabled = load_parquet_with_datetime_index(path, compute_bounds=lambda _tz: (start, end))
         disabled = load_parquet_with_datetime_index(path)  # no pushdown → full read
 
         # The authoritative datetime-window cut (_filter_by_datetime) runs on both downstream.
