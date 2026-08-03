@@ -27,6 +27,11 @@ DEFAULT_QUICK_LOAD = False
 ANNOTATION_FILE_NAME = "annotations.json"
 ANNOTATION_KEY = "annotations"
 
+# Signal-free, no-PHI app state cached under the user's home (~/<CLINICAL_SCOPE_DIR_NAME>/).
+CLINICAL_SCOPE_DIR_NAME = ".clinical_scope"
+CACHED_DB_OPTIONS_FILE_NAME = "last_database_options.json"  # signal metadata only, no PHI
+USER_OPTIONS_FILE_NAME = "user_options.json"  # per-user global preferences
+
 PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"
 PLACEHOLDER_DAY = "YYYY-MM-DD"
 
@@ -144,6 +149,29 @@ class PatientOptions:
     # Field 'PatientOptionsDataSourceRelative'
     # For each datasource possible additional informations
     # pass
+
+
+# Subplot heights (px). Time-series default is user-tunable via UserOptions; loops stay square.
+DEFAULT_SUBPLOT_HEIGHT = 300
+DEFAULT_LOOP_SUBPLOT_HEIGHT = 600
+
+
+class UserOptions:
+    class SaveHtmlOnProcess:
+        ORDER = 1
+        NAME = "save_html_on_process"
+        API_TYPE = ApiType.BOOL
+        DEFAULT = False
+        DESCRIPTION = "Save a full-resolution HTML export on each Process"
+
+    class DefaultSubplotHeight:
+        ORDER = 2
+        NAME = "default_subplot_height"
+        API_TYPE = ApiType.INT
+        DEFAULT = DEFAULT_SUBPLOT_HEIGHT
+        MIN = 100
+        MAX = 2000
+        DESCRIPTION = "Default height of each time-series subplot (px)"
 
 
 class DatabaseOptions:

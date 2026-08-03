@@ -7,18 +7,23 @@ from pathlib import Path
 import dash_bootstrap_components as dbc
 from dash import Dash, dcc, html
 
+from clinical_scope import constants as cst
 from clinical_scope import logger_config
 
 # Import callbacks to register them with the app
-from clinical_scope.dash_api import callbacks  # noqa: F401
+from clinical_scope.dash_api import (
+    callbacks,  # noqa: F401
+    ui_components,
+)
 from clinical_scope.dash_api.annotations.model import (
     ANNOTATION_COLORS,
     AnnotationType,
 )
 from clinical_scope.dash_api.callbacks import default_mode
-from clinical_scope.dash_api.helper_api import get_cached_db_options_path
+from clinical_scope.dash_api.helper_api import get_cached_db_options_path, load_user_options
 from clinical_scope.dash_api.styles import (
-    ACTION_BUTTONS_ROW,
+    ACTION_CARD,
+    ACTION_PANEL_ROW,
     ANNOTATION_MODAL_PANEL,
     ANNOTATION_MODAL_STYLE_HIDDEN,
     ANNOTATION_TOOLBAR_STYLE,
@@ -26,6 +31,7 @@ from clinical_scope.dash_api.styles import (
     BUTTON_ANNOTATION_SAVE,
     BUTTON_DEFAULT_VIZ,
     BUTTON_DOWNLOAD_CSV,
+    BUTTON_GEAR,
     BUTTON_INSPECT,
     BUTTON_MODAL_CLOSE,
     BUTTON_PROCESS,
@@ -37,6 +43,7 @@ from clinical_scope.dash_api.styles import (
     INSPECTION_MODAL_SCROLLABLE_BODY,
     INSPECTION_MODAL_STYLE_HIDDEN,
     ROOT_CONTAINER,
+    SETTINGS_MODAL_PANEL,
     VERSION_BADGE,
 )
 
@@ -535,10 +542,62 @@ _annotation_list_panel = html.Div(
     children=[],
 )
 
+# ---------------------------------------------------------------------------
+# User settings modal (global, per-user preferences)
+# ---------------------------------------------------------------------------
+# Loaded once at layout build; the reflect callback re-syncs widgets to the store on startup.
+_INITIAL_USER_OPTIONS = load_user_options()
+_INITIAL_SAVE_HTML = bool(_INITIAL_USER_OPTIONS.get(cst.UserOptions.SaveHtmlOnProcess.NAME))
+
+_user_options_form, _ = ui_components.build_ui_and_schema_registry(
+    cst.UserOptions, "user_options", id_type="user-option", label_width="420px"
+)
+
+_settings_modal = html.Div(
+    id="settings-modal",
+    style=ANNOTATION_MODAL_STYLE_HIDDEN,
+    children=[
+        html.Div(
+            [
+                html.Div(
+                    [
+                        html.H4("Settings", style={"margin": 0, "fontSize": "16px"}),
+                        html.Button(
+                            "×",  # noqa: RUF001
+                            id="settings-close-btn",
+                            n_clicks=0,
+                            style={
+                                **BUTTON_MODAL_CLOSE,
+                                "fontSize": "18px",
+                                "padding": "2px 10px",
+                                "lineHeight": "1",
+                            },
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "center",
+                        "marginBottom": "16px",
+                        "borderBottom": "1px solid #dee2e6",
+                        "paddingBottom": "12px",
+                    },
+                ),
+                _user_options_form,
+            ],
+            style=SETTINGS_MODAL_PANEL,
+        )
+    ],
+)
+
 app.layout = html.Div(
     [
         # Version display in top right corner
         html.Div(f"API Version: {__version__}", style=VERSION_BADGE),
+        html.Button("⚙ Settings", id="settings-open-btn", n_clicks=0, style=BUTTON_GEAR),
+        _settings_modal,
+        # Global, per-user preferences store (source of truth for the settings surfaces).
+        dcc.Store(id="user-options-store", data=_INITIAL_USER_OPTIONS),
         # Global annotation stores
         dcc.Store(id="annotation-store", data=[]),
         dcc.Store(id="annotation-mode-store", data=default_mode()),
@@ -574,20 +633,39 @@ app.layout = html.Div(
         html.Hr(),
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
+        # Action panel: two peer cards (Process / Inspect), each holding its action + options,
+        # side-by-side so they read as a choice rather than a sequence.
         html.Div(
             [
-                html.Button(
-                    "Process visualization",
-                    id="process-button",
-                    style=BUTTON_PROCESS,
+                html.Div(
+                    [
+                        html.Button(
+                            "Process visualization",
+                            id="process-button",
+                            style=BUTTON_PROCESS,
+                        ),
+                        # Read-only mirror of the save_html_on_process user option (editable in
+                        # the settings modal) — shows what Process will do, one-way from the store.
+                        html.Span(
+                            id="save-html-indicator",
+                            children=ui_components.save_html_indicator_text(_INITIAL_SAVE_HTML),
+                            style={"fontSize": "13px", "color": "#666"},
+                        ),
+                    ],
+                    style=ACTION_CARD,
                 ),
-                html.Button(
-                    "Inspect data",
-                    id="inspect-button",
-                    style=BUTTON_INSPECT,
+                html.Div(
+                    [
+                        html.Button(
+                            "Inspect data",
+                            id="inspect-button",
+                            style=BUTTON_INSPECT,
+                        ),
+                    ],
+                    style=ACTION_CARD,
                 ),
             ],
-            style=ACTION_BUTTONS_ROW,
+            style=ACTION_PANEL_ROW,
         ),
         html.Div(id="validation-errors"),
         dcc.Loading(

@@ -86,8 +86,12 @@ def main(
     patient_options: dict,
     database_options_global: dict | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
+    user_options: dict | None = None,
 ) -> list[PlotModel]:
     database_options_global = _resolve_database_options(database_options_global)
+    # UI-layer preference passed in explicitly; the core never reads the on-disk file.
+    raw_height = (user_options or {}).get(cst.UserOptions.DefaultSubplotHeight.NAME)
+    subplot_height = int(raw_height) if raw_height else None
     all_signal_list = []
     already_used_in_group = []
     plot_group_list = []
@@ -296,7 +300,9 @@ def main(
             logger.exception("❌ Unexpected error while processing global loop '%s'.", loop_name)
 
     try:
-        plot_model_list = PlotModel.assign_plot_model(plot_group_list)
+        plot_model_list = PlotModel.assign_plot_model(
+            plot_group_list, subplot_height=subplot_height
+        )
     except Exception:
         logger.exception("❌ Failed to assign PlotModel list.")
         return []

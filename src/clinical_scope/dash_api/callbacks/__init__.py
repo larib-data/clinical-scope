@@ -42,6 +42,11 @@ from clinical_scope.dash_api.callbacks.loop_callbacks import (
     filter_loop_by_time,
     update_time_display,
 )
+from clinical_scope.dash_api.callbacks.user_options_callbacks import (
+    persist_user_options,
+    reflect_user_options,
+    toggle_settings_modal,
+)
 
 __all__ = [
     "activate_group",
@@ -61,10 +66,12 @@ __all__ = [
     "inspect_data",
     "load_db_options",
     "open_group_modal",
+    "persist_user_options",
     "pick_annotation_color_swatch",
     "pick_group_color_swatch",
     "poll_process_progress",
     "process_visualization",
+    "reflect_user_options",
     "render_annotations",
     "resample_on_zoom",
     "save_annotations_cb",
@@ -73,6 +80,7 @@ __all__ = [
     "toggle_global_checkbox_visibility",
     "toggle_group_expand",
     "toggle_group_labels",
+    "toggle_settings_modal",
     "update_annotation_list",
     "update_modal_ui",
     "update_time_display",

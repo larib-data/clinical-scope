@@ -12,6 +12,7 @@ import pandas as pd
 
 import clinical_scope.constants as cst
 from clinical_scope.dash_api import helper_api as ui_helper
+from clinical_scope.dash_api import ui_components
 
 
 def _validate_by_type(
@@ -138,7 +139,7 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
         if api_type in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
             stored_value = str(ui_helper.format_path(value))
         else:
-            stored_value = value
+            stored_value = ui_components.from_widget_value(api_type, value)
 
         # Store validated value
         if is_global:

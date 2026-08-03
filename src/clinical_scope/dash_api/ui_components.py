@@ -18,13 +18,44 @@ logger = logging.getLogger(__name__)
 # ==================================================================================================
 
 
-def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div:
+def save_html_indicator_text(enabled: bool) -> str:
+    """Read-only label mirroring the save_html_on_process user option beside Process."""
+    return f"HTML export on Process: {'on' if enabled else 'off'}"
+
+
+# Widget value contract: BOOL renders as a dcc.Checklist whose value is a list
+# ([True] when checked, [] when not); every other API_TYPE round-trips as its scalar.
+# These two functions are the single owner of that mapping — keep them inverse.
+def to_widget_value(api_type: str | None, value: Any) -> Any:
+    """Encode a stored/Python value into the shape api_type's Dash widget expects."""
+    if api_type == cst.ApiType.BOOL:
+        return [True] if value else []
+    return value
+
+
+def from_widget_value(api_type: str | None, value: Any) -> Any:
+    """Decode a Dash widget value back to its Python form (inverse of to_widget_value)."""
+    if api_type == cst.ApiType.BOOL:
+        return len(value or []) > 0
+    return value
+
+
+def dash_widget_factory(
+    schema_class: Any,
+    component_id_prefix: str,
+    id_type: str = "patient-option",
+    label_width: str = "300px",
+) -> html.Div:
     """
     Create a Dash input component based on a schema class.
 
     Args:
         schema_class: The schema class defining the component properties
         component_id_prefix: Prefix for the component ID
+        id_type: The ``type`` key of the pattern-matching widget id (scopes callbacks;
+            e.g. "patient-option" vs "user-option")
+        label_width: CSS width of the description label (widen it if a caller's
+            descriptions don't fit on one line at the default)
 
     Returns:
         html.Div: A Div containing the label and input component
@@ -39,14 +70,14 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
     component_id = f"{component_id_prefix}.{name}"
 
     label = html.Label(
-        description, style={"width": "300px", "display": "inline-block", "flexShrink": "0"}
+        description, style={"width": label_width, "display": "inline-block", "flexShrink": "0"}
     )
 
     if t == cst.ApiType.BOOL:
         input_component = dcc.Checklist(
             options=[{"label": "", "value": True}],
-            value=[True] if default else [],
-            id={"type": "patient-option", "name": component_id},
+            value=to_widget_value(t, default),
+            id={"type": id_type, "name": component_id},
             style={"display": "inline-block", "verticalAlign": "middle"},
         )
 
@@ -55,7 +86,10 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
             type="number",
             value=default,
             placeholder=placeholder,
-            id={"type": "patient-option", "name": component_id},
+            min=getattr(schema_class, "MIN", None),
+            max=getattr(schema_class, "MAX", None),
+            debounce=True,
+            id={"type": id_type, "name": component_id},
             style={"width": "300px"},
         )
 
@@ -64,7 +98,7 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
             type="text",
             value=default,
             placeholder=placeholder,
-            id={"type": "patient-option", "name": component_id},
+            id={"type": id_type, "name": component_id},
             style={"width": "300px"},
         )
 
@@ -74,7 +108,7 @@ def dash_widget_factory(schema_class: Any, component_id_prefix: str) -> html.Div
             value=default,
             placeholder=placeholder,
             debounce=0.1,
-            id={"type": "patient-option", "name": component_id},
+            id={"type": id_type, "name": component_id},
             style={"width": "450px", "flexShrink": "0"},
         )
 
@@ -92,6 +126,8 @@ def build_ui_and_schema_registry(
     options_class: Any,
     prefix: str,
     extra_per_field: dict[str, list] | None = None,
+    id_type: str = "patient-option",
+    label_width: str = "300px",
 ) -> tuple[html.Div, dict]:
     """
     Build UI and schema registry from an options class.
@@ -101,6 +137,8 @@ def build_ui_and_schema_registry(
         prefix: Prefix for component IDs
         extra_per_field: Optional dict mapping component ID to extra Dash components
             to render inline (to the right) of that field's widget.
+        id_type: The ``type`` key of the generated widget ids (scopes callbacks).
+        label_width: CSS width passed through to each field's description label.
 
     """
     components = []
@@ -133,8 +171,8 @@ def build_ui_and_schema_registry(
             next_comp_id = f"{prefix}.{next_class.NAME}"
             schema_lookup[next_comp_id] = next_class
 
-            component_left = dash_widget_factory(schema_class, prefix)
-            component_right = dash_widget_factory(next_class, prefix)
+            component_left = dash_widget_factory(schema_class, prefix, id_type, label_width)
+            component_right = dash_widget_factory(next_class, prefix, id_type, label_width)
             row = html.Div(
                 [component_left, component_right],
                 style={"display": "flex", "gap": "24px", "marginBottom": "8px"},
@@ -142,7 +180,7 @@ def build_ui_and_schema_registry(
             components.append(row)
             i += 2
         else:
-            widget = dash_widget_factory(schema_class, prefix)
+            widget = dash_widget_factory(schema_class, prefix, id_type, label_width)
             extras = (extra_per_field or {}).get(comp_id)
             if extras:
                 widget.style = {k: v for k, v in widget.style.items() if k != "marginBottom"}

@@ -313,13 +313,6 @@ def build_patient_options_ui(
     return components, schema_data
 
 
-def _widget_default(schema_class: Any) -> Any:
-    """Return the schema default in the shape the Dash widget expects (see dash_widget_factory)."""
-    if schema_class.API_TYPE == cst.ApiType.BOOL:
-        return [True] if schema_class.DEFAULT else []
-    return schema_class.DEFAULT
-
-
 @callback(
     Output({"type": "patient-option", "name": ALL}, "value"),
     Output("patient-options-reload-status", "children"),
@@ -367,16 +360,20 @@ def reload_patient_options(
         field_id = id_["name"]
         parts = field_id.split(".")
         schema_class = schema_class_lookup.get(field_id)
-        default = _widget_default(schema_class) if schema_class else None
+        api_type = getattr(schema_class, "API_TYPE", None)
+        raw_default = getattr(schema_class, "DEFAULT", None)
 
         if field_id in ("global.data_folder", "global.output_root"):
             new_values.append(current_val)  # keep the paths used to locate the saved file
-        elif parts[0] == "global":
-            new_values.append(saved.get(parts[1], default))
+            continue
+        if parts[0] == "global":
+            raw = saved.get(parts[1], raw_default)
         elif parts[0] == "specific" and len(parts) == 3:  # noqa: PLR2004
-            new_values.append(saved.get(parts[1], {}).get(parts[2], default))
+            raw = saved.get(parts[1], {}).get(parts[2], raw_default)
         else:
-            new_values.append(default)
+            raw = raw_default
+        # Saved JSON holds Python values; re-encode into each widget's expected shape.
+        new_values.append(ui_components.to_widget_value(api_type, raw))
 
     return new_values, ""
 
@@ -570,6 +567,7 @@ def resample_on_zoom(relayout: dict[str, Any], resampler_uid: str | None) -> Any
     State("schema-registry", "data"),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
+    State("user-options-store", "data"),
     prevent_initial_call=True,
 )
 def process_visualization(
@@ -578,6 +576,7 @@ def process_visualization(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
+    user_options: dict[str, Any] | None,
 ) -> tuple[Any, Any, Any, str | None, str | None, bool, str]:
     """Process visualization request with validated patient options."""
     interval_off, progress_clear = True, ""
@@ -640,8 +639,12 @@ def process_visualization(
             patient_options=validated_dict,
             database_options_global=db_options,
             progress_callback=_on_progress,
+            user_options=user_options,
         )
-        PlotModel.to_html(model, validated_dict)
+        # HTML export is opt-in (user_options.save_html_on_process, default off) — off avoids
+        # the full-resolution serialization spike and writes no file.
+        if (user_options or {}).get(cst.UserOptions.SaveHtmlOnProcess.NAME):
+            PlotModel.to_html(model, validated_dict)
         graphs = _build_graphs(model, display_timezone=display_timezone)
     except Exception as e:
         logger.exception("Could not make the plot: ")

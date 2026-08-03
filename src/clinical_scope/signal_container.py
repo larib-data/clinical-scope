@@ -98,7 +98,7 @@ class PlotOptions:
     fill_color: str | None = None
     fill_pattern: str | None = None
     square_plot: bool = False
-    plot_height: int = 300
+    plot_height: int = cst.DEFAULT_SUBPLOT_HEIGHT
     plot_type: str | None = None
     plot_priority: float | None = None
     display_timezone: str = field(default_factory=lambda: cst.DISPLAY_TIMEZONE)
@@ -480,7 +480,7 @@ class Signal:
             y_axis_title=f"{signal_y.name} ({signal_y.trace_options.plot_options.y_unit_name})",
             show_legend=False,
             square_plot=True,
-            plot_height=600,
+            plot_height=cst.DEFAULT_LOOP_SUBPLOT_HEIGHT,
             display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
         )
         trace_options = TraceOptions(plot_options=plot_options)
@@ -694,8 +694,9 @@ class PlotModel:
         else:
             n_cols = 1  # Fixed
             n_rows = n_groups
-            total_fig_height = np.sum([g.plot_options.plot_height for g in self.groups])
-            row_heights = [g.plot_options.plot_height / total_fig_height for g in self.groups]
+            group_heights = [g.plot_options.plot_height for g in self.groups]
+            total_fig_height = np.sum(group_heights)
+            row_heights = [h / total_fig_height for h in group_heights]
             specs = [[{"secondary_y": True}] for _ in range(n_rows)]
             subplot_titles = [g.name for g in self.groups]
             fig_width = total_fig_height / n_rows if self.square_plot else None
@@ -834,10 +835,15 @@ class PlotModel:
         self.figure = self.to_figure()
 
     @staticmethod
-    def assign_plot_model(plot_group_list: list[PlotGroup]) -> list["PlotModel"]:
+    def assign_plot_model(
+        plot_group_list: list[PlotGroup], subplot_height: int | None = None
+    ) -> list["PlotModel"]:
         """Assign plot groups to plot models by plot type, ordered."""
         groups = {}
         for plot_group in plot_group_list:
+            # A user-set global height overrides each time-series group's own; loops stay square.
+            if subplot_height and plot_group.plot_options.plot_type != cst.PlotType.LOOP:
+                plot_group.plot_options.plot_height = subplot_height
             groups.setdefault(plot_group.plot_options.plot_type, []).append(plot_group)
         page_order = cst.PlotType.PAGE_ORDER
         ordered = sorted(
