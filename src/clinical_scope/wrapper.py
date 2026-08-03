@@ -108,7 +108,6 @@ def main(
     proc_total = len(requested_sources)
     proc_count = 0
 
-    # Loop through data sources
     for data_source in datasource_list.DataSource.AVAILABLE:
         name = data_source.NAME
 
@@ -575,8 +574,6 @@ def load_annotations(path: str | Path) -> list[Annotation]:
     Args:
         path: Path to a JSON file or a patient folder.
 
-    Returns:
-        List of :class:`~clinical_scope.dash_api.annotations.model.Annotation`.
 
     Examples:
     --------
@@ -650,7 +647,6 @@ def load_database_annotations(database_folder: str | Path) -> list[Annotation]:
         patient_name = patient_dir.name
         annotations = load_annotations(patient_dir)
 
-        # Tag each annotation with the patient identifier
         for annotation in annotations:
             annotation.patient = patient_name
 

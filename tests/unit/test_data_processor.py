@@ -113,7 +113,6 @@ class TestDataSourceBaseExtract:
     def _make_cls(self, name="ds_a"):
         from clinical_scope.datasource.base import DataSourceBase
 
-        # Build a minimal concrete subclass on-the-fly
         cls = MagicMock(spec=DataSourceBase)
         cls.DATASOURCE_NAME = name
         return cls

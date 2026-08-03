@@ -27,7 +27,6 @@ def parse_header_info(lines: list[str]) -> dict[str, datetime]:
                     header_info[field] = datetime.strptime(value, fmt)  # noqa: DTZ007
                     break
                 except ValueError:
-                    # Try next format
                     continue
     return header_info
 
@@ -50,7 +49,9 @@ def extract_column_mapping_from_section(
 ) -> dict[str, str]:
     """Extract mapping from the section between the 2nd and 3rd '%%%%%%...' separator."""
     separator_indices = [
-        i for i, L in enumerate(lines) if L.strip().startswith("%%%%%%") and set(L.strip()) == {"%"}
+        i
+        for i, line in enumerate(lines)
+        if line.strip().startswith("%%%%%%") and set(line.strip()) == {"%"}
     ]
     if len(separator_indices) < MIN_SEPARATORS_NEEDED:
         msg = "File does not have enough separators for mapping section"
@@ -92,7 +93,6 @@ def parse_file(
         start_time = header_info[options_naming.REFERENCE_TIME_FIELD]
         rename_map = extract_column_mapping_from_section(lines)
 
-    # Find table header
     table_header_idx = None
     for i, line in enumerate(lines):
         if line.strip().startswith("%% Time(ms)"):
@@ -102,33 +102,26 @@ def parse_file(
         msg = f"No table header found in {filepath}"
         raise ValueError(msg)
 
-    # Column names
     header_line = lines[table_header_idx].replace("%%", "").strip()
     columns = [c.strip() for c in header_line.split("\t")]
 
-    # Data lines
     data_lines = lines[table_header_idx + 1 :]
     data_lines = [line for line in data_lines if line.strip() and not line.strip().startswith("%")]
 
-    # Read table
     df = pd.read_csv(
         pd.io.common.StringIO("".join(data_lines)), sep="\t", engine="python", names=columns
     )
 
-    # Rename measurement columns
     if rename_map:
         df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    # Drop old T(h:m:s.ms) column
     df = df.drop(columns=["T(h:m:s.ms)"], errors="ignore")
 
-    # Reorder columns: keep Time(ms) first
     cols = df.columns.tolist()
     if options_naming.COLUMN_RELATIVE_TIME in cols:
         cols.remove(options_naming.COLUMN_RELATIVE_TIME)
         df = df[[options_naming.COLUMN_RELATIVE_TIME, *cols]]
 
-    # Compute index from Time(ms)
     df.index = compute_timestamp_index_from_timems(
         df[options_naming.COLUMN_RELATIVE_TIME], start_time
     )

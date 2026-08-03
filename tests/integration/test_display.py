@@ -24,7 +24,6 @@ def philips_waves_df(patient_full_path):
 
 class TestSignalFromRealData:
     def test_signal_creation(self, philips_waves_df):
-        # Pick the first available column
         col = philips_waves_df.columns[0]
         sig = Signal.time_series_from_dataframe(philips_waves_df, col)
         assert sig.raw_name == col
@@ -37,7 +36,6 @@ class TestSignalFromRealData:
         """Test that database_options (label, unit, etc.) are applied to a real signal."""
         db_opts = example_database_options.get("philips_waves", {})
         field_display = db_opts.get("field_display", [])
-        # Find a configured signal that actually exists in the data
         actual_cols = set(philips_waves_df.columns)
         col = next((f for f in field_display if f in actual_cols), None)
         if col is None:

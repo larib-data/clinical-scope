@@ -31,7 +31,6 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         """
         database_options_specific = kwargs.get("database_options_specific", {})
 
-        # Load the data
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() == ".csv":
@@ -46,13 +45,9 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
                 index=pd.DatetimeIndex([], tz=options_naming.DATA_SOURCE_DEFAULT_TIMEZONE)
             )
 
-        # Create composite column for label+unit
         df["full_label_name"] = df["measurement_label"] + "-" + df["measurement_unit"]
-
-        # Remove legacy columns
         df = df.drop(columns=["measurement_label", "measurement_unit"])
 
-        # Pivot the data: one column per measurement type
         df_pivoted = df.pivot_table(
             index="event_timestamp",
             columns="full_label_name",
@@ -63,13 +58,9 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         # Flatten multi-index columns - keep the full label name
         df_pivoted.columns = df_pivoted.columns.get_level_values(0)
 
-        # Convert index to datetime
         df_pivoted.index = pd.to_datetime(df_pivoted.index)
-
-        # Sort by timestamp and remove duplicate timestamps (keep first)
         df_pivoted = deduplicate_then_sort_index(df_pivoted)
 
-        # Apply timezone if needed
         df_pivoted = apply_timezone_to_dataframe(
             df_pivoted,
             database_options_specific,

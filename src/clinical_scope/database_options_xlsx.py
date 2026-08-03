@@ -30,11 +30,9 @@ logger = logging.getLogger(__name__)
 # Sentinel value in the ``signal`` column that defines datasource-level defaults
 _SENTINEL_DATASOURCE_DEFAULT = "*"
 
-# Columns that must be present in the ``signals`` sheet
 _SIGNALS_SHEET_NAME = "signals"
 _SIGNALS_REQUIRED_COLS = {"datasource", "signal"}
 
-# Columns that must be present in the ``loops`` sheet
 _LOOPS_SHEET_NAME = "loops"
 _LOOPS_REQUIRED_COLS = {"datasource", "loop_name", "x_signal", "y_signal"}
 
@@ -295,7 +293,6 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 all_signals.extend(sigs)
             global_grouped[group_name] = all_signals
         else:
-            # Local: single datasource
             (only_ds, signals_list) = next(iter(ds_signals.items()))
             result[only_ds].setdefault("grouped_fields", {})[group_name] = signals_list
 

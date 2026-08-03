@@ -57,8 +57,8 @@ class DataSourceBase(ABC):
     # Subclass configuration - must be set by concrete implementations
     DATASOURCE_NAME: str = None  # e.g., "philips_waves"
     FILE_NAME_DATAFRAME_LOADED: str = None  # e.g., "philips_waves_loaded.parquet"
-    OPTIONS_MODULE = None  # The options module for this datasource
-    ALLOW_QUICK_LOAD: bool = True  # Whether to allow quick loading
+    OPTIONS_MODULE = None
+    ALLOW_QUICK_LOAD: bool = True
     # When True and ALLOW_QUICK_LOAD is False, a symlink to the source file is created in the
     # output folder instead of a parquet cache. Use for large files with trivial loading cost.
     CREATE_SOURCE_SYMLINK: bool = False
@@ -98,13 +98,6 @@ class DataSourceBase(ABC):
 
         Uses the OPTIONS_MODULE constants (FILE_KEYWORDS, FILE_EXTENSIONS, MULTI_FILE)
         for default file discovery. Override in subclasses that need custom logic.
-
-        Args:
-            folder_path: Path to search for data files
-
-        Returns:
-            Path or list[Path] or None: Found file(s), or None if not found
-
         """
         opts = cls.OPTIONS_MODULE
         return find_files(
@@ -124,7 +117,6 @@ class DataSourceBase(ABC):
         Load and parse raw data file(s) into a DataFrame.
 
         Args:
-            file_path: Path or list of paths to data files
             path_output: Path to save loaded DataFrame for quick loading, or none if no saving
                          needed
 
@@ -417,16 +409,13 @@ class DataSourceBase(ABC):
         # Shallow copy since below only rebinds df.index or row-filters, never mutates columns.
         df = df.copy(deep=False)
 
-        # Apply timezone if needed (most datasources need this)
         if hasattr(cls.OPTIONS_MODULE, "DATA_SOURCE_DEFAULT_TIMEZONE"):
             df = cls._apply_timezone(
                 df, database_options_specific, cls.OPTIONS_MODULE.DATA_SOURCE_DEFAULT_TIMEZONE
             )
 
-        # Apply time shift
         df = cls._apply_time_shift(df, patient_options)
 
-        # Filter by datetime
         return cls._filter_by_datetime(df, patient_options)
 
     @classmethod
@@ -479,7 +468,6 @@ class DataSourceBase(ABC):
             Path to folder, or None if not found
 
         """
-        # Get folder keywords
         folder_keywords = getattr(cls.OPTIONS_MODULE, "FOLDER_KEYWORDS", None)
 
         if folder_keywords is None or len(folder_keywords) == 0:
@@ -493,7 +481,6 @@ class DataSourceBase(ABC):
             if expected_path.is_dir():
                 return expected_path
 
-        # Flexible keyword matching: find folder containing all keywords
         if not folder_path.is_dir():
             logger.warning("Patient folder '%s' does not exist", folder_path)
             return None
@@ -528,17 +515,7 @@ class DataSourceBase(ABC):
         patient_options: dict,
         database_options_specific: dict | None,
     ) -> list[Signal]:
-        """
-        Main entry point for datasource processing.
-
-        Args:
-            patient_options: Patient-specific options
-            database_options_specific: Database options for this datasource
-
-        Returns:
-            list[Signal]: Extracted signals
-
-        """
+        """Main entry point for datasource processing."""
         database_options = (
             database_options_specific if database_options_specific is not None else {}
         )
@@ -548,7 +525,6 @@ class DataSourceBase(ABC):
         if df is None:
             return []
 
-        # Format data
         df = cls._format(df, patient_options, database_options)
 
         # Inject global display_timezone into the per-datasource sub-dict so
@@ -560,7 +536,6 @@ class DataSourceBase(ABC):
             ),
         }
 
-        # Extract signals
         signals = cls._extract_signals(
             df,
             patient_options=patient_options_for_signals,
@@ -588,7 +563,6 @@ class DataSourceBase(ABC):
 
         Args:
             patient_options: Patient-specific options (same as :meth:`main`).
-            database_options_specific: Database options for this datasource.
             save_path: If given, save the formatted DataFrame to this path using
                 :func:`io.file_utils.save_df` (supports ``.csv`` and ``.parquet``).
 
@@ -704,7 +678,6 @@ class DataSourceBase(ABC):
 
         Args:
             patient_options: Patient-specific options (same as main())
-            database_options_specific: Database options for this datasource
 
         Returns:
             DataSourceInspection with status, file info, date ranges, and column stats

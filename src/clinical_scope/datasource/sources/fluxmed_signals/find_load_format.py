@@ -34,7 +34,6 @@ class FluxmedSignalsDataSource(DataSourceBase):
         if file_path.suffix.lower() == ".parquet":
             df = load_parquet_with_datetime_index(file_path)
         elif file_path.suffix.lower() in [".txt", ".csv"]:
-            # Extract timestamp from filename
             filename = file_path.name
             match = re.search(r"(\d+_\d+_\d+-\d+_\d+_\d+)", filename)
             if not match:
@@ -43,7 +42,6 @@ class FluxmedSignalsDataSource(DataSourceBase):
             start_time_str = match.group(1)
             start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S").replace(tzinfo=UTC)
 
-            # Read raw file
             with Path.open(file_path, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f]
 
@@ -62,7 +60,6 @@ class FluxmedSignalsDataSource(DataSourceBase):
             units_idx = header_idx + 1
             data_start_idx = units_idx + 6  # skip 6 lines after units
 
-            # Build column names
             col_names = re.split(r"\s+", lines[header_idx])
             col_units = re.split(r"\s+", lines[units_idx])
             columns = [f"{name}({unit})" for name, unit in zip(col_names, col_units, strict=False)]
@@ -76,7 +73,6 @@ class FluxmedSignalsDataSource(DataSourceBase):
                 msg = "No numeric signal rows found after skipping 6 lines"
                 raise RuntimeError(msg)
 
-            # Load into DataFrame
             df = pd.read_csv(
                 pd.io.common.StringIO("\n".join(numeric_lines)),
                 sep=r"\s+",
@@ -86,7 +82,6 @@ class FluxmedSignalsDataSource(DataSourceBase):
                 engine="python",
             )
 
-            # Build datetime index
             time_col = columns[0]
             df = df.apply(pd.to_numeric, errors="coerce")
             df.index = pd.to_datetime(

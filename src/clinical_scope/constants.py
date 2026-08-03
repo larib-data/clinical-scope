@@ -39,12 +39,6 @@ PLACEHOLDER_DAY = "YYYY-MM-DD"
 class DatetimeColumnDetection:
     """Tiered name search + content validation for auto-detecting a datetime column (ADR 0004)."""
 
-    # Exact-match names tried first (union of the lists formerly spread across datasources).
-    # Bare "time" (and its translations) is deliberately *not* here: real device exports use
-    # it for both absolute timestamps and relative elapsed-seconds offsets (e.g. fluxmed's own
-    # raw format: Time/Tiempo/Tempo/Temps/Zeit is elapsed seconds, added to a filename-derived
-    # start_time). It's still detected, just demoted to the lower-confidence substring tier
-    # below, so a more explicit name (e.g. "datetime_utc") wins first when both are present.
     EXACT_NAMES: ClassVar[list[str]] = [
         "datetime_utc",
         "datetime",
@@ -273,8 +267,8 @@ class PlotType:
 
     # Page order of the plot models (top to bottom); types not listed here go last.
     PAGE_ORDER = (
-        TIME_SERIES,  # time-series subplots on top
-        LOOP,  # loop plots below
+        TIME_SERIES,
+        LOOP,
     )
 
 

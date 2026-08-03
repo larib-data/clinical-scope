@@ -35,7 +35,7 @@ def to_float_seconds(
         if np.issubdtype(x.dtype, np.datetime64):
             return x.astype("datetime64[ns]").astype(np.float64) / 1e9
         if np.issubdtype(x.dtype, object):
-            # Convert Timestamps to library tz before converting to np.datetime64 (just for consistency then during comparison)  # noqa: E501
+            # Convert to library tz first so later comparisons are on a consistent tz.
             x_ns = np.array(
                 [ts.tz_convert(cst.LIBRARY_TZ).value if ts.tzinfo else ts.value for ts in x],
                 dtype=np.int64,
@@ -75,13 +75,11 @@ def filter_data_by_timestamps(
     filtered = data.copy(deep=False)
     tz = display_timezone or cst.DISPLAY_TIMEZONE
 
-    # Ensure index is in the library timezone
     if filtered.index.tz is None:
         msg = "Dataframe 'data' index should be timezone-aware"
         raise ValueError(msg)
     filtered.index = filtered.index.tz_convert(cst.LIBRARY_TZ)
 
-    # Localize or convert input timestamps
     if time_start is not None:
         if time_start.tzinfo is None:
             time_start = time_start.tz_localize(tz)
@@ -123,8 +121,6 @@ def change_ndarray_timezone(
 
     Returns:
         tuple: (adjusted_array, new_timezone)
-            - adjusted_array: The array with timestamps adjusted to appear as if in new_timezone.
-            - new_timezone: The target timezone (for reference).
 
     """
     if array_timezone is None or array_timezone == new_timezone:
@@ -249,7 +245,7 @@ def apply_timezone_to_dataframe(
 
 
 # ==================================================================================================
-# Display formatting helpers (moved from datasource_base.py)
+# Display formatting helpers
 # ==================================================================================================
 
 _TS_FMT = "%y-%m-%d %H:%M:%S %Z"  # compact, 2-digit year, timezone abbreviation

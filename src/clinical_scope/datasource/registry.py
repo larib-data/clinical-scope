@@ -55,7 +55,6 @@ def add_main_module(find_load_format_module: ModuleType) -> Callable[[type], typ
 
         options = cls.DATASOURCE_CLASS.OPTIONS_MODULE if cls.DATASOURCE_CLASS else None
 
-        # Safety check: Validate NAME matches options.DATASOURCE_NAME
         ds_name = getattr(options, "DATASOURCE_NAME", None)
         if ds_name is not None and ds_name != cls.NAME:
             msg = (
@@ -151,7 +150,6 @@ class DataSource:
         OPTIONS: object
 
     # This order is the "default" order of plot, so try to choose it a bit carefully
-    # Maybe the order should be from the order in database_options, but it's easy to do that there with the global priority honestly  # noqa: E501
     AVAILABLE = (
         PhilipsWaves,
         EIT,

@@ -131,12 +131,10 @@ class OtherDataSource(DataSourceBase):
 
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
 
-        # Find folder
         search_folder = cls._find_folder(folder_path)
         if search_folder is None:
             return []
 
-        # Find files
         file_paths = cls._find(search_folder)
         if file_paths is None:
             return []
@@ -170,11 +168,9 @@ class OtherDataSource(DataSourceBase):
                     logger.warning("Skipping file '%s': %s", file_path.name, exc)
                     continue
 
-                # Convert remaining columns to numeric
                 for col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
 
-                # Remove duplicate timestamps (keep first in file order), then sort
                 df = deduplicate_then_sort_index(df)
 
                 # Apply formatting (timezone, time shift, datetime filter) with per-file opts
@@ -191,7 +187,6 @@ class OtherDataSource(DataSourceBase):
                     logger.warning("No numeric columns in '%s', skipping file", file_path.name)
                     continue
 
-                # Determine which columns to expose as signals
                 columns = _resolve_columns(df, file_config)
                 if not columns:
                     logger.debug("No columns selected for '%s', skipping file", file_path.name)

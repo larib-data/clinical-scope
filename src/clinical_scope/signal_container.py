@@ -70,9 +70,7 @@ def merge_y_ranges(
 class Data:
     x: np.ndarray | None = None
     y: np.ndarray | None = None
-    timezone: str | None = (
-        None  # New attribute to store timezone information, more efficient than storing in x values  # noqa: E501
-    )
+    timezone: str | None = None  # Stored here, not per-value in x, for efficiency.
     loop_time_axis: np.ndarray | None = None  # UTC epoch seconds (float64), only for loops
 
 
@@ -104,7 +102,6 @@ class PlotOptions:
     display_timezone: str = field(default_factory=lambda: cst.DISPLAY_TIMEZONE)
 
     def __post_init__(self) -> None:
-        """Initialize PlotOptions with default values."""
         if self.y_unit_name is None:
             self.y_unit_name = (
                 cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
@@ -120,7 +117,7 @@ class PlotOptions:
         start = time.perf_counter()
 
         if not signals:
-            return PlotOptions()  # Return default if no signals
+            return PlotOptions()
 
         # --- Determine y units ---
         y_units = {}
@@ -206,7 +203,6 @@ class TraceOptions:
     plot_options: PlotOptions = field(default_factory=PlotOptions)
 
     def __post_init__(self) -> None:
-        """Initialize TraceOptions with default values."""
         # I believe default params are better left here rather than in constants.py file ?
         if self.mode is None:
             self.mode = "lines"
@@ -276,7 +272,7 @@ class Signal:
     ) -> "TraceOptions":
         """Build trace options from database and source options."""
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
-        sig = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
+        sig_opts = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
 
         # PlotOptions fields
@@ -286,9 +282,9 @@ class Signal:
             k: v for k, v in plot_options_dict.items() if k in valid_keys_plot_options
         }
         sig_cst = cst.DatabaseOptions.SignalConfig
-        name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
-        range_signal_plot = sig.get(sig_cst.RANGE)
-        y_unit_name = sig.get(sig_cst.UNIT, sig_cst.DEFAULT_UNIT)
+        name_signal = sig_opts.get(sig_cst.LABEL, raw_signal_name)
+        range_signal_plot = sig_opts.get(sig_cst.RANGE)
+        y_unit_name = sig_opts.get(sig_cst.UNIT, sig_cst.DEFAULT_UNIT)
         y_axis_title_raw = f"{name_signal} ({y_unit_name or ''})"
         y_axis_title = wrap_label(y_axis_title_raw, max_line_length=12)
 
@@ -298,12 +294,12 @@ class Signal:
         additional_trace_options = {
             k: v for k, v in trace_options_dict.items() if k in valid_keys_trace_options
         }
-        color = sig.get(sig_cst.COLOR)
+        color = sig_opts.get(sig_cst.COLOR)
         plot_priority_default_db = numerics.get(cst.DatabaseOptions.Numerics.PRIORITY)
-        plot_priority = sig.get(sig_cst.PRIORITY, plot_priority_default_db)
-        visible = sig.get(sig_cst.VISIBLE, True)
-        line_dash_db = sig.get(sig_cst.LINE_DASH)
-        hover_template = sig.get(sig_cst.HOVER_TEMPLATE)
+        plot_priority = sig_opts.get(sig_cst.PRIORITY, plot_priority_default_db)
+        visible = sig_opts.get(sig_cst.VISIBLE, True)
+        line_dash_db = sig_opts.get(sig_cst.LINE_DASH)
+        hover_template = sig_opts.get(sig_cst.HOVER_TEMPLATE)
 
         plot_options = PlotOptions(
             y_axis_range=range_signal_plot,
@@ -345,16 +341,18 @@ class Signal:
         timing = {}
         # ---- Step 1: metadata extraction ---------------------------------------
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
-        sig = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
+        sig_opts = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
         sig_cst = cst.DatabaseOptions.SignalConfig
-        name_signal = sig.get(sig_cst.LABEL, raw_signal_name)
-        unit_conversion_factor = sig.get(sig_cst.UNIT_CONVERSION, sig_cst.DEFAULT_UNIT_CONVERSION)
+        name_signal = sig_opts.get(sig_cst.LABEL, raw_signal_name)
+        unit_conversion_factor = sig_opts.get(
+            sig_cst.UNIT_CONVERSION, sig_cst.DEFAULT_UNIT_CONVERSION
+        )
         p_global = numerics.get(
             cst.DatabaseOptions.Numerics.PERIOD_RESAMPLING,
             cst.DatabaseOptions.Numerics.DEFAULT_PERIOD_RESAMPLING,
         )
-        p = sig.get(sig_cst.PERIOD_RESAMPLING, p_global)
+        p = sig_opts.get(sig_cst.PERIOD_RESAMPLING, p_global)
         # ---- Step 2-3: extract, prune, convert, resample ------------------------
         start = time.perf_counter()
         y_full = (
@@ -371,8 +369,7 @@ class Signal:
             keep_pos = valid_pos[::step]
             x = df.index[keep_pos].to_numpy(dtype="datetime64[ns]")
             y = y_full[keep_pos]
-        # Extract timezone information
-        timezone = df.index.tz  # Extract timezone information
+        timezone = df.index.tz
         if timezone is None:
             logger.warning(
                 "Dataframe.index.tz should not be none while using time_series_from_dataframe"
@@ -383,7 +380,7 @@ class Signal:
         data = Data(
             x=x,
             y=y,
-            timezone=timezone,  # Store the timezone information
+            timezone=timezone,
         )
         display_timezone = patient_options.get(
             cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
@@ -608,7 +605,6 @@ class Signal:
         return trace
 
     def __post_init__(self) -> None:
-        """Initialize Signal by creating its Plotly trace."""
         self.trace = self.to_plotly_trace()
 
 
@@ -618,7 +614,7 @@ class PlotGroup:
     signals: list[Signal]
     plot_options: PlotOptions = field(init=False)
     allow_secondary_y: bool = True
-    timing: dict = field(default_factory=dict)  # Add timing dictionary
+    timing: dict = field(default_factory=dict)
 
     @classmethod
     def from_single_signal(cls, sig: Signal) -> "PlotGroup":
@@ -629,16 +625,13 @@ class PlotGroup:
         return plot_group
 
     def __post_init__(self) -> None:
-        """Initialize PlotGroup with plot options."""
         start = time.perf_counter()
         # Derive group-level plot options
         if isinstance(self.signals, Signal):
             self.signals = [self.signals]
         if len(self.signals) == 1:
-            # Single signal → copy its plot options
             self.plot_options = self.signals[0].trace_options.plot_options
         else:
-            # Multiple signals → combine their plot options
             self.plot_options = PlotOptions.combine_from_signals(self.signals, self.name)
             self.plot_options.show_legend = True
         elapsed = time.perf_counter() - start
@@ -646,7 +639,6 @@ class PlotGroup:
 
     def assign_axes(self) -> list[tuple[go.Scatter, bool]]:
         traces_with_axes = []
-        # Assign traces to axes
         for sig in self.signals:
             secondary_y = (
                 sig.trace_options.plot_options.y_unit_name == self.plot_options.y2_unit_name
@@ -805,12 +797,7 @@ class PlotModel:
         return fig
 
     def __post_init__(self) -> None:
-        """
-        Initialize PlotModel object.
-
-        Validates plot_type and square_plot consistency,
-        sorts groups by plot_priority, and builds the figure.
-        """
+        """Validate plot_type/square_plot consistency across groups, and build the figure."""
         plot_group = self.groups
 
         plot_type = get_unique_or_raise(
@@ -828,10 +815,7 @@ class PlotModel:
         self.plot_type = plot_type
         self.square_plot = square_plot
 
-        # Sort groups by plot_priority
         self.groups = sorted(plot_group, key=lambda group: group.plot_options.plot_priority)
-
-        # Build the figure
         self.figure = self.to_figure()
 
     @staticmethod

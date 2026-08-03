@@ -31,7 +31,6 @@ class FluxmedParametersDataSource(DataSourceBase):
         if file_path.suffix.lower() == ".parquet":
             df = load_parquet_with_datetime_index(file_path)
         elif file_path.suffix.lower() in [".txt", ".csv"]:
-            # Extract timestamp from filename
             filename = file_path.name
             match = re.search(r"(\d+_\d+_\d+-\d+_\d+_\d+)", filename)
             if not match:
@@ -40,7 +39,6 @@ class FluxmedParametersDataSource(DataSourceBase):
             start_time_str = match.group(1)
             start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S").replace(tzinfo=UTC)
 
-            # Read the first lines to get headers and units
             with Path.open(file_path, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f.readlines()]
 
@@ -56,12 +54,10 @@ class FluxmedParametersDataSource(DataSourceBase):
                 msg = f"No time header found (tried: {known})"
                 raise RuntimeError(msg)
 
-            # Extract column names and units
             col_names = lines[col_idx].split()
             col_units = lines[col_idx + 1].split()
             columns = [f"{n}({u})" for n, u in zip(col_names, col_units, strict=False)]
 
-            # Make columns unique if duplicates exist
             def make_unique(columns: list[str]) -> list[str]:
                 seen = {}
                 result = []

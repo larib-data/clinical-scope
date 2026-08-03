@@ -181,7 +181,6 @@ class TestSignalLoop:
         assert loop.name == "PV loop"
 
     def test_no_overlap_raises(self):
-        # Create two signals with non-overlapping time ranges
         df1 = pd.DataFrame(
             {"a": [1.0, 2.0]},
             index=pd.date_range("2024-01-01", periods=2, freq="1s", tz="UTC"),
@@ -270,7 +269,6 @@ class TestPlotGroup:
         pg = PlotGroup(name="Mixed", signals=[sig1, sig2])
         axes = pg.assign_axes()
         secondary_flags = [sec for _, sec in axes]
-        # One should be primary (False), one secondary (True)
         assert False in secondary_flags
         assert True in secondary_flags
 

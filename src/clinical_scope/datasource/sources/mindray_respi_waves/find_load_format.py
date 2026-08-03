@@ -36,7 +36,6 @@ class MindRayRespiWavesDataSource(DataSourceBase):
         """
         database_options_specific = kwargs.get("database_options_specific", {})
 
-        # Load the data
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() == ".csv":
@@ -115,7 +114,6 @@ class MindRayRespiWavesDataSource(DataSourceBase):
             }
         )
 
-        # Pivot: one column per waveform type
         df_pivoted = df_expanded.pivot_table(
             index="event_timestamp",
             columns="full_label_name",
@@ -126,7 +124,6 @@ class MindRayRespiWavesDataSource(DataSourceBase):
         df_pivoted.columns = df_pivoted.columns.get_level_values(0)
         df_pivoted = deduplicate_then_sort_index(df_pivoted)
 
-        # Apply timezone if needed
         df_pivoted = apply_timezone_to_dataframe(
             df_pivoted,
             database_options_specific,

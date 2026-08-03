@@ -90,9 +90,6 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Load and parse XML file containing waveform data.
 
-    Args:
-        path_xml: Path to the XML file
-
     Returns:
         Tuple of (df_waveform, df_patient)
 
@@ -111,7 +108,6 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         "Paced": _safe_text(root.find(".//Patient/Paced")),
     }
 
-    # Extract waveform data
     waveform_data = []
     for snapshot in root.findall(".//WaveformSnapshot"):
         trigger = snapshot.find("TriggerEvent")
@@ -135,10 +131,8 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
                 for i, value in enumerate(data):
                     try:
-                        # Convert value to float and apply resolution
                         numeric_value = float(value.strip()) * resolution
                     except (ValueError, AttributeError):
-                        # If conversion fails, store None or the raw value
                         numeric_value = None
 
                     waveform_data.append(
@@ -162,24 +156,13 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
-    """
-    Format waveform data with proper dtypes and precise timestamps.
-
-    Args:
-        df_waveform: Raw waveform DataFrame
-
-    Returns:
-        Formatted DataFrame with precise timestamps
-
-    """
+    """Format waveform data with proper dtypes and precise timestamps."""
     df = df_waveform.copy()
 
-    # Convert to correct dtypes
     df["SampleRate"] = df["SampleRate"].astype(int)
     df["SampleIndex"] = df["SampleIndex"].astype(int)
     df["Time"] = pd.to_datetime(df["Time"])
 
-    # Calculate precise timestamp based on sample index and rate
     time_offset = df["SampleIndex"] / df["SampleRate"]
     df["Time"] = df["Time"] + pd.to_timedelta(time_offset, unit="s")
 
@@ -239,7 +222,6 @@ class MindRayScopeDataSource(DataSourceBase):
                     )
                     file_dict[base_name] = file_path
 
-        # Use deduplicated file list
         file_path_list = list(file_dict.values())
         logger.debug("After deduplication: %d files to process", len(file_path_list))
 

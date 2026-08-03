@@ -27,7 +27,6 @@ class SyringeDataSource(DataSourceBase):
         if file_path.suffix.lower() == ".parquet":
             df = load_parquet_with_datetime_index(file_path)
         elif file_path.suffix.lower() == ".csv":
-            # Try to detect delimiter automatically
             with Path.open(file_path, "r", newline="") as f:
                 sample = f.read(2048)
                 dialect = csv.Sniffer().sniff(sample)

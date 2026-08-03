@@ -51,7 +51,6 @@ class TestMainWithDefaultConfig:
         assert isinstance(result, list)
         # With default empty config, some datasources may not produce signals
         # (e.g. if field_display is auto-populated but columns don't match config).
-        # The test validates the pipeline completes without error.
 
 
 class TestMainGlobalGrouping:
@@ -62,7 +61,6 @@ class TestMainGlobalGrouping:
         if not ts_models:
             pytest.skip("No time_series models produced")
         ts_model = ts_models[0]
-        # Check if Pressure group exists (depends on ART being in actual data)
         pressure_groups = [g for g in ts_model.groups if "Pressure" in g.name]
         # With synthetic data, the ART/PNId/etc. signals may or may not exist.
         # If they do, the Pressure group should be there.

@@ -26,7 +26,6 @@ def save_df(df: pd.DataFrame, path: str | Path) -> None:
     Save *df* to *path* as CSV (``.csv``) or parquet (any other recognised extension).
 
     Args:
-        df: DataFrame to save.
         path: Destination path.  Extension must be ``.csv`` or ``.parquet``.
 
     Raises:

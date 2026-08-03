@@ -69,7 +69,6 @@ class TestInspectSerialization:
     def test_text_summary(self, inspection_results):
         text = to_text_summary(inspection_results)
         assert len(text) > 0
-        # Should contain at least one "OK" entry
         assert "OK" in text
 
     def test_json_roundtrip(self, inspection_results):

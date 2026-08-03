@@ -254,24 +254,19 @@ def _add_columns_percentage_for_eit(df: pd.DataFrame) -> pd.DataFrame:
     Add percentage columns for EIT local* columns relative to global column.
 
     This is a hardcoded implementation specific to EIT data processing.
-    Looks for columns starting with 'local' (case-insensitive) and creates
-    percentage columns relative to 'global' column (case-insensitive).
     """
     try:
-        # Check if we have a global column (case-insensitive)
         global_col = next((col for col in df.columns if col.lower() == "global"), None)
         if global_col is None:
             logger.debug("No 'global' column found in EIT data - skipping percentage calculation")
             return df
 
-        # Find all columns that start with 'local' (case-insensitive)
         local_columns = [col for col in df.columns if col.lower().startswith("local")]
 
         if not local_columns:
             logger.debug("No columns starting with 'local' found in EIT data")
             return df
 
-        # Create percentage columns for each local column
         for local_col in local_columns:
             if is_numeric_dtype(df[local_col]):
                 percentage_col = f"%{local_col}"
@@ -328,7 +323,6 @@ class EITDataSource(DataSourceBase):
     ) -> pd.DataFrame:
         patient_options_eit = patient_options.get(cls.DATASOURCE_NAME, {})
 
-        # Create datetime index with the right timezone
         timezone = database_options_specific.get(
             cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
         ).get(
@@ -344,11 +338,7 @@ class EITDataSource(DataSourceBase):
         day = pd.Timestamp(day_str) if day_str else None
         df = _add_index_timestamp_to_eit_dataframe(df, day=day, timezone=timezone)
 
-        # Apply time-shift
         df = cls._apply_time_shift(df, patient_options)
-
-        # Filter by datetime (filter_date=False for EIT)
         df = cls._filter_by_datetime(df, patient_options, filter_date=False)
 
-        # Add percentage columns for local* columns relative to global (hardcoded for EIT)
         return _add_columns_percentage_for_eit(df)

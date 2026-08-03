@@ -353,7 +353,7 @@ class TestWarningPreservation:
         assert any("More than one" in m for m in caplog.messages)
 
     def test_zero_match_wildcard_still_warns_and_skips(self, caplog):
-        pruned = _pruned_columns(["zzz*"], self.SCHEMA)  # []
+        pruned = _pruned_columns(["zzz*"], self.SCHEMA)
         with caplog.at_level(logging.WARNING):
             result = get_column_name_from_pattern(pruned, "zzz*")
         assert result is None  # 0 matches → skipped, same as full schema
