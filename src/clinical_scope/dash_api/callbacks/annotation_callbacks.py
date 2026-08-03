@@ -67,6 +67,13 @@ _SMALL_BTN: dict = {
 
 
 def default_mode() -> dict:
+    """
+    Return a fresh annotation-mode-store value.
+
+    This dict is the annotation state machine: ``active`` gates click handling, the
+    ``pending_*`` pair holds a time-window's first click, and the ``group_*`` fields —
+    set only in group mode — make clicks bypass the creation modal.
+    """
     return {
         "active": False,
         "type": AnnotationType.TIME_EVENT.value,

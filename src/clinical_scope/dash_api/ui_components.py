@@ -43,21 +43,19 @@ def dash_widget_factory(
     label_width: str = "300px",
 ) -> html.Div:
     """
-    Create a Dash input component based on a schema class.
+    Build the label + input widget for one schema class, as a single Div.
 
     Args:
-        schema_class: The schema class defining the component properties
-        component_id_prefix: Prefix for the component ID
         id_type: The ``type`` key of the pattern-matching widget id (scopes callbacks;
             e.g. "patient-option" vs "user-option")
         label_width: CSS width of the description label (widen it if a caller's
             descriptions don't fit on one line at the default)
 
-    Returns:
-        html.Div: A Div containing the label and input component
+    Raises:
+        ValueError: if the schema's API_TYPE has no widget mapping.
 
     """
-    t = schema_class.API_TYPE
+    api_type = schema_class.API_TYPE
     default = schema_class.DEFAULT
     description = schema_class.DESCRIPTION
     name = schema_class.NAME
@@ -69,15 +67,15 @@ def dash_widget_factory(
         description, style={"width": label_width, "display": "inline-block", "flexShrink": "0"}
     )
 
-    if t == cst.ApiType.BOOL:
+    if api_type == cst.ApiType.BOOL:
         input_component = dcc.Checklist(
             options=[{"label": "", "value": True}],
-            value=to_widget_value(t, default),
+            value=to_widget_value(api_type, default),
             id={"type": id_type, "name": component_id},
             style={"display": "inline-block", "verticalAlign": "middle"},
         )
 
-    elif t in (cst.ApiType.INT, cst.ApiType.FLOAT):
+    elif api_type in (cst.ApiType.INT, cst.ApiType.FLOAT):
         input_component = dcc.Input(
             type="number",
             value=default,
@@ -89,7 +87,7 @@ def dash_widget_factory(
             style={"width": "300px"},
         )
 
-    elif t in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY, cst.ApiType.TIMEZONE):
+    elif api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY, cst.ApiType.TIMEZONE):
         input_component = dcc.Input(
             type="text",
             value=default,
@@ -98,7 +96,7 @@ def dash_widget_factory(
             style={"width": "300px"},
         )
 
-    elif t in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
+    elif api_type in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
         input_component = dcc.Input(
             type="text",
             value=default,
@@ -109,11 +107,11 @@ def dash_widget_factory(
         )
 
     else:
-        msg = f"Unsupported API_TYPE: {t}"
+        msg = f"Unsupported API_TYPE: {api_type}"
         raise ValueError(msg)
 
     container_style = {"marginBottom": "8px"}
-    if t in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
+    if api_type in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
         container_style |= {"display": "flex", "alignItems": "center"}
     return html.Div(children=[label, input_component], style=container_style)
 
@@ -126,15 +124,17 @@ def build_ui_and_schema_registry(
     label_width: str = "300px",
 ) -> tuple[html.Div, dict]:
     """
-    Build UI and schema registry from an options class.
+    Build every field widget for an options class, ordered by each schema's ORDER.
 
     Args:
-        options_class: The options class defining the fields
-        prefix: Prefix for component IDs
         extra_per_field: Optional dict mapping component ID to extra Dash components
             to render inline (to the right) of that field's widget.
         id_type: The ``type`` key of the generated widget ids (scopes callbacks).
         label_width: CSS width passed through to each field's description label.
+
+    Returns:
+        The container Div, and a ``{component_id: schema_class}`` lookup the callbacks
+        use to validate the values those widgets produce.
 
     """
     components = []

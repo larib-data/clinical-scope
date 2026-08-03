@@ -14,16 +14,10 @@ def _validate_by_type(
     value: Any, api_type: cst.ApiType, extension: str | None = None
 ) -> str | None:
     """
-    Validate a value based on its API type.
+    Validate a non-empty value against its API type.
 
-    Args:
-        value: The value to validate (assumed non-empty)
-        api_type: The cst.ApiType enum value
-        extension: Optional file extension requirement
-
-    Returns:
-        Error message string if invalid, None if valid
-
+    Returns a message fragment describing the failure (meant to be appended to a field
+    name), or None when the value is valid. Emptiness is the caller's concern.
     """
     try:
         if api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
@@ -42,15 +36,15 @@ def _validate_by_type(
             float(value)
 
         elif api_type == cst.ApiType.PATH_FILE:
-            p = ui_helper.format_path(value)
-            if not p.is_file():
+            path = ui_helper.format_path(value)
+            if not path.is_file():
                 return "must be an existing file"
-            if extension and p.suffix != extension:
+            if extension and path.suffix != extension:
                 return f"must end with {extension}"
 
         elif api_type == cst.ApiType.PATH_FOLDER:
-            p = ui_helper.format_path(value)
-            if not p.is_dir():
+            path = ui_helper.format_path(value)
+            if not path.is_dir():
                 return "must be an existing folder"
 
     except (ValueError, TypeError, AttributeError):
@@ -63,14 +57,8 @@ def validate_value(schema_class: Any, value: Any) -> tuple[bool, str]:
     """
     Validate a value against a schema class.
 
-    Args:
-        schema_class: The schema class defining validation rules
-        value: The value to validate
-
-    Returns:
-        Tuple[bool, str]: (is_valid, error_message)
-        If valid, error_message is empty string
-
+    Returns ``(is_valid, error_message)``; the message is empty when valid. An empty
+    value passes unless the schema marks the field MANDATORY.
     """
     name = schema_class.NAME
     mandatory = schema_class.MANDATORY
@@ -91,17 +79,14 @@ def validate_value(schema_class: Any, value: Any) -> tuple[bool, str]:
 
 def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, list]:
     """
-    Validate and collect user input values from Dash components.
+    Validate a whole form's worth of widget values in one pass.
 
-    Args:
-        values_dict: Dictionary of component values {component_id: value}
-        schema_lookup: Dictionary of schema classes {component_id: schema_class}
-
-    Returns:
-        Tuple[dict, list]: (validated_dict, errors)
-        validated_dict: Dictionary of validated values organized by field name
-        errors: List of error messages
-
+    Both arguments are keyed by component id (``global.<field>`` or
+    ``specific.<datasource>.<field>``). Returns ``(validated_dict, errors)``, where
+    validated_dict re-nests the flat ids into the patient_options shape: global fields
+    at the top level, per-datasource fields under their datasource name. Fields that
+    fail validation are omitted from the dict and reported in errors instead, so a
+    non-empty errors list means the dict is incomplete.
     """
     validated_dict = {}
     errors = []
@@ -109,7 +94,7 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
     for comp_id, value in values_dict.items():
         parts = comp_id.split(".")
         is_global = parts[0] == "global"
-        specific_name = None if is_global else parts[1]
+        datasource_name = None if is_global else parts[1]
 
         schema = schema_lookup[comp_id]
         name = getattr(schema, "NAME", comp_id)
@@ -137,8 +122,8 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
         if is_global:
             validated_dict[name] = stored_value
         else:
-            if specific_name not in validated_dict:
-                validated_dict[specific_name] = {}
-            validated_dict[specific_name][name] = stored_value
+            if datasource_name not in validated_dict:
+                validated_dict[datasource_name] = {}
+            validated_dict[datasource_name][name] = stored_value
 
     return validated_dict, errors

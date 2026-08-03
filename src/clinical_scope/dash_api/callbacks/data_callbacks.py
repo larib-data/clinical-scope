@@ -1,8 +1,8 @@
 """
 Data-related callbacks for Dash API visualization.
 
-Contains callbacks for loading database options, building patient options UI,
-and processing visualizations.
+Covers loading database options, building the patient-options form from them, and the
+two actions that form drives: Process (build figures) and Inspect (report columns).
 """
 
 import base64
@@ -106,16 +106,16 @@ def _parse_database_options_file(
 
 
 def _build_load_status(filename: str, issues: list[ValidationIssue]) -> html.Div:
-    errors = [i for i in issues if i.severity == "error"]
-    warnings = [i for i in issues if i.severity == "warning"]
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
     if not errors and not warnings:
         return html.Div(
             f"Successfully loaded {filename}", style={"color": "green", "fontWeight": "bold"}
         )
-    _severity_color = {"error": "#dc3545", "warning": "#fd7e14"}
+    severity_color = {"error": "#dc3545", "warning": "#fd7e14"}
     items = [
-        html.Li(f"[{i.path}] {i.message}", style={"color": _severity_color[i.severity]})
-        for i in errors + warnings
+        html.Li(f"[{issue.path}] {issue.message}", style={"color": severity_color[issue.severity]})
+        for issue in errors + warnings
     ]
     counts = []
     if errors:
@@ -500,7 +500,12 @@ def preview_data_folder(value: str | None) -> Any:
 
 
 def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
-    """Rehydrate schema classes from schema_data dictionary."""
+    """
+    Map component ids back to their schema classes.
+
+    A dcc.Store can only hold JSON, so the registry stores class *names*; this resolves
+    each one against PatientOptions or the datasource's own options class.
+    """
     schema_class_lookup = {}
     for k, v in schema_data.items():
         if k.startswith("global"):
@@ -589,7 +594,7 @@ def process_visualization(
 
     logger.debug("ids: %s", ids)
     logger.debug("values: %s", values)
-    values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
+    values_by_id = {widget_id["name"]: value for widget_id, value in zip(ids, values, strict=False)}
 
     validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
     logger.debug("errors: %s", errors)
@@ -609,7 +614,7 @@ def process_visualization(
     data_folder = validated_dict["data_folder"]
     output_root = validated_dict.get(cst.PatientOptions.OutputRoot.NAME) or None
     patient_options_path = get_patient_options_path(data_folder, output_root)
-    name_folder_visu = str(get_output_base(data_folder, output_root))
+    folder_visu_path = str(get_output_base(data_folder, output_root))
     ui_helper.save_json(validated_dict, patient_options_path)
     db_options_path = get_database_options_path(data_folder, output_root)
     ui_helper.save_json(db_options, db_options_path)
@@ -670,7 +675,7 @@ def process_visualization(
             f"Visualization succeeded — {len(model)} plot(s) generated.",
             style={"color": "green"},
         ),
-        name_folder_visu,
+        folder_visu_path,
         display_timezone,
         interval_off,
         progress_clear,
@@ -743,36 +748,37 @@ def _col_cell(col: ColumnInfo) -> list[html.Td]:
 def _build_inspection_content(results: list) -> list:
     """Build modal content from a list of DataSourceInspection objects."""
     sections = []
-    for r in results:
+    for result in results:
         meta_parts = []
-        if r.file_path:
+        if result.file_path:
             meta_parts.append(
-                html.Div(f"File: {r.file_path}", style={"fontSize": "12px", "color": "#666"})
+                html.Div(f"File: {result.file_path}", style={"fontSize": "12px", "color": "#666"})
             )
-        if r.raw_date_range:
+        if result.raw_date_range:
             meta_parts.append(
                 html.Div(
-                    f"Date range in file: {r.raw_date_range[0]}  →  {r.raw_date_range[1]}",
+                    f"Date range in file: {result.raw_date_range[0]}  →  "
+                    f"{result.raw_date_range[1]}",
                     style={"fontSize": "12px", "color": "#666"},
                 )
             )
-        if r.filtered_date_range:
+        if result.filtered_date_range:
             meta_parts.append(
                 html.Div(
                     f"After filter:        "
-                    f"{r.filtered_date_range[0]}  →  {r.filtered_date_range[1]}",
+                    f"{result.filtered_date_range[0]}  →  {result.filtered_date_range[1]}",
                     style={"fontSize": "12px", "color": "#666"},
                 )
             )
-        if r.error_message:
+        if result.error_message:
             meta_parts.append(
                 html.Div(
-                    f"Error: {r.error_message}",
+                    f"Error: {result.error_message}",
                     style={"fontSize": "12px", "color": "#dc3545"},
                 )
             )
 
-        table_rows = [html.Tr(_col_cell(col)) for col in r.columns]
+        table_rows = [html.Tr(_col_cell(col)) for col in result.columns]
 
         table = (
             html.Table(
@@ -800,7 +806,7 @@ def _build_inspection_content(results: list) -> list:
             html.Div(
                 [
                     html.H4(
-                        [r.datasource_name, _status_badge(r.status)],
+                        [result.datasource_name, _status_badge(result.status)],
                         style={"marginBottom": "6px"},
                     ),
                     *meta_parts,
@@ -851,7 +857,7 @@ def inspect_data(
         )
 
     schema_class_lookup = _rehydrate_schema_classes(schema_data)
-    values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
+    values_by_id = {widget_id["name"]: value for widget_id, value in zip(ids, values, strict=False)}
     validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
 
     if errors:

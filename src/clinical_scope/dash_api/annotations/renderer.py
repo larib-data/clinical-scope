@@ -33,14 +33,10 @@ from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
 
 def _yref_paper_or_domain(subplot_yaxis: str | None) -> str:
     """
-    Return the right `yref` for a shape that should span either the full figure or a single subplot.
+    Return the `yref` spanning either the full figure or one subplot.
 
-    Args:
-    ----
-    subplot_yaxis
-        The yaxis reference string for the subplot's primary y-axis (e.g., "y", "y3", "y7").
-        If None, returns "paper" for global annotations.
-
+    ``None`` (a global annotation) gives ``"paper"``; a subplot's primary yaxis ref
+    ("y", "y3", …) gives that axis's domain.
     """
     if subplot_yaxis is None:
         return "paper"

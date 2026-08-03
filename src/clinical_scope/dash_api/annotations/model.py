@@ -69,6 +69,12 @@ class Annotation:
         lookup: if the subplot is later removed the annotation is silently skipped.
     group_id
         ID of the annotation group this annotation belongs to, or ``None``.
+    group_name
+        Display name of that group, denormalised onto every member so groups can be
+        rebuilt from the annotations alone (group metadata is never persisted separately).
+    trace_metadata
+        ``{"datasource_name", "raw_name", "display_name"}`` of the clicked trace, or
+        ``None``.  Records which signal the annotation was placed on.
     patient
         Patient identifier string set when loading annotations via
         :func:`~clinical_scope.load_database_annotations`.  ``None`` for
