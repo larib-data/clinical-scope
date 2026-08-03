@@ -87,8 +87,12 @@ def save_json(data_json: dict[str, Any], json_path: Path) -> None:
 
 
 # ==================================================================================================
-# Normalise a pasted path: drop wrapping quotes/whitespace, expand ~ (backslashes kept).
 def format_path(path: str) -> Path:
+    """
+    Normalise a pasted path.
+
+    Drops wrapping quotes and whitespace and expands ``~``; backslashes are kept as-is.
+    """
     path = path.strip()
     path = path.replace('"', "")
     path = path.replace("'", "")

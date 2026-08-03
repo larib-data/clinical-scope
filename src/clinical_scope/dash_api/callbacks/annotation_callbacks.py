@@ -1,28 +1,8 @@
 """
 Annotation callbacks for the Dash application.
 
-Implements the full annotation creation / rendering / persistence flow:
-
- 1. toggle_annotation_mode    — activate an annotation type or deactivate mode (toggle + deactivate
-                                share one @callback)
- 2. handle_graph_click        — interpret graph clicks in annotation mode
- 3. update_modal_ui           — populate the modal's dynamic fields (position, global checkbox)
- 4. toggle_global_checkbox_visibility — hide the global checkbox for POINT annotations
- 5. pick_color_swatch         — select a preset colour in either creation modal
-                               (annotation or group)
- 6. create_annotation         — confirm creation and append to the store
- 7. cancel_annotation         — cancel and discard any pending time-window first click
- 8. render_annotations        — Patch all graphs whenever the store or pending state changes
- 9. update_annotation_list    — rebuild the sidebar list of annotations (grouped, collapsible)
-10. toggle_group_store        — expand/collapse a group OR show/hide its labels in the list
-10c. delete_group             — remove all annotations for a group and clean up per-group stores
-11. save_annotations_cb       — write annotations.json / reset save-button on store change
-12. auto_load_annotations     — load annotations.json when a new folder is visualised
-13. delete_annotation         — remove one annotation by ID
-14. open_group_modal          — show the group creation modal
-15. activate_group            — create a new group OR re-activate an existing one (merged 16 + 17)
-16. cancel_group_modal        — close the group creation modal without creating a group
-17. toggle_annotation_label   — toggle label_hidden on a single annotation
+Implements the full annotation creation / rendering / persistence flow, from graph clicks
+through the creation modals to annotations.json. Section banners below mark each stage.
 """
 
 from __future__ import annotations
@@ -451,21 +431,17 @@ def handle_graph_click(
 
     x_str = str(x_val) if is_loop else _localize_x_val(str(x_val), display_tz)
 
-    # Resolve the subplot name using the yaxis_to_subplot mapping.
-    # This mapping is built in data_callbacks.py and accounts for the actual
-    # subplot layout (including sparse grids and secondary y-axes).
-    # Note: We only use this for the subplot NAME, not for row/col placement.
+    # Built in data_callbacks.py, so it reflects the real layout (sparse grids, secondary
+    # y-axes). Used for the subplot NAME only — row/col still come from the grid formula.
     yaxis_to_subplot = subplots_data.get("yaxis_to_subplot", {})
     subplot_info = yaxis_to_subplot.get(yaxis_ref)
 
     subplot_name = subplot_info["name"] if subplot_info else None
 
-    # Calculate row/col for annotation placement using the original grid formula
     axis_idx = _parse_yaxis_idx(yaxis_ref)
     auto_subplot_row = (axis_idx - 1) // n_cols + 1
     auto_col = (axis_idx - 1) % n_cols + 1
 
-    # If we didn't get subplot_name from mapping, try to find it from subplot_rows
     if subplot_name is None:
         row_obj = next(
             (r for r in subplot_rows if r["row"] == auto_subplot_row and r["col"] == auto_col),
@@ -668,10 +644,7 @@ def toggle_global_checkbox_visibility(modal_data: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 5. Colour swatch picker — handles both the annotation modal and the group modal
-#    Component IDs:  {"type": "annotation-color-swatch", "color": <hex>}
-#                    {"type": "group-color-swatch",       "color": <hex>}
-#    Target inputs:  annotation-color-input  /  group-color-input
+# 5. Colour swatch pickers — one per creation modal (annotation, group)
 # ---------------------------------------------------------------------------
 
 
@@ -856,9 +829,8 @@ def render_annotations(
 
         p = Patch()
         p.layout.shapes = shapes
-        # Only replace layout.annotations when we have content; otherwise leave
-        # the figure's existing annotations untouched (prevents wiping subplot
-        # titles when the subplot-annotations store is not yet populated).
+        # Replacing with an empty list would wipe the subplot titles while the
+        # subplot-annotations store is still unpopulated, so leave them untouched instead.
         if all_annotations:
             p.layout.annotations = all_annotations
         if not is_loop:
@@ -1038,7 +1010,6 @@ def update_annotation_list(
                 for ann in group_anns
             )
 
-    # Ungrouped annotations at the bottom
     if ungrouped:
         if group_order:
             rows.append(
@@ -1087,8 +1058,6 @@ def update_annotation_list(
 
 # ---------------------------------------------------------------------------
 # 10. Toggle group expanded state OR label visibility
-#     Two separate stores are written, but the trigger pattern and toggle logic
-#     are identical, so a single parameterised callback handles both.
 # ---------------------------------------------------------------------------
 
 
@@ -1100,9 +1069,8 @@ def update_annotation_list(
 )
 def toggle_group_expand(_n_clicks_list: list, expanded_groups: list) -> list:
     """Add or remove a group ID from the expanded set when its header is clicked."""
-    # Guard: only react to actual click events (n_clicks > 0).
-    # When the list rebuilds, buttons are recreated with n_clicks=0, which
-    # would otherwise trigger a spurious toggle.
+    # Rebuilding the list recreates the buttons with n_clicks=0, which would fire a
+    # spurious toggle — so only react to a real click.
     if not ctx.triggered or ctx.triggered[0]["value"] <= 0:
         raise PreventUpdate
     triggered_id = ctx.triggered_id
@@ -1193,10 +1161,8 @@ def delete_group(
 
 
 # ---------------------------------------------------------------------------
-# 11. Save / reset save-button
-#     Previously two callbacks writing the same two outputs (requiring
-#     allow_duplicate on both).  A single callback dispatches on triggered_id:
-#     store changes reset the button; the save button performs the actual write.
+# 11. Save / reset save-button — one callback dispatching on triggered_id, so neither output
+# needs allow_duplicate: a store change resets the button, the button performs the write.
 # ---------------------------------------------------------------------------
 
 

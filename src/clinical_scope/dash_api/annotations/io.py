@@ -1,17 +1,15 @@
 """
 Annotation persistence: save / load JSON to the patient folder.
 
-The annotation file is always named ``annotations.json`` and placed directly
-inside the patient data folder (next to the datasource sub-folders and the
-``clinical_scope_output/`` parquet cache).
+The annotation file is always named ``annotations.json`` and lives in the patient's
+``clinical_scope_output/`` folder, alongside the parquet cache.
 
 File format: a JSON object with an ``"annotations"`` key containing a list of
 annotation dicts.  This envelope allows future extension with additional fields
 (e.g. ``"version"``).
 
-Group metadata is runtime-only (held in ``annotation-groups-store``); it is
-not persisted.  On load, groups are derived from the ``group_id`` / ``group_name``
-fields embedded in each annotation.
+Group metadata is not persisted: on load, groups are derived from the ``group_id`` /
+``group_name`` fields embedded in each annotation.
 """
 
 from __future__ import annotations
@@ -62,12 +60,11 @@ def _load_annotations_from_path(path: Path) -> list[Annotation]:
     """
     Load annotations from a JSON file at the given path.
 
-    The file must contain a JSON dict with a field ``"annotations"`` key
-    (e.g. ``{"annotations": [...]}`). Returns an empty list when the file
-    does not exist or cannot be parsed.
+    Returns an empty list when the file does not exist or cannot be parsed; malformed
+    individual records are skipped rather than raising.
 
-    This is an internal helper — callers should use the public :func:`load_annotations`
-    function from the package level (wrapper.py) which supports multi-source auto-detection.
+    Internal helper — callers should use the package-level :func:`load_annotations`
+    (wrapper.py), which supports multi-source auto-detection.
     """
     if not path.exists():
         return []

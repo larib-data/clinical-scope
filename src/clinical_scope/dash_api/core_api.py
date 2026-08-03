@@ -53,7 +53,7 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0-dev (not installed)"
 
-# === Configure the logger and add new app run message === #
+# === Logger === #
 logs_path_root = logger_config.get_logs_path()
 logs_path = logs_path_root / "app/dash_api.log"
 logger = logger_config.setup_logging(logs_path, debug=True)
@@ -81,9 +81,9 @@ app = Dash(
 )
 
 # ---------------------------------------------------------------------------
-# Annotation toolbar — color swatches built from the preset palette
+# Annotation toolbar
 # ---------------------------------------------------------------------------
-_COLOR_TYPE_LABELS = {
+_ANNOTATION_TYPE_LABELS = {
     AnnotationType.TIME_EVENT: "Time Event",
     AnnotationType.TIME_WINDOW: "Time Window",
     AnnotationType.POINT: "Point",
@@ -96,7 +96,7 @@ _annotation_type_buttons = [
         n_clicks=0,
         style=BUTTON_ANNOTATION_INACTIVE,
     )
-    for ann_type, label in _COLOR_TYPE_LABELS.items()
+    for ann_type, label in _ANNOTATION_TYPE_LABELS.items()
 ]
 
 _annotation_toolbar = html.Div(
@@ -106,9 +106,9 @@ _annotation_toolbar = html.Div(
         "display": "none",
         "justifyContent": "space-between",
         "alignItems": "center",
-        "width": "100%",  # Force full width
-        "boxSizing": "border-box",  # Include padding in width
-        "padding": "8px 0",  # Optional: Add vertical padding
+        "width": "100%",
+        "boxSizing": "border-box",
+        "padding": "8px 0",
     },
     children=[
         # Left group: Annotate label + buttons
@@ -117,8 +117,8 @@ _annotation_toolbar = html.Div(
                 "display": "flex",
                 "alignItems": "center",
                 "gap": "8px",
-                "flex": "1",  # Allow this group to grow
-                "minWidth": "0",  # Prevent overflow
+                "flex": "1",
+                "minWidth": "0",  # Flex children need this to shrink instead of overflowing
             },
             children=[
                 html.Span(
@@ -149,9 +149,9 @@ _annotation_toolbar = html.Div(
                 "display": "flex",
                 "alignItems": "center",
                 "gap": "8px",
-                "flex": "1",  # Allow this group to grow
-                "justifyContent": "flex-end",  # Push to the right
-                "minWidth": "0",  # Prevent overflow
+                "flex": "1",
+                "justifyContent": "flex-end",
+                "minWidth": "0",  # Flex children need this to shrink instead of overflowing
             },
             children=[
                 html.Button(
@@ -254,7 +254,6 @@ _annotation_modal = html.Div(
                     id="annotation-modal-position-display",
                     style={"fontSize": "12px", "color": "#666", "marginBottom": "12px"},
                 ),
-                # Label input
                 html.Div(
                     [
                         html.Label(
@@ -278,7 +277,6 @@ _annotation_modal = html.Div(
                     ],
                     style={"marginBottom": "12px"},
                 ),
-                # Color picker
                 html.Div(
                     [
                         html.Label(
@@ -405,7 +403,6 @@ _annotation_group_modal = html.Div(
                         "paddingBottom": "12px",
                     },
                 ),
-                # Name input
                 html.Div(
                     [
                         html.Label(
@@ -429,7 +426,6 @@ _annotation_group_modal = html.Div(
                     ],
                     style={"marginBottom": "12px"},
                 ),
-                # Type dropdown
                 html.Div(
                     [
                         html.Label(
@@ -453,7 +449,6 @@ _annotation_group_modal = html.Div(
                     ],
                     style={"marginBottom": "12px"},
                 ),
-                # Color picker
                 html.Div(
                     [
                         html.Label(
@@ -483,7 +478,6 @@ _annotation_group_modal = html.Div(
                     ],
                     style={"marginBottom": "12px"},
                 ),
-                # Scope (time-based types only)
                 html.Div(
                     [
                         html.Label(
@@ -592,7 +586,6 @@ _settings_modal = html.Div(
 
 app.layout = html.Div(
     [
-        # Version display in top right corner
         html.Div(f"API Version: {__version__}", style=VERSION_BADGE),
         html.Button("⚙ Settings", id="settings-open-btn", n_clicks=0, style=BUTTON_GEAR),
         _settings_modal,
@@ -633,8 +626,6 @@ app.layout = html.Div(
         html.Hr(),
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
-        # Action panel: two peer cards (Process / Inspect), each holding its action + options,
-        # side-by-side so they read as a choice rather than a sequence.
         html.Div(
             [
                 html.Div(
@@ -644,8 +635,7 @@ app.layout = html.Div(
                             id="process-button",
                             style=BUTTON_PROCESS,
                         ),
-                        # Read-only mirror of the save_html_on_process user option (editable in
-                        # the settings modal) — shows what Process will do, one-way from the store.
+                        # One-way mirror of save_html_on_process; edited in the settings modal.
                         html.Span(
                             id="save-html-indicator",
                             children=ui_components.save_html_indicator_text(_INITIAL_SAVE_HTML),

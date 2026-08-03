@@ -3,14 +3,6 @@ Shared style constants for the Dash application.
 
 Centralises style dicts used across layout (core_api.py) and callbacks
 (data_callbacks.py) so there is a single source of truth.
-
-Sections
---------
-1. Color palette
-2. Button styles
-3. Card & section header styles
-4. Modal styles
-5. Layout styles
 """
 
 # ---------------------------------------------------------------------------

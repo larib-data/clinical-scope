@@ -26,8 +26,8 @@ def load_patient_options(
 
     Returns None if the file does not exist (expected: no history yet).
     Raises ValueError if the file exists but cannot be parsed or is not a dict.
-    Extra or missing fields relative to the current database options are
-    left to the caller to handle — this function returns the raw dict as-is.
+    The raw dict is returned as-is: reconciling extra or missing fields against the
+    current option schema is left to the caller.
     """
     path = get_patient_options_path(patient_folder, output_root)
     if not path.exists():

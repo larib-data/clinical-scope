@@ -1,9 +1,4 @@
-"""
-Validation utilities for Dash API visualization.
-
-This module contains validation functions for user input, schema validation,
-and type checking.
-"""
+"""Validate raw Dash widget values against their option schema classes."""
 
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -123,13 +118,11 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
         api_type = getattr(schema, "API_TYPE", None)
         extension = getattr(schema, "EXTENSION", None)
 
-        # Check mandatory
         if value in ("", None):
             if mandatory:
                 errors.append(f"{description} is mandatory")
             continue
 
-        # Validate by type
         error = _validate_by_type(value, api_type, extension)
         if error:
             errors.append(f"{description} {error}")
@@ -141,7 +134,6 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
         else:
             stored_value = ui_components.from_widget_value(api_type, value)
 
-        # Store validated value
         if is_global:
             validated_dict[name] = stored_value
         else:

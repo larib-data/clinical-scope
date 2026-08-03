@@ -54,12 +54,9 @@ from clinical_scope.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
 
-# Server-side caches keyed by UUID — suitable for single-user desktop app.
-# Both caches grow during a session and are cleared on each process_visualization call.
-# Not bounded by size — acceptable for a single-user desktop app.
-# NOTE: these are distinct from the on-disk parquet cache
-# (clinical_scope_output/ inside the patient folder)
-# which persists across sessions for quick_load. These are ephemeral, in-memory only.
+# Server-side caches keyed by UUID. Unbounded — they grow through a session and are cleared
+# on each process_visualization call, which is acceptable for a single-user desktop app.
+# Distinct from the on-disk parquet cache (clinical_scope_output/), which persists for quick_load.
 FIGURE_RESAMPLER_CACHE = {}  # FigureResampler objects for time-series zoom/pan
 LOOP_DATA_CACHE = {}  # Loop trace data (x, y, time arrays) for slider filtering
 
@@ -396,12 +393,9 @@ def _build_data_folder_preview(value: str | None) -> Any:
     """
     Reflect back what the typed patient-folder path actually contains.
 
-    Teaches the folder-vs-file distinction live: instead of silently accepting a wrong
-    path until Process fails, it names the device subfolders found (or explains why none
-    were), so the user learns to point at the patient folder, not a data file.
-
-    Advisory only — any filesystem error degrades to a soft hint, never an exception, and
-    a slow share is capped by a timeout, since real validation still runs on Process.
+    Names the device subfolders found (or why none were), so a wrong path surfaces here
+    rather than at Process. Advisory only: filesystem errors degrade to a soft hint and a
+    slow share is capped by a timeout, since real validation still runs on Process.
     """
     if not value or not str(value).strip():
         return ""
@@ -593,12 +587,10 @@ def process_visualization(
 
     schema_class_lookup = _rehydrate_schema_classes(schema_data)
 
-    # Map IDs to values
     logger.debug("ids: %s", ids)
     logger.debug("values: %s", values)
     values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
 
-    # Validate
     validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
     logger.debug("errors: %s", errors)
     logger.debug("validated_dict: %s", validated_dict)
@@ -708,8 +700,8 @@ def _status_badge(status: str) -> html.Span:
 
 
 # Per-column Dash styles, indexed to match ColumnInfo.DISPLAY_HEADERS order.
-# Adding a new ColumnInfo field: update ColumnInfo, _column_infos (datasource_base),
-# ColumnInfo.DISPLAY_HEADERS + column_display_values (inspection), and this list.
+# Adding a new ColumnInfo field: update ColumnInfo, _column_infos,
+# ColumnInfo.DISPLAY_HEADERS and ColumnInfo.display_values (all in inspection.py), and this list.
 _COL_CELL_STYLES: list[dict | None] = [
     {"fontFamily": "monospace", "fontSize": "13px"},  # Column
     None,  # Configured — style computed dynamically below
@@ -725,7 +717,7 @@ def _col_cell(col: ColumnInfo) -> list[html.Td]:
     """
     Return <td> cells for one ColumnInfo row.
 
-    Text content comes from ``column_display_values`` (shared with CLI);
+    Text content comes from ``ColumnInfo.display_values`` (shared with the CLI);
     Dash-specific styling is applied per-column via ``_COL_CELL_STYLES``.
     """
     values = col.display_values()
@@ -1044,7 +1036,6 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
     for mod in model:
         fig = mod.figure
 
-        # Wrap time_series with FigureResampler for dynamic downsampling
         uid = None
         if mod.name == "time_series":
             uid = str(uuid4())
@@ -1058,10 +1049,9 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             # dash or plotly-resampler restores layout-preserving partial updates.
             fig.update_layout(uirevision=uid)
 
-        # Set explicit CSS height so the container matches the figure's intended
-        # height.  Without this, Plotly's default autosize=True sizes the figure
-        # to its container, and an unsized container collapses to a default that
-        # can hide the plot (especially for time-series with few subplots).
+        # Plotly's autosize=True sizes the figure to its container, so an unsized container
+        # collapses to a default that can hide the plot (time-series with few subplots
+        # especially) — set the CSS height explicitly to match the figure's intended height.
         graph_height = int(mod.computed_height) if mod.computed_height else None
         graph_style = {"marginBottom": "40px"}
         if graph_height:
@@ -1114,7 +1104,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             plotly_row = group_idx // n_cols_layout + 1
             plotly_col = group_idx % n_cols_layout + 1
 
-            # Get the primary y-axis for this subplot (first trace's yaxis)
+            # The subplot's primary y-axis is the one carried by its first trace.
             primary_yaxis = "y"
             if trace_idx < len(mod.figure.data):
                 primary_yaxis = getattr(mod.figure.data[trace_idx], "yaxis", None) or "y"
@@ -1128,7 +1118,6 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
                 }
             )
 
-            # Add all traces from this group to the mapping
             n_traces_in_group = len(group.signals)
             for _ in range(n_traces_in_group):
                 if trace_idx < len(mod.figure.data):
@@ -1173,9 +1162,8 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         if mod.plot_type == cst.PlotType.LOOP:
             loop_uid = str(uuid4())
 
-            # Cache full data arrays for each trace.
-            # Skip traces with missing data to keep cache indices aligned
-            # with the Plotly figure traces that are actually filterable.
+            # Traces with no data get a null placeholder rather than being dropped, so cache
+            # indices stay aligned with the Plotly figure's trace indices.
             trace_data = []
             t_min_global = np.inf
             t_max_global = -np.inf

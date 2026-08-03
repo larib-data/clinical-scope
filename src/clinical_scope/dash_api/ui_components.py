@@ -1,8 +1,4 @@
-"""
-UI component utilities for Dash API visualization.
-
-This module contains functions for creating Dash UI components based on schemas.
-"""
+"""Schema-driven factory for the Dash input widgets used across the app."""
 
 import logging
 from typing import Any
@@ -144,24 +140,21 @@ def build_ui_and_schema_registry(
     components = []
     schema_lookup = {}
 
-    # Collect only nested classes that have NAME (ignore others)
     nested_classes = [
         getattr(options_class, attr)
         for attr in dir(options_class)
         if hasattr(getattr(options_class, attr), "NAME")
     ]
 
-    # Sort by ORDER field
     nested_classes.sort(key=lambda cls: getattr(cls, "ORDER", 999))
 
-    # Index-based iteration with lookahead for consecutive TIMESTAMP fields
+    # Index-based iteration with lookahead: consecutive TIMESTAMP fields render side by side.
     i = 0
     while i < len(nested_classes):
         schema_class = nested_classes[i]
         comp_id = f"{prefix}.{schema_class.NAME}"
         schema_lookup[comp_id] = schema_class
 
-        # Check if current and next field are both TIMESTAMP → render side by side
         if (
             i + 1 < len(nested_classes)
             and schema_class.API_TYPE == cst.ApiType.TIMESTAMP

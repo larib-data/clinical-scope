@@ -1,8 +1,4 @@
-"""
-Callbacks module for Dash API visualization.
-
-This module contains all callback functions organized by functionality.
-"""
+"""Re-exports every Dash callback so importing this package registers them with the app."""
 
 from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     activate_group,

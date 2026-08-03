@@ -1,5 +1,5 @@
 """
-Convert Annotation objects into Plotly ``layout.shapes`` and ``layout.annotations`` dicts ready to be assigned to a figure.
+Convert Annotation objects into Plotly ``layout.shapes`` / ``layout.annotations`` dicts.
 
 Design notes
 ------------
@@ -17,7 +17,7 @@ Design notes
 * Subplot title annotations created by ``make_subplots`` live in
   ``layout.annotations`` alongside ours.  Callers must merge them; this module
   only produces the *annotation* portion.
-"""  # noqa: E501
+"""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def _resolve_subplot_yaxis(ann: Annotation, subplot_rows: list[dict]) -> str | N
 
     """
     if ann.subplot_name is None:
-        return None  # global
+        return None
     match = next((r for r in subplot_rows if r["name"] == ann.subplot_name), None)
     if match is None:
         return _SUBPLOT_REMOVED
@@ -128,7 +128,7 @@ def _time_event_label(ann: Annotation, subplot_yaxis: str | None) -> dict | None
         return None
     x = ann.data["x"]
     yref = _yref_paper_or_domain(subplot_yaxis)
-    # For paper yref the y coordinate is in [0, 1]; for domain refs also [0, 1].
+    # y is in [0, 1] for both paper and domain refs, so 0.99 pins the label to the top.
     return {
         "x": x,
         "y": 0.99,
@@ -147,7 +147,6 @@ def _time_event_label(ann: Annotation, subplot_yaxis: str | None) -> dict | None
 def _time_window_label(ann: Annotation, subplot_yaxis: str | None) -> dict | None:
     if not ann.label:
         return None
-    # Place label at the left edge of the window near the top.
     x = ann.data["x0"]
     yref = _yref_paper_or_domain(subplot_yaxis)
     return {
@@ -254,22 +253,20 @@ def make_preview_shape(x: str, xref: str = "x") -> dict:
 
 def annotation_to_shapes(ann: Annotation, subplot_yaxis: str | None) -> list[dict]:
     """
-    Convert an custom class `Annotation` to zero or more Plotly shape dicts.
+    Convert an `Annotation` to zero or more Plotly shape dicts.
 
-    Points are rendered purely as Plotly annotations (arrows), so they
-    produce no shapes.
+    Points are rendered purely as Plotly annotations (arrows), so they produce no shapes.
     """
     if ann.type == AnnotationType.TIME_EVENT:
         return [_time_event_shape(ann, subplot_yaxis)]
     if ann.type == AnnotationType.TIME_WINDOW:
         return [_time_window_shape(ann, subplot_yaxis)]
-    # POINT — no shape needed, handled by annotation arrow
     return []
 
 
 def annotation_to_plotly_annotation(ann: Annotation, subplot_yaxis: str | None) -> dict | None:
     """
-    Convert an custom class `Annotation` to a single Plotly annotation dict (textlabel / arrow).
+    Convert an `Annotation` to a single Plotly annotation dict (text label / arrow).
 
     Returns ``None`` when there is nothing to show.
     """
@@ -291,27 +288,22 @@ def build_figure_overlays(
     pending_xref: str = "x",
 ) -> tuple[list[dict], list[dict]]:
     """
-    Build figure overlay from the annotations and plot name.
-
-    Build the complete ``layout.shapes`` and ``layout.annotations`` lists for one plot, merging
-    subplot title annotations with user annotations.
+    Build the complete ``layout.shapes`` and ``layout.annotations`` lists for one plot.
 
     Parameters
     ----------
     annotations
-        All annotations (will be filtered to this ``plot_name``).  Callers are
-        responsible for pre-normalising annotation timestamps to naive display-TZ
-        wall-clock strings (via :func:`normalize_annotations_for_display`) before
-        passing them here.
+        All annotations (filtered here to this ``plot_name``).  Callers must pre-normalise
+        their timestamps to naive display-TZ wall-clock strings via
+        :func:`normalize_annotation_for_display`.
     plot_name
         Name of the target PlotModel.
     subplot_annotations
         The original ``layout.annotations`` produced by ``make_subplots``
         (subplot titles).  These are prepended so they are never lost.
     subplot_rows
-        List of ``{"row": int, "col": int, "name": str}`` dicts from the
-        graph-subplots store.  Used to resolve ``ann.subplot_name`` to a row
-        index.  Annotations whose subplot no longer exists are silently skipped.
+        Dicts from the graph-subplots store, used to resolve ``ann.subplot_name`` to the
+        subplot's yaxis ref.  Annotations whose subplot no longer exists are silently skipped.
     pending_x0
         If set, a grey preview line is added at this x position.  Must already
         be a naive display-TZ string if it represents a datetime.
@@ -332,7 +324,7 @@ def build_figure_overlays(
     for ann in relevant:
         yaxis = _resolve_subplot_yaxis(ann, subplot_rows)
         if yaxis == _SUBPLOT_REMOVED:
-            continue  # subplot was removed — skip silently
+            continue
         shapes.extend(annotation_to_shapes(ann, yaxis))
 
         ann_label_hidden = ann.label_hidden
