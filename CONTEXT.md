@@ -58,6 +58,23 @@ _Avoid (for all three)_: process — it is ambiguous (see _Flagged ambiguities_)
 
 ### Configuration
 
+Three tiers of options, distinguished by *what they are scoped to* — a Database, a run, or the person at the keyboard.
+
+**Database options**:
+The signal configuration shared by every Patient of a Database — labels, units, colors, Groupings, Loops. Authored once per Database and shared between users.
+_Avoid_: config, settings
+
+**Patient options**:
+The per-run settings for a single Visualize/Extract/Inspect: which Patient folder, which time range, and per-datasource treatment.
+_Avoid_: run config, parameters
+
+**User options**:
+The global preferences of one person, independent of any Database or Patient — display defaults and app behavior. They are **fallbacks**: where Database options speak, Database options win.
+_Avoid_: preferences, user settings, user config
+
+**Settings**:
+The UI surface that edits User options — the term for the *modal*, never for the options themselves.
+
 **Numerics**:
 The `database_options` block of per-datasource defaults — resampling period and plot priority — applied to every Signal of that datasource unless the Signal overrides them.
 (Distinct from the `_numerics` datasource suffix — see _Flagged ambiguities_.)
