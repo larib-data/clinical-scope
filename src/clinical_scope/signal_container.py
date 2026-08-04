@@ -56,14 +56,14 @@ def merge_y_ranges(
 ) -> list[float] | None:
     """Merge y_axis_range for signals with the same unit."""
     ranges = [
-        sig.trace_options.plot_options.y_axis_range
-        for sig in signals
-        if sig.trace_options.plot_options.y_unit_name == unit_name
-        and sig.trace_options.plot_options.y_axis_range is not None
+        signal.trace_options.plot_options.y_axis_range
+        for signal in signals
+        if signal.trace_options.plot_options.y_unit_name == unit_name
+        and signal.trace_options.plot_options.y_axis_range is not None
     ]
     if not ranges:
         return None
-    return [min(r[0] for r in ranges), max(r[1] for r in ranges)]
+    return [min(bound[0] for bound in ranges), max(bound[1] for bound in ranges)]
 
 
 @dataclass
@@ -121,9 +121,9 @@ class PlotOptions:
 
         # --- Determine y units ---
         y_units = {}
-        for sig in signals:
-            key = sig.trace_options.plot_options.y_unit_name
-            y_units.setdefault(key, []).append(sig)
+        for signal in signals:
+            key = signal.trace_options.plot_options.y_unit_name
+            y_units.setdefault(key, []).append(signal)
 
         y_unit_list = list(y_units.keys())
         primary_unit = y_unit_list[0] if y_unit_list else None
@@ -132,7 +132,7 @@ class PlotOptions:
         if len(y_unit_list) > MAX_ALLOWED_UNITS:
             logger.warning(
                 "⚠️ Signals %s can't be plotted on one plot: more than %d units: %s",
-                [sig.name for sig in signals],
+                [signal.name for signal in signals],
                 MAX_ALLOWED_UNITS,
                 y_unit_list,
             )
@@ -145,22 +145,22 @@ class PlotOptions:
 
         # --- Determine plot_type and square_plot ---
         plot_type = get_unique_or_raise(
-            [sig.trace_options.plot_options.plot_type for sig in signals],
+            [signal.trace_options.plot_options.plot_type for signal in signals],
             "plot_type",
             context="PlotOptions from signals",
         )
         square_plot = get_unique_or_raise(
-            [sig.trace_options.plot_options.square_plot for sig in signals],
+            [signal.trace_options.plot_options.square_plot for signal in signals],
             "square_plot",
             context="PlotOptions from signals",
         )
 
         plot_priority = compute_average_priority(
-            [sig.trace_options.plot_options for sig in signals]
+            [signal.trace_options.plot_options for signal in signals]
         )
 
         display_timezone = get_unique_or_raise(
-            [sig.trace_options.plot_options.display_timezone for sig in signals],
+            [signal.trace_options.plot_options.display_timezone for signal in signals],
             "display_timezone",
             context="PlotOptions from signals",
         )
@@ -183,7 +183,7 @@ class PlotOptions:
         logger.debug(
             "⏳ %.4fs for PlotOptions.combine_from_signals for signals %s",
             time.perf_counter() - start,
-            [sig.name for sig in signals],
+            [signal.name for signal in signals],
         )
         return combined
 
@@ -229,7 +229,7 @@ class Quality:
     quality_score: float = 1.0
 
 
-def _signal_utc_float_seconds(sig: "Signal") -> np.ndarray:
+def _signal_utc_float_seconds(signal: "Signal") -> np.ndarray:
     """
     Return true UTC epoch float seconds for a signal's time axis.
 
@@ -238,11 +238,11 @@ def _signal_utc_float_seconds(sig: "Signal") -> np.ndarray:
     so data.x no longer holds UTC values.  Re-localise to data.timezone then
     convert to UTC nanoseconds via .asi8 (avoids np.issubdtype on tz-aware dtype).
     """
-    if sig.data.timezone is None:
-        return to_float_seconds(sig.data.x)
+    if signal.data.timezone is None:
+        return to_float_seconds(signal.data.x)
     return (
-        pd.to_datetime(sig.data.x)
-        .tz_localize(str(sig.data.timezone))
+        pd.to_datetime(signal.data.x)
+        .tz_localize(str(signal.data.timezone))
         .tz_convert(cst.LIBRARY_TZ)
         .asi8
         / 1e9
@@ -272,34 +272,36 @@ class Signal:
     ) -> "TraceOptions":
         """Build trace options from database and source options."""
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
-        sig_opts = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
+        signal_options = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
 
         # PlotOptions fields
         plot_options_dict = source_options.get("plot_options", {})
-        valid_keys_plot_options = {f.name for f in fields(PlotOptions)}
+        valid_keys_plot_options = {field_obj.name for field_obj in fields(PlotOptions)}
         additional_plot_options = {
-            k: v for k, v in plot_options_dict.items() if k in valid_keys_plot_options
+            key: value for key, value in plot_options_dict.items() if key in valid_keys_plot_options
         }
-        sig_cst = cst.DatabaseOptions.SignalConfig
-        name_signal = sig_opts.get(sig_cst.LABEL, raw_signal_name)
-        range_signal_plot = sig_opts.get(sig_cst.RANGE)
-        y_unit_name = sig_opts.get(sig_cst.UNIT, sig_cst.DEFAULT_UNIT)
+        signal_config = cst.DatabaseOptions.SignalConfig
+        name_signal = signal_options.get(signal_config.LABEL, raw_signal_name)
+        range_signal_plot = signal_options.get(signal_config.RANGE)
+        y_unit_name = signal_options.get(signal_config.UNIT, signal_config.DEFAULT_UNIT)
         y_axis_title_raw = f"{name_signal} ({y_unit_name or ''})"
         y_axis_title = wrap_label(y_axis_title_raw, max_line_length=12)
 
         # TraceOptions fields
         trace_options_dict = source_options.get(cst.SourceOptions.TRACE_OPTIONS, {})
-        valid_keys_trace_options = {f.name for f in fields(TraceOptions)}
+        valid_keys_trace_options = {field_obj.name for field_obj in fields(TraceOptions)}
         additional_trace_options = {
-            k: v for k, v in trace_options_dict.items() if k in valid_keys_trace_options
+            key: value
+            for key, value in trace_options_dict.items()
+            if key in valid_keys_trace_options
         }
-        color = sig_opts.get(sig_cst.COLOR)
+        color = signal_options.get(signal_config.COLOR)
         plot_priority_default_db = numerics.get(cst.DatabaseOptions.Numerics.PRIORITY)
-        plot_priority = sig_opts.get(sig_cst.PRIORITY, plot_priority_default_db)
-        visible = sig_opts.get(sig_cst.VISIBLE, True)
-        line_dash_db = sig_opts.get(sig_cst.LINE_DASH)
-        hover_template = sig_opts.get(sig_cst.HOVER_TEMPLATE)
+        plot_priority = signal_options.get(signal_config.PRIORITY, plot_priority_default_db)
+        visible = signal_options.get(signal_config.VISIBLE, True)
+        line_dash_db = signal_options.get(signal_config.LINE_DASH)
+        hover_template = signal_options.get(signal_config.HOVER_TEMPLATE)
 
         plot_options = PlotOptions(
             y_axis_range=range_signal_plot,
@@ -341,18 +343,20 @@ class Signal:
         timing = {}
         # ---- Step 1: metadata extraction ---------------------------------------
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
-        sig_opts = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
+        signal_options = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
-        sig_cst = cst.DatabaseOptions.SignalConfig
-        name_signal = sig_opts.get(sig_cst.LABEL, raw_signal_name)
-        unit_conversion_factor = sig_opts.get(
-            sig_cst.UNIT_CONVERSION, sig_cst.DEFAULT_UNIT_CONVERSION
+        signal_config = cst.DatabaseOptions.SignalConfig
+        name_signal = signal_options.get(signal_config.LABEL, raw_signal_name)
+        unit_conversion_factor = signal_options.get(
+            signal_config.UNIT_CONVERSION, signal_config.DEFAULT_UNIT_CONVERSION
         )
-        p_global = numerics.get(
+        period_resampling_global = numerics.get(
             cst.DatabaseOptions.Numerics.PERIOD_RESAMPLING,
             cst.DatabaseOptions.Numerics.DEFAULT_PERIOD_RESAMPLING,
         )
-        p = sig_opts.get(sig_cst.PERIOD_RESAMPLING, p_global)
+        period_resampling = signal_options.get(
+            signal_config.PERIOD_RESAMPLING, period_resampling_global
+        )
         # ---- Step 2-3: extract, prune, convert, resample ------------------------
         start = time.perf_counter()
         y_full = (
@@ -360,11 +364,11 @@ class Signal:
             * unit_conversion_factor
         )
         valid_mask = np.isfinite(y_full)
-        if not (0 < p < 1.0):
+        if not (0 < period_resampling < 1.0):
             x = df.index[valid_mask].to_numpy(dtype="datetime64[ns]")
             y = y_full[valid_mask]
         else:
-            step = int(1 / p)
+            step = int(1 / period_resampling)
             valid_pos = np.flatnonzero(valid_mask)
             keep_pos = valid_pos[::step]
             x = df.index[keep_pos].to_numpy(dtype="datetime64[ns]")
@@ -393,7 +397,7 @@ class Signal:
             display_timezone=display_timezone,
         )
         metadata = Metadata(
-            period_resampling=p,
+            period_resampling=period_resampling,
         )
         timing["data_initialization"] = time.perf_counter() - start
         # ---- Step 5: assemble Signal instance ---------------------------------
@@ -413,7 +417,7 @@ class Signal:
             "⏳ %ss for signal '%s'. timing details: %s",
             f"{timing['total_time_series_from_dataframe']:.4f}",
             raw_signal_name,
-            {k: f"{v:.4f}s" for k, v in timing.items()},
+            {key: f"{value:.4f}s" for key, value in timing.items()},
         )
         return obj
 
@@ -497,7 +501,7 @@ class Signal:
             "⏳ %ss for loop signal '%s' timing details: %s",
             f"{timing['total_loop_from_signals']:.4f}",
             obj.raw_name,
-            {k: f"{v:.4f}s" for k, v in timing.items()},
+            {key: f"{value:.4f}s" for key, value in timing.items()},
         )
         return obj
 
@@ -617,9 +621,9 @@ class PlotGroup:
     timing: dict = field(default_factory=dict)
 
     @classmethod
-    def from_single_signal(cls, sig: Signal) -> "PlotGroup":
+    def from_single_signal(cls, signal: Signal) -> "PlotGroup":
         start = time.perf_counter()
-        plot_group = cls(name=sig.name, signals=[sig], allow_secondary_y=False)
+        plot_group = cls(name=signal.name, signals=[signal], allow_secondary_y=False)
         elapsed = time.perf_counter() - start
         plot_group.timing["from_single_signal"] = elapsed
         return plot_group
@@ -639,13 +643,13 @@ class PlotGroup:
 
     def assign_axes(self) -> list[tuple[go.Scatter, bool]]:
         traces_with_axes = []
-        for sig in self.signals:
+        for signal in self.signals:
             secondary_y = (
-                sig.trace_options.plot_options.y_unit_name == self.plot_options.y2_unit_name
+                signal.trace_options.plot_options.y_unit_name == self.plot_options.y2_unit_name
             )
-            trace = sig.trace
+            trace = signal.trace
             trace.showlegend = self.plot_options.show_legend
-            traces_with_axes.append((sig.trace, secondary_y))
+            traces_with_axes.append((signal.trace, secondary_y))
         return traces_with_axes
 
 
@@ -674,23 +678,23 @@ class PlotModel:
             row_heights = [1.0] * n_rows
             specs = [
                 [
-                    {"secondary_y": True} if r * n_cols + c < n_groups else None
-                    for c in range(n_cols)
+                    {"secondary_y": True} if row * n_cols + col < n_groups else None
+                    for col in range(n_cols)
                 ]
-                for r in range(n_rows)
+                for row in range(n_rows)
             ]
-            subplot_titles = [g.name for g in self.groups]
+            subplot_titles = [group.name for group in self.groups]
             fig_width = n_cols * subplot_height
             extra_subplot_kwargs = {"horizontal_spacing": 0.13}
             title_gap_px = 90.0
         else:
             n_cols = 1  # Fixed
             n_rows = n_groups
-            group_heights = [g.plot_options.plot_height for g in self.groups]
+            group_heights = [group.plot_options.plot_height for group in self.groups]
             total_fig_height = np.sum(group_heights)
-            row_heights = [h / total_fig_height for h in group_heights]
+            row_heights = [height / total_fig_height for height in group_heights]
             specs = [[{"secondary_y": True}] for _ in range(n_rows)]
-            subplot_titles = [g.name for g in self.groups]
+            subplot_titles = [group.name for group in self.groups]
             fig_width = total_fig_height / n_rows if self.square_plot else None
             extra_subplot_kwargs = {}
             # Aim for ~80 px between subplots to leave room for subplot titles.
@@ -798,15 +802,15 @@ class PlotModel:
 
     def __post_init__(self) -> None:
         """Validate plot_type/square_plot consistency across groups, and build the figure."""
-        plot_group = self.groups
+        groups = self.groups
 
         plot_type = get_unique_or_raise(
-            [group.plot_options.plot_type for group in plot_group],
+            [group.plot_options.plot_type for group in groups],
             "plot_options.plot_type",
             context="PlotGroups",
         )
         square_plot = get_unique_or_raise(
-            [group.plot_options.square_plot for group in plot_group],
+            [group.plot_options.square_plot for group in groups],
             "square_plot",
             context="PlotGroups",
         )
@@ -815,7 +819,7 @@ class PlotModel:
         self.plot_type = plot_type
         self.square_plot = square_plot
 
-        self.groups = sorted(plot_group, key=lambda group: group.plot_options.plot_priority)
+        self.groups = sorted(groups, key=lambda group: group.plot_options.plot_priority)
         self.figure = self.to_figure()
 
     @staticmethod
@@ -832,7 +836,9 @@ class PlotModel:
         page_order = cst.PlotType.PAGE_ORDER
         ordered = sorted(
             groups,
-            key=lambda pt: page_order.index(pt) if pt in page_order else len(page_order),
+            key=lambda plot_type: (
+                page_order.index(plot_type) if plot_type in page_order else len(page_order)
+            ),
         )
         return [PlotModel(groups=groups[plot_type]) for plot_type in ordered]
 
@@ -843,7 +849,9 @@ class PlotModel:
         data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
         output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
         output_path = get_visualization_path(data_folder, output_root)
-        fig_list = [plot_mod.figure for plot_mod in plot_models if plot_mod.figure is not None]
+        fig_list = [
+            plot_model.figure for plot_model in plot_models if plot_model.figure is not None
+        ]
         start = time.perf_counter()
         print_out_figure(output_path, fig_list)
         elapsed = time.perf_counter() - start

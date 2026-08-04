@@ -46,20 +46,22 @@ def add_main_module(find_load_format_module: ModuleType) -> Callable[[type], typ
 
         cls.DATASOURCE_CLASS = next(
             (
-                v
-                for v in vars(module).values()
-                if isinstance(v, type) and issubclass(v, DataSourceBase) and v is not DataSourceBase
+                candidate
+                for candidate in vars(module).values()
+                if isinstance(candidate, type)
+                and issubclass(candidate, DataSourceBase)
+                and candidate is not DataSourceBase
             ),
             None,
         )
 
         options = cls.DATASOURCE_CLASS.OPTIONS_MODULE if cls.DATASOURCE_CLASS else None
 
-        ds_name = getattr(options, "DATASOURCE_NAME", None)
-        if ds_name is not None and ds_name != cls.NAME:
+        datasource_name = getattr(options, "DATASOURCE_NAME", None)
+        if datasource_name is not None and datasource_name != cls.NAME:
             msg = (
                 f"DataSource registry NAME={cls.NAME!r} does not match "
-                f"options.DATASOURCE_NAME={ds_name!r}"
+                f"options.DATASOURCE_NAME={datasource_name!r}"
             )
             raise ValueError(msg)
 
@@ -191,25 +193,25 @@ def detect_datasource_from_folder(folder: str | Path) -> type | None:
     folder_name = Path(folder).name
     best_match = None
     best_score = 0
-    for ds in DataSource.AVAILABLE:
-        keywords = getattr(ds.OPTIONS, "FOLDER_KEYWORDS", None)
+    for datasource in DataSource.AVAILABLE:
+        keywords = getattr(datasource.OPTIONS, "FOLDER_KEYWORDS", None)
         if not keywords:
             continue
         if folder_name_matches_keywords(folder_name, keywords):
             score = len(keywords)
             if score > best_score:
                 best_score = score
-                best_match = ds
+                best_match = datasource
     return best_match
 
 
 def generate_default_database_options() -> dict:
     """Generate database options with all available datasources using their defaults."""
-    db_options = {}
+    database_options = {}
     for data_source in DataSource.AVAILABLE:
         default = getattr(data_source.OPTIONS, "DEFAULT_DATABASE_OPTIONS", {})
-        db_options[data_source.NAME] = dict(default)
-    return db_options
+        database_options[data_source.NAME] = dict(default)
+    return database_options
 
 
 def get_nested_classes(cls: type) -> list[type]:

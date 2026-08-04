@@ -34,11 +34,11 @@ def load_patient_options(
         logger.info("No saved patient options at %s", path)
         return None
     try:
-        with path.open(encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (json.JSONDecodeError, OSError) as e:
-        msg = f"Cannot read patient options from {path}: {e}"
-        raise ValueError(msg) from e
+        with path.open(encoding="utf-8") as file:
+            data = json.load(file)
+    except (json.JSONDecodeError, OSError) as exc:
+        msg = f"Cannot read patient options from {path}: {exc}"
+        raise ValueError(msg) from exc
     if not isinstance(data, dict):
         msg = f"Patient options file {path} is not a JSON object (got {type(data).__name__})"
         raise TypeError(msg)

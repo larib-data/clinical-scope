@@ -49,37 +49,43 @@ def _add_index_timestamp_to_eit_dataframe(
 
 
 def _parse_asc_selected_columns(
-    lines: list[str], selected_cols: list[str] | None = None
+    lines: list[str], selected_columns: list[str] | None = None
 ) -> pd.DataFrame:
     """Parses only selected columns from a large ASC dataframe (line-by-line)."""
     header_line = lines[0].strip()
-    all_columns = [x.replace("+", "").replace(",", ".").strip() for x in header_line.split("\t")]
+    all_columns = [
+        token.replace("+", "").replace(",", ".").strip() for token in header_line.split("\t")
+    ]
 
-    if selected_cols is None:
-        col_indices = list(range(len(all_columns)))
-        selected_cols = all_columns[:]
+    if selected_columns is None:
+        column_indices = list(range(len(all_columns)))
+        selected_columns = all_columns[:]
     else:
-        resolved_cols = []
-        for pattern in selected_cols:
-            col = get_column_name_from_pattern(all_columns, pattern)
-            if col is not None:
-                resolved_cols.append(col)
+        resolved_columns = []
+        for pattern in selected_columns:
+            column_name = get_column_name_from_pattern(all_columns, pattern)
+            if column_name is not None:
+                resolved_columns.append(column_name)
 
-        index_map = {col: i for i, col in enumerate(all_columns)}
-        selected_cols = [c for c in resolved_cols if c in index_map]
-        col_indices = [index_map[c] for c in selected_cols]
+        index_map = {column_name: index for index, column_name in enumerate(all_columns)}
+        selected_columns = [
+            column_name for column_name in resolved_columns if column_name in index_map
+        ]
+        column_indices = [index_map[column_name] for column_name in selected_columns]
 
     rows = []
     for raw_line in lines[1:]:
         stripped_line = raw_line.strip()
         if not stripped_line:
             continue
-        values = [x.replace("+", "").replace(",", ".").strip() for x in stripped_line.split("\t")]
+        values = [
+            token.replace("+", "").replace(",", ".").strip() for token in stripped_line.split("\t")
+        ]
         if len(values) < len(all_columns):
             values += [None] * (len(all_columns) - len(values))
-        rows.append([values[i] for i in col_indices])
+        rows.append([values[index] for index in column_indices])
 
-    df = pd.DataFrame(rows, columns=selected_cols)
+    df = pd.DataFrame(rows, columns=selected_columns)
     df[df.columns] = df[df.columns].apply(pd.to_numeric, errors="coerce")
     df = df.set_index(options_naming.Time_column_label)
     df["time_hours"] = pd.to_timedelta(df.index, unit="D")
@@ -102,15 +108,15 @@ def _parse_metadata_lines(lines: list[str]) -> dict:
         else:
             notes.append(stripped_line)
 
-    for i, note in enumerate(notes, 1):
-        metadata[f"Note_{i}"] = note
+    for note_index, note in enumerate(notes, 1):
+        metadata[f"Note_{note_index}"] = note
 
     return metadata
 
 
 def _parse_matrix(lines: list[str]) -> np.ndarray:
     """Parse matrix from lines."""
-    new_lines = [[float(x.replace(",", ".")) for x in line.split()] for line in lines]
+    new_lines = [[float(token.replace(",", ".")) for token in line.split()] for line in lines]
     return np.array(new_lines)
 
 
@@ -128,8 +134,8 @@ def _parse_eit_asc_file(
     tidal_variations_full = False
     lines_tidal_variation_full_df = []
 
-    with Path.open(Path(path), "r", encoding="latin-1") as f:
-        for _i, raw_line in enumerate(f):
+    with Path.open(Path(path), "r", encoding="latin-1") as file:
+        for _i, raw_line in enumerate(file):
             stripped_line = raw_line.strip()
 
             if "Dynamic Image" in stripped_line:
@@ -214,15 +220,15 @@ def _parse_eit_asc_file_list(
     all_tidal_variation_full_dfs = []
 
     for file_path in asc_files:
-        metadata, dynamic_img, tidal_img, df_summary, df_full = _parse_eit_asc_file(
+        metadata, dynamic_image, tidal_image, df_summary, df_full = _parse_eit_asc_file(
             file_path, columns_to_extract
         )
         df_summary["source_file"] = file_path.name
         df_full["source_file"] = file_path.name
 
         all_metadata.append(metadata)
-        all_dynamic_images.append(dynamic_img)
-        all_tidal_images.append(tidal_img)
+        all_dynamic_images.append(dynamic_image)
+        all_tidal_images.append(tidal_image)
         all_tidal_variation_summary_dfs.append(df_summary)
         all_tidal_variation_full_dfs.append(df_full)
 
@@ -256,35 +262,37 @@ def _add_columns_percentage_for_eit(df: pd.DataFrame) -> pd.DataFrame:
     This is a hardcoded implementation specific to EIT data processing.
     """
     try:
-        global_col = next((col for col in df.columns if col.lower() == "global"), None)
-        if global_col is None:
+        global_column = next((column for column in df.columns if column.lower() == "global"), None)
+        if global_column is None:
             logger.debug("No 'global' column found in EIT data - skipping percentage calculation")
             return df
 
-        local_columns = [col for col in df.columns if col.lower().startswith("local")]
+        local_columns = [column for column in df.columns if column.lower().startswith("local")]
 
         if not local_columns:
             logger.debug("No columns starting with 'local' found in EIT data")
             return df
 
-        for local_col in local_columns:
-            if is_numeric_dtype(df[local_col]):
-                percentage_col = f"%{local_col}"
-                if percentage_col not in df.columns:
+        for local_column in local_columns:
+            if is_numeric_dtype(df[local_column]):
+                percentage_column = f"%{local_column}"
+                if percentage_column not in df.columns:
                     try:
-                        df[percentage_col] = df[local_col] / df[global_col]
+                        df[percentage_column] = df[local_column] / df[global_column]
                         logger.debug(
                             "Created percentage column %s = %s / %s",
-                            percentage_col,
-                            local_col,
-                            global_col,
+                            percentage_column,
+                            local_column,
+                            global_column,
                         )
                     except Exception:
-                        logger.exception("Failed to create percentage column %s", percentage_col)
+                        logger.exception("Failed to create percentage column %s", percentage_column)
                 else:
-                    logger.debug("Percentage column %s already exists, skipping", percentage_col)
+                    logger.debug("Percentage column %s already exists, skipping", percentage_column)
             else:
-                logger.debug("Column %s is not numeric, skipping percentage calculation", local_col)
+                logger.debug(
+                    "Column %s is not numeric, skipping percentage calculation", local_column
+                )
 
     except Exception:
         logger.exception("Error in EIT percentage calculation")

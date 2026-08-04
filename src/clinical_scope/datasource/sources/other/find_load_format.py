@@ -45,8 +45,8 @@ def _load_single_file(
         return pd.read_parquet(file_path)
 
     if suffix == ".csv":
-        with Path.open(file_path, "r", newline="") as f:
-            sample = f.read(4096)
+        with Path.open(file_path, "r", newline="") as file:
+            sample = file.read(4096)
             try:
                 dialect = csv.Sniffer().sniff(sample)
                 sep = dialect.delimiter
@@ -68,7 +68,7 @@ def _resolve_columns(df: pd.DataFrame, file_config: dict) -> list[str]:
     """
     per_file_display = file_config.get(cst.DatabaseOptions.FIELD_DISPLAY)
     if per_file_display is not None:
-        return [c for c in per_file_display if c in df.columns]
+        return [column_name for column_name in per_file_display if column_name in df.columns]
     return list(df.columns)
 
 
@@ -168,8 +168,8 @@ class OtherDataSource(DataSourceBase):
                     logger.warning("Skipping file '%s': %s", file_path.name, exc)
                     continue
 
-                for col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                for column in df.columns:
+                    df[column] = pd.to_numeric(df[column], errors="coerce")
 
                 df = deduplicate_then_sort_index(df)
 
@@ -193,42 +193,46 @@ class OtherDataSource(DataSourceBase):
                     continue
 
                 file_signal_raw_names: list[str] = []
-                for col_name in columns:
-                    raw_name = f"{file_stem}::{col_name}"
+                for column_name in columns:
+                    raw_name = f"{file_stem}::{column_name}"
                     try:
-                        sig = Signal.time_series_from_dataframe(
+                        signal_obj = Signal.time_series_from_dataframe(
                             df=df,
-                            raw_signal_name=col_name,
+                            raw_signal_name=column_name,
                             source_options=cls.SOURCE_OPTIONS,
                             database_options_specific=file_config,
                         )
-                        sig.raw_name = raw_name  # override for global uniqueness
-                        sig.metadata.datasource_name = cls.DATASOURCE_NAME
-                        all_signals.append(sig)
+                        signal_obj.raw_name = raw_name  # override for global uniqueness
+                        signal_obj.metadata.datasource_name = cls.DATASOURCE_NAME
+                        all_signals.append(signal_obj)
                         file_signal_raw_names.append(raw_name)
                     except Exception:
                         logger.exception(
-                            "Could not process signal '%s' from '%s'", col_name, file_path.name
+                            "Could not process signal '%s' from '%s'",
+                            column_name,
+                            file_path.name,
                         )
 
                 if file_signal_raw_names:
                     # Grouping: prefer user-defined groups, fall back to group-by-file
                     file_grouped = file_config.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
                     if file_grouped:
-                        for group_name, bare_cols in file_grouped.items():
+                        for group_name, bare_columns in file_grouped.items():
                             grouped_fields[group_name] = [
-                                f"{file_stem}::{col}"
-                                for col in bare_cols
-                                if f"{file_stem}::{col}" in file_signal_raw_names
+                                f"{file_stem}::{bare_column}"
+                                for bare_column in bare_columns
+                                if f"{file_stem}::{bare_column}" in file_signal_raw_names
                             ]
                     elif group_by_file:
                         grouped_fields[file_stem] = file_signal_raw_names
 
                     # Loops: prefix bare column names with file_stem for global uniqueness
-                    for loop_name, bare_cols in file_config.get(
+                    for loop_name, bare_columns in file_config.get(
                         cst.DatabaseOptions.LOOP, {}
                     ).items():
-                        per_file_loops[loop_name] = [f"{file_stem}::{col}" for col in bare_cols]
+                        per_file_loops[loop_name] = [
+                            f"{file_stem}::{bare_column}" for bare_column in bare_columns
+                        ]
 
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
@@ -279,44 +283,46 @@ class OtherDataSource(DataSourceBase):
 
         results: list[DataSourceInspection] = []
 
-        for fp in file_paths:
-            inspection_name = f"{cls.DATASOURCE_NAME}::{fp.stem}"
-            file_config = per_file_options.get(fp.stem, {})
+        for file_path in file_paths:
+            inspection_name = f"{cls.DATASOURCE_NAME}::{file_path.stem}"
+            file_config = per_file_options.get(file_path.stem, {})
 
             try:
-                df = _load_single_file(fp)
+                df = _load_single_file(file_path)
                 try:
                     df = set_datetime_index(df)
                 except ValueError as exc:
-                    logger.warning("inspect: no datetime index in '%s', skipping", fp.name)
+                    logger.warning("inspect: no datetime index in '%s', skipping", file_path.name)
                     results.append(
                         DataSourceInspection(
                             datasource_name=inspection_name,
                             status="load_error",
                             error_message=str(exc),
-                            file_path=str(fp),
+                            file_path=str(file_path),
                         )
                     )
                     continue
 
                 # Coerce all columns to numeric; keep NaN-only columns so that
                 # _make_inspection/_column_infos can report them with raw_point_count=0.
-                for col in list(df.columns):
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                for column in list(df.columns):
+                    df[column] = pd.to_numeric(df[column], errors="coerce")
                 df = deduplicate_then_sort_index(df)
 
                 results.append(
-                    cls._make_inspection(df, patient_options, file_config, inspection_name, str(fp))
+                    cls._make_inspection(
+                        df, patient_options, file_config, inspection_name, str(file_path)
+                    )
                 )
 
             except Exception:
-                logger.exception("inspect: failed to process '%s'", fp.name)
+                logger.exception("inspect: failed to process '%s'", file_path.name)
                 results.append(
                     DataSourceInspection(
                         datasource_name=inspection_name,
                         status="load_error",
-                        error_message=f"Unexpected error processing {fp.name}",
-                        file_path=str(fp),
+                        error_message=f"Unexpected error processing {file_path.name}",
+                        file_path=str(file_path),
                     )
                 )
 

@@ -51,7 +51,7 @@ class MindRayRespiWavesDataSource(DataSourceBase):
             )
 
         base_timestamps = pd.to_datetime(df["event_timestamp"])
-        tz = base_timestamps.dt.tz
+        base_timezone = base_timestamps.dt.tz
         full_label_names = df["waveform_label"] + "-" + df["waveform_unit"]
 
         # Expand waveform blocks to per-sample rows.
@@ -62,7 +62,7 @@ class MindRayRespiWavesDataSource(DataSourceBase):
         labels_chunks: list[np.ndarray] = []
         values_chunks: list[np.ndarray] = []
 
-        for samples_raw, base_ts, rate, scale, wf_label, full_name in zip(
+        for samples_raw, base_timestamp, rate, scale, waveform_label, full_name in zip(
             df["waveform_samples"],
             base_timestamps,
             df["sampling_rate"],
@@ -76,38 +76,44 @@ class MindRayRespiWavesDataSource(DataSourceBase):
                 samples = (
                     ast.literal_eval(samples_raw) if isinstance(samples_raw, str) else samples_raw
                 )
-            except (ValueError, SyntaxError) as e:
-                logger.warning("Failed to parse waveform_samples for %s: %s", wf_label, e)
+            except (ValueError, SyntaxError) as exc:
+                logger.warning("Failed to parse waveform_samples for %s: %s", waveform_label, exc)
                 continue
 
-            samples_arr = np.asarray(samples, dtype=float)
-            n = len(samples_arr)
-            if n == 0:
+            samples_array = np.asarray(samples, dtype=float)
+            sample_count = len(samples_array)
+            if sample_count == 0:
                 continue
 
             if rate <= 0:
-                logger.warning("sampling_rate <= 0 for %s, skipping block.", wf_label)
+                logger.warning("sampling_rate <= 0 for %s, skipping block.", waveform_label)
                 continue
 
             # Generate timestamps as int64 nanoseconds (fastest arithmetic path).
-            # base_ts.value is nanoseconds since epoch; offsets computed in ns.
+            # base_timestamp.value is nanoseconds since epoch; offsets computed in ns.
             ns_per_sample = round(1_000_000_000.0 / rate)
-            offsets_ns = np.arange(n, dtype="int64") * ns_per_sample
-            timestamps_chunks.append(base_ts.value + offsets_ns)
-            labels_chunks.append(np.full(n, full_name))
-            values_chunks.append(samples_arr * scale)
+            offsets_ns = np.arange(sample_count, dtype="int64") * ns_per_sample
+            timestamps_chunks.append(base_timestamp.value + offsets_ns)
+            labels_chunks.append(np.full(sample_count, full_name))
+            values_chunks.append(samples_array * scale)
 
         if not timestamps_chunks:
             logger.warning("[%s] No data rows expanded.", cls.DATASOURCE_NAME)
-            tz_str = str(tz) if tz is not None else options_naming.DATA_SOURCE_DEFAULT_TIMEZONE
-            return pd.DataFrame(index=pd.DatetimeIndex([], tz=tz_str))
+            base_timezone_str = (
+                str(base_timezone)
+                if base_timezone is not None
+                else options_naming.DATA_SOURCE_DEFAULT_TIMEZONE
+            )
+            return pd.DataFrame(index=pd.DatetimeIndex([], tz=base_timezone_str))
 
         # Build expanded DataFrame from concatenated arrays (avoids list-of-dicts overhead)
         df_expanded = pd.DataFrame(
             {
                 "event_timestamp": pd.DatetimeIndex(
                     np.concatenate(timestamps_chunks),
-                    tz=str(tz) if tz is not None else options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,
+                    tz=str(base_timezone)
+                    if base_timezone is not None
+                    else options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,
                 ),
                 "full_label_name": np.concatenate(labels_chunks),
                 "waveform_value": np.concatenate(values_chunks),

@@ -22,9 +22,9 @@ def parse_header_info(lines: list[str]) -> dict[str, datetime]:
         if match:
             field = match.group(1).strip()
             value = match.group(2).strip()
-            for fmt in ("%Y-%m-%d:%H:%M:%S.%f", "%Y-%m-%d:%H:%M:%S"):
+            for time_format in ("%Y-%m-%d:%H:%M:%S.%f", "%Y-%m-%d:%H:%M:%S"):
                 try:
-                    header_info[field] = datetime.strptime(value, fmt)  # noqa: DTZ007
+                    header_info[field] = datetime.strptime(value, time_format)  # noqa: DTZ007
                     break
                 except ValueError:
                     continue
@@ -49,19 +49,19 @@ def extract_column_mapping_from_section(
 ) -> dict[str, str]:
     """Extract mapping from the section between the 2nd and 3rd '%%%%%%...' separator."""
     separator_indices = [
-        i
-        for i, line in enumerate(lines)
+        line_index
+        for line_index, line in enumerate(lines)
         if line.strip().startswith("%%%%%%") and set(line.strip()) == {"%"}
     ]
     if len(separator_indices) < MIN_SEPARATORS_NEEDED:
         msg = "File does not have enough separators for mapping section"
         raise ValueError(msg)
 
-    start_idx = separator_indices[1] + 1
-    end_idx = separator_indices[2]
+    start_index = separator_indices[1] + 1
+    end_index = separator_indices[2]
 
     mapping = {}
-    for line in lines[start_idx:end_idx]:
+    for line in lines[start_index:end_index]:
         stripped_line = line.strip()
         if not stripped_line or stripped_line.startswith("% Phase"):
             continue
@@ -85,27 +85,27 @@ def parse_file(
     rename_map: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, datetime, dict[str, str] | None]:
     """Parse a single Servo U file."""
-    with Path.open(filepath, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+    with Path.open(filepath, "r", encoding="utf-8") as file:
+        lines = file.readlines()
 
     if first_file:
         header_info = parse_header_info(lines)
         start_time = header_info[options_naming.REFERENCE_TIME_FIELD]
         rename_map = extract_column_mapping_from_section(lines)
 
-    table_header_idx = None
-    for i, line in enumerate(lines):
+    table_header_index = None
+    for line_index, line in enumerate(lines):
         if line.strip().startswith("%% Time(ms)"):
-            table_header_idx = i
+            table_header_index = line_index
             break
-    if table_header_idx is None:
+    if table_header_index is None:
         msg = f"No table header found in {filepath}"
         raise ValueError(msg)
 
-    header_line = lines[table_header_idx].replace("%%", "").strip()
-    columns = [c.strip() for c in header_line.split("\t")]
+    header_line = lines[table_header_index].replace("%%", "").strip()
+    columns = [column_name.strip() for column_name in header_line.split("\t")]
 
-    data_lines = lines[table_header_idx + 1 :]
+    data_lines = lines[table_header_index + 1 :]
     data_lines = [line for line in data_lines if line.strip() and not line.strip().startswith("%")]
 
     df = pd.read_csv(
@@ -113,14 +113,18 @@ def parse_file(
     )
 
     if rename_map:
-        df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+        df = df.rename(
+            columns={
+                code: measurement for code, measurement in rename_map.items() if code in df.columns
+            }
+        )
 
     df = df.drop(columns=["T(h:m:s.ms)"], errors="ignore")
 
-    cols = df.columns.tolist()
-    if options_naming.COLUMN_RELATIVE_TIME in cols:
-        cols.remove(options_naming.COLUMN_RELATIVE_TIME)
-        df = df[[options_naming.COLUMN_RELATIVE_TIME, *cols]]
+    ordered_columns = df.columns.tolist()
+    if options_naming.COLUMN_RELATIVE_TIME in ordered_columns:
+        ordered_columns.remove(options_naming.COLUMN_RELATIVE_TIME)
+        df = df[[options_naming.COLUMN_RELATIVE_TIME, *ordered_columns]]
 
     df.index = compute_timestamp_index_from_timems(
         df[options_naming.COLUMN_RELATIVE_TIME], start_time

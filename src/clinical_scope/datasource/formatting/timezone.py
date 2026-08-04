@@ -20,29 +20,34 @@ logger = logging.getLogger(__name__)
 
 # ==================================================================================================
 def to_float_seconds(
-    x: np.ndarray | pd.DatetimeIndex | pd.Series,
+    time_values: np.ndarray | pd.DatetimeIndex | pd.Series,
 ) -> np.ndarray | pd.DatetimeIndex | pd.Series:
     """Convert time data to float seconds (epoch) for comparison operations."""
-    if np.issubdtype(x.dtype, np.number):
-        return x.astype(np.float64)
+    if np.issubdtype(time_values.dtype, np.number):
+        return time_values.astype(np.float64)
 
-    if isinstance(x, pd.DatetimeIndex):
-        if x.tz is not None:
-            x = x.tz_convert(cst.LIBRARY_TZ)
-        return x.view(np.int64) / 1e9
+    if isinstance(time_values, pd.DatetimeIndex):
+        if time_values.tz is not None:
+            time_values = time_values.tz_convert(cst.LIBRARY_TZ)
+        return time_values.view(np.int64) / 1e9
 
-    if isinstance(x, (pd.Series, np.ndarray)):
-        if np.issubdtype(x.dtype, np.datetime64):
-            return x.astype("datetime64[ns]").astype(np.float64) / 1e9
-        if np.issubdtype(x.dtype, object):
+    if isinstance(time_values, (pd.Series, np.ndarray)):
+        if np.issubdtype(time_values.dtype, np.datetime64):
+            return time_values.astype("datetime64[ns]").astype(np.float64) / 1e9
+        if np.issubdtype(time_values.dtype, object):
             # Convert to library tz first so later comparisons are on a consistent tz.
-            x_ns = np.array(
-                [ts.tz_convert(cst.LIBRARY_TZ).value if ts.tzinfo else ts.value for ts in x],
+            epoch_ns = np.array(
+                [
+                    timestamp.tz_convert(cst.LIBRARY_TZ).value
+                    if timestamp.tzinfo
+                    else timestamp.value
+                    for timestamp in time_values
+                ],
                 dtype=np.int64,
             )
-            return x_ns / 1e9
+            return epoch_ns / 1e9
 
-    msg = f"Unsupported type for time conversion: {type(x)}"
+    msg = f"Unsupported type for time conversion: {type(time_values)}"
     raise TypeError(msg)
 
 
@@ -73,7 +78,7 @@ def filter_data_by_timestamps(
 
     # Shallow copy since below only rebinds the index or row-filters, never mutates columns.
     filtered = data.copy(deep=False)
-    tz = display_timezone or cst.DISPLAY_TIMEZONE
+    resolved_timezone = display_timezone or cst.DISPLAY_TIMEZONE
 
     if filtered.index.tz is None:
         msg = "Dataframe 'data' index should be timezone-aware"
@@ -82,22 +87,22 @@ def filter_data_by_timestamps(
 
     if time_start is not None:
         if time_start.tzinfo is None:
-            time_start = time_start.tz_localize(tz)
+            time_start = time_start.tz_localize(resolved_timezone)
         time_start = time_start.tz_convert(cst.LIBRARY_TZ)
 
     if time_end is not None:
         if time_end.tzinfo is None:
-            time_end = time_end.tz_localize(tz)
+            time_end = time_end.tz_localize(resolved_timezone)
         time_end = time_end.tz_convert(cst.LIBRARY_TZ)
 
     if not filter_date:
-        idx_times = filtered.index.time
+        index_times = filtered.index.time
         if time_start is not None:
             start_time = time_start.time()
-            filtered = filtered[[t >= start_time for t in idx_times]]
+            filtered = filtered[[time_value >= start_time for time_value in index_times]]
         if time_end is not None:
             end_time = time_end.time()
-            filtered = filtered[[t <= end_time for t in filtered.index.time]]
+            filtered = filtered[[time_value <= end_time for time_value in filtered.index.time]]
     else:
         if time_start is not None:
             filtered = filtered[filtered.index >= time_start]
@@ -126,9 +131,9 @@ def change_ndarray_timezone(
     if array_timezone is None or array_timezone == new_timezone:
         return array, new_timezone
 
-    dt_index = pd.to_datetime(array).tz_localize(array_timezone)
-    dt_index_new_tz = dt_index.tz_convert(new_timezone)
-    adjusted_array = dt_index_new_tz.tz_localize(None).to_numpy()
+    datetime_index = pd.to_datetime(array).tz_localize(array_timezone)
+    datetime_index_new_tz = datetime_index.tz_convert(new_timezone)
+    adjusted_array = datetime_index_new_tz.tz_localize(None).to_numpy()
 
     return adjusted_array, new_timezone
 
@@ -145,9 +150,11 @@ def loop_time_to_display_strings(
     Used for loop hover customdata and slider-callback customdata so both come
     from a single, testable conversion path.
     """
-    tz = display_timezone or cst.DISPLAY_TIMEZONE
-    dt_display = pd.to_datetime(utc_float_seconds, unit="s", utc=True).tz_convert(tz)
-    return np.array(dt_display.strftime(fmt))
+    resolved_timezone = display_timezone or cst.DISPLAY_TIMEZONE
+    display_datetimes = pd.to_datetime(utc_float_seconds, unit="s", utc=True).tz_convert(
+        resolved_timezone
+    )
+    return np.array(display_datetimes.strftime(fmt))
 
 
 # ==================================================================================================
@@ -161,21 +168,21 @@ def to_naive_display_ts(ts_str: str, display_timezone: str | None = None) -> str
     annotations correctly with the trace data.  Non-datetime values (e.g. loop-plot numeric x)
     are returned unchanged.
     """
-    tz = display_timezone or cst.DISPLAY_TIMEZONE
+    resolved_timezone = display_timezone or cst.DISPLAY_TIMEZONE
     try:
-        ts = pd.Timestamp(ts_str)
+        timestamp = pd.Timestamp(ts_str)
     except (ValueError, TypeError, OverflowError):
         # ts_str is not a parseable datetime (e.g. a numeric loop-plot x value) — expected path.
         return ts_str
     try:
-        if pd.isna(ts) or ts.tzinfo is None:
+        if pd.isna(timestamp) or timestamp.tzinfo is None:
             return ts_str
-        return ts.tz_convert(tz).tz_localize(None).isoformat()
+        return timestamp.tz_convert(resolved_timezone).tz_localize(None).isoformat()
     except Exception:  # noqa: BLE001
         logger.warning(
             "Could not convert annotation timestamp %r to display timezone %r",
             ts_str,
-            tz,
+            resolved_timezone,
             exc_info=True,
         )
         return ts_str
@@ -185,9 +192,9 @@ def to_naive_display_ts(ts_str: str, display_timezone: str | None = None) -> str
 def _resolve_effective_tz(
     database_options_specific: dict,
     options_module,  # noqa: ANN001
-    default_tz: str,
+    default_timezone: str,
 ) -> str:
-    """Return the database_options timezone override if set, else default_tz."""
+    """Return the database_options timezone override if set, else default_timezone."""
     override = None
     if options_module and hasattr(options_module, "DatabaseOptionsAdditionalInformations"):
         additional_info_class = options_module.DatabaseOptionsAdditionalInformations
@@ -195,7 +202,7 @@ def _resolve_effective_tz(
             override = database_options_specific.get(
                 cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
             ).get(additional_info_class.TIMEZONE)
-    return override if override is not None else default_tz
+    return override if override is not None else default_timezone
 
 
 # ==================================================================================================
@@ -251,12 +258,12 @@ def apply_timezone_to_dataframe(
 _TS_FMT = "%y-%m-%d %H:%M:%S %Z"  # compact, 2-digit year, timezone abbreviation
 
 
-def fmt_ts(ts: object) -> str:
+def fmt_ts(timestamp: object) -> str:
     """Format a pandas Timestamp (or datetime-like) to a compact, human-readable string."""
     try:
-        return ts.strftime(_TS_FMT).rstrip()
+        return timestamp.strftime(_TS_FMT).rstrip()
     except Exception:  # noqa: BLE001
-        return str(ts)
+        return str(timestamp)
 
 
 def _to_display_tz(df: pd.DataFrame, display_timezone: str | None = None) -> pd.DataFrame:
@@ -270,9 +277,9 @@ def _to_display_tz(df: pd.DataFrame, display_timezone: str | None = None) -> pd.
     """
     if not (isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None):
         return df
-    tz = display_timezone or cst.DISPLAY_TIMEZONE
+    resolved_timezone = display_timezone or cst.DISPLAY_TIMEZONE
     result = df.copy(deep=False)
-    result.index = df.index.tz_convert(tz)
+    result.index = df.index.tz_convert(resolved_timezone)
     return result
 
 
@@ -286,11 +293,11 @@ def _date_range(df: pd.DataFrame) -> tuple[str, str] | None:
         return None
 
 
-def _first_last_timestamp(df: pd.DataFrame, col: str) -> tuple[str | None, str | None]:
+def _first_last_timestamp(df: pd.DataFrame, column: str) -> tuple[str | None, str | None]:
     """Return (first, last) compact timestamp strings for valid (non-NaN) values in a column."""
-    if col not in df.columns:
+    if column not in df.columns:
         return None, None
-    valid_index = df.index[df[col].notna()]
+    valid_index = df.index[df[column].notna()]
     if valid_index.empty:
         return None, None
     return fmt_ts(valid_index.min()), fmt_ts(valid_index.max())

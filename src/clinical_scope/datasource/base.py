@@ -72,22 +72,24 @@ class DataSourceBase(ABC):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        opts = cls.OPTIONS_MODULE
-        if opts is None:
+        options_module = cls.OPTIONS_MODULE
+        if options_module is None:
             return
         if cls.DATASOURCE_NAME is None:
-            cls.DATASOURCE_NAME = getattr(opts, "DATASOURCE_NAME", None)
+            cls.DATASOURCE_NAME = getattr(options_module, "DATASOURCE_NAME", None)
         if cls.FILE_NAME_DATAFRAME_LOADED is None:
-            cls.FILE_NAME_DATAFRAME_LOADED = getattr(opts, "FILE_NAME_DATAFRAME_LOADED", None)
+            cls.FILE_NAME_DATAFRAME_LOADED = getattr(
+                options_module, "FILE_NAME_DATAFRAME_LOADED", None
+            )
         if cls.SOURCE_OPTIONS is None:
-            cls.SOURCE_OPTIONS = getattr(opts, "source_options", None)
-        allow = getattr(opts, "ALLOW_QUICK_LOAD", None)
-        if allow is not None:
-            cls.ALLOW_QUICK_LOAD = allow
-        symlink = getattr(opts, "CREATE_SOURCE_SYMLINK", None)
-        if symlink is not None:
-            cls.CREATE_SOURCE_SYMLINK = symlink
-        allow_pushdown = getattr(opts, "ALLOW_DATETIME_PUSHDOWN", None)
+            cls.SOURCE_OPTIONS = getattr(options_module, "source_options", None)
+        allow_quick_load = getattr(options_module, "ALLOW_QUICK_LOAD", None)
+        if allow_quick_load is not None:
+            cls.ALLOW_QUICK_LOAD = allow_quick_load
+        create_source_symlink = getattr(options_module, "CREATE_SOURCE_SYMLINK", None)
+        if create_source_symlink is not None:
+            cls.CREATE_SOURCE_SYMLINK = create_source_symlink
+        allow_pushdown = getattr(options_module, "ALLOW_DATETIME_PUSHDOWN", None)
         if allow_pushdown is not None:
             cls.ALLOW_DATETIME_PUSHDOWN = allow_pushdown
 
@@ -99,13 +101,13 @@ class DataSourceBase(ABC):
         Uses the OPTIONS_MODULE constants (FILE_KEYWORDS, FILE_EXTENSIONS, MULTI_FILE)
         for default file discovery. Override in subclasses that need custom logic.
         """
-        opts = cls.OPTIONS_MODULE
+        options_module = cls.OPTIONS_MODULE
         return find_files(
             folder_path,
-            extensions=getattr(opts, "FILE_EXTENSIONS", []),
+            extensions=getattr(options_module, "FILE_EXTENSIONS", []),
             datasource_name=cls.DATASOURCE_NAME,
-            multi=getattr(opts, "MULTI_FILE", False),
-            keywords=getattr(opts, "FILE_KEYWORDS", None),
+            multi=getattr(options_module, "MULTI_FILE", False),
+            keywords=getattr(options_module, "FILE_KEYWORDS", None),
         )
 
     @classmethod
@@ -168,11 +170,13 @@ class DataSourceBase(ABC):
             cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
         )
 
-        def _to_aware(raw: str | None) -> pd.Timestamp | None:
-            if not raw:
+        def _to_aware(raw_value: str | None) -> pd.Timestamp | None:
+            if not raw_value:
                 return None
-            ts = pd.Timestamp(raw)
-            return ts if ts.tzinfo is not None else ts.tz_localize(display_timezone)
+            timestamp = pd.Timestamp(raw_value)
+            if timestamp.tzinfo is not None:
+                return timestamp
+            return timestamp.tz_localize(display_timezone)
 
         start_aware = _to_aware(datetime_start)
         end_aware = _to_aware(datetime_end)
@@ -344,18 +348,23 @@ class DataSourceBase(ABC):
                 "[%s] Could not create output folder for symlink.", cls.DATASOURCE_NAME
             )
             return
-        for f in files:
-            symlink_path = output_folder / f.name
+        for source_file in files:
+            symlink_path = output_folder / source_file.name
             if symlink_path.is_symlink() or symlink_path.exists():
                 symlink_path.unlink()
             try:
-                rel_target = Path(os.path.relpath(f, output_folder))
+                rel_target = Path(os.path.relpath(source_file, output_folder))
                 symlink_path.symlink_to(rel_target)
                 logger.info(
-                    "[%s] Symlinked source file: %s -> %s", cls.DATASOURCE_NAME, symlink_path, f
+                    "[%s] Symlinked source file: %s -> %s",
+                    cls.DATASOURCE_NAME,
+                    symlink_path,
+                    source_file,
                 )
             except Exception:
-                logger.exception("[%s] Could not create symlink for '%s'.", cls.DATASOURCE_NAME, f)
+                logger.exception(
+                    "[%s] Could not create symlink for '%s'.", cls.DATASOURCE_NAME, source_file
+                )
 
     @classmethod
     def _apply_timezone(
@@ -443,9 +452,9 @@ class DataSourceBase(ABC):
                 }
                 if cls.SOURCE_OPTIONS is not None:
                     kwargs["source_options"] = cls.SOURCE_OPTIONS
-                sig = Signal.time_series_from_dataframe(**kwargs)
-                sig.metadata.datasource_name = cls.DATASOURCE_NAME
-                list_signal_container.append(sig)
+                signal_obj = Signal.time_series_from_dataframe(**kwargs)
+                signal_obj.metadata.datasource_name = cls.DATASOURCE_NAME
+                list_signal_container.append(signal_obj)
             except Exception:
                 logger.exception("Could not process the signal '%s' as Signal object", signal)
 
@@ -688,14 +697,16 @@ class DataSourceBase(ABC):
         )
 
         # Remove field_display so _load() returns ALL columns (handles EIT pre-filtering)
-        db_opts_for_load = {
-            k: v for k, v in database_options.items() if k != cst.DatabaseOptions.FIELD_DISPLAY
+        database_options_for_load = {
+            key: value
+            for key, value in database_options.items()
+            if key != cst.DatabaseOptions.FIELD_DISPLAY
         }
 
         file_path_str = None
         try:
             df_raw, file_path_str = cls._load_raw_dataframe(
-                patient_options, db_opts_for_load, apply_datetime_pushdown=False
+                patient_options, database_options_for_load, apply_datetime_pushdown=False
             )
         except Exception as exc:
             logger.exception("[%s] inspect: load failed.", cls.DATASOURCE_NAME)

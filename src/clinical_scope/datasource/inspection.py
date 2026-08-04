@@ -82,7 +82,7 @@ _CSV_DATASOURCE_HEADERS = [
     "filtered_date_start",
     "filtered_date_end",
 ]
-_CSV_COLUMN_HEADERS = [f.name for f in dataclasses.fields(ColumnInfo)]
+_CSV_COLUMN_HEADERS = [column_field.name for column_field in dataclasses.fields(ColumnInfo)]
 _CSV_HEADERS = [*_CSV_DATASOURCE_HEADERS, *_CSV_COLUMN_HEADERS]
 
 
@@ -97,29 +97,32 @@ def to_csv_string(results: list[DataSourceInspection]) -> str:
     writer = csv.writer(output)
     writer.writerow(_CSV_HEADERS)
 
-    for r in results:
-        raw_start = r.raw_date_range[0] if r.raw_date_range else ""
-        raw_end = r.raw_date_range[1] if r.raw_date_range else ""
-        flt_start = r.filtered_date_range[0] if r.filtered_date_range else ""
-        flt_end = r.filtered_date_range[1] if r.filtered_date_range else ""
+    for result in results:
+        raw_start = result.raw_date_range[0] if result.raw_date_range else ""
+        raw_end = result.raw_date_range[1] if result.raw_date_range else ""
+        flt_start = result.filtered_date_range[0] if result.filtered_date_range else ""
+        flt_end = result.filtered_date_range[1] if result.filtered_date_range else ""
 
         datasource_row = [
-            r.datasource_name,
-            r.status,
-            r.error_message or "",
-            r.file_path or "",
+            result.datasource_name,
+            result.status,
+            result.error_message or "",
+            result.file_path or "",
             raw_start,
             raw_end,
             flt_start,
             flt_end,
         ]
-        if not r.columns:
+        if not result.columns:
             writer.writerow(datasource_row + [""] * len(_CSV_COLUMN_HEADERS))
         else:
-            for col in r.columns:
-                col_dict = dataclasses.asdict(col)
-                col_values = [col_dict[f.name] for f in dataclasses.fields(ColumnInfo)]
-                writer.writerow(datasource_row + col_values)
+            for column in result.columns:
+                column_dict = dataclasses.asdict(column)
+                column_values = [
+                    column_dict[column_field.name]
+                    for column_field in dataclasses.fields(ColumnInfo)
+                ]
+                writer.writerow(datasource_row + column_values)
 
     return output.getvalue()
 
@@ -132,29 +135,33 @@ def to_text_summary(results: list[DataSourceInspection]) -> str:
     (driven by ``ColumnInfo.DISPLAY_HEADERS`` / ``ColumnInfo.display_values``).
     """
     lines: list[str] = []
-    col_headers = [h for h, _ in ColumnInfo.DISPLAY_HEADERS]
+    column_headers = [header_text for header_text, _ in ColumnInfo.DISPLAY_HEADERS]
 
-    for r in results:
-        status_marker = "OK  " if r.status == "ok" else "FAIL"
-        lines.append(f"[{status_marker}]  {r.datasource_name}  ({r.status})")
-        if r.error_message:
-            lines.append(f"         Error: {r.error_message}")
-        if r.file_path:
-            lines.append(f"         File:  {r.file_path}")
-        if r.raw_date_range:
+    for result in results:
+        status_marker = "OK  " if result.status == "ok" else "FAIL"
+        lines.append(f"[{status_marker}]  {result.datasource_name}  ({result.status})")
+        if result.error_message:
+            lines.append(f"         Error: {result.error_message}")
+        if result.file_path:
+            lines.append(f"         File:  {result.file_path}")
+        if result.raw_date_range:
             lines.append(
-                f"         Raw dates:      {r.raw_date_range[0]}  →  {r.raw_date_range[1]}"
+                f"         Raw dates:      "
+                f"{result.raw_date_range[0]}  →  {result.raw_date_range[1]}"
             )
-        if r.filtered_date_range:
+        if result.filtered_date_range:
             lines.append(
                 f"         Filtered dates: "
-                f"{r.filtered_date_range[0]}  →  {r.filtered_date_range[1]}"
+                f"{result.filtered_date_range[0]}  →  {result.filtered_date_range[1]}"
             )
-        if r.columns:
-            lines.append(f"         Columns ({len(r.columns)}):")
-            for col in r.columns:
-                vals = col.display_values()
-                parts = [f"{h}: {v}" for h, v in zip(col_headers, vals, strict=True)]
+        if result.columns:
+            lines.append(f"         Columns ({len(result.columns)}):")
+            for column in result.columns:
+                values = column.display_values()
+                parts = [
+                    f"{header_text}: {value}"
+                    for header_text, value in zip(column_headers, values, strict=True)
+                ]
                 lines.append(f"           {' | '.join(parts)}")
         lines.append("")
     return "\n".join(lines)
@@ -165,7 +172,7 @@ def to_text_summary(results: list[DataSourceInspection]) -> str:
 # ---------------------------------------------------------------------------
 def results_to_json(results: list[DataSourceInspection]) -> list[dict]:
     """Serialize inspection results to a JSON-compatible list for dcc.Store."""
-    return [dataclasses.asdict(r) for r in results]
+    return [dataclasses.asdict(result) for result in results]
 
 
 def results_from_json(data: list[dict]) -> list[DataSourceInspection]:
@@ -173,15 +180,19 @@ def results_from_json(data: list[dict]) -> list[DataSourceInspection]:
     return [
         DataSourceInspection(
             **{
-                **d,
-                "columns": [ColumnInfo(**c) for c in d.get("columns", [])],
-                "raw_date_range": tuple(d["raw_date_range"]) if d.get("raw_date_range") else None,
+                **entry,
+                "columns": [ColumnInfo(**column_dict) for column_dict in entry.get("columns", [])],
+                "raw_date_range": (
+                    tuple(entry["raw_date_range"]) if entry.get("raw_date_range") else None
+                ),
                 "filtered_date_range": (
-                    tuple(d["filtered_date_range"]) if d.get("filtered_date_range") else None
+                    tuple(entry["filtered_date_range"])
+                    if entry.get("filtered_date_range")
+                    else None
                 ),
             }
         )
-        for d in data
+        for entry in data
     ]
 
 
@@ -190,12 +201,12 @@ def results_from_json(data: list[dict]) -> list[DataSourceInspection]:
 # ==================================================================================================
 
 
-def _first_last_timestamp(df: pd.DataFrame, col: str) -> tuple[str | None, str | None]:
+def _first_last_timestamp(df: pd.DataFrame, column: str) -> tuple[str | None, str | None]:
     """Return (first, last) compact timestamp strings for valid (non-NaN) values in a column."""
 
-    if col not in df.columns:
+    if column not in df.columns:
         return None, None
-    valid_index = df.index[df[col].notna()]
+    valid_index = df.index[df[column].notna()]
     if valid_index.empty:
         return None, None
     return fmt_ts(valid_index.min()), fmt_ts(valid_index.max())
@@ -207,19 +218,19 @@ def _column_infos(
     configured_fields: set[str],
 ) -> list:
     """Build a list of ColumnInfo objects from raw and filtered DataFrames."""
-    infos = []
-    for col in df_raw.columns:
-        first_ts, last_ts = _first_last_timestamp(df_filtered, col)
-        infos.append(
+    column_infos = []
+    for column in df_raw.columns:
+        first_timestamp, last_timestamp = _first_last_timestamp(df_filtered, column)
+        column_infos.append(
             ColumnInfo(
-                raw_name=col,
-                is_configured=col in configured_fields,
-                raw_point_count=int(df_raw[col].notna().sum()),
+                raw_name=column,
+                is_configured=column in configured_fields,
+                raw_point_count=int(df_raw[column].notna().sum()),
                 filtered_point_count=(
-                    int(df_filtered[col].notna().sum()) if col in df_filtered.columns else 0
+                    int(df_filtered[column].notna().sum()) if column in df_filtered.columns else 0
                 ),
-                first_filtered_timestamp=first_ts,
-                last_filtered_timestamp=last_ts,
+                first_filtered_timestamp=first_timestamp,
+                last_filtered_timestamp=last_timestamp,
             )
         )
-    return infos
+    return column_infos

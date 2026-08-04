@@ -29,7 +29,7 @@ ANNOTATION_KEY = "annotations"
 
 # Signal-free, no-PHI app state cached under the user's home (~/<CLINICAL_SCOPE_DIR_NAME>/).
 CLINICAL_SCOPE_DIR_NAME = ".clinical_scope"
-CACHED_DB_OPTIONS_FILE_NAME = "last_database_options.json"  # signal metadata only, no PHI
+CACHED_DATABASE_OPTIONS_FILE_NAME = "last_database_options.json"  # signal metadata only, no PHI
 USER_OPTIONS_FILE_NAME = "user_options.json"  # per-user global preferences
 
 PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"

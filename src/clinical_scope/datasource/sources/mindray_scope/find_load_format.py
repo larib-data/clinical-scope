@@ -24,32 +24,32 @@ def _optimize_df_types(df: pd.DataFrame) -> pd.DataFrame:
     Float columns -> downcast to float32 if possible
     Works with NaNs (missing values).
     """
-    for col in df.columns:
-        if pd.api.types.is_integer_dtype(df[col]) or pd.api.types.is_float_dtype(df[col]):
-            is_integer_like = (df[col].dropna() % 1 == 0).all()
-            c_min = df[col].min(skipna=True)
-            c_max = df[col].max(skipna=True)
+    for column in df.columns:
+        if pd.api.types.is_integer_dtype(df[column]) or pd.api.types.is_float_dtype(df[column]):
+            is_integer_like = (df[column].dropna() % 1 == 0).all()
+            column_min = df[column].min(skipna=True)
+            column_max = df[column].max(skipna=True)
 
             if is_integer_like:
-                if c_min >= 0:
-                    if c_max <= np.iinfo(np.uint8).max:
-                        df[col] = df[col].astype("UInt8")
-                    elif c_max <= np.iinfo(np.uint16).max:
-                        df[col] = df[col].astype("UInt16")
-                    elif c_max <= np.iinfo(np.uint32).max:
-                        df[col] = df[col].astype("UInt32")
+                if column_min >= 0:
+                    if column_max <= np.iinfo(np.uint8).max:
+                        df[column] = df[column].astype("UInt8")
+                    elif column_max <= np.iinfo(np.uint16).max:
+                        df[column] = df[column].astype("UInt16")
+                    elif column_max <= np.iinfo(np.uint32).max:
+                        df[column] = df[column].astype("UInt32")
                     else:
-                        df[col] = df[col].astype("UInt64")
-                elif c_min >= np.iinfo(np.int8).min and c_max <= np.iinfo(np.int8).max:
-                    df[col] = df[col].astype("Int8")
-                elif c_min >= np.iinfo(np.int16).min and c_max <= np.iinfo(np.int16).max:
-                    df[col] = df[col].astype("Int16")
-                elif c_min >= np.iinfo(np.int32).min and c_max <= np.iinfo(np.int32).max:
-                    df[col] = df[col].astype("Int32")
+                        df[column] = df[column].astype("UInt64")
+                elif column_min >= np.iinfo(np.int8).min and column_max <= np.iinfo(np.int8).max:
+                    df[column] = df[column].astype("Int8")
+                elif column_min >= np.iinfo(np.int16).min and column_max <= np.iinfo(np.int16).max:
+                    df[column] = df[column].astype("Int16")
+                elif column_min >= np.iinfo(np.int32).min and column_max <= np.iinfo(np.int32).max:
+                    df[column] = df[column].astype("Int32")
                 else:
-                    df[col] = df[col].astype("Int64")
+                    df[column] = df[column].astype("Int64")
             else:
-                df[col] = pd.to_numeric(df[col], downcast="float")
+                df[column] = pd.to_numeric(df[column], downcast="float")
     return df
 
 
@@ -60,10 +60,10 @@ def _get_name_time_series(file_path: Path) -> str:
     return match.group(1)
 
 
-def _is_float(x: Any) -> bool:
-    """Check if x is a valid float."""
+def _is_float(value: Any) -> bool:
+    """Check if value is a valid float."""
     try:
-        float(x)
+        float(value)
     except (ValueError, TypeError):
         return False
     else:
@@ -72,18 +72,18 @@ def _is_float(x: Any) -> bool:
 
 def _remove_polluted_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Remove polluted columns where at least one cell contains non-numeric data."""
-    good_cols = [0]  # Keep timestamp column
+    good_columns = [0]  # Keep timestamp column
 
-    for col in df.columns[1:]:
-        series = df[col].astype(str)
+    for column in df.columns[1:]:
+        series = df[column].astype(str)
         numeric_mask = series.apply(_is_float)
         pattern_mask = series.str.contains(
             r"SampleRate:|TimeStamp\(|Beep_Pulse|HeartBeat_", regex=True, na=False
         )
         if numeric_mask.all() and not pattern_mask.any():
-            good_cols.append(col)
+            good_columns.append(column)
 
-    return df[good_cols]
+    return df[good_columns]
 
 
 def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -98,8 +98,8 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     root = tree.getroot()
 
     # Extract patient info (elements may be absent in some file variants)
-    def _safe_text(elem: Any) -> str | None:
-        return elem.text if elem is not None else None
+    def _safe_text(element: Any) -> str | None:
+        return element.text if element is not None else None
 
     patient = {
         "Gender": _safe_text(root.find(".//Patient/Demographics/Gender")),
@@ -114,8 +114,8 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         trigger = trigger.text if trigger is not None else None
 
         for waveform in snapshot.findall(".//Waveform"):
-            wf_type = waveform.attrib.get("Type", None)
-            wf_unit = waveform.attrib.get("Units", None)
+            waveform_type = waveform.attrib.get("Type", None)
+            waveform_unit = waveform.attrib.get("Units", None)
 
             for segment in waveform.findall("WaveformSegment"):
                 time = segment.attrib.get("Time", None)
@@ -129,7 +129,7 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
                 data_elem = segment.find("Data")
                 data = data_elem.text.split(",") if data_elem is not None and data_elem.text else []
 
-                for i, value in enumerate(data):
+                for sample_index, value in enumerate(data):
                     try:
                         numeric_value = float(value.strip()) * resolution
                     except (ValueError, AttributeError):
@@ -138,12 +138,12 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
                     waveform_data.append(
                         {
                             "TriggerEvent": trigger,
-                            "WaveformType": wf_type,
-                            "WaveformUnit": wf_unit,
+                            "WaveformType": waveform_type,
+                            "WaveformUnit": waveform_unit,
                             "Time": time,
                             "SampleRate": sample_rate,
                             "DataResolution": resolution,
-                            "SampleIndex": i,
+                            "SampleIndex": sample_index,
                             "Value": numeric_value,
                         }
                     )
@@ -173,10 +173,12 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
         msg = "Unit and value type should be unique in xml file"
         raise ValueError(msg)
 
-    wf_unit = waveform_unit_value_counts.index[0]
-    wf_type = waveform_type_value_counts.index[0]
+    waveform_unit = waveform_unit_value_counts.index[0]
+    waveform_type = waveform_type_value_counts.index[0]
 
-    return pd.DataFrame({f"{wf_type}({wf_unit})": df["Value"].to_numpy()}, index=df["Time"])
+    return pd.DataFrame(
+        {f"{waveform_type}({waveform_unit})": df["Value"].to_numpy()}, index=df["Time"]
+    )
 
 
 class MindRayScopeDataSource(DataSourceBase):
@@ -238,10 +240,10 @@ class MindRayScopeDataSource(DataSourceBase):
                 signal = data.iloc[:, 1:].to_numpy().flatten()
                 samples_per_row = data.shape[1] - 1
                 timestamps = []
-                for t in time_rows:
+                for row_start_time in time_rows:
                     row_times = np.linspace(
-                        t.value,
-                        (t + pd.Timedelta(seconds=1)).value,
+                        row_start_time.value,
+                        (row_start_time + pd.Timedelta(seconds=1)).value,
                         samples_per_row,
                         endpoint=False,
                     )

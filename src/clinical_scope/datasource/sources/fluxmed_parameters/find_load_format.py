@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 def _is_time_header(line: str) -> bool:
     """Return True if *line* starts with any multilingual variant of 'Time'."""
     return any(
-        line.casefold().startswith(p.casefold()) for p in options_naming.TIME_HEADER_PREFIXES
+        line.casefold().startswith(prefix.casefold())
+        for prefix in options_naming.TIME_HEADER_PREFIXES
     )
 
 
@@ -39,48 +40,50 @@ class FluxmedParametersDataSource(DataSourceBase):
             start_time_str = match.group(1)
             start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S").replace(tzinfo=UTC)
 
-            with Path.open(file_path, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f.readlines()]
+            with Path.open(file_path, "r", encoding="utf-8") as file:
+                lines = [line.strip() for line in file.readlines()]
 
             # Find the column names row(accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
-            col_idx = None
-            for i, line in enumerate(lines):
+            header_line_index = None
+            for line_index, line in enumerate(lines):
                 if _is_time_header(line):
-                    col_idx = i
+                    header_line_index = line_index
                     break
 
-            if col_idx is None:
+            if header_line_index is None:
                 known = ", ".join(options_naming.TIME_HEADER_PREFIXES)
                 msg = f"No time header found (tried: {known})"
                 raise RuntimeError(msg)
 
-            col_names = lines[col_idx].split()
-            col_units = lines[col_idx + 1].split()
-            columns = [f"{n}({u})" for n, u in zip(col_names, col_units, strict=False)]
+            column_names = lines[header_line_index].split()
+            column_units = lines[header_line_index + 1].split()
+            columns = [
+                f"{name}({unit})" for name, unit in zip(column_names, column_units, strict=False)
+            ]
 
             def make_unique(columns: list[str]) -> list[str]:
                 seen = {}
                 result = []
-                for col in columns:
-                    if col not in seen:
-                        seen[col] = 1
-                        result.append(col)
+                for column_name in columns:
+                    if column_name not in seen:
+                        seen[column_name] = 1
+                        result.append(column_name)
                     else:
-                        new_col = f"{col}_{seen[col]}"
-                        seen[col] += 1
-                        result.append(new_col)
+                        deduped_name = f"{column_name}_{seen[column_name]}"
+                        seen[column_name] += 1
+                        result.append(deduped_name)
                 return result
 
             columns = make_unique(columns)
 
             # Read the data starting from the row after units
-            data_start_idx = col_idx + 2
+            data_start_index = header_line_index + 2
             df = pd.read_csv(
                 file_path,
                 sep=r"\s+",
                 header=None,
                 names=columns,
-                skiprows=data_start_idx,
+                skiprows=data_start_index,
                 decimal=",",
                 engine="python",
                 on_bad_lines="warn",
@@ -90,8 +93,10 @@ class FluxmedParametersDataSource(DataSourceBase):
             df = df.apply(pd.to_numeric, errors="coerce")
 
             # Compute datetime index from the first column (the time-offset column)
-            time_col = columns[0]
-            timestamps = [start_time + timedelta(seconds=s) for s in df[time_col]]
+            time_column = columns[0]
+            timestamps = [
+                start_time + timedelta(seconds=offset_seconds) for offset_seconds in df[time_column]
+            ]
             df.index = pd.to_datetime(timestamps)
             df.index.name = "datetime_index"
         else:

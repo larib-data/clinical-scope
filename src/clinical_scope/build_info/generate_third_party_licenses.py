@@ -216,18 +216,22 @@ def classify_license(dist: im.Distribution) -> tuple[str, str] | None:
     classifiers plus a short ``License``/``License-Expression`` field; a long
     ``License`` value (inlined license text) is skipped so it can't false-match.
     """
-    md = dist.metadata
+    metadata = dist.metadata
     parts = [
-        v
-        for k in ("License-Expression", "License")
-        if (v := md.get(k)) and len(v) < MAX_LICENSE_ID_LEN
+        value
+        for field_name in ("License-Expression", "License")
+        if (value := metadata.get(field_name)) and len(value) < MAX_LICENSE_ID_LEN
     ]
-    parts += [c for c in md.get_all("Classifier") or [] if c.startswith("License")]
+    parts += [
+        classifier
+        for classifier in metadata.get_all("Classifier") or []
+        if classifier.startswith("License")
+    ]
     blob = " ; ".join(parts).lower()
     label = "; ".join(parts) or "?"
-    if any(m in blob for m in STRONG_COPYLEFT):
+    if any(marker in blob for marker in STRONG_COPYLEFT):
         return "strong", label
-    if any(m in blob for m in WEAK_COPYLEFT):
+    if any(marker in blob for marker in WEAK_COPYLEFT):
         return "weak", label
     return None
 
@@ -246,43 +250,48 @@ def harvest_python_packages() -> tuple[list[str], list[str], list[str], list[tup
     missing: list[str] = []
     copyleft: list[tuple[str, str, str]] = []
 
-    dists = sorted(im.distributions(), key=lambda d: norm(d.metadata.get("Name") or ""))
-    for d in dists:
-        name = d.metadata.get("Name") or "<unknown>"
-        n = norm(name)
-        if n in excluded or n in seen:
+    dists = sorted(im.distributions(), key=lambda dist: norm(dist.metadata.get("Name") or ""))
+    for dist in dists:
+        name = dist.metadata.get("Name") or "<unknown>"
+        normalized_name = norm(name)
+        if normalized_name in excluded or normalized_name in seen:
             continue
-        seen.add(n)
-        verdict = classify_license(d)
-        if verdict and not (verdict[0] == "strong" and n in ACCEPTED_COPYLEFT):
-            copyleft.append((verdict[0], f"{name} {d.version}", verdict[1]))
-        texts = _license_texts(d)
+        seen.add(normalized_name)
+        verdict = classify_license(dist)
+        if verdict and not (verdict[0] == "strong" and normalized_name in ACCEPTED_COPYLEFT):
+            copyleft.append((verdict[0], f"{name} {dist.version}", verdict[1]))
+        texts = _license_texts(dist)
         if not texts:
             body = MANUAL_PKG.get(
-                n, "*** TODO: upstream ships no license file -- supply the notice. ***"
+                normalized_name,
+                "*** TODO: upstream ships no license file -- supply the notice. ***",
             )
-            sections.append(_block(f"{name}  {d.version}  (manual notice)", [("notice", body)]))
-            missing.append(f"{name} {d.version}")
+            sections.append(_block(f"{name}  {dist.version}  (manual notice)", [("notice", body)]))
+            missing.append(f"{name} {dist.version}")
             continue
-        sections.append(_block(f"{name}  {d.version}", texts))
-        covered.append(f"{name} {d.version}")
+        sections.append(_block(f"{name}  {dist.version}", texts))
+        covered.append(f"{name} {dist.version}")
     return sections, covered, missing, copyleft
 
 
 def _license_texts(dist: im.Distribution) -> list[tuple[str, str]]:
     """Return ``(relative-name, text)`` for each license file a dist ships."""
     out: list[tuple[str, str]] = []
-    for f in dist.files or []:
-        s = str(f).replace("\\", "/").lower()
-        if ".dist-info/" not in s:
+    for dist_file in dist.files or []:
+        path_str = str(dist_file).replace("\\", "/").lower()
+        if ".dist-info/" not in path_str:
             continue
-        base = s.rsplit("/", 1)[-1]
-        if "/licenses/" in s or "/license_files/" in s or any(h in base for h in LIC_HINTS):
+        base_name = path_str.rsplit("/", 1)[-1]
+        if (
+            "/licenses/" in path_str
+            or "/license_files/" in path_str
+            or any(hint in base_name for hint in LIC_HINTS)
+        ):
             try:
-                text = dist.locate_file(f).read_text(encoding="utf-8", errors="replace")
-            except OSError as e:
-                text = f"<<could not read {f}: {e}>>"
-            out.append((str(f).split(".dist-info/", 1)[-1], text))
+                text = dist.locate_file(dist_file).read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                text = f"<<could not read {dist_file}: {exc}>>"
+            out.append((str(dist_file).split(".dist-info/", 1)[-1], text))
     return out
 
 
@@ -302,10 +311,10 @@ def discover_native_libs(internal: Path) -> list[Path]:
     """
     standalone: list[Path] = []
     ext_suffixes = (".pyd",)
-    for p in sorted(internal.rglob("*")):
-        if not p.is_file():
+    for path in sorted(internal.rglob("*")):
+        if not path.is_file():
             continue
-        name = p.name.lower()
+        name = path.name.lower()
         is_shared = name.endswith((".dylib", ".dll")) or (
             ".so" in name and (name.endswith(".so") or ".so." in name)
         )
@@ -313,7 +322,7 @@ def discover_native_libs(internal: Path) -> list[Path]:
             continue
         is_extension = "cpython-" in name or name.endswith(ext_suffixes) or "abi3" in name
         if is_shared and not is_extension:
-            standalone.append(p)
+            standalone.append(path)
     return standalone
 
 
@@ -358,20 +367,26 @@ def native_section(internal: Path) -> tuple[str, list[str]]:
     matched: dict[str, tuple[str, list[str]]] = {}
     interpreter_libs: list[str] = []
     unknown: list[str] = []
-    for p in standalone:
-        stem = p.name.lower()
+    for path in standalone:
+        stem = path.name.lower()
         if stem.startswith(interpreter_prefixes):
-            interpreter_libs.append(p.name)
+            interpreter_libs.append(path.name)
             continue
-        hit = next((k for k in NATIVE_LICENSES if stem.startswith(k)), None)
+        hit = next((prefix for prefix in NATIVE_LICENSES if stem.startswith(prefix)), None)
         if hit:
-            disp, notice = NATIVE_LICENSES[hit]
-            matched.setdefault(disp, (notice, []))[1].append(p.name)
+            display_name, notice = NATIVE_LICENSES[hit]
+            matched.setdefault(display_name, (notice, []))[1].append(path.name)
         else:
-            unknown.append(p.name)
+            unknown.append(path.name)
 
-    for disp, (notice, files) in sorted(matched.items()):
-        lines += ["-" * 78, f"{disp}  ({', '.join(sorted(set(files)))})", "-" * 78, notice, ""]
+    for display_name, (notice, files) in sorted(matched.items()):
+        lines += [
+            "-" * 78,
+            f"{display_name}  ({', '.join(sorted(set(files)))})",
+            "-" * 78,
+            notice,
+            "",
+        ]
 
     # Embedded interpreter (PSF) -- always present in a PyInstaller bundle.
     psf_text = find_psf_text()
@@ -424,19 +439,19 @@ Native libraries + interpreter: see "NATIVE LIBRARIES" at the end.
 
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, assemble the file, and write it to the bundle root."""
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument(
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
         "--bundle-root",
         required=True,
         type=Path,
         help="Bundle directory containing the executable and _internal/.",
     )
-    ap.add_argument("--output", type=Path, default=None, help="Override output path.")
-    args = ap.parse_args(argv)
+    parser.add_argument("--output", type=Path, default=None, help="Override output path.")
+    args = parser.parse_args(argv)
 
     internal = args.bundle_root / "_internal"
     if not internal.is_dir():
-        ap.error(f"no _internal/ under {args.bundle_root} -- is this a built bundle?")
+        parser.error(f"no _internal/ under {args.bundle_root} -- is this a built bundle?")
     out = args.output or (args.bundle_root / "THIRD_PARTY_LICENSES.txt")
 
     sections, covered, missing, copyleft = harvest_python_packages()

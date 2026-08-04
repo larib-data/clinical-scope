@@ -20,7 +20,7 @@ from clinical_scope.dash_api.annotations.model import (
     AnnotationType,
 )
 from clinical_scope.dash_api.callbacks import default_mode
-from clinical_scope.dash_api.helper_api import get_cached_db_options_path, load_user_options
+from clinical_scope.dash_api.helper_api import get_cached_database_options_path, load_user_options
 from clinical_scope.dash_api.styles import (
     ACTION_CARD,
     ACTION_PANEL_ROW,
@@ -70,7 +70,7 @@ else:
 # Show "Reload last config" button only when a cached config exists at layout render time.
 _reload_btn_style = {
     **BUTTON_RELOAD,
-    "display": "inline-block" if get_cached_db_options_path().exists() else "none",
+    "display": "inline-block" if get_cached_database_options_path().exists() else "none",
 }
 
 app = Dash(
@@ -92,11 +92,11 @@ _ANNOTATION_TYPE_LABELS = {
 _annotation_type_buttons = [
     html.Button(
         label,
-        id=f"annotation-type-btn-{ann_type.value}",
+        id=f"annotation-type-btn-{annotation_type.value}",
         n_clicks=0,
         style=BUTTON_ANNOTATION_INACTIVE,
     )
-    for ann_type, label in _ANNOTATION_TYPE_LABELS.items()
+    for annotation_type, label in _ANNOTATION_TYPE_LABELS.items()
 ]
 
 _annotation_toolbar = html.Div(
@@ -201,19 +201,19 @@ _annotation_toolbar = html.Div(
 _color_swatches = html.Div(
     [
         html.Div(
-            id={"type": "annotation-color-swatch", "color": c},
+            id={"type": "annotation-color-swatch", "color": color},
             n_clicks=0,
             style={
                 "width": "22px",
                 "height": "22px",
                 "borderRadius": "50%",
-                "backgroundColor": c,
+                "backgroundColor": color,
                 "cursor": "pointer",
                 "border": "2px solid transparent",
                 "flexShrink": 0,
             },
         )
-        for c in ANNOTATION_COLORS
+        for color in ANNOTATION_COLORS
     ],
     style={"display": "flex", "gap": "6px", "alignItems": "center"},
 )
@@ -355,19 +355,19 @@ _annotation_modal = html.Div(
 _group_color_swatches = html.Div(
     [
         html.Div(
-            id={"type": "group-color-swatch", "color": c},
+            id={"type": "group-color-swatch", "color": color},
             n_clicks=0,
             style={
                 "width": "22px",
                 "height": "22px",
                 "borderRadius": "50%",
-                "backgroundColor": c,
+                "backgroundColor": color,
                 "cursor": "pointer",
                 "border": "2px solid transparent",
                 "flexShrink": 0,
             },
         )
-        for c in ANNOTATION_COLORS
+        for color in ANNOTATION_COLORS
     ],
     style={"display": "flex", "gap": "6px", "alignItems": "center"},
 )

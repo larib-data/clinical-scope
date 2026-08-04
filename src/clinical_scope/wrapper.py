@@ -45,7 +45,7 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
     Resolve signal references using a three-mode fallback chain.
 
     1. Qualified name ``"datasource::raw_name"`` -- explicit, unambiguous.
-    2. Display name -- matches ``sig.name``. Warns if ambiguous.
+    2. Display name -- matches ``signal.name``. Warns if ambiguous.
     3. Raw name -- current behaviour, backward compatible.
     """
     matched: list[Signal] = []
@@ -53,18 +53,22 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
     for ref in field_list:
         # Mode 1: qualified "datasource::raw_name"
         if "::" in ref:
-            sig = next(
-                (s for s in all_signals if f"{s.metadata.datasource_name}::{s.raw_name}" == ref),
+            matched_signal = next(
+                (
+                    signal
+                    for signal in all_signals
+                    if f"{signal.metadata.datasource_name}::{signal.raw_name}" == ref
+                ),
                 None,
             )
-            if sig:
-                matched.append(sig)
+            if matched_signal:
+                matched.append(matched_signal)
             else:
                 logger.warning("Qualified reference '%s' did not match any signal.", ref)
             continue
 
         # Mode 2: display name
-        by_name = [s for s in all_signals if s.name == ref]
+        by_name = [signal for signal in all_signals if signal.name == ref]
         if len(by_name) == 1:
             matched.append(by_name[0])
         elif len(by_name) > 1:
@@ -76,7 +80,7 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
             )
         else:
             # Mode 3: raw name fallback (no display name matched)
-            by_raw = [s for s in all_signals if s.raw_name == ref]
+            by_raw = [signal for signal in all_signals if signal.raw_name == ref]
             matched.extend(by_raw)
 
     return matched
@@ -105,8 +109,8 @@ def main(
         requested_sources,
     )
 
-    proc_total = len(requested_sources)
-    proc_count = 0
+    total_count = len(requested_sources)
+    processed_count = 0
 
     for data_source in datasource_list.DataSource.AVAILABLE:
         name = data_source.NAME
@@ -114,9 +118,9 @@ def main(
         if name not in database_options_global:
             continue
 
-        proc_count += 1
+        processed_count += 1
         if progress_callback is not None:
-            progress_callback(proc_count, proc_total, name)
+            progress_callback(processed_count, total_count, name)
 
         database_options = database_options_global[name]
 
@@ -141,8 +145,8 @@ def main(
             for signal in list_signal:
                 if signal.raw_name not in already_used_in_group:
                     try:
-                        pg = PlotGroup.from_single_signal(signal)
-                        plot_group_list.append(pg)
+                        plot_group = PlotGroup.from_single_signal(signal)
+                        plot_group_list.append(plot_group)
                     except Exception:
                         logger.exception(
                             "⚠️ Failed to create PlotGroup from single signal '%s' in datasource "
@@ -154,9 +158,15 @@ def main(
             # (3) Add explicit user-defined groups
             for group_name, grouped_field_list in local_group.items():
                 try:
-                    signals = [sig for sig in list_signal if sig.raw_name in grouped_field_list]
-                    loaded_names = {s.raw_name for s in signals}
-                    missing = [n for n in grouped_field_list if n not in loaded_names]
+                    signals = [
+                        signal for signal in list_signal if signal.raw_name in grouped_field_list
+                    ]
+                    loaded_names = {signal.raw_name for signal in signals}
+                    missing = [
+                        field_name
+                        for field_name in grouped_field_list
+                        if field_name not in loaded_names
+                    ]
                     if missing:
                         logger.warning(
                             "⚠️ Group '%s' in datasource '%s': signals not found: %s",
@@ -179,10 +189,12 @@ def main(
             for loop_name, loop_field_list in local_loop_group.items():
                 try:
                     signal_x = next(
-                        (sig for sig in list_signal if sig.raw_name == loop_field_list[0]), None
+                        (signal for signal in list_signal if signal.raw_name == loop_field_list[0]),
+                        None,
                     )
                     signal_y = next(
-                        (sig for sig in list_signal if sig.raw_name == loop_field_list[1]), None
+                        (signal for signal in list_signal if signal.raw_name == loop_field_list[1]),
+                        None,
                     )
 
                     if signal_x is None or signal_y is None:
@@ -256,9 +268,10 @@ def main(
     # Remove individual PlotGroups for signals that are now in a global group
     if global_grouped_raw_names:
         plot_group_list = [
-            pg
-            for pg in plot_group_list
-            if len(pg.signals) > 1 or pg.signals[0].raw_name not in global_grouped_raw_names
+            plot_group
+            for plot_group in plot_group_list
+            if len(plot_group.signals) > 1
+            or plot_group.signals[0].raw_name not in global_grouped_raw_names
         ]
 
     # Global loops (cross-datasource)
@@ -336,8 +349,8 @@ def inspect(
         requested_sources,
     )
 
-    proc_total = len(requested_sources)
-    proc_count = 0
+    total_count = len(requested_sources)
+    processed_count = 0
 
     results = []
     for data_source in datasource_list.DataSource.AVAILABLE:
@@ -345,11 +358,11 @@ def inspect(
         if name not in database_options_global:
             continue
 
-        proc_count += 1
+        processed_count += 1
         if progress_callback is not None:
-            progress_callback(proc_count, proc_total, name)
+            progress_callback(processed_count, total_count, name)
 
-        db_opts = database_options_global[name]
+        database_options = database_options_global[name]
 
         datasource_cls = data_source.DATASOURCE_CLASS
         if datasource_cls is None:
@@ -364,7 +377,7 @@ def inspect(
             continue
 
         try:
-            inspection = datasource_cls.inspect(patient_options, db_opts)
+            inspection = datasource_cls.inspect(patient_options, database_options)
         except Exception as exc:
             logger.exception("❌ Inspection failed for datasource '%s'.", name)
             inspection = DataSourceInspection(
@@ -428,11 +441,11 @@ def extract_datasource(
             logger.error("No DataSourceBase subclass for '%s' — skipping.", ds.NAME)
             return None
 
-    opts = dict(patient_options or {})
-    opts["data_folder"] = str(datasource_folder.parent)
-    db_opts = database_options_specific or {}
+    resolved_patient_options = dict(patient_options or {})
+    resolved_patient_options["data_folder"] = str(datasource_folder.parent)
+    database_options = database_options_specific or {}
 
-    return datasource_cls.extract(opts, db_opts, save_path=save_path)
+    return datasource_cls.extract(resolved_patient_options, database_options, save_path=save_path)
 
 
 def extract_patient(
@@ -479,7 +492,7 @@ def extract_patient(
         if name not in database_options_global:
             continue
 
-        db_opts = database_options_global[name]
+        database_options = database_options_global[name]
 
         datasource_cls = data_source.DATASOURCE_CLASS
         if datasource_cls is None:
@@ -488,9 +501,11 @@ def extract_patient(
             continue
 
         save_path = Path(save_folder) / f"{name}.parquet" if save_folder is not None else None
-        results[name] = datasource_cls.extract(patient_options, db_opts, save_path=save_path)
+        results[name] = datasource_cls.extract(
+            patient_options, database_options, save_path=save_path
+        )
 
-    success = sum(1 for v in results.values() if v is not None)
+    success = sum(1 for value in results.values() if value is not None)
     logger.info("📤 Extraction complete: %d/%d datasource(s) succeeded.", success, len(results))
     return results
 
@@ -523,9 +538,9 @@ def batch_extract(
 
     if isinstance(patient_folders_or_root, (str, Path)):
         root = Path(patient_folders_or_root)
-        folders = sorted(f for f in root.iterdir() if f.is_dir())
+        folders = sorted(entry for entry in root.iterdir() if entry.is_dir())
     else:
-        folders = [Path(f) for f in patient_folders_or_root]
+        folders = [Path(entry) for entry in patient_folders_or_root]
 
     logger.info("📦 Batch extraction: %d folder(s).", len(folders))
     batch_results: dict[str, dict[str, pd.DataFrame | None]] = {}
@@ -620,14 +635,14 @@ def load_database_annotations(database_folder: str | Path) -> list[Annotation]:
     --------
     >>> from clinical_scope import load_database_annotations
     >>> # Scan all patients under /data
-    >>> all_anns = load_database_annotations("/data")
-    >>> for ann in all_anns:
-    ...     print(f"{ann.patient}: {ann.label} ({ann.plot_name})")
+    >>> all_annotations = load_database_annotations("/data")
+    >>> for annotation in all_annotations:
+    ...     print(f"{annotation.patient}: {annotation.label} ({annotation.plot_name})")
     >>> # Group by patient
     >>> from collections import defaultdict
     >>> by_patient = defaultdict(list)
-    >>> for ann in all_anns:
-    ...     by_patient[ann.patient].append(ann)
+    >>> for annotation in all_annotations:
+    ...     by_patient[annotation.patient].append(annotation)
 
     """
     database_folder = Path(database_folder)
@@ -636,7 +651,7 @@ def load_database_annotations(database_folder: str | Path) -> list[Annotation]:
         logger.warning("Database folder does not exist or is not a directory: %s", database_folder)
         return []
 
-    subdirectories = sorted(f for f in database_folder.iterdir() if f.is_dir())
+    subdirectories = sorted(entry for entry in database_folder.iterdir() if entry.is_dir())
     if not subdirectories:
         logger.warning("No patient subdirectories found in %s", database_folder)
         return []

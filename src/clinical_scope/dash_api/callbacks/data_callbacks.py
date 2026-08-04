@@ -86,14 +86,14 @@ def _parse_database_options_file(
 ) -> tuple[dict[str, Any], list[ValidationIssue]]:
     """Parse database options from decoded file bytes and run full validation."""
     if filename.lower().endswith(".json"):
-        db_options = json.loads(decoded_content.decode("utf-8"))
+        database_options = json.loads(decoded_content.decode("utf-8"))
     elif filename.lower().endswith(".xlsx"):
-        db_options = xlsx_bytes_to_database_options(decoded_content)
+        database_options = xlsx_bytes_to_database_options(decoded_content)
     else:
         msg = f"Unsupported file type '{Path(filename).suffix}'. Expected .json or .xlsx."
         raise ValueError(msg)
 
-    issues = validate_database_options(db_options)
+    issues = validate_database_options(database_options)
     for issue in issues:
         if issue.severity == "error":
             logger.error("database_options [%s]: %s", issue.path, issue.message)
@@ -102,7 +102,7 @@ def _parse_database_options_file(
         else:
             logger.info("database_options [%s]: %s", issue.path, issue.message)
 
-    return db_options, issues
+    return database_options, issues
 
 
 def _build_load_status(filename: str, issues: list[ValidationIssue]) -> html.Div:
@@ -146,7 +146,7 @@ def _build_load_status(filename: str, issues: list[ValidationIssue]) -> html.Div
     State("db-options-upload", "filename"),
     prevent_initial_call=True,
 )
-def load_db_options(
+def load_database_options(
     contents: str | None,
     n_clicks: int | None,  # noqa: ARG001
     n_clicks_reload: int | None,  # noqa: ARG001
@@ -156,14 +156,14 @@ def load_db_options(
 
     triggered = ctx.triggered_id
     logger.info(
-        "load_db_options fired | triggered=%r | filename=%r | contents_present=%s",
+        "load_database_options fired | triggered=%r | filename=%r | contents_present=%s",
         triggered,
         filename,
         contents is not None,
     )
 
     if triggered == "default-viz-button":
-        logger.info("load_db_options: generating default database options")
+        logger.info("load_database_options: generating default database options")
         return (
             datasource.generate_default_database_options(),
             html.Div(
@@ -173,15 +173,15 @@ def load_db_options(
         )
 
     if triggered == "reload-cached-db-button":
-        logger.info("load_db_options: reloading cached db options")
-        cached = ui_helper.load_cached_db_options()
+        logger.info("load_database_options: reloading cached db options")
+        cached = ui_helper.load_cached_database_options()
         if cached is None:
-            logger.warning("load_db_options: no cached config found")
+            logger.warning("load_database_options: no cached config found")
             return (
                 None,
                 html.Div("No cached config found.", style={"color": "red", "fontWeight": "bold"}),
             )
-        logger.info("load_db_options: cached config reloaded successfully")
+        logger.info("load_database_options: cached config reloaded successfully")
         return (
             cached,
             html.Div("Reloaded last config", style={"color": "green", "fontWeight": "bold"}),
@@ -193,31 +193,33 @@ def load_db_options(
         # was initialised without a file). If this fires right after the user
         # selected a file, it indicates a Dash upload bug — check the browser console.
         logger.warning(
-            "load_db_options: triggered=%r but contents is None/empty "
+            "load_database_options: triggered=%r but contents is None/empty "
             "(user may have cancelled the file picker, or a Dash upload issue occurred)",
             triggered,
         )
         return None, None
 
     try:
-        logger.info("load_db_options: parsing file %r (%d bytes encoded)", filename, len(contents))
+        logger.info(
+            "load_database_options: parsing file %r (%d bytes encoded)", filename, len(contents)
+        )
         _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
         database_options_dict, issues = _parse_database_options_file(decoded, filename)
         logger.info(
-            "load_db_options: parsed successfully, keys=%s",
+            "load_database_options: parsed successfully, keys=%s",
             list(database_options_dict.keys()),
         )
 
-        ui_helper.save_cached_db_options(database_options_dict)
+        ui_helper.save_cached_database_options(database_options_dict)
 
         return database_options_dict, _build_load_status(filename, issues)
 
-    except Exception as e:
-        logger.exception("load_db_options: failed to parse %r", filename)
+    except Exception as exc:
+        logger.exception("load_database_options: failed to parse %r", filename)
         return (
             None,
-            html.Div(f"Error loading file: {e!s}", style={"color": "red", "fontWeight": "bold"}),
+            html.Div(f"Error loading file: {exc!s}", style={"color": "red", "fontWeight": "bold"}),
         )
 
 
@@ -305,7 +307,7 @@ def build_patient_options_ui(
         )
     )
 
-    schema_data = {k: v.__name__ for k, v in schema_lookup.items()}
+    schema_data = {key: value.__name__ for key, value in schema_lookup.items()}
 
     return components, schema_data
 
@@ -338,10 +340,10 @@ def reload_patient_options(
 
     try:
         saved = io.load_patient_options(data_folder, output_root)
-    except (ValueError, TypeError) as e:
-        logger.warning("Failed to reload patient options: %s", e)
+    except (ValueError, TypeError) as exc:
+        logger.warning("Failed to reload patient options: %s", exc)
         return current_values, html.Span(
-            str(e), style={"color": "#dc3545", "wordBreak": "break-all"}
+            str(exc), style={"color": "#dc3545", "wordBreak": "break-all"}
         )
     if saved is None:
         looked_in = get_patient_options_path(data_folder, output_root).parent
@@ -440,7 +442,7 @@ def _inspect_patient_folder(path: Path) -> Any:
             return html.Span("⚠ This folder doesn't exist.", style=_PREVIEW_WARN)
 
         # If the path itself is named like a device folder, the user went one level too deep.
-        ds_self = datasource.detect_datasource_from_folder(path)
+        self_datasource = datasource.detect_datasource_from_folder(path)
 
         found = []
         empty = []
@@ -448,13 +450,13 @@ def _inspect_patient_folder(path: Path) -> Any:
         for sub in sorted(path.iterdir()):
             if not sub.is_dir() or sub.name == cst.FOLDER_NAME_OUTPUT:
                 continue
-            ds = datasource.detect_datasource_from_folder(sub)
-            if ds is None:
+            matched_datasource = datasource.detect_datasource_from_folder(sub)
+            if matched_datasource is None:
                 other_subfolders.append(sub.name)
             elif folder_has_real_content(sub):
-                found.append(ds.DESCRIPTION)
+                found.append(matched_datasource.DESCRIPTION)
             else:
-                empty.append(ds.DESCRIPTION)
+                empty.append(matched_datasource.DESCRIPTION)
     except OSError as exc:
         # e.g. a restricted network share that exists but can't be listed.
         logger.warning("Could not inspect patient folder %r: %s", str(path), exc)
@@ -469,10 +471,10 @@ def _inspect_patient_folder(path: Path) -> Any:
         if empty:
             msg += f" ({len(empty)} recognized but empty: {', '.join(empty)})"
         return html.Span(msg.strip(), style=_PREVIEW_OK if found else _PREVIEW_WARN)
-    if ds_self is not None:
+    if self_datasource is not None:
         return html.Span(
-            f"⚠ This looks like a '{ds_self.DESCRIPTION}' device folder, not a patient folder. "
-            f"Pick the patient folder (maybe its parent? {path.parent} ?)",
+            f"⚠ This looks like a '{self_datasource.DESCRIPTION}' device folder, not a patient "
+            f"folder. Pick the patient folder (maybe its parent? {path.parent} ?)",
             style=_PREVIEW_WARN,
         )
     if other_subfolders:
@@ -507,18 +509,18 @@ def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
     each one against PatientOptions or the datasource's own options class.
     """
     schema_class_lookup = {}
-    for k, v in schema_data.items():
-        if k.startswith("global"):
-            schema_class_lookup[k] = getattr(cst.PatientOptions, v)
-        elif k.startswith("specific"):
-            parts = k.split(".")
+    for field_id, class_name in schema_data.items():
+        if field_id.startswith("global"):
+            schema_class_lookup[field_id] = getattr(cst.PatientOptions, class_name)
+        elif field_id.startswith("specific"):
+            parts = field_id.split(".")
             datasource_name = parts[1] if len(parts) > 1 else None
             datasource_class = datasource.DataSource.get_subclass_by_name(datasource_name)
             logger.debug("parts: %s", parts)
             logger.debug("datasource_name: %s", datasource_name)
             logger.debug("datasource_class: %s", datasource_class)
-            schema_class_lookup[k] = getattr(
-                datasource_class.OPTIONS.PatientOptionsDataSourceRelative, v
+            schema_class_lookup[field_id] = getattr(
+                datasource_class.OPTIONS.PatientOptionsDataSourceRelative, class_name
             )
     return schema_class_lookup
 
@@ -571,7 +573,7 @@ def resample_on_zoom(relayout: dict[str, Any], resampler_uid: str | None) -> Any
 )
 def process_visualization(
     n_clicks: int,  # noqa: ARG001
-    db_options: dict[str, Any] | None,
+    database_options: dict[str, Any] | None,
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
@@ -579,7 +581,7 @@ def process_visualization(
 ) -> tuple[Any, Any, Any, str | None, str | None, bool, str]:
     """Process visualization request with validated patient options."""
     interval_off, progress_clear = True, ""
-    if not db_options:
+    if not database_options:
         return (
             None,
             "Database options not loaded",
@@ -603,7 +605,7 @@ def process_visualization(
     if errors:
         return (
             None,
-            html.Ul([html.Li(e) for e in errors]),
+            html.Ul([html.Li(error) for error in errors]),
             None,
             None,
             no_update,
@@ -616,8 +618,8 @@ def process_visualization(
     patient_options_path = get_patient_options_path(data_folder, output_root)
     folder_visu_path = str(get_output_base(data_folder, output_root))
     ui_helper.save_json(validated_dict, patient_options_path)
-    db_options_path = get_database_options_path(data_folder, output_root)
-    ui_helper.save_json(db_options, db_options_path)
+    database_options_path = get_database_options_path(data_folder, output_root)
+    ui_helper.save_json(database_options, database_options_path)
 
     clear_visualization_caches()
     PROCESS_PROGRESS.update(
@@ -634,7 +636,7 @@ def process_visualization(
     try:
         model = wrapper.main(
             patient_options=validated_dict,
-            database_options_global=db_options,
+            database_options_global=database_options,
             progress_callback=_on_progress,
             user_options=user_options,
         )
@@ -643,7 +645,7 @@ def process_visualization(
         if (user_options or {}).get(cst.UserOptions.SaveHtmlOnProcess.NAME):
             PlotModel.to_html(model, validated_dict)
         graphs = _build_graphs(model, display_timezone=display_timezone)
-    except Exception as e:
+    except Exception as exc:
         logger.exception("Could not make the plot: ")
         return (
             None,
@@ -651,7 +653,7 @@ def process_visualization(
             html.Div(
                 [
                     html.Span("Visualization failed: ", style={"fontWeight": "bold"}),
-                    html.Span(str(e)),
+                    html.Span(str(exc)),
                     html.Div(
                         "See application logs for details.",
                         style={"color": "#999", "fontSize": "12px", "marginTop": "4px"},
@@ -838,7 +840,7 @@ def _build_inspection_content(results: list) -> list:
 )
 def inspect_data(
     n_clicks: int,  # noqa: ARG001
-    db_options: dict[str, Any] | None,
+    database_options: dict[str, Any] | None,
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
@@ -846,7 +848,7 @@ def inspect_data(
     """Run data inspection for all enabled datasources and display results in modal."""
     interval_off, progress_clear = True, ""
 
-    if not db_options:
+    if not database_options:
         return (
             INSPECTION_MODAL_STYLE_SHOWN,
             html.Div("Database options not loaded.", style={"color": "red"}),
@@ -863,7 +865,7 @@ def inspect_data(
     if errors:
         return (
             INSPECTION_MODAL_STYLE_SHOWN,
-            html.Ul([html.Li(e) for e in errors]),
+            html.Ul([html.Li(error) for error in errors]),
             None,
             None,
             interval_off,
@@ -881,14 +883,14 @@ def inspect_data(
     try:
         results = wrapper.inspect(
             patient_options=validated_dict,
-            database_options_global=db_options,
+            database_options_global=database_options,
             progress_callback=_on_progress,
         )
-    except Exception as e:
+    except Exception as exc:
         logger.exception("Inspection failed: ")
         return (
             INSPECTION_MODAL_STYLE_SHOWN,
-            html.Div(f"Inspection failed: {e}", style={"color": "red"}),
+            html.Div(f"Inspection failed: {exc}", style={"color": "red"}),
             None,
             None,
             interval_off,
@@ -995,7 +997,7 @@ _ONE_DAY_SECONDS = 86400
 
 
 def _build_slider_marks(
-    t_min: float,
+    time_min: float,
     duration: float,
     n_marks: int = 5,
     display_timezone: str | None = None,
@@ -1003,27 +1005,29 @@ def _build_slider_marks(
     """
     Build evenly-spaced marks for a RangeSlider using relative-second keys.
 
-    Keys are seconds offset from t_min (0 … duration).
+    Keys are seconds offset from time_min (0 … duration).
     Labels are absolute clock times in the configured display timezone so the
     user sees human-readable timestamps, not raw numbers.
     """
     display_tz = ZoneInfo(display_timezone or cst.DISPLAY_TIMEZONE)
     fmt = "%m/%d %H:%M" if duration > _ONE_DAY_SECONDS else "%H:%M:%S"
     marks = {}
-    for i in range(n_marks + 1):
-        offset = duration * i / n_marks
-        dt = datetime.fromtimestamp(t_min + offset, tz=UTC).astimezone(display_tz)
-        marks[float(offset)] = dt.strftime(fmt)
+    for mark_index in range(n_marks + 1):
+        offset = duration * mark_index / n_marks
+        mark_datetime = datetime.fromtimestamp(time_min + offset, tz=UTC).astimezone(display_tz)
+        marks[float(offset)] = mark_datetime.strftime(fmt)
     return marks
 
 
-def format_time_range(t_start: float, t_end: float, display_timezone: str | None = None) -> str:
+def format_time_range(
+    time_start: float, time_end: float, display_timezone: str | None = None
+) -> str:
     """Format a time range as a human-readable string in the configured display timezone."""
     display_tz = ZoneInfo(display_timezone or cst.DISPLAY_TIMEZONE)
-    dt_start = datetime.fromtimestamp(t_start, tz=UTC).astimezone(display_tz)
-    dt_end = datetime.fromtimestamp(t_end, tz=UTC).astimezone(display_tz)
+    datetime_start = datetime.fromtimestamp(time_start, tz=UTC).astimezone(display_tz)
+    datetime_end = datetime.fromtimestamp(time_end, tz=UTC).astimezone(display_tz)
     fmt = "%Y-%m-%d %H:%M:%S"
-    return f"{dt_start.strftime(fmt)}  —  {dt_end.strftime(fmt)}"
+    return f"{datetime_start.strftime(fmt)}  —  {datetime_end.strftime(fmt)}"
 
 
 def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.Div]:
@@ -1039,11 +1043,11 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
     display_timezone = display_timezone or cst.DISPLAY_TIMEZONE
     graphs = []
 
-    for mod in model:
-        fig = mod.figure
+    for plot_model in model:
+        fig = plot_model.figure
 
         uid = None
-        if mod.name == "time_series":
+        if plot_model.name == "time_series":
             uid = str(uuid4())
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig
@@ -1058,27 +1062,27 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         # Plotly's autosize=True sizes the figure to its container, so an unsized container
         # collapses to a default that can hide the plot (time-series with few subplots
         # especially) — set the CSS height explicitly to match the figure's intended height.
-        graph_height = int(mod.computed_height) if mod.computed_height else None
+        graph_height = int(plot_model.computed_height) if plot_model.computed_height else None
         graph_style = {"marginBottom": "40px"}
         if graph_height:
             graph_style["height"] = f"{graph_height}px"
 
         # --- Build annotation metadata stores from the PlotModel ---
         # These are read by annotation_callbacks to know subplot names and axis refs.
-        # Must be built from mod.figure (original go.Figure) before FigureResampler wraps it.
-        is_loop = mod.plot_type == cst.PlotType.LOOP
-        n_cols_layout = 2 if (is_loop and len(mod.groups) > 1) else 1
+        # Must be built from plot_model.figure (original go.Figure) before FigureResampler wraps it.
+        is_loop = plot_model.plot_type == cst.PlotType.LOOP
+        n_cols_layout = 2 if (is_loop and len(plot_model.groups) > 1) else 1
 
         signal_meta_lookup: dict[str, dict] = {
-            sig.name: {
-                "raw_name": sig.raw_name,
-                "datasource_name": sig.metadata.datasource_name or "",
+            signal_obj.name: {
+                "raw_name": signal_obj.raw_name,
+                "datasource_name": signal_obj.metadata.datasource_name or "",
             }
-            for group in mod.groups
-            for sig in group.signals
+            for group in plot_model.groups
+            for signal_obj in group.signals
         }
         trace_map: dict[str, dict] = {}
-        for trace_idx, trace in enumerate(mod.figure.data):
+        for trace_idx, trace in enumerate(plot_model.figure.data):
             trace_name = getattr(trace, "name", "") or ""
             meta = signal_meta_lookup.get(trace_name, {})
             trace_color: str | None = None
@@ -1103,17 +1107,17 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         subplot_rows = []
         # Build mapping from yaxis reference to subplot name.
         # Traces are added to the figure in group order, so we can iterate
-        # through mod.figure.data and assign each trace's yaxis to its group's subplot.
+        # through plot_model.figure.data and assign each trace's yaxis to its group's subplot.
         yaxis_to_subplot: dict[str, dict] = {}
         trace_idx = 0
-        for group_idx, group in enumerate(mod.groups):
+        for group_idx, group in enumerate(plot_model.groups):
             plotly_row = group_idx // n_cols_layout + 1
             plotly_col = group_idx % n_cols_layout + 1
 
             # The subplot's primary y-axis is the one carried by its first trace.
             primary_yaxis = "y"
-            if trace_idx < len(mod.figure.data):
-                primary_yaxis = getattr(mod.figure.data[trace_idx], "yaxis", None) or "y"
+            if trace_idx < len(plot_model.figure.data):
+                primary_yaxis = getattr(plot_model.figure.data[trace_idx], "yaxis", None) or "y"
 
             subplot_rows.append(
                 {
@@ -1126,8 +1130,8 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
 
             n_traces_in_group = len(group.signals)
             for _ in range(n_traces_in_group):
-                if trace_idx < len(mod.figure.data):
-                    trace = mod.figure.data[trace_idx]
+                if trace_idx < len(plot_model.figure.data):
+                    trace = plot_model.figure.data[trace_idx]
                     yaxis_ref = getattr(trace, "yaxis", None) or "y"
                     yaxis_to_subplot[yaxis_ref] = {
                         "row": plotly_row,
@@ -1139,53 +1143,55 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         # Capture subplot title annotations injected by make_subplots so the
         # annotation renderer can restore them when it replaces layout.annotations.
         subplot_title_annotations: list[dict] = []
-        if mod.figure.layout.annotations:
+        if plot_model.figure.layout.annotations:
             subplot_title_annotations = [
-                ann.to_plotly_json() for ann in mod.figure.layout.annotations
+                ann.to_plotly_json() for ann in plot_model.figure.layout.annotations
             ]
 
         graph_subplots_data = {
             "rows": subplot_rows,
             "yaxis_to_subplot": yaxis_to_subplot,
             "subplot_annotations": subplot_title_annotations,
-            "plot_type": mod.plot_type,
+            "plot_type": plot_model.plot_type,
             "n_cols": n_cols_layout,
         }
 
         children = [
             dcc.Graph(
-                id={"type": "graph", "name": mod.name},
+                id={"type": "graph", "name": plot_model.name},
                 figure=fig,
                 config={"displayModeBar": True},
                 style=graph_style,
             ),
-            dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
-            dcc.Store(id={"type": "graph-subplots", "name": mod.name}, data=graph_subplots_data),
-            dcc.Store(id={"type": "graph-trace-map", "name": mod.name}, data=trace_map),
+            dcc.Store(id={"type": "resampler-store", "name": plot_model.name}, data=uid),
+            dcc.Store(
+                id={"type": "graph-subplots", "name": plot_model.name}, data=graph_subplots_data
+            ),
+            dcc.Store(id={"type": "graph-trace-map", "name": plot_model.name}, data=trace_map),
         ]
 
         # --- Loop time-range slider ---
-        if mod.plot_type == cst.PlotType.LOOP:
+        if plot_model.plot_type == cst.PlotType.LOOP:
             loop_uid = str(uuid4())
 
             # Traces with no data get a null placeholder rather than being dropped, so cache
             # indices stay aligned with the Plotly figure's trace indices.
             trace_data = []
-            t_min_global = np.inf
-            t_max_global = -np.inf
-            for group in mod.groups:
-                for sig in group.signals:
-                    time_array = sig.data.loop_time_axis
-                    if time_array is None or sig.data.x is None or sig.data.y is None:
+            time_min_global = np.inf
+            time_max_global = -np.inf
+            for group in plot_model.groups:
+                for signal_obj in group.signals:
+                    time_array = signal_obj.data.loop_time_axis
+                    if time_array is None or signal_obj.data.x is None or signal_obj.data.y is None:
                         trace_data.append({"x": None, "y": None, "time_axis": None})
                         continue
                     if len(time_array) > 0:
-                        t_min_global = min(t_min_global, time_array[0])
-                        t_max_global = max(t_max_global, time_array[-1])
+                        time_min_global = min(time_min_global, time_array[0])
+                        time_max_global = max(time_max_global, time_array[-1])
                     trace_data.append(
                         {
-                            "x": sig.data.x,
-                            "y": sig.data.y,
+                            "x": signal_obj.data.x,
+                            "y": signal_obj.data.y,
                             "time_axis": time_array,
                         }
                     )
@@ -1193,18 +1199,22 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             # Store t_min alongside traces so callbacks can convert relative
             # offsets back to absolute epoch seconds for display/masking.
             # Convert to native Python float for orjson serialization safety.
-            t_min_f = float(t_min_global) if np.isfinite(t_min_global) else 0.0
+            time_min_float = float(time_min_global) if np.isfinite(time_min_global) else 0.0
             LOOP_DATA_CACHE[loop_uid] = {
                 "traces": trace_data,
-                "t_min": t_min_f,
+                "t_min": time_min_float,
                 "display_timezone": display_timezone,
             }
-            children.append(dcc.Store(id={"type": "loop-store", "name": mod.name}, data=loop_uid))
+            children.append(
+                dcc.Store(id={"type": "loop-store", "name": plot_model.name}, data=loop_uid)
+            )
 
-            if np.isfinite(t_min_global) and t_min_global < t_max_global:
-                duration = float(t_max_global) - t_min_f
+            if np.isfinite(time_min_global) and time_min_global < time_max_global:
+                duration = float(time_max_global) - time_min_float
                 step = 1
-                marks = _build_slider_marks(t_min_f, duration, display_timezone=display_timezone)
+                marks = _build_slider_marks(
+                    time_min_float, duration, display_timezone=display_timezone
+                )
 
                 children.append(
                     html.Div(
@@ -1218,7 +1228,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
                                 },
                             ),
                             dcc.RangeSlider(
-                                id={"type": "loop-time-slider", "name": mod.name},
+                                id={"type": "loop-time-slider", "name": plot_model.name},
                                 min=0.0,
                                 max=duration,
                                 value=[0.0, duration],
@@ -1230,11 +1240,11 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
                             ),
                             html.Div(
                                 format_time_range(
-                                    t_min_f,
-                                    t_min_f + duration,
+                                    time_min_float,
+                                    time_min_float + duration,
                                     display_timezone=display_timezone,
                                 ),
-                                id={"type": "loop-time-display", "name": mod.name},
+                                id={"type": "loop-time-display", "name": plot_model.name},
                                 style={
                                     "textAlign": "center",
                                     "color": "#555",

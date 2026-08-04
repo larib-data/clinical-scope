@@ -40,10 +40,10 @@ def save_annotations(annotations: list[Annotation], patient_folder: str | Path) 
     """
     path = get_annotations_path(patient_folder)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as fh:
+    with path.open("w", encoding="utf-8") as file:
         json.dump(
-            {ANNOTATION_KEY: [a.to_dict() for a in annotations]},
-            fh,
+            {ANNOTATION_KEY: [annotation.to_dict() for annotation in annotations]},
+            file,
             indent=2,
             ensure_ascii=False,
         )
@@ -69,8 +69,8 @@ def _load_annotations_from_path(path: Path) -> list[Annotation]:
     if not path.exists():
         return []
     try:
-        with path.open(encoding="utf-8") as fh:
-            raw = json.load(fh)
+        with path.open(encoding="utf-8") as file:
+            raw = json.load(file)
     except Exception:  # noqa: BLE001
         logger.warning("Failed to load annotations from %s", path, exc_info=True)
         return []
@@ -84,20 +84,22 @@ def _load_annotations_from_path(path: Path) -> list[Annotation]:
         )
         return []
 
-    ann_dicts = raw[ANNOTATION_KEY]
-    if not isinstance(ann_dicts, list):
+    annotation_dicts = raw[ANNOTATION_KEY]
+    if not isinstance(annotation_dicts, list):
         logger.warning(
             "Annotations file %s 'annotations' key is not a list, got %s",
             path,
-            type(ann_dicts).__name__,
+            type(annotation_dicts).__name__,
         )
         return []
 
     annotations = []
-    for i, d in enumerate(ann_dicts):
+    for index, annotation_dict in enumerate(annotation_dicts):
         try:
-            annotations.append(Annotation.from_dict(d))
+            annotations.append(Annotation.from_dict(annotation_dict))
         except Exception:  # noqa: BLE001
-            logger.warning("Skipping malformed annotation record #%d in %s", i, path, exc_info=True)
+            logger.warning(
+                "Skipping malformed annotation record #%d in %s", index, path, exc_info=True
+            )
     logger.info("Loaded %d annotation(s) from %s", len(annotations), path)
     return annotations

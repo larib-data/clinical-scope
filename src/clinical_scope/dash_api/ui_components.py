@@ -146,23 +146,23 @@ def build_ui_and_schema_registry(
         if hasattr(getattr(options_class, attr), "NAME")
     ]
 
-    nested_classes.sort(key=lambda cls: getattr(cls, "ORDER", 999))
+    nested_classes.sort(key=lambda schema_class: getattr(schema_class, "ORDER", 999))
 
     # Index-based iteration with lookahead: consecutive TIMESTAMP fields render side by side.
-    i = 0
-    while i < len(nested_classes):
-        schema_class = nested_classes[i]
-        comp_id = f"{prefix}.{schema_class.NAME}"
-        schema_lookup[comp_id] = schema_class
+    field_index = 0
+    while field_index < len(nested_classes):
+        schema_class = nested_classes[field_index]
+        component_id = f"{prefix}.{schema_class.NAME}"
+        schema_lookup[component_id] = schema_class
 
         if (
-            i + 1 < len(nested_classes)
+            field_index + 1 < len(nested_classes)
             and schema_class.API_TYPE == cst.ApiType.TIMESTAMP
-            and nested_classes[i + 1].API_TYPE == cst.ApiType.TIMESTAMP
+            and nested_classes[field_index + 1].API_TYPE == cst.ApiType.TIMESTAMP
         ):
-            next_class = nested_classes[i + 1]
-            next_comp_id = f"{prefix}.{next_class.NAME}"
-            schema_lookup[next_comp_id] = next_class
+            next_class = nested_classes[field_index + 1]
+            next_component_id = f"{prefix}.{next_class.NAME}"
+            schema_lookup[next_component_id] = next_class
 
             component_left = dash_widget_factory(schema_class, prefix, id_type, label_width)
             component_right = dash_widget_factory(next_class, prefix, id_type, label_width)
@@ -171,12 +171,14 @@ def build_ui_and_schema_registry(
                 style={"display": "flex", "gap": "24px", "marginBottom": "8px"},
             )
             components.append(row)
-            i += 2
+            field_index += 2
         else:
             widget = dash_widget_factory(schema_class, prefix, id_type, label_width)
-            extras = (extra_per_field or {}).get(comp_id)
+            extras = (extra_per_field or {}).get(component_id)
             if extras:
-                widget.style = {k: v for k, v in widget.style.items() if k != "marginBottom"}
+                widget.style = {
+                    key: value for key, value in widget.style.items() if key != "marginBottom"
+                }
                 component = html.Div(
                     [widget, *extras],
                     style={"display": "flex", "alignItems": "flex-start", "marginBottom": "8px"},
@@ -184,6 +186,6 @@ def build_ui_and_schema_registry(
             else:
                 component = widget
             components.append(component)
-            i += 1
+            field_index += 1
 
     return html.Div(components), schema_lookup

@@ -91,13 +91,13 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
     validated_dict = {}
     errors = []
 
-    for comp_id, value in values_dict.items():
-        parts = comp_id.split(".")
+    for component_id, value in values_dict.items():
+        parts = component_id.split(".")
         is_global = parts[0] == "global"
         datasource_name = None if is_global else parts[1]
 
-        schema = schema_lookup[comp_id]
-        name = getattr(schema, "NAME", comp_id)
+        schema = schema_lookup[component_id]
+        name = getattr(schema, "NAME", component_id)
         description = getattr(schema, "DESCRIPTION", name)
         mandatory = getattr(schema, "MANDATORY", True)
         api_type = getattr(schema, "API_TYPE", None)

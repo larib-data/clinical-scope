@@ -49,7 +49,7 @@ def save_df(df: pd.DataFrame, path: str | Path) -> None:
 def folder_name_matches_keywords(folder_name: str, keywords: list[str]) -> bool:
     """Check if *folder_name* contains every keyword (case-insensitive)."""
     name_lower = folder_name.lower()
-    return all(kw.lower() in name_lower for kw in keywords)
+    return all(keyword.lower() in name_lower for keyword in keywords)
 
 
 # ==================================================================================================
@@ -63,7 +63,7 @@ def is_junk_file(path: Path) -> bool:
 
 def folder_has_real_content(folder_path: Path) -> bool:
     """Return True if *folder_path* contains at least one non-junk file (not recursive)."""
-    return any(f.is_file() and not is_junk_file(f) for f in folder_path.iterdir())
+    return any(entry.is_file() and not is_junk_file(entry) for entry in folder_path.iterdir())
 
 
 # ==================================================================================================
@@ -95,9 +95,11 @@ def find_files(
     6. Warn and return ``None`` if still ambiguous.
     """
     if multi:
-        ext_set = {e.lower() for e in extensions}
+        ext_set = {extension.lower() for extension in extensions}
         files = sorted(
-            f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in ext_set
+            file
+            for file in folder_path.iterdir()
+            if file.is_file() and file.suffix.lower() in ext_set
         )
         if not files:
             logger.debug("Could not find any %s files in folder '%s'", datasource_name, folder_path)
@@ -107,13 +109,17 @@ def find_files(
 
     # --- single-file mode ---
     if extensions:
-        suffix_set = {s.lower() for s in extensions}
+        suffix_set = {extension.lower() for extension in extensions}
         matches = [
-            f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in suffix_set
+            file
+            for file in folder_path.iterdir()
+            if file.is_file() and file.suffix.lower() in suffix_set
         ]
     else:
         # No extension filter: all non-junk files are candidates.
-        matches = [f for f in folder_path.iterdir() if f.is_file() and not is_junk_file(f)]
+        matches = [
+            file for file in folder_path.iterdir() if file.is_file() and not is_junk_file(file)
+        ]
 
     if not matches:
         logger.warning("No file for '%s' found in folder '%s'.", datasource_name, folder_path)
@@ -125,16 +131,16 @@ def find_files(
 
     # Deduplicate by stem: keep most preferred extension per stem
     if extensions:
-        suffix_rank = {s.lower(): i for i, s in enumerate(extensions)}
+        suffix_rank = {extension.lower(): index for index, extension in enumerate(extensions)}
         max_rank = len(extensions)
         by_stem: dict[str, Path] = {}
-        for f in matches:
-            stem = f.stem.lower()
-            rank = suffix_rank.get(f.suffix.lower(), max_rank)
+        for file in matches:
+            stem = file.stem.lower()
+            rank = suffix_rank.get(file.suffix.lower(), max_rank)
             if stem not in by_stem or rank < suffix_rank.get(
                 by_stem[stem].suffix.lower(), max_rank
             ):
-                by_stem[stem] = f
+                by_stem[stem] = file
         matches = list(by_stem.values())
 
     if len(matches) == 1:
@@ -143,18 +149,20 @@ def find_files(
 
     # Keyword filtering on stem (ordered by preference)
     if keywords:
-        for kw in keywords:
-            kw_lower = kw.lower()
-            kw_matches = [f for f in matches if kw_lower in f.stem.lower()]
-            if len(kw_matches) == 1:
-                logger.info("Selected file by keyword for '%s': %s", datasource_name, kw_matches[0])
-                return kw_matches[0]
-            if kw_matches:
-                matches = kw_matches
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            keyword_matches = [file for file in matches if keyword_lower in file.stem.lower()]
+            if len(keyword_matches) == 1:
+                logger.info(
+                    "Selected file by keyword for '%s': %s", datasource_name, keyword_matches[0]
+                )
+                return keyword_matches[0]
+            if keyword_matches:
+                matches = keyword_matches
 
     if extensions:
-        suffix_rank = {s.lower(): i for i, s in enumerate(extensions)}
-        matches.sort(key=lambda f: suffix_rank.get(f.suffix.lower(), len(extensions)))
+        suffix_rank = {extension.lower(): index for index, extension in enumerate(extensions)}
+        matches.sort(key=lambda file: suffix_rank.get(file.suffix.lower(), len(extensions)))
         if suffix_rank.get(matches[0].suffix.lower(), len(extensions)) < suffix_rank.get(
             matches[1].suffix.lower(), len(extensions)
         ):
@@ -167,7 +175,7 @@ def find_files(
         "Multiple '%s' files found in '%s', could not resolve a unique match: %s",
         datasource_name,
         folder_path,
-        [f.name for f in matches],
+        [file.name for file in matches],
     )
     return None
 
@@ -224,12 +232,18 @@ def _pick_best_candidate(passing: list[tuple[str, pd.Series]]) -> tuple[str, pd.
     A utc-named winner that's still tz-naive after parsing gets localized to UTC.
     """
     best_uniqueness = max(parsed.nunique() for _, parsed in passing)
-    top = [(col, parsed) for col, parsed in passing if parsed.nunique() == best_uniqueness]
-    utc_named = [(col, parsed) for col, parsed in top if "utc" in str(col).lower()]
-    col, parsed = (utc_named or top)[0]
-    if "utc" in str(col).lower() and parsed.dt.tz is None:
+    top = [
+        (column_name, parsed)
+        for column_name, parsed in passing
+        if parsed.nunique() == best_uniqueness
+    ]
+    utc_named = [
+        (column_name, parsed) for column_name, parsed in top if "utc" in str(column_name).lower()
+    ]
+    column_name, parsed = (utc_named or top)[0]
+    if "utc" in str(column_name).lower() and parsed.dt.tz is None:
         parsed = parsed.dt.tz_localize("UTC")
-    return col, parsed
+    return column_name, parsed
 
 
 def _name_tiers(columns: list[str]) -> list[list[str]]:
@@ -242,13 +256,13 @@ def _name_tiers(columns: list[str]) -> list[list[str]]:
     so list order is a real priority: a lower-priority name never competes via
     uniqueness against a higher-priority one that's also present and valid.
     """
-    lower_names = {col: str(col).lower().strip() for col in columns}
+    lower_names = {column_name: str(column_name).lower().strip() for column_name in columns}
     tiers = [
-        [col for col in columns if lower_names[col] == name]
+        [column_name for column_name in columns if lower_names[column_name] == name]
         for name in cst.DatetimeColumnDetection.EXACT_NAMES
     ]
     tiers += [
-        [col for col in columns if pattern.search(lower_names[col])]
+        [column_name for column_name in columns if pattern.search(lower_names[column_name])]
         for pattern in _DATETIME_SUBSTRING_TIER_RES
     ]
     # Widen tier: every column, ignoring name (numeric ones still deferred to epoch tier).
@@ -266,10 +280,10 @@ def _find_datetime_col_parsed(df: pd.DataFrame) -> tuple[str, pd.Series]:
     """
     for tier in _name_tiers(list(df.columns)):
         passing = [
-            (col, parsed)
-            for col in tier
-            if not pd.api.types.is_numeric_dtype(df[col])
-            and (parsed := _try_parse_datetime_column(df[col])) is not None
+            (column_name, parsed)
+            for column_name in tier
+            if not pd.api.types.is_numeric_dtype(df[column_name])
+            and (parsed := _try_parse_datetime_column(df[column_name])) is not None
         ]
         if passing:
             return _pick_best_candidate(passing)
@@ -277,15 +291,15 @@ def _find_datetime_col_parsed(df: pd.DataFrame) -> tuple[str, pd.Series]:
     # Numeric-epoch tier, tried last: nanosecond epochs only (~1.6e18 is unambiguous
     # against real measurement data), gated by the same validation.
     epoch_passing = []
-    for col in df.columns:
-        if not pd.api.types.is_numeric_dtype(df[col]):
+    for column_name in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[column_name]):
             continue
         try:
-            parsed = pd.to_datetime(df[col], unit="ns", errors="coerce")
+            parsed = pd.to_datetime(df[column_name], unit="ns", errors="coerce")
         except (ValueError, TypeError, OverflowError):
             continue
         if _validate_parsed_datetimes(parsed):
-            epoch_passing.append((col, parsed))
+            epoch_passing.append((column_name, parsed))
     if epoch_passing:
         return _pick_best_candidate(epoch_passing)
 
@@ -315,14 +329,14 @@ def resolve_stored_datetime_index(path: Path) -> tuple[str, str | None] | None:
     pandas_metadata = schema.pandas_metadata
     if not pandas_metadata:
         return None
-    index_cols = pandas_metadata.get("index_columns") or []
-    if len(index_cols) != 1 or not isinstance(index_cols[0], str):
+    index_columns = pandas_metadata.get("index_columns") or []
+    if len(index_columns) != 1 or not isinstance(index_columns[0], str):
         return None
-    col = index_cols[0]
-    field = schema.field(col)
+    column_name = index_columns[0]
+    field = schema.field(column_name)
     if not pa.types.is_timestamp(field.type):
         return None
-    return col, (str(field.type.tz) if field.type.tz else None)
+    return column_name, (str(field.type.tz) if field.type.tz else None)
 
 
 def _is_numeric_pa_type(field_type: pa.DataType) -> bool:
@@ -349,19 +363,30 @@ def _sample_parquet_columns(parquet_file: pq.ParquetFile, columns: list[str]) ->
     ``SAMPLE_MIN_GROUPS`` are sampled even if the budget alone would pick fewer (huge row
     groups), so detection always sees two independent places.
     """
-    md = parquet_file.metadata
-    n_groups = md.num_row_groups
-    cst_det = cst.DatetimeColumnDetection
-    if n_groups <= 1 or md.num_rows <= cst_det.SAMPLE_MAX_ROW_DECODED:
+    parquet_metadata = parquet_file.metadata
+    row_group_count = parquet_metadata.num_row_groups
+    detection_constants = cst.DatetimeColumnDetection
+    max_row_decoded = detection_constants.SAMPLE_MAX_ROW_DECODED
+    if row_group_count <= 1 or parquet_metadata.num_rows <= max_row_decoded:
         return parquet_file.read(columns=columns).to_pandas()
 
-    rows_per_group = md.row_group(0).num_rows
-    budget_groups = max(1, cst_det.SAMPLE_MAX_ROW_DECODED // rows_per_group)
-    n = min(cst_det.SAMPLE_MAX_GROUPS, n_groups, budget_groups)
-    n = max(n, min(cst_det.SAMPLE_MIN_GROUPS, n_groups))  # ≥2 places when ≥2 groups exist
-    indices = sorted({round(k * (n_groups - 1) / (n - 1)) for k in range(n)})
-    block = cst_det.SAMPLE_ROWS_PER_BLOCK
-    tables = [parquet_file.read_row_group(i, columns=columns).slice(0, block) for i in indices]
+    rows_per_group = parquet_metadata.row_group(0).num_rows
+    budget_groups = max(1, max_row_decoded // rows_per_group)
+    sample_group_count = min(detection_constants.SAMPLE_MAX_GROUPS, row_group_count, budget_groups)
+    sample_group_count = max(
+        sample_group_count, min(detection_constants.SAMPLE_MIN_GROUPS, row_group_count)
+    )  # ≥2 places when ≥2 groups exist
+    indices = sorted(
+        {
+            round(sample_index * (row_group_count - 1) / (sample_group_count - 1))
+            for sample_index in range(sample_group_count)
+        }
+    )
+    rows_per_block = detection_constants.SAMPLE_ROWS_PER_BLOCK
+    tables = [
+        parquet_file.read_row_group(group_index, columns=columns).slice(0, rows_per_block)
+        for group_index in indices
+    ]
     return pa.concat_tables(tables).to_pandas()
 
 
@@ -405,55 +430,55 @@ def _detect_datetime_column_from_parquet(
     parquet_file = pq.ParquetFile(path)
     schema = parquet_file.schema_arrow
 
-    def _is_numeric(col: str) -> bool:
-        return _is_numeric_pa_type(schema.field(col).type)
+    def _is_numeric(column_name: str) -> bool:
+        return _is_numeric_pa_type(schema.field(column_name).type)
 
     columns = list(schema.names)
     for tier in _name_tiers(columns):
-        candidates = [col for col in tier if not _is_numeric(col)]
+        candidates = [column_name for column_name in tier if not _is_numeric(column_name)]
         if not candidates:
             continue
         sample = _sample_parquet_columns(parquet_file, candidates)
         passing = [
-            (col, parsed)
-            for col in candidates
-            if (parsed := _try_parse_datetime_column(sample[col])) is not None
+            (column_name, parsed)
+            for column_name in candidates
+            if (parsed := _try_parse_datetime_column(sample[column_name])) is not None
         ]
         if len(passing) != 1:
             return None
-        col, parsed = _pick_best_candidate(passing)
-        field_type = schema.field(col).type
+        column_name, parsed = _pick_best_candidate(passing)
+        field_type = schema.field(column_name).type
         if pa.types.is_timestamp(field_type):
             # Use the resolved parsed tz, not the raw physical field's — _pick_best_candidate
             # force-localizes utc-named naive columns to UTC, matching what the real pipeline
             # (set_datetime_index) later does, and the row-filter bounds must agree with that.
             # The physical on-disk type stays naive though, so flag it for the caller.
             tz = parsed.dt.tz
-            return col, "timestamp", (str(tz) if tz else None), field_type.tz is None
-        return col, "other", None, False
+            return column_name, "timestamp", (str(tz) if tz else None), field_type.tz is None
+        return column_name, "other", None, False
 
-    numeric_cols = [col for col in columns if _is_numeric(col)]
-    if numeric_cols:
-        sample = _sample_parquet_columns(parquet_file, numeric_cols)
+    numeric_columns = [column_name for column_name in columns if _is_numeric(column_name)]
+    if numeric_columns:
+        sample = _sample_parquet_columns(parquet_file, numeric_columns)
         epoch_passing = []
-        for col in numeric_cols:
+        for column_name in numeric_columns:
             try:
-                parsed = pd.to_datetime(sample[col], unit="ns", errors="coerce")
+                parsed = pd.to_datetime(sample[column_name], unit="ns", errors="coerce")
             except (ValueError, TypeError, OverflowError):
                 continue
             if _validate_parsed_datetimes(parsed):
-                epoch_passing.append((col, parsed))
+                epoch_passing.append((column_name, parsed))
         if len(epoch_passing) > 1:  # no named tier hid a candidate here — only the tiebreak can
             return None
         if epoch_passing:
-            col, _parsed = _pick_best_candidate(epoch_passing)
-            return col, "epoch_ns", None, True
+            column_name, _parsed = _pick_best_candidate(epoch_passing)
+            return column_name, "epoch_ns", None, True
 
     return None
 
 
 def _build_datetime_row_filters(
-    col: str,
+    column_name: str,
     kind: str,
     physically_naive: bool,
     bounds: tuple[pd.Timestamp | None, pd.Timestamp | None],
@@ -472,12 +497,12 @@ def _build_datetime_row_filters(
             end = end.tz_localize(None)
 
     filters = [
-        f
-        for f in [
-            (col, ">=", start) if start is not None else None,
-            (col, "<=", end) if end is not None else None,
+        filter_clause
+        for filter_clause in [
+            (column_name, ">=", start) if start is not None else None,
+            (column_name, "<=", end) if end is not None else None,
         ]
-        if f is not None
+        if filter_clause is not None
     ]
     return filters or None
 
@@ -506,7 +531,7 @@ def read_parquet_pruned(
     it; if that column can't be resolved, column pruning is skipped (never drop the time axis).
     """
     file_columns = pq.ParquetFile(path).schema_arrow.names
-    requested_cols = None if select_columns is None else select_columns(list(file_columns))
+    requested_columns = None if select_columns is None else select_columns(list(file_columns))
 
     stored_index = resolve_stored_datetime_index(path)
     materialized = stored_index is not None
@@ -514,30 +539,30 @@ def read_parquet_pruned(
 
     # Resolve the datetime column only when needed (row filter, or protecting a
     # non-materialized time axis); detection samples data, so skip it otherwise.
-    col = kind = tz = None
+    column_name = kind = tz = None
     physically_naive = False
-    if want_pushdown or (requested_cols is not None and not materialized):
+    if want_pushdown or (requested_columns is not None and not materialized):
         if materialized:
-            col, tz = stored_index
+            column_name, tz = stored_index
             kind = "timestamp"
             physically_naive = tz is None
         else:
             detected = _detect_datetime_column_from_parquet(path)
             if detected is not None:
-                col, kind, tz, physically_naive = detected
+                column_name, kind, tz, physically_naive = detected
 
-    columns_to_read = requested_cols
+    columns_to_read = requested_columns
     if columns_to_read is not None and not materialized:
-        if col is None:
+        if column_name is None:
             columns_to_read = None  # unknown datetime axis → don't risk dropping it, read all
-        elif col not in columns_to_read:
-            columns_to_read = [col, *columns_to_read]  # keep the time axis in the read
+        elif column_name not in columns_to_read:
+            columns_to_read = [column_name, *columns_to_read]  # keep the time axis in the read
 
     filters = None
-    if want_pushdown and col is not None and kind is not None and kind != "other":
+    if want_pushdown and column_name is not None and kind is not None and kind != "other":
         bounds = compute_bounds(tz if kind == "timestamp" else None)
         if bounds is not None:
-            filters = _build_datetime_row_filters(col, kind, physically_naive, bounds)
+            filters = _build_datetime_row_filters(column_name, kind, physically_naive, bounds)
 
     if columns_to_read is not None:
         logger.debug(
@@ -572,10 +597,10 @@ def set_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
     """
     if isinstance(df.index, pd.DatetimeIndex):
         return df
-    col, parsed = _find_datetime_col_parsed(df)
+    column_name, parsed = _find_datetime_col_parsed(df)
     df = df.copy()
-    df[col] = parsed
-    return df.set_index(col)
+    df[column_name] = parsed
+    return df.set_index(column_name)
 
 
 def deduplicate_then_sort_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -596,16 +621,16 @@ def deduplicate_then_sort_index(df: pd.DataFrame) -> pd.DataFrame:
 
 # ==================================================================================================
 def load_csv_with_datetime_index(
-    file_path: str | Path, dt_col: str | None = None, **kwargs
+    file_path: str | Path, datetime_column: str | None = None, **kwargs
 ) -> pd.DataFrame:
     """
     Load a CSV file and set a datetime column as the index.
 
-    When *dt_col* is ``None``, auto-detects the datetime column with
+    When *datetime_column* is ``None``, auto-detects the datetime column with
     ``set_datetime_index`` (raises if no column passes validation).
     """
-    if dt_col is not None:
-        return pd.read_csv(file_path, index_col=dt_col, parse_dates=True, **kwargs)
+    if datetime_column is not None:
+        return pd.read_csv(file_path, index_col=datetime_column, parse_dates=True, **kwargs)
 
     return set_datetime_index(pd.read_csv(file_path, **kwargs))
 
@@ -613,7 +638,7 @@ def load_csv_with_datetime_index(
 # ==================================================================================================
 def load_parquet_with_datetime_index(
     file_path: str | Path,
-    dt_col: str | None = None,
+    datetime_column: str | None = None,
     compute_bounds: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
     | None = None,
     select_columns: Callable[[list[str]], list[str] | None] | None = None,
@@ -625,21 +650,22 @@ def load_parquet_with_datetime_index(
     Files already carrying a DatetimeIndex are returned as-is; otherwise the datetime column
     is detected with ``set_datetime_index`` (raises if none passes validation).
 
-    *dt_col* names the datetime column explicitly, bypassing detection. Column pruning
-    (*select_columns*) still applies then — *dt_col* is always kept in the read — but row
-    pushdown (*compute_bounds*) does not, since an explicit column may still need parsing before
-    it is range-comparable. Without *dt_col*, both prunings go through :func:`read_parquet_pruned`.
+    *datetime_column* names the datetime column explicitly, bypassing detection. Column pruning
+    (*select_columns*) still applies then — *datetime_column* is always kept in the read — but
+    row pushdown (*compute_bounds*) does not, since an explicit column may still need parsing
+    before it is range-comparable. Without *datetime_column*, both prunings go through
+    :func:`read_parquet_pruned`.
     """
-    if dt_col is not None:
+    if datetime_column is not None:
         columns = None
         if select_columns is not None:
             file_columns = pq.ParquetFile(file_path).schema_arrow.names
             columns = select_columns(list(file_columns))
-            if columns is not None and dt_col not in columns:
-                columns = [dt_col, *columns]  # keep the time axis in the read
+            if columns is not None and datetime_column not in columns:
+                columns = [datetime_column, *columns]  # keep the time axis in the read
         df = pd.read_parquet(file_path, columns=columns, **kwargs)
-        df[dt_col] = pd.to_datetime(df[dt_col])
-        return df.set_index(dt_col)
+        df[datetime_column] = pd.to_datetime(df[datetime_column])
+        return df.set_index(datetime_column)
 
     if compute_bounds is not None or select_columns is not None:
         df = read_parquet_pruned(
@@ -662,7 +688,7 @@ def _wildcard_matches(pattern: str, columns: pd.Index | list[str]) -> list[str] 
     if not (pattern and pattern.endswith(cst.DatabaseOptions.WILDCARD_SUFFIX)):
         return None
     prefix = pattern.rstrip(cst.DatabaseOptions.WILDCARD_SUFFIX)
-    return [col for col in columns if col.startswith(prefix)]
+    return [column_name for column_name in columns if column_name.startswith(prefix)]
 
 
 def get_column_name_from_pattern(columns: pd.Index | list[str], pattern: str) -> str | None:

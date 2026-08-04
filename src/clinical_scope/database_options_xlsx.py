@@ -87,7 +87,7 @@ def _parse_groups(value: Any) -> list[str]:
     """Return a list of group names from a semicolon-separated cell value."""
     if _is_empty(value):
         return []
-    return [g.strip() for g in str(value).split(";") if g.strip()]
+    return [group.strip() for group in str(value).split(";") if group.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -144,8 +144,8 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
     # ------------------------------------------------------------------
     # Normalize column names (case-insensitive, strip whitespace)
     # ------------------------------------------------------------------
-    signals_df.columns = [c.strip().lower() for c in signals_df.columns]
-    loops_df.columns = [c.strip().lower() for c in loops_df.columns]
+    signals_df.columns = [column.strip().lower() for column in signals_df.columns]
+    loops_df.columns = [column.strip().lower() for column in loops_df.columns]
 
     # ------------------------------------------------------------------
     # Validate required columns
@@ -187,12 +187,12 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             # ----------------------------------------------------------
             if signal == _SENTINEL_DATASOURCE_DEFAULT:
                 numerics = {}
-                pr = _to_float(row.get("period_resampling", ""))
-                if pr is not None:
-                    numerics["period_resampling"] = pr
-                prio = _to_float(row.get("priority", ""))
-                if prio is not None:
-                    numerics["priority"] = prio
+                period_resampling = _to_float(row.get("period_resampling", ""))
+                if period_resampling is not None:
+                    numerics["period_resampling"] = period_resampling
+                priority = _to_float(row.get("priority", ""))
+                if priority is not None:
+                    numerics["priority"] = priority
                 if numerics:
                     result[ds].setdefault("numerics", {}).update(numerics)
 
@@ -205,48 +205,48 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             # ----------------------------------------------------------
             # Per-signal metadata → _SIGNALS_SHEET_NAME sub-dict
             # ----------------------------------------------------------
-            sig_opts = {}
+            signal_options = {}
 
             label = str(row.get("label", "")).strip()
             if label and label != signal:
-                sig_opts["label"] = label
+                signal_options["label"] = label
 
             unit = str(row.get("unit", "")).strip()
             if unit:
-                sig_opts["unit"] = unit
+                signal_options["unit"] = unit
 
-            uc = _to_float(row.get("unit_conversion", ""))
-            if uc is not None:
-                sig_opts["unit_conversion"] = uc
+            unit_conversion = _to_float(row.get("unit_conversion", ""))
+            if unit_conversion is not None:
+                signal_options["unit_conversion"] = unit_conversion
 
-            r_min = _to_float(row.get("range_min", ""))
-            r_max = _to_float(row.get("range_max", ""))
-            if r_min is not None or r_max is not None:
-                sig_opts["range"] = [r_min, r_max]
+            range_min = _to_float(row.get("range_min", ""))
+            range_max = _to_float(row.get("range_max", ""))
+            if range_min is not None or range_max is not None:
+                signal_options["range"] = [range_min, range_max]
 
-            prio = _to_float(row.get("priority", ""))
-            if prio is not None:
-                sig_opts["priority"] = prio
+            priority = _to_float(row.get("priority", ""))
+            if priority is not None:
+                signal_options["priority"] = priority
 
             color = str(row.get("color", "")).strip()
             if color:
-                sig_opts["color"] = color
+                signal_options["color"] = color
 
             visible_raw = str(row.get("visible", "")).strip()
             if not _is_empty(visible_raw) and not _is_truthy(visible_raw):
-                sig_opts["visible"] = False
+                signal_options["visible"] = False
 
             line_dash = str(row.get("line_dash", "")).strip()
             if line_dash:
-                sig_opts["line_dash"] = line_dash
+                signal_options["line_dash"] = line_dash
 
-            pr = _to_float(row.get("period_resampling", ""))
-            if pr is not None:
-                sig_opts["period_resampling"] = pr
+            period_resampling = _to_float(row.get("period_resampling", ""))
+            if period_resampling is not None:
+                signal_options["period_resampling"] = period_resampling
 
             hover_template = str(row.get("hover_template", "")).strip()
             if hover_template:
-                sig_opts["hover_template"] = hover_template
+                signal_options["hover_template"] = hover_template
 
             # Warn about fields that are only meaningful in the sentinel (*) row
             timezone_val = str(row.get("timezone", "")).strip()
@@ -259,15 +259,15 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                     signal,
                 )
 
-            result[ds].setdefault(_SIGNALS_SHEET_NAME, {})[signal] = sig_opts
+            result[ds].setdefault(_SIGNALS_SHEET_NAME, {})[signal] = signal_options
 
             # ----------------------------------------------------------
             # display column → field_display list
             # ----------------------------------------------------------
             display_raw = str(row.get("display", "")).strip()
-            fd = result[ds].setdefault("field_display", [])
-            if _is_truthy(display_raw) and signal not in fd:
-                fd.append(signal)
+            field_display = result[ds].setdefault("field_display", [])
+            if _is_truthy(display_raw) and signal not in field_display:
+                field_display.append(signal)
 
             # ----------------------------------------------------------
             # groups column → collect membership for later resolution
@@ -285,15 +285,15 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
     # ------------------------------------------------------------------
     global_grouped: dict[str, list[str]] = {}
 
-    for group_name, ds_signals in group_membership.items():
-        if len(ds_signals) > 1:
+    for group_name, signals_by_datasource in group_membership.items():
+        if len(signals_by_datasource) > 1:
             # Global: union of all signals across datasources (preserve order)
             all_signals = []
-            for sigs in ds_signals.values():
-                all_signals.extend(sigs)
+            for signal_names in signals_by_datasource.values():
+                all_signals.extend(signal_names)
             global_grouped[group_name] = all_signals
         else:
-            (only_ds, signals_list) = next(iter(ds_signals.items()))
+            (only_ds, signals_list) = next(iter(signals_by_datasource.items()))
             result[only_ds].setdefault("grouped_fields", {})[group_name] = signals_list
 
     if global_grouped:
@@ -306,15 +306,15 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
         try:
             ds = str(row.get("datasource", "")).strip()
             loop_name = str(row.get("loop_name", "")).strip()
-            x_sig = str(row.get("x_signal", "")).strip()
-            y_sig = str(row.get("y_signal", "")).strip()
+            x_signal = str(row.get("x_signal", "")).strip()
+            y_signal = str(row.get("y_signal", "")).strip()
 
-            if any(_is_empty(v) for v in (ds, loop_name, x_sig, y_sig)):
+            if any(_is_empty(field) for field in (ds, loop_name, x_signal, y_signal)):
                 continue
 
             if ds not in result:
                 result[ds] = {}
-            result[ds].setdefault("loop", {})[loop_name] = [x_sig, y_sig]
+            result[ds].setdefault("loop", {})[loop_name] = [x_signal, y_signal]
 
         except Exception:  # noqa: BLE001
             logger.warning("Skipping loops row %s due to unexpected error.", row_idx, exc_info=True)
@@ -378,12 +378,12 @@ def xlsx_bytes_to_database_options(data: bytes) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _try_save_intermediate_json(xlsx_path: Path, db_options: dict) -> None:
+def _try_save_intermediate_json(xlsx_path: Path, database_options: dict) -> None:
     """Try to write the converted dict as JSON alongside the XLSX file."""
     json_path = xlsx_path.with_name(xlsx_path.stem + "_from_xlsx.json")
     try:
         json_path.write_text(
-            json.dumps(db_options, indent=4, ensure_ascii=False),
+            json.dumps(database_options, indent=4, ensure_ascii=False),
             encoding="utf-8",
         )
         logger.info("Saved intermediate JSON to %s", json_path)

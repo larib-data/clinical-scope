@@ -41,20 +41,20 @@ def filter_loop_by_time(
         logger.warning("Loop cache miss for uid=%s", loop_uid)
         return no_update
 
-    t_min = cache["t_min"]
-    t_start = t_min + slider_value[0]
-    t_end = t_min + slider_value[1]
+    time_min = cache["t_min"]
+    time_start = time_min + slider_value[0]
+    time_end = time_min + slider_value[1]
     display_timezone = cache.get("display_timezone")
 
     patch = Patch()
-    for i, trace_data in enumerate(cache["traces"]):
+    for trace_index, trace_data in enumerate(cache["traces"]):
         time_array = trace_data["time_axis"]
         if time_array is None:
             continue
-        mask = (time_array >= t_start) & (time_array <= t_end)
-        patch["data"][i]["x"] = trace_data["x"][mask].tolist()
-        patch["data"][i]["y"] = trace_data["y"][mask].tolist()
-        patch["data"][i]["customdata"] = loop_time_to_display_strings(
+        mask = (time_array >= time_start) & (time_array <= time_end)
+        patch["data"][trace_index]["x"] = trace_data["x"][mask].tolist()
+        patch["data"][trace_index]["y"] = trace_data["y"][mask].tolist()
+        patch["data"][trace_index]["customdata"] = loop_time_to_display_strings(
             time_array[mask], display_timezone=display_timezone
         ).tolist()
 
@@ -76,10 +76,10 @@ def update_time_display(slider_value: list[float], loop_uid: str | None) -> str:
     if cache is None:
         return no_update
 
-    t_min = cache["t_min"]
+    time_min = cache["t_min"]
     display_timezone = cache.get("display_timezone")
     return format_time_range(
-        t_min + slider_value[0],
-        t_min + slider_value[1],
+        time_min + slider_value[0],
+        time_min + slider_value[1],
         display_timezone=display_timezone,
     )

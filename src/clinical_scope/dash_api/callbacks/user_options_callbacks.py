@@ -29,7 +29,9 @@ _HEIGHT = cst.UserOptions.DefaultSubplotHeight.NAME
 
 def _field_by_name(name: str) -> Any | None:
     """Return the UserOptions nested schema class whose NAME matches, or None."""
-    return next((f for f in ui_helper.iter_user_option_fields() if name == f.NAME), None)
+    return next(
+        (field for field in ui_helper.iter_user_option_fields() if name == field.NAME), None
+    )
 
 
 def _option_key(widget_id: dict[str, str]) -> str:
@@ -83,8 +85,8 @@ def persist_user_options(
     updated = dict(store or {})
 
     # Decode each modal widget value to its Python form (BOOL checklist [True]/[] → bool).
-    for value, wid in zip(widget_values, widget_ids, strict=False):
-        key = _option_key(wid)
+    for value, widget_id in zip(widget_values, widget_ids, strict=False):
+        key = _option_key(widget_id)
         updated[key] = ui_components.from_widget_value(_api_type(key), value)
 
     if _HEIGHT in updated:
@@ -112,8 +114,8 @@ def reflect_user_options(
     """Mirror the store onto the modal widgets and the Process-side indicator."""
     store = store or {}
     values: list[Any] = []
-    for wid in widget_ids:
-        key = _option_key(wid)
+    for widget_id in widget_ids:
+        key = _option_key(widget_id)
         values.append(ui_components.to_widget_value(_api_type(key), store.get(key)))
     indicator = ui_components.save_html_indicator_text(bool(store.get(_SAVE_HTML)))
     return values, indicator

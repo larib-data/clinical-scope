@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 def _is_time_header(line: str) -> bool:
     """Return True if *line* starts with any multilingual variant of 'Time'."""
     return any(
-        line.casefold().startswith(p.casefold()) for p in options_naming.TIME_HEADER_PREFIXES
+        line.casefold().startswith(prefix.casefold())
+        for prefix in options_naming.TIME_HEADER_PREFIXES
     )
 
 
@@ -42,31 +43,33 @@ class FluxmedSignalsDataSource(DataSourceBase):
             start_time_str = match.group(1)
             start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S").replace(tzinfo=UTC)
 
-            with Path.open(file_path, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f]
+            with Path.open(file_path, "r", encoding="utf-8") as file:
+                lines = [line.strip() for line in file]
 
             # Find header row (accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
-            header_idx = None
-            for i, line in enumerate(lines):
+            header_line_index = None
+            for line_index, line in enumerate(lines):
                 if _is_time_header(line):
-                    header_idx = i
+                    header_line_index = line_index
                     break
 
-            if header_idx is None:
+            if header_line_index is None:
                 known = ", ".join(options_naming.TIME_HEADER_PREFIXES)
                 msg = f"No time header found (tried: {known})"
                 raise RuntimeError(msg)
 
-            units_idx = header_idx + 1
-            data_start_idx = units_idx + 6  # skip 6 lines after units
+            units_line_index = header_line_index + 1
+            data_start_index = units_line_index + 6  # skip 6 lines after units
 
-            col_names = re.split(r"\s+", lines[header_idx])
-            col_units = re.split(r"\s+", lines[units_idx])
-            columns = [f"{name}({unit})" for name, unit in zip(col_names, col_units, strict=False)]
+            column_names = re.split(r"\s+", lines[header_line_index])
+            column_units = re.split(r"\s+", lines[units_line_index])
+            columns = [
+                f"{name}({unit})" for name, unit in zip(column_names, column_units, strict=False)
+            ]
 
             # Extract numeric rows only
             numeric_lines = [
-                line for line in lines[data_start_idx:] if re.match(r"^[0-9]+[.,][0-9]", line)
+                line for line in lines[data_start_index:] if re.match(r"^[0-9]+[.,][0-9]", line)
             ]
 
             if not numeric_lines:
@@ -82,10 +85,13 @@ class FluxmedSignalsDataSource(DataSourceBase):
                 engine="python",
             )
 
-            time_col = columns[0]
+            time_column = columns[0]
             df = df.apply(pd.to_numeric, errors="coerce")
             df.index = pd.to_datetime(
-                [start_time + timedelta(seconds=float(t)) for t in df[time_col]]
+                [
+                    start_time + timedelta(seconds=float(offset_seconds))
+                    for offset_seconds in df[time_column]
+                ]
             )
             df.index.name = "datetime_index"
         else:
