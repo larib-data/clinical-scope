@@ -56,6 +56,7 @@ Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical l
 Field-by-field reference is in the [tutorial](docs/user_guide/tutorial.md). The two-file split:
 - **`database_options`** (`.json` or `.xlsx`) — per-source signal config: `field_display`, `data` (labels/units/colors), `grouped_fields`, `loop`; plus `global.grouped_fields`. Uploading one in the UI caches it to `~/.clinical_scope/last_database_options.json` (signal metadata only, no PHI).
 - **`patient_options`** (`.json`) — per-run settings: `data_folder`, `datetime_start`/`datetime_end`, `quick_load`, and per-source options (`time_shift`, `day`, …).
+- **`user_options`** (`~/.clinical_scope/user_options.json`) — the third tier: per-person app behaviour + display fallbacks, edited only in the Settings modal. **Never overrides `database_options`** ([ADR-0005](docs/adr/0005-user-options-are-fallbacks.md)). A new display setting = a `UserOptions` schema class (with `SECTION`) + a field on `DisplayFallbacks` (`signal_container.py`) + one read site; the carrier is threaded from `wrapper.main` down to both `Signal` and `PlotModel` construction, so no signature grows.
 
 Reference configs in `example/option_files/`.
 
@@ -87,7 +88,7 @@ Ruff (`ruff check src/`, `ruff format src/`). Line length 100 (Python only — M
 
 Keep inline comments concise — one line where possible; explain the non-obvious *why*, **not** the *what*. Reserve longer prose for docstrings.
 
-Shared literal values (option keys, plot types, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today.
+Shared literal values (option keys, plot types, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today. That is a `src/` rule: tests assert **independent literals** (`== 300`, not `== cst.DEFAULT_SUBPLOT_HEIGHT`), since a test that restates the constant it exercises can never fail.
 
 ## Logs
 

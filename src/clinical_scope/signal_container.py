@@ -66,6 +66,103 @@ def merge_y_ranges(
     return [min(bound[0] for bound in ranges), max(bound[1] for bound in ranges)]
 
 
+@dataclass(frozen=True)
+class DisplayFallbacks:
+    """
+    Display defaults coming from user options, threaded through the render layer.
+
+    One carrier for every "applies where database_options is silent" value (ADR-0005): a new
+    setting costs a field here plus its read site, not a new argument on Signal or PlotModel.
+    Built once per run by ``wrapper.main``; the field defaults reproduce the look the app had
+    before any of this was settable, so a bare ``DisplayFallbacks()`` is always safe.
+    """
+
+    subplot_height: int = cst.DEFAULT_SUBPLOT_HEIGHT
+    loop_subplot_height: int = cst.DEFAULT_LOOP_SUBPLOT_HEIGHT
+    loops_per_row: int = cst.DEFAULT_LOOPS_PER_ROW
+    legend_entry_width: int = cst.DEFAULT_LEGEND_ENTRY_WIDTH_MAX
+    y_significant_digits: int = cst.DEFAULT_Y_SIGNIFICANT_DIGITS
+    colorway: str = cst.DEFAULT_COLORWAY
+    template: str = cst.DEFAULT_PLOT_TEMPLATE
+    hovermode: str = cst.DEFAULT_HOVERMODE
+    hover_time_format: str = cst.DEFAULT_HOVER_TIME_FORMAT
+
+    @classmethod
+    def from_user_options(cls, user_options: dict[str, Any] | None) -> "DisplayFallbacks":
+        """
+        Read the display tenants of *user_options*; missing or unusable values keep defaults.
+
+        An absent key is the normal case (a settings file predating the option), so it stays
+        silent. A value that is present but discarded is logged — the settings modal already
+        validates, so it only happens to a hand-edited ``user_options.json``.
+        """
+        options = user_options or {}
+        schema = cst.UserOptions
+
+        def bounded_int(field_schema: Any) -> int:
+            if field_schema.NAME not in options:
+                return field_schema.DEFAULT
+            try:
+                value = int(options[field_schema.NAME])
+            except (TypeError, ValueError):
+                logger.warning(
+                    "user_options['%s'] = %r is not a number; using %s",
+                    field_schema.NAME,
+                    options[field_schema.NAME],
+                    field_schema.DEFAULT,
+                )
+                return field_schema.DEFAULT
+            clamped = max(field_schema.MIN, min(field_schema.MAX, value))
+            if clamped != value:
+                logger.warning(
+                    "user_options['%s'] = %s is outside [%s, %s]; using %s",
+                    field_schema.NAME,
+                    value,
+                    field_schema.MIN,
+                    field_schema.MAX,
+                    clamped,
+                )
+            return clamped
+
+        def one_of(field_schema: Any) -> Any:
+            if field_schema.NAME not in options:
+                return field_schema.DEFAULT
+            value = options[field_schema.NAME]
+            allowed = [choice_value for choice_value, _ in field_schema.CHOICES]
+            if value not in allowed:
+                logger.warning(
+                    "user_options['%s'] = %r is not one of %s; using %r",
+                    field_schema.NAME,
+                    value,
+                    allowed,
+                    field_schema.DEFAULT,
+                )
+                return field_schema.DEFAULT
+            return value
+
+        return cls(
+            subplot_height=bounded_int(schema.DefaultSubplotHeight),
+            loop_subplot_height=bounded_int(schema.LoopSubplotHeight),
+            loops_per_row=one_of(schema.LoopsPerRow),
+            legend_entry_width=bounded_int(schema.LegendEntryWidth),
+            y_significant_digits=one_of(schema.YSignificantDigits),
+            colorway=one_of(schema.FallbackColorway),
+            template=one_of(schema.Template),
+            hovermode=one_of(schema.HoverModeOption),
+            hover_time_format=one_of(schema.HoverTimeFormatOption),
+        )
+
+    @property
+    def colorway_palette(self) -> list[str] | None:
+        """Resolved palette, or None to leave the template's own colorway in place."""
+        palette = cst.Colorway.PALETTES.get(self.colorway)
+        return list(palette) if palette else None
+
+    def value_format(self, axis: str) -> str:
+        """Plotly hover format for one axis value, e.g. ``%{y:.4g}``."""
+        return f"%{{{axis}:.{self.y_significant_digits}g}}"
+
+
 @dataclass
 class Data:
     x: np.ndarray | None = None
@@ -96,7 +193,7 @@ class PlotOptions:
     fill_color: str | None = None
     fill_pattern: str | None = None
     square_plot: bool = False
-    plot_height: int = cst.DEFAULT_SUBPLOT_HEIGHT
+    plot_height: int | None = None
     plot_type: str | None = None
     plot_priority: float | None = None
     display_timezone: str = field(default_factory=lambda: cst.DISPLAY_TIMEZONE)
@@ -203,15 +300,14 @@ class TraceOptions:
     plot_options: PlotOptions = field(default_factory=PlotOptions)
 
     def __post_init__(self) -> None:
-        # I believe default params are better left here rather than in constants.py file ?
         if self.mode is None:
-            self.mode = "lines"
+            self.mode = cst.TraceDefaults.MODE
         if self.line_width is None:
-            self.line_width = 2.0
+            self.line_width = cst.TraceDefaults.LINE_WIDTH
         if self.line_dash is None:
-            self.line_dash = "solid"
+            self.line_dash = cst.TraceDefaults.LINE_DASH
         if self.opacity is None:
-            self.opacity = 1.0
+            self.opacity = cst.TraceDefaults.OPACITY
 
 
 @dataclass
@@ -259,6 +355,8 @@ class Signal:
     metadata: Metadata = field(default_factory=Metadata)
     quality: Quality = field(default_factory=Quality)
     kwargs: dict = field(default_factory=dict)
+    # Read by to_plotly_trace, which __post_init__ calls — so it has to be a constructor field.
+    display_fallbacks: DisplayFallbacks = field(default_factory=DisplayFallbacks)
     # Dictionary to store time spent in each step
     timing: dict = field(default_factory=dict, init=False)
 
@@ -335,11 +433,13 @@ class Signal:
         source_options: dict | None = None,
         patient_options: dict | None = None,
         database_options_specific: dict | None = None,
+        display_fallbacks: DisplayFallbacks | None = None,
     ) -> "Signal":
         start_total = time.perf_counter()
         source_options = source_options or {}
         patient_options = patient_options or {}
         database_options_specific = database_options_specific or {}
+        display_fallbacks = display_fallbacks or DisplayFallbacks()
         timing = {}
         # ---- Step 1: metadata extraction ---------------------------------------
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
@@ -408,6 +508,7 @@ class Signal:
             data=data,
             trace_options=trace_options,
             metadata=metadata,
+            display_fallbacks=display_fallbacks,
         )
         timing["signal_initialization"] = time.perf_counter() - start
         # ---- Total --------------------------------------------------------------
@@ -425,6 +526,7 @@ class Signal:
     def loop_from_signals(
         cls, signal_x: "Signal", signal_y: "Signal", name: str | None = None
     ) -> "Signal":
+        """Build a loop signal from two time-series; display fallbacks come from *signal_x*."""
         start_total = time.perf_counter()
         timing = {}
 
@@ -481,7 +583,6 @@ class Signal:
             y_axis_title=f"{signal_y.name} ({signal_y.trace_options.plot_options.y_unit_name})",
             show_legend=False,
             square_plot=True,
-            plot_height=cst.DEFAULT_LOOP_SUBPLOT_HEIGHT,
             display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
         )
         trace_options = TraceOptions(plot_options=plot_options)
@@ -493,6 +594,7 @@ class Signal:
             data=data,
             trace_options=trace_options,
             metadata=Metadata(),
+            display_fallbacks=signal_x.display_fallbacks,
         )
         timing["signal_initialization"] = time.perf_counter() - start
         timing["total_loop_from_signals"] = time.perf_counter() - start_total
@@ -551,7 +653,7 @@ class Signal:
         customdata = (
             hover_formatters.compute_customdata(self.data.y, _template) if _is_keyword else None
         )
-        _y_fmt = "%{customdata}" if _is_keyword else "%{y:.4g}"
+        _y_fmt = "%{customdata}" if _is_keyword else self.display_fallbacks.value_format("y")
 
         if _template is not None and not _is_keyword:
             hovertemplate = _template
@@ -568,6 +670,8 @@ class Signal:
             )
             # Keyword formatters (fraction, percentage, …) only cover one axis,
             # so they are intentionally ignored for loops to avoid asymmetric display.
+            _x_fmt = self.display_fallbacks.value_format("x")
+            _loop_y_fmt = self.display_fallbacks.value_format("y")
             if self.data.loop_time_axis is not None and len(self.data.loop_time_axis) > 0:
                 customdata = loop_time_to_display_strings(
                     self.data.loop_time_axis, display_timezone=display_tz
@@ -579,14 +683,14 @@ class Signal:
                 )
                 hovertemplate = (
                     f"<b>{self.name}</b><br>"
-                    f"%{{x:.4g}}{_x_unit_suffix} | %{{y:.4g}}{y_unit_suffix}<br>"
+                    f"{_x_fmt}{_x_unit_suffix} | {_loop_y_fmt}{y_unit_suffix}<br>"
                     f"%{{customdata}} ({_tz_abbr})<br>"
                     "<extra></extra>"
                 )
             else:
                 hovertemplate = (
                     f"<b>{self.name}</b><br>"
-                    f"%{{x:.4g}}{_x_unit_suffix} | %{{y:.4g}}{y_unit_suffix}<br>"
+                    f"{_x_fmt}{_x_unit_suffix} | {_loop_y_fmt}{y_unit_suffix}<br>"
                     "<extra></extra>"
                 )
         else:
@@ -662,18 +766,35 @@ class PlotModel:
     computed_height: float | None = None
     timing: dict = field(default_factory=dict)
     name: str | None = None
+    # Read by to_figure, which __post_init__ calls — so it has to be a constructor field.
+    display_fallbacks: DisplayFallbacks = field(default_factory=DisplayFallbacks)
+
+    @property
+    def n_cols(self) -> int:
+        """
+        Subplot columns of the rendered grid.
+
+        Only loops pack side by side; everything else stacks in one column. The UI reads this
+        to map a trace back to its subplot, so it must agree with what to_figure() builds.
+        """
+        if self.plot_type == cst.PlotType.LOOP and len(self.groups) > 1:
+            return self.display_fallbacks.loops_per_row
+        return 1
 
     def to_figure(self, min_spacing: float = 0.005) -> go.Figure:
         start = time.perf_counter()
         n_groups = len(self.groups)
         is_loop = self.plot_type == cst.PlotType.LOOP
+        n_cols = self.n_cols
 
         # Loop plots with multiple subplots use a multi-column grid so square subplots
         # sit side-by-side instead of stacking vertically.
         if is_loop and n_groups > 1:
-            n_cols = 2  # Flexible, TODO: remove the magic number
             n_rows = int(np.ceil(n_groups / n_cols))
-            subplot_height = self.groups[0].plot_options.plot_height
+            subplot_height = (
+                self.groups[0].plot_options.plot_height
+                or self.display_fallbacks.loop_subplot_height
+            )
             total_fig_height = n_rows * subplot_height
             row_heights = [1.0] * n_rows
             specs = [
@@ -688,9 +809,15 @@ class PlotModel:
             extra_subplot_kwargs = {"horizontal_spacing": 0.13}
             title_gap_px = 90.0
         else:
-            n_cols = 1  # Fixed
             n_rows = n_groups
-            group_heights = [group.plot_options.plot_height for group in self.groups]
+            default_height = (
+                self.display_fallbacks.loop_subplot_height
+                if is_loop
+                else self.display_fallbacks.subplot_height
+            )
+            group_heights = [
+                group.plot_options.plot_height or default_height for group in self.groups
+            ]
             total_fig_height = np.sum(group_heights)
             row_heights = [height / total_fig_height for height in group_heights]
             specs = [[{"secondary_y": True}] for _ in range(n_rows)]
@@ -767,13 +894,12 @@ class PlotModel:
             if self.plot_type == cst.PlotType.TIME_SERIES:
                 fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
-        # Time-series figures use "x unified": one compact tooltip with a single time header
-        # and one line per trace.  Format the x-axis header as HH:MM:SS (milliseconds would
-        # clutter the header; they're available per trace via a custom hover_template if needed).
-        # Loop figures keep Plotly's default ("closest"): each point is independent.
+        # Time-series hover header format and panel style are user fallbacks: no database option
+        # speaks about either, so they apply unconditionally.  Loop figures keep Plotly's default
+        # ("closest"): each point is independent, so a unified panel would be meaningless.
         if self.plot_type == cst.PlotType.TIME_SERIES:
-            fig.update_xaxes(hoverformat="%H:%M:%S.%3f")
-            fig.update_layout(hovermode="x unified")
+            fig.update_xaxes(hoverformat=self.display_fallbacks.hover_time_format)
+            fig.update_layout(hovermode=self.display_fallbacks.hovermode)
 
         fig.update_layout(
             title_text=self.name,
@@ -781,6 +907,16 @@ class PlotModel:
             width=fig_width,
             showlegend=True,
             hoverlabel={"namelength": -1},
+            template=self.display_fallbacks.template,
+            # Plotly only draws from the colorway for traces with no explicit color, so a
+            # per-signal color from database_options wins by construction (ADR-0005).
+            colorway=self.display_fallbacks.colorway_palette,
+            # Time-series figures autosize to the browser width; capping an entry keeps the
+            # longest signal label from eating the plot area.
+            legend={
+                "entrywidth": self.display_fallbacks.legend_entry_width,
+                "entrywidthmode": "pixels",
+            },
         )
 
         fig.update_layout(
@@ -824,15 +960,22 @@ class PlotModel:
 
     @staticmethod
     def assign_plot_model(
-        plot_group_list: list[PlotGroup], subplot_height: int | None = None
+        plot_group_list: list[PlotGroup], display_fallbacks: DisplayFallbacks | None = None
     ) -> list["PlotModel"]:
         """Assign plot groups to plot models by plot type, ordered."""
+        fallbacks = display_fallbacks or DisplayFallbacks()
         groups = {}
         for plot_group in plot_group_list:
-            # A user-set global height overrides each time-series group's own; loops stay square.
-            if subplot_height and plot_group.plot_options.plot_type != cst.PlotType.LOOP:
-                plot_group.plot_options.plot_height = subplot_height
-            groups.setdefault(plot_group.plot_options.plot_type, []).append(plot_group)
+            plot_options = plot_group.plot_options
+            # ADR-0005: a height from the database configuration wins; None means it was silent,
+            # so the user's per-plot-type fallback fills the gap.
+            if plot_options.plot_height is None:
+                plot_options.plot_height = (
+                    fallbacks.loop_subplot_height
+                    if plot_options.plot_type == cst.PlotType.LOOP
+                    else fallbacks.subplot_height
+                )
+            groups.setdefault(plot_options.plot_type, []).append(plot_group)
         page_order = cst.PlotType.PAGE_ORDER
         ordered = sorted(
             groups,
@@ -840,10 +983,18 @@ class PlotModel:
                 page_order.index(plot_type) if plot_type in page_order else len(page_order)
             ),
         )
-        return [PlotModel(groups=groups[plot_type]) for plot_type in ordered]
+        return [
+            PlotModel(groups=groups[plot_type], display_fallbacks=fallbacks)
+            for plot_type in ordered
+        ]
 
     @staticmethod
-    def to_html(plot_models: list["PlotModel"], patient_options: dict[str, Any]) -> None:
+    def to_html(
+        plot_models: list["PlotModel"],
+        patient_options: dict[str, Any],
+        self_contained: bool = False,
+    ) -> None:
+        """Write every figure to the patient's visualization.html (see print_out_figure)."""
         if not plot_models:
             logger.warning("⚠️ PlotModel figure generation to html was called with empty list")
         data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
@@ -853,7 +1004,7 @@ class PlotModel:
             plot_model.figure for plot_model in plot_models if plot_model.figure is not None
         ]
         start = time.perf_counter()
-        print_out_figure(output_path, fig_list)
+        print_out_figure(output_path, fig_list, self_contained=self_contained)
         elapsed = time.perf_counter() - start
         logger.debug("⏳ %.4fs for PlotModel list to html visualization", elapsed)
 
@@ -893,8 +1044,21 @@ def wrap_label(text: str, max_line_length: int = 12, break_chars: str = r"[ \-_]
 
 
 # ==================================================================================================
-def print_out_figure(path_output: Path, fig_list: list) -> None:
-    """Export Plotly figures to a single HTML file."""
+def print_out_figure(path_output: Path, fig_list: list, self_contained: bool = False) -> None:
+    """
+    Export Plotly figures to a single HTML file.
+
+    With *self_contained*, plotly.js is embedded once (in the first figure; the rest reuse it)
+    so the file renders on a machine with no network — at ~3.5 MB. Otherwise it is fetched
+    from a CDN, which keeps the file small but shows a blank page offline.
+    """
     with Path.open(path_output, "w") as file_out:
-        for fig in fig_list:
-            file_out.write(fig.to_html(full_html=False, include_plotlyjs="cdn"))
+        for figure_index, fig in enumerate(fig_list):
+            if self_contained:
+                # Embedding the ~3.5 MB bundle once per file, not once per figure.
+                include_plotlyjs = (
+                    cst.HtmlExport.INLINE if figure_index == 0 else cst.HtmlExport.OMIT
+                )
+            else:
+                include_plotlyjs = cst.HtmlExport.CDN
+            file_out.write(fig.to_html(full_html=False, include_plotlyjs=include_plotlyjs))

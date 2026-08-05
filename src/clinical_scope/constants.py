@@ -30,7 +30,7 @@ ANNOTATION_KEY = "annotations"
 # Signal-free, no-PHI app state cached under the user's home (~/<CLINICAL_SCOPE_DIR_NAME>/).
 CLINICAL_SCOPE_DIR_NAME = ".clinical_scope"
 CACHED_DATABASE_OPTIONS_FILE_NAME = "last_database_options.json"  # signal metadata only, no PHI
-USER_OPTIONS_FILE_NAME = "user_options.json"  # per-user global preferences
+USER_OPTIONS_FILE_NAME = "user_options.json"  # global user options of the person at the keyboard
 
 PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"
 PLACEHOLDER_DAY = "YYYY-MM-DD"
@@ -76,6 +76,7 @@ class ApiType:
     FLOAT = "float"
     INT = "int"
     BOOL = "bool"
+    CHOICE = "choice"
     TIMESTAMP = "timestamp"
     DAY = "day"
     TIMEZONE = "timezone"
@@ -145,27 +146,245 @@ class PatientOptions:
     # pass
 
 
-# Subplot heights (px). Time-series default is user-tunable via UserOptions; loops stay square.
+class TraceDefaults:
+    """Per-trace rendering defaults, used when neither database nor source options set them."""
+
+    MODE = "lines"  # "lines", "markers" or "lines+markers"
+    LINE_WIDTH = 2.0
+    LINE_DASH = "solid"
+    OPACITY = 1.0
+
+
+class Colorway:
+    """Fallback trace palettes, applied only where database_options sets no per-signal color."""
+
+    OKABE_ITO = "okabe_ito"
+    TOL_MUTED = "tol_muted"
+    PLOTLY = "plotly"
+
+    # Okabe & Ito (2008): eight hues distinguishable under the common colour-vision deficiencies.
+    PALETTE_OKABE_ITO = (
+        "#E69F00",
+        "#56B4E9",
+        "#009E73",
+        "#F0E442",
+        "#0072B2",
+        "#D55E00",
+        "#CC79A7",
+        "#000000",
+    )
+    # Paul Tol's "muted" qualitative scheme: colourblind-safe, lower saturation for dense traces.
+    PALETTE_TOL_MUTED = (
+        "#CC6677",
+        "#332288",
+        "#DDCC77",
+        "#117733",
+        "#88CCEE",
+        "#882255",
+        "#44AA99",
+        "#999933",
+    )
+
+    # None = leave Plotly's own colorway in place.
+    PALETTES: ClassVar[dict[str, tuple[str, ...] | None]] = {
+        OKABE_ITO: PALETTE_OKABE_ITO,
+        TOL_MUTED: PALETTE_TOL_MUTED,
+        PLOTLY: None,
+    }
+
+    CHOICES = (
+        (OKABE_ITO, "Colorblind-safe (Okabe-Ito)"),
+        (TOL_MUTED, "Colorblind-safe, muted (Tol)"),
+        (PLOTLY, "Plotly default"),
+    )
+
+
+class PlotTemplate:
+    """Plotly layout templates offered as a display fallback."""
+
+    LIGHT = "plotly"  # Plotly's own default
+    DARK = "plotly_dark"
+
+    CHOICES = (
+        (LIGHT, "Light"),
+        (DARK, "Dark"),
+    )
+
+
+class HoverMode:
+    """Plotly ``layout.hovermode`` values offered for time-series figures."""
+
+    X_UNIFIED = "x unified"  # one tooltip per x position, all traces listed
+    CLOSEST = "closest"  # one tooltip for the nearest point only
+
+    CHOICES = (
+        (X_UNIFIED, "Unified (all traces at that time)"),
+        (CLOSEST, "Closest point only"),
+    )
+
+
+class HoverTimeFormat:
+    """``xaxis.hoverformat`` strings for the time-series hover header (d3-time-format)."""
+
+    TIME_ONLY = "%H:%M:%S.%3f"
+    DATE_TIME = "%Y-%m-%d %H:%M:%S.%3f"
+
+    CHOICES = (
+        (TIME_ONLY, "Time only (14:23:05.123)"),
+        (DATE_TIME, "Date + time (2024-01-01 14:23:05.123)"),
+    )
+
+
+class HtmlExport:
+    """``include_plotlyjs`` modes for the HTML export."""
+
+    CDN = "cdn"  # script tag to a CDN — a blank page on a machine with no network
+    INLINE = True  # plotly.js embedded in the file (~3.5 MB), opens offline
+    OMIT = False  # rely on a copy written earlier in the same file
+
+
+# --- Plot display fallbacks: defaults a user option may override (ADR-0005) -----------------------
 DEFAULT_SUBPLOT_HEIGHT = 300
 DEFAULT_LOOP_SUBPLOT_HEIGHT = 600
+DEFAULT_LOOPS_PER_ROW = 2
+DEFAULT_LEGEND_ENTRY_WIDTH_MAX = 220
+DEFAULT_Y_SIGNIFICANT_DIGITS = 4
+DEFAULT_COLORWAY = Colorway.OKABE_ITO
+DEFAULT_PLOT_TEMPLATE = PlotTemplate.LIGHT
+DEFAULT_HOVERMODE = HoverMode.X_UNIFIED
+DEFAULT_HOVER_TIME_FORMAT = HoverTimeFormat.TIME_ONLY
+
+# Bounds for the size settings, so a typo can't produce an unrenderable figure.
+SUBPLOT_HEIGHT_MIN, SUBPLOT_HEIGHT_MAX = 100, 2000
+LEGEND_ENTRY_WIDTH_MIN, LEGEND_ENTRY_WIDTH_MAX = 60, 600
+
+LOOPS_PER_ROW_CHOICES = ((1, "1"), (2, "2"), (3, "3"))
+Y_SIGNIFICANT_DIGITS_CHOICES = ((2, "2"), (3, "3"), (4, "4"), (6, "6"))
+
+
+class UserOptionSection:
+    """Headers grouping the settings modal; each UserOptions field declares one via SECTION."""
+
+    APP_BEHAVIOR = "App behavior"
+    PLOT_DEFAULTS = "Plot defaults"
+
+    # Order the headers appear in; fields are then ordered by ORDER within their own section.
+    ORDER = (
+        APP_BEHAVIOR,
+        PLOT_DEFAULTS,
+    )
 
 
 class UserOptions:
+    """
+    Global options of the person at the keyboard (``~/.clinical_scope/user_options.json``).
+
+    Two kinds only: app behaviour (habits) and display fallbacks. They are **not** defaults
+    for patient_options fields, and they never override database_options — see ADR-0005.
+    Sections are laid out by SECTION_ORDER; ORDER numbers a field inside its own section.
+    """
+
+    SECTION_ORDER = UserOptionSection.ORDER
+
     class SaveHtmlOnProcess:
         ORDER = 1
+        SECTION = UserOptionSection.APP_BEHAVIOR
         NAME = "save_html_on_process"
         API_TYPE = ApiType.BOOL
         DEFAULT = False
         DESCRIPTION = "Save a full-resolution HTML export on each Process"
 
-    class DefaultSubplotHeight:
+    class SelfContainedHtml:
         ORDER = 2
+        SECTION = UserOptionSection.APP_BEHAVIOR
+        NAME = "self_contained_html"
+        API_TYPE = ApiType.BOOL
+        DEFAULT = False
+        DESCRIPTION = "Embed Plotly in the HTML export (opens offline, ~3.5 MB heavier)"
+
+    class DefaultSubplotHeight:
+        ORDER = 1
+        SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "default_subplot_height"
         API_TYPE = ApiType.INT
         DEFAULT = DEFAULT_SUBPLOT_HEIGHT
-        MIN = 100
-        MAX = 2000
-        DESCRIPTION = "Default height of each time-series subplot (px)"
+        MIN = SUBPLOT_HEIGHT_MIN
+        MAX = SUBPLOT_HEIGHT_MAX
+        DESCRIPTION = "Height of each time-series subplot (px)"
+
+    class LoopSubplotHeight:
+        ORDER = 2
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "loop_subplot_height"
+        API_TYPE = ApiType.INT
+        DEFAULT = DEFAULT_LOOP_SUBPLOT_HEIGHT
+        MIN = SUBPLOT_HEIGHT_MIN
+        MAX = SUBPLOT_HEIGHT_MAX
+        DESCRIPTION = "Height of each loop subplot (px, square)"
+
+    class LoopsPerRow:
+        ORDER = 3
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "loops_per_row"
+        API_TYPE = ApiType.CHOICE
+        DEFAULT = DEFAULT_LOOPS_PER_ROW
+        CHOICES = LOOPS_PER_ROW_CHOICES
+        DESCRIPTION = "Loop subplots per row"
+
+    class LegendEntryWidth:
+        ORDER = 4
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "legend_entry_width"
+        API_TYPE = ApiType.INT
+        DEFAULT = DEFAULT_LEGEND_ENTRY_WIDTH_MAX
+        MIN = LEGEND_ENTRY_WIDTH_MIN
+        MAX = LEGEND_ENTRY_WIDTH_MAX
+        DESCRIPTION = "Maximum width of one legend entry (px)"
+
+    class FallbackColorway:
+        ORDER = 5
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "colorway"
+        API_TYPE = ApiType.CHOICE
+        DEFAULT = DEFAULT_COLORWAY
+        CHOICES = Colorway.CHOICES
+        DESCRIPTION = "Palette for signals with no color in the config"
+
+    class Template:
+        ORDER = 6
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "plot_template"
+        API_TYPE = ApiType.CHOICE
+        DEFAULT = DEFAULT_PLOT_TEMPLATE
+        CHOICES = PlotTemplate.CHOICES
+        DESCRIPTION = "Plot theme"
+
+    class HoverTimeFormatOption:
+        ORDER = 7
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "hover_time_format"
+        API_TYPE = ApiType.CHOICE
+        DEFAULT = DEFAULT_HOVER_TIME_FORMAT
+        CHOICES = HoverTimeFormat.CHOICES
+        DESCRIPTION = "Hover: x-axis time format"
+
+    class HoverModeOption:
+        ORDER = 8
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "hovermode"
+        API_TYPE = ApiType.CHOICE
+        DEFAULT = DEFAULT_HOVERMODE
+        CHOICES = HoverMode.CHOICES
+        DESCRIPTION = "Hover: panel style"
+
+    class YSignificantDigits:
+        ORDER = 9
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "y_significant_digits"
+        API_TYPE = ApiType.CHOICE
+        DEFAULT = DEFAULT_Y_SIGNIFICANT_DIGITS
+        CHOICES = Y_SIGNIFICANT_DIGITS_CHOICES
+        DESCRIPTION = "Hover: significant digits of the y value"
 
 
 class DatabaseOptions:

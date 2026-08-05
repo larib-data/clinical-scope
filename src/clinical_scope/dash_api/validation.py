@@ -11,7 +11,10 @@ from clinical_scope.dash_api import ui_components
 
 
 def _validate_by_type(
-    value: Any, api_type: cst.ApiType, extension: str | None = None
+    value: Any,
+    api_type: cst.ApiType,
+    extension: str | None = None,
+    choices: tuple | None = None,
 ) -> str | None:
     """
     Validate a non-empty value against its API type.
@@ -20,7 +23,12 @@ def _validate_by_type(
     name), or None when the value is valid. Emptiness is the caller's concern.
     """
     try:
-        if api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
+        if api_type == cst.ApiType.CHOICE:
+            allowed = [choice_value for choice_value, _ in choices or ()]
+            if value not in allowed:
+                return f"must be one of {allowed}"
+
+        elif api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY):
             pd.Timestamp(value)
 
         elif api_type == cst.ApiType.TIMEZONE:
@@ -64,13 +72,14 @@ def validate_value(schema_class: Any, value: Any) -> tuple[bool, str]:
     mandatory = schema_class.MANDATORY
     api_type = schema_class.API_TYPE
     extension = getattr(schema_class, "EXTENSION", None)
+    choices = getattr(schema_class, "CHOICES", None)
 
     if value in ("", None):
         if mandatory:
             return False, f"{name} is mandatory"
         return True, ""
 
-    error = _validate_by_type(value, api_type, extension)
+    error = _validate_by_type(value, api_type, extension, choices)
     if error:
         return False, f"{name} {error}"
 
@@ -102,13 +111,14 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
         mandatory = getattr(schema, "MANDATORY", True)
         api_type = getattr(schema, "API_TYPE", None)
         extension = getattr(schema, "EXTENSION", None)
+        choices = getattr(schema, "CHOICES", None)
 
         if value in ("", None):
             if mandatory:
                 errors.append(f"{description} is mandatory")
             continue
 
-        error = _validate_by_type(value, api_type, extension)
+        error = _validate_by_type(value, api_type, extension, choices)
         if error:
             errors.append(f"{description} {error}")
             continue

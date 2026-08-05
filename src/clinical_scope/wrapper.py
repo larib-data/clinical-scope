@@ -15,6 +15,7 @@ from clinical_scope.datasource import registry as datasource_list
 from clinical_scope.datasource.inspection import DataSourceInspection
 from clinical_scope.io.paths import get_annotations_path
 from clinical_scope.signal_container import (
+    DisplayFallbacks,
     PlotGroup,
     PlotModel,
     Signal,
@@ -93,9 +94,9 @@ def main(
     user_options: dict | None = None,
 ) -> list[PlotModel]:
     database_options_global = _resolve_database_options(database_options_global)
-    # UI-layer preference passed in explicitly; the core never reads the on-disk file.
-    raw_height = (user_options or {}).get(cst.UserOptions.DefaultSubplotHeight.NAME)
-    subplot_height = int(raw_height) if raw_height else None
+    # User options are passed in explicitly by the UI layer; the core never reads the on-disk
+    # file. Their display tenants travel as one carrier, built once here (ADR-0005).
+    display_fallbacks = DisplayFallbacks.from_user_options(user_options)
     all_signal_list = []
     already_used_in_group = []
     plot_group_list = []
@@ -127,7 +128,9 @@ def main(
         try:
             # (1) Create signals
             try:
-                list_signal = data_source.MAIN_MODULE(patient_options, database_options)
+                list_signal = data_source.MAIN_MODULE(
+                    patient_options, database_options, display_fallbacks
+                )
                 all_signal_list.extend(list_signal)
                 logger.info("✅ [%s] %d signal(s) loaded.", name, len(list_signal))
             except Exception:
@@ -313,7 +316,7 @@ def main(
 
     try:
         plot_model_list = PlotModel.assign_plot_model(
-            plot_group_list, subplot_height=subplot_height
+            plot_group_list, display_fallbacks=display_fallbacks
         )
     except Exception:
         logger.exception("❌ Failed to assign PlotModel list.")

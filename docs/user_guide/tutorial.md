@@ -85,6 +85,8 @@ The interface is organized top-to-bottom in the following order:
    status badges, column tables, and a CSV download.
 6. **Visualization Area** -- Interactive plots.
 
+A **⚙ Settings** button sits at the top right, above the Database Options row. It opens your personal display and export settings, which apply to every patient you open — see [Settings](#settings).
+
 ![Application main interface](images/AppMainScreen.png){ width=100% }
 
 \newpage
@@ -303,6 +305,35 @@ individual cards arranged in a two-column grid. Common per-source options includ
 Only data sources present in the loaded database options will show their configuration cards.
 
 ![Per-source options](images/SpecificPatientOptions.png){ width=100% }
+
+\newpage
+
+# Settings
+
+The **⚙ Settings** button at the top right opens your personal settings. They belong to you rather than to a patient or a database: they stay the same whichever data you open, and they are saved automatically as soon as you change them, so they are still in place the next time you launch the application.
+
+**Your settings never overwrite a database options file.** They fill the gaps: if the configuration sets a color for a signal, that color is used; if it says nothing, your palette applies. Changes take effect on the next **Process visualization**.
+
+## App behavior
+
+| Setting | What it does |
+|---|---|
+| Save a full-resolution HTML export on each Process | Writes `visualization.html` into `clinical_scope_output/` every time you process. Off by default, because the export takes extra time on large recordings. |
+| Embed Plotly in the HTML export | Makes the exported file self-contained, so it opens on a machine with no internet access. The file grows by roughly 3.5 MB. Leave it off if the file is only ever opened online. |
+
+## Plot defaults
+
+| Setting | What it does |
+|---|---|
+| Height of each time-series subplot | Vertical size, in pixels, of every time-series subplot. |
+| Height of each loop subplot | Same, for loop plots — which stay square, so this also sets their width. |
+| Loop subplots per row | How many loops sit side by side, 1 to 3. |
+| Maximum width of one legend entry | Caps how much horizontal room the legend can take from the plot. Longer signal names are truncated. |
+| Palette for signals with no color in the config | Colors used for signals the database options leave unstyled. Both colorblind-safe palettes are readable under the common color-vision deficiencies. |
+| Plot theme | Light or dark background. |
+| Hover: x-axis time format | Whether the hover panel shows the time only, or the full date and time. |
+| Hover: panel style | *Unified* lists every trace at the hovered time in one panel; *closest point only* shows just the nearest trace. Unified is comfortable for a few signals and crowded on a subplot with many. |
+| Hover: significant digits of the y value | How precisely hovered values are printed. A signal with its own hover format in the database options keeps it. |
 
 \newpage
 

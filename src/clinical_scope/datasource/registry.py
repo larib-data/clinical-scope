@@ -36,6 +36,10 @@ from clinical_scope.signal_container import Signal
 # ==================================================================================================
 logger = logging.getLogger(__name__)
 
+# DataSourceBase.main: (patient_options, database_options_specific, display_fallbacks=None).
+# Spelled with ... because display_fallbacks is optional and most callers omit it.
+MainModule = Callable[..., list[Signal]]
+
 
 # ==================================================================================================
 def add_main_module(find_load_format_module: ModuleType) -> Callable[[type], type]:
@@ -78,77 +82,77 @@ class DataSource:
     class EIT:
         NAME = "eit"
         DESCRIPTION = "EIT - PulmoVista"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_philips_waves)
     class PhilipsWaves:
         NAME = "philips_waves"
         DESCRIPTION = "Philips scope - waves"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_philips_numerics)
     class PhilipsNumerics:
         NAME = "philips_numerics"
         DESCRIPTION = "Philips scope - numerics"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_syringe)
     class Syringe:
         NAME = "syringe"
         DESCRIPTION = "Syringe"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_fluxmed_parameters)
     class FluxmedParameters:
         NAME = "fluxmed_parameters"
         DESCRIPTION = "Fluxmed - numerics"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_fluxmed_signals)
     class FluxmedSignals:
         NAME = "fluxmed_signals"
         DESCRIPTION = "Fluxmed - waves"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_servo_u)
     class ServoU:
         NAME = "servo_u"
         DESCRIPTION = "Servo U"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_mindray_scope)
     class MindRayScope:
         NAME = "mindray_scope"
         DESCRIPTION = "Mindray scope"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_mindray_respi_num)
     class MindRayRespiNumerics:
         NAME = "mindray_respi_numerics"
         DESCRIPTION = "Mindray Respi - numerics"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_mindray_respi_waves)
     class MindRayRespiWaves:
         NAME = "mindray_respi_waves"
         DESCRIPTION = "Mindray Respi - waves"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_other)
     class Other:
         NAME = "other"
         DESCRIPTION = "Other (generic)"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     # This order is the "default" order of plot, so try to choose it a bit carefully

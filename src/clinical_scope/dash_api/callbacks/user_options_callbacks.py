@@ -1,5 +1,5 @@
 """
-Callbacks for global per-user preferences (``user_options``).
+Callbacks for the global user options of the person at the keyboard (``user_options``).
 
 The ``user-options-store`` is the single source of truth. The settings modal is
 the only editing surface; a read-only indicator next to the Process button
@@ -24,7 +24,6 @@ from clinical_scope.dash_api.styles import (
 logger = logging.getLogger(__name__)
 
 _SAVE_HTML = cst.UserOptions.SaveHtmlOnProcess.NAME
-_HEIGHT = cst.UserOptions.DefaultSubplotHeight.NAME
 
 
 def _field_by_name(name: str) -> Any | None:
@@ -44,14 +43,28 @@ def _api_type(name: str) -> str | None:
     return getattr(_field_by_name(name), "API_TYPE", None)
 
 
-def _clamp_height(value: Any) -> int:
-    """Coerce a subplot-height input to an int within the UI bounds."""
-    if value is None:
-        return cst.DEFAULT_SUBPLOT_HEIGHT
-    return max(
-        cst.UserOptions.DefaultSubplotHeight.MIN,
-        min(cst.UserOptions.DefaultSubplotHeight.MAX, int(value)),
-    )
+def _coerce(name: str, value: Any) -> Any:
+    """
+    Keep a stored user option inside what its schema allows.
+
+    Numeric fields are clamped to MIN/MAX and choices fall back to DEFAULT, so a cleared
+    input or a stale value from an older file can never reach the render layer.
+    """
+    schema = _field_by_name(name)
+    if schema is None:
+        return value
+
+    if schema.API_TYPE == cst.ApiType.INT:
+        try:
+            return max(schema.MIN, min(schema.MAX, int(value)))
+        except (TypeError, ValueError):
+            return schema.DEFAULT
+
+    if schema.API_TYPE == cst.ApiType.CHOICE:
+        allowed = {choice_value for choice_value, _ in schema.CHOICES}
+        return value if value in allowed else schema.DEFAULT
+
+    return value
 
 
 # ==================================================================================================
@@ -84,13 +97,11 @@ def persist_user_options(
     """Persist a settings-modal change to the store and to disk."""
     updated = dict(store or {})
 
-    # Decode each modal widget value to its Python form (BOOL checklist [True]/[] → bool).
+    # Decode each modal widget value to its Python form (BOOL checklist [True]/[] → bool),
+    # then hold it to what its schema allows.
     for value, widget_id in zip(widget_values, widget_ids, strict=False):
         key = _option_key(widget_id)
-        updated[key] = ui_components.from_widget_value(_api_type(key), value)
-
-    if _HEIGHT in updated:
-        updated[_HEIGHT] = _clamp_height(updated[_HEIGHT])
+        updated[key] = _coerce(key, ui_components.from_widget_value(_api_type(key), value))
 
     if updated == store:
         return no_update
@@ -116,6 +127,8 @@ def reflect_user_options(
     values: list[Any] = []
     for widget_id in widget_ids:
         key = _option_key(widget_id)
-        values.append(ui_components.to_widget_value(_api_type(key), store.get(key)))
+        # A key absent from the store (older options file) shows its schema default, not a blank.
+        stored = store.get(key, getattr(_field_by_name(key), "DEFAULT", None))
+        values.append(ui_components.to_widget_value(_api_type(key), stored))
     indicator = ui_components.save_html_indicator_text(bool(store.get(_SAVE_HTML)))
     return values, indicator

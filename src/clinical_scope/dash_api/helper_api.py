@@ -36,7 +36,7 @@ def load_cached_database_options() -> dict[str, Any] | None:
 
 # ==================================================================================================
 def get_user_options_path() -> Path:
-    """Return the cache path for global per-user preferences (signal-free, no PHI)."""
+    """Return the cache path for the global user options (signal-free, no PHI)."""
     return Path.home() / cst.CLINICAL_SCOPE_DIR_NAME / cst.USER_OPTIONS_FILE_NAME
 
 

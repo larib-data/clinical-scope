@@ -643,7 +643,13 @@ def process_visualization(
         # HTML export is opt-in (user_options.save_html_on_process, default off) — off avoids
         # the full-resolution serialization spike and writes no file.
         if (user_options or {}).get(cst.UserOptions.SaveHtmlOnProcess.NAME):
-            PlotModel.to_html(model, validated_dict)
+            PlotModel.to_html(
+                model,
+                validated_dict,
+                self_contained=bool(
+                    (user_options or {}).get(cst.UserOptions.SelfContainedHtml.NAME)
+                ),
+            )
         graphs = _build_graphs(model, display_timezone=display_timezone)
     except Exception as exc:
         logger.exception("Could not make the plot: ")
@@ -1070,8 +1076,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         # --- Build annotation metadata stores from the PlotModel ---
         # These are read by annotation_callbacks to know subplot names and axis refs.
         # Must be built from plot_model.figure (original go.Figure) before FigureResampler wraps it.
-        is_loop = plot_model.plot_type == cst.PlotType.LOOP
-        n_cols_layout = 2 if (is_loop and len(plot_model.groups) > 1) else 1
+        n_cols_layout = plot_model.n_cols
 
         signal_meta_lookup: dict[str, dict] = {
             signal_obj.name: {

@@ -16,6 +16,7 @@ from clinical_scope.io.file_utils import (
     set_datetime_index,
 )
 from clinical_scope.signal_container import (
+    DisplayFallbacks,
     Signal,
 )
 
@@ -110,6 +111,7 @@ class OtherDataSource(DataSourceBase):
         cls,
         patient_options: dict,
         database_options_specific: dict | None,
+        display_fallbacks: DisplayFallbacks | None = None,
     ) -> list[Signal]:
         """
         Process each file independently, creating one subplot group per file.
@@ -201,6 +203,7 @@ class OtherDataSource(DataSourceBase):
                             raw_signal_name=column_name,
                             source_options=cls.SOURCE_OPTIONS,
                             database_options_specific=file_config,
+                            display_fallbacks=display_fallbacks,
                         )
                         signal_obj.raw_name = raw_name  # override for global uniqueness
                         signal_obj.metadata.datasource_name = cls.DATASOURCE_NAME

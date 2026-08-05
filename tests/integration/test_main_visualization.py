@@ -5,6 +5,7 @@ import copy
 import plotly.graph_objects as go
 import pytest
 
+import clinical_scope.constants as cst
 from clinical_scope.signal_container import PlotModel
 from clinical_scope.wrapper import main
 
@@ -82,6 +83,66 @@ class TestToHtml:
         PlotModel.to_html(models, opts)
         html_files = list(tmp_path.rglob("*.html"))
         assert len(html_files) > 0
+
+
+class TestUserOptionsReachTheFigures:
+    """user_options given to main() must survive the whole pipeline (ADR-0005 tenants)."""
+
+    @pytest.fixture(scope="class")
+    def user_options(self):
+        return {
+            cst.UserOptions.DefaultSubplotHeight.NAME: 175,
+            cst.UserOptions.LegendEntryWidth.NAME: 130,
+            cst.UserOptions.FallbackColorway.NAME: cst.Colorway.TOL_MUTED,
+            cst.UserOptions.Template.NAME: cst.PlotTemplate.DARK,
+            cst.UserOptions.HoverModeOption.NAME: cst.HoverMode.CLOSEST,
+            cst.UserOptions.HoverTimeFormatOption.NAME: cst.HoverTimeFormat.DATE_TIME,
+            cst.UserOptions.YSignificantDigits.NAME: 6,
+        }
+
+    @pytest.fixture(scope="class")
+    def time_series_model(self, patient_options_full, example_database_options, user_options):
+        models = main(patient_options_full, example_database_options, user_options=user_options)
+        ts_models = [model for model in models if model.plot_type == "time_series"]
+        if not ts_models:
+            pytest.skip("No time_series models produced")
+        return ts_models[0]
+
+    def test_subplot_height_applied(self, time_series_model):
+        assert time_series_model.computed_height == 175 * len(time_series_model.groups)
+
+    def test_layout_fallbacks_applied(self, time_series_model):
+        layout = time_series_model.figure.layout
+        assert list(layout.colorway) == list(cst.Colorway.PALETTE_TOL_MUTED)
+        assert layout.template.layout.paper_bgcolor == "rgb(17,17,17)"
+        assert layout.hovermode == cst.HoverMode.CLOSEST
+        assert layout.xaxis.hoverformat == cst.HoverTimeFormat.DATE_TIME
+        assert layout.legend.entrywidth == 130
+
+    def test_hover_digits_reach_the_traces(self, time_series_model):
+        """The carrier gets all the way down to Signal construction, not just the figure."""
+        templates = [
+            trace.hovertemplate for trace in time_series_model.figure.data if trace.hovertemplate
+        ]
+        assert any("%{y:.6g}" in template for template in templates)
+        # Nothing is left on the built-in default.
+        assert not any("%{y:.4g}" in template for template in templates)
+
+    def test_configured_hover_template_survives(self, time_series_model):
+        """ADR-0005 end to end: the example config formats Heart Rate as %{y:.0f}."""
+        heart_rate = [
+            trace for trace in time_series_model.figure.data if trace.name == "Heart Rate"
+        ]
+        if not heart_rate:
+            pytest.skip("Heart Rate signal absent from the demo data")
+        assert "%{y:.0f}" in heart_rate[0].hovertemplate
+
+    def test_no_user_options_keeps_defaults(self, patient_options_full, example_database_options):
+        models = main(patient_options_full, example_database_options)
+        ts_models = [model for model in models if model.plot_type == "time_series"]
+        if not ts_models:
+            pytest.skip("No time_series models produced")
+        assert ts_models[0].computed_height == cst.DEFAULT_SUBPLOT_HEIGHT * len(ts_models[0].groups)
 
 
 class TestMainGlobalLoops:

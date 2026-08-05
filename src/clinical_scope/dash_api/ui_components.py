@@ -6,6 +6,7 @@ from typing import Any
 from dash import dcc, html
 
 import clinical_scope.constants as cst
+from clinical_scope.dash_api.styles import OPTION_SECTION_HEADER
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,15 @@ def dash_widget_factory(
             style={"width": "300px"},
         )
 
+    elif api_type == cst.ApiType.CHOICE:
+        input_component = dcc.Dropdown(
+            options=[{"label": label, "value": value} for value, label in schema_class.CHOICES],
+            value=default,
+            clearable=False,  # a closed set always has a current value
+            id={"type": id_type, "name": component_id},
+            style={"width": "320px", "flexShrink": "0"},
+        )
+
     elif api_type in (cst.ApiType.TIMESTAMP, cst.ApiType.DAY, cst.ApiType.TIMEZONE):
         input_component = dcc.Input(
             type="text",
@@ -111,7 +121,8 @@ def dash_widget_factory(
         raise ValueError(msg)
 
     container_style = {"marginBottom": "8px"}
-    if api_type in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER):
+    # A Dropdown renders as a block element, so it needs the same flex row as the path inputs.
+    if api_type in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER, cst.ApiType.CHOICE):
         container_style |= {"display": "flex", "alignItems": "center"}
     return html.Div(children=[label, input_component], style=container_style)
 
@@ -124,7 +135,11 @@ def build_ui_and_schema_registry(
     label_width: str = "300px",
 ) -> tuple[html.Div, dict]:
     """
-    Build every field widget for an options class, ordered by each schema's ORDER.
+    Build every field widget for an options class, ordered by section then by ORDER.
+
+    A schema class may declare a ``SECTION``, ranked by the options class's ``SECTION_ORDER``;
+    a header is emitted on each change, and ORDER only ranks fields inside their own section.
+    Classes without SECTION all share one implicit section, so they render by ORDER alone.
 
     Args:
         extra_per_field: Optional dict mapping component ID to extra Dash components
@@ -139,6 +154,7 @@ def build_ui_and_schema_registry(
     """
     components = []
     schema_lookup = {}
+    current_section = None
 
     nested_classes = [
         getattr(options_class, attr)
@@ -146,7 +162,14 @@ def build_ui_and_schema_registry(
         if hasattr(getattr(options_class, attr), "NAME")
     ]
 
-    nested_classes.sort(key=lambda schema_class: getattr(schema_class, "ORDER", 999))
+    section_order = getattr(options_class, "SECTION_ORDER", ())
+
+    def layout_rank(schema_class: Any) -> tuple[int, int]:
+        section = getattr(schema_class, "SECTION", None)
+        section_rank = section_order.index(section) if section in section_order else 0
+        return section_rank, getattr(schema_class, "ORDER", 999)
+
+    nested_classes.sort(key=layout_rank)
 
     # Index-based iteration with lookahead: consecutive TIMESTAMP fields render side by side.
     field_index = 0
@@ -154,6 +177,11 @@ def build_ui_and_schema_registry(
         schema_class = nested_classes[field_index]
         component_id = f"{prefix}.{schema_class.NAME}"
         schema_lookup[component_id] = schema_class
+
+        section = getattr(schema_class, "SECTION", None)
+        if section is not None and section != current_section:
+            components.append(html.Div(section, style=OPTION_SECTION_HEADER))
+            current_section = section
 
         if (
             field_index + 1 < len(nested_classes)

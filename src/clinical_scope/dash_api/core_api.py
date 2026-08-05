@@ -537,7 +537,7 @@ _annotation_list_panel = html.Div(
 )
 
 # ---------------------------------------------------------------------------
-# User settings modal (global, per-user preferences)
+# Settings modal — the only editing surface for the global user options
 # ---------------------------------------------------------------------------
 # Loaded once at layout build; the reflect callback re-syncs widgets to the store on startup.
 _INITIAL_USER_OPTIONS = load_user_options()
@@ -589,7 +589,7 @@ app.layout = html.Div(
         html.Div(f"API Version: {__version__}", style=VERSION_BADGE),
         html.Button("⚙ Settings", id="settings-open-btn", n_clicks=0, style=BUTTON_GEAR),
         _settings_modal,
-        # Global, per-user preferences store (source of truth for the settings surfaces).
+        # Global user options store (source of truth for the settings surfaces).
         dcc.Store(id="user-options-store", data=_INITIAL_USER_OPTIONS),
         # Global annotation stores
         dcc.Store(id="annotation-store", data=[]),

@@ -35,7 +35,7 @@ from clinical_scope.io.file_utils import (
     save_df,
 )
 from clinical_scope.io.paths import get_datasource_cache_path
-from clinical_scope.signal_container import Signal
+from clinical_scope.signal_container import DisplayFallbacks, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -430,7 +430,11 @@ class DataSourceBase(ABC):
     @classmethod
     @time_it
     def _extract_signals(
-        cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
+        cls,
+        df: pd.DataFrame,
+        patient_options: dict,
+        database_options_specific: dict,
+        display_fallbacks: DisplayFallbacks | None = None,
     ) -> list[Signal]:
         """
         Extract Signal objects from DataFrame.
@@ -449,6 +453,7 @@ class DataSourceBase(ABC):
                     "raw_signal_name": signal,
                     "patient_options": patient_options,
                     "database_options_specific": database_options_specific,
+                    "display_fallbacks": display_fallbacks,
                 }
                 if cls.SOURCE_OPTIONS is not None:
                     kwargs["source_options"] = cls.SOURCE_OPTIONS
@@ -523,6 +528,7 @@ class DataSourceBase(ABC):
         cls,
         patient_options: dict,
         database_options_specific: dict | None,
+        display_fallbacks: DisplayFallbacks | None = None,
     ) -> list[Signal]:
         """Main entry point for datasource processing."""
         database_options = (
@@ -549,6 +555,7 @@ class DataSourceBase(ABC):
             df,
             patient_options=patient_options_for_signals,
             database_options_specific=database_options,
+            display_fallbacks=display_fallbacks,
         )
         logger.info("🔬 [%s] Extracted %d signal(s).", cls.DATASOURCE_NAME, len(signals))
         return signals

@@ -1,11 +1,15 @@
 """Unit tests for signal_container.py — Signal, PlotGroup, PlotModel."""
 
+import re
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import pytest
 
+import clinical_scope.constants as cst
 from clinical_scope.signal_container import (
+    DisplayFallbacks,
     PlotGroup,
     PlotModel,
     PlotOptions,
@@ -13,6 +17,7 @@ from clinical_scope.signal_container import (
     compute_average_priority,
     get_unique_or_raise,
     merge_y_ranges,
+    print_out_figure,
 )
 
 # ---------------------------------------------------------------------------
@@ -326,3 +331,224 @@ class TestPlotModel:
         model = PlotModel(groups=[pg1, pg2])
         # Should have 2 traces (one per group)
         assert len(model.figure.data) == 2
+
+
+# ---------------------------------------------------------------------------
+# Display fallbacks in the render layer — precedence (ADR-0005) and sizing
+# ---------------------------------------------------------------------------
+
+
+class TestSubplotHeightPrecedence:
+    def test_user_height_fills_a_silent_config(self):
+        pg = PlotGroup.from_single_signal(_make_signal())
+        assert pg.plot_options.plot_height is None  # nothing configured it
+
+        PlotModel.assign_plot_model([pg], DisplayFallbacks(subplot_height=512))
+        assert pg.plot_options.plot_height == 512
+
+    def test_database_height_wins_over_user_height(self):
+        """ADR-0005: where the database configuration speaks, it decides."""
+        pg = PlotGroup.from_single_signal(_make_signal())
+        pg.plot_options.plot_height = 250  # as set through source/database options
+
+        PlotModel.assign_plot_model([pg], DisplayFallbacks(subplot_height=512))
+        assert pg.plot_options.plot_height == 250
+
+    def test_loop_height_is_separate_from_time_series_height(self):
+        pg_ts = PlotGroup.from_single_signal(_make_signal())
+        pg_loop = PlotGroup.from_single_signal(
+            Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
+        )
+
+        PlotModel.assign_plot_model(
+            [pg_ts, pg_loop], DisplayFallbacks(subplot_height=400, loop_subplot_height=800)
+        )
+        assert pg_ts.plot_options.plot_height == 400
+        assert pg_loop.plot_options.plot_height == 800
+
+    def test_figure_height_without_assign_plot_model(self):
+        """A PlotModel built directly still sizes its subplots from its own carrier."""
+        pg = PlotGroup.from_single_signal(_make_signal())
+        model = PlotModel(groups=[pg], display_fallbacks=DisplayFallbacks(subplot_height=333))
+        assert model.computed_height == 333
+
+
+class TestColorwayPrecedence:
+    def test_fallback_colorway_applied_to_layout(self):
+        pg = PlotGroup.from_single_signal(_make_signal())
+        model = PlotModel(
+            groups=[pg], display_fallbacks=DisplayFallbacks(colorway=cst.Colorway.TOL_MUTED)
+        )
+        assert list(model.figure.layout.colorway) == list(cst.Colorway.PALETTE_TOL_MUTED)
+
+    def test_plotly_choice_leaves_colorway_unset(self):
+        pg = PlotGroup.from_single_signal(_make_signal())
+        model = PlotModel(
+            groups=[pg], display_fallbacks=DisplayFallbacks(colorway=cst.Colorway.PLOTLY)
+        )
+        assert model.figure.layout.colorway is None
+
+    def test_per_signal_color_survives_the_fallback_palette(self):
+        """A configured color stays on the trace; the colorway only paints uncolored traces."""
+        df = _make_df(columns=["ART"])
+        db_opts = {"signals": {"ART": {"color": "#123456"}}}
+        sig = Signal.time_series_from_dataframe(df, "ART", database_options_specific=db_opts)
+        model = PlotModel(
+            groups=[PlotGroup.from_single_signal(sig)],
+            display_fallbacks=DisplayFallbacks(colorway=cst.Colorway.OKABE_ITO),
+        )
+        assert model.figure.data[0].line.color == "#123456"
+
+
+class TestHoverFallbacks:
+    def test_y_significant_digits_applied(self):
+        sig = _make_signal()
+        assert "%{y:.4g}" in sig.trace.hovertemplate
+
+        sig_six = Signal.time_series_from_dataframe(
+            _make_df(columns=["sig_a"]),
+            "sig_a",
+            display_fallbacks=DisplayFallbacks(y_significant_digits=6),
+        )
+        assert "%{y:.6g}" in sig_six.trace.hovertemplate
+
+    def test_per_signal_hover_template_wins(self):
+        """A configured hover_template short-circuits the fallback branch entirely."""
+        df = _make_df(columns=["ART"])
+        db_opts = {"signals": {"ART": {"hover_template": "custom<extra></extra>"}}}
+        sig = Signal.time_series_from_dataframe(
+            df,
+            "ART",
+            database_options_specific=db_opts,
+            display_fallbacks=DisplayFallbacks(y_significant_digits=6),
+        )
+        assert sig.trace.hovertemplate == "custom<extra></extra>"
+
+    def test_hovermode_and_time_format_applied_to_time_series(self):
+        pg = PlotGroup.from_single_signal(_make_signal())
+        model = PlotModel(
+            groups=[pg],
+            display_fallbacks=DisplayFallbacks(
+                hovermode=cst.HoverMode.CLOSEST,
+                hover_time_format=cst.HoverTimeFormat.DATE_TIME,
+            ),
+        )
+        assert model.figure.layout.hovermode == cst.HoverMode.CLOSEST
+        assert model.figure.layout.xaxis.hoverformat == cst.HoverTimeFormat.DATE_TIME
+
+    def test_loops_keep_plotly_hovermode(self):
+        loop = Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
+        model = PlotModel(
+            groups=[PlotGroup.from_single_signal(loop)],
+            display_fallbacks=DisplayFallbacks(hovermode=cst.HoverMode.X_UNIFIED),
+        )
+        assert model.figure.layout.hovermode is None
+
+
+class TestLayoutFallbacks:
+    def test_template_applied(self):
+        pg = PlotGroup.from_single_signal(_make_signal())
+        model = PlotModel(
+            groups=[pg], display_fallbacks=DisplayFallbacks(template=cst.PlotTemplate.DARK)
+        )
+        # The dark template is identified by its near-black paper background.
+        assert model.figure.layout.template.layout.paper_bgcolor == "rgb(17,17,17)"
+
+    def test_legend_entry_width_capped_in_pixels(self):
+        pg = PlotGroup.from_single_signal(_make_signal())
+        model = PlotModel(groups=[pg], display_fallbacks=DisplayFallbacks(legend_entry_width=140))
+        assert model.figure.layout.legend.entrywidth == 140
+        assert model.figure.layout.legend.entrywidthmode == "pixels"
+
+
+class TestLoopGrid:
+    def _loop_groups(self, count):
+        return [
+            PlotGroup.from_single_signal(
+                Signal.loop_from_signals(
+                    _make_signal(raw_name="x"), _make_signal(raw_name="y"), name=f"loop_{index}"
+                )
+            )
+            for index in range(count)
+        ]
+
+    def test_loops_per_row_drives_the_grid(self):
+        groups = self._loop_groups(4)
+        model = PlotModel.assign_plot_model(
+            groups, DisplayFallbacks(loops_per_row=1, loop_subplot_height=200)
+        )[0]
+        # 4 loops in one column → 4 rows.
+        assert model.computed_height == 4 * 200
+
+    def test_three_per_row_packs_into_two_rows(self):
+        groups = self._loop_groups(4)
+        model = PlotModel.assign_plot_model(
+            groups, DisplayFallbacks(loops_per_row=3, loop_subplot_height=200)
+        )[0]
+        assert model.computed_height == 2 * 200
+
+    def test_loop_figure_width_follows_columns(self):
+        groups = self._loop_groups(4)
+        model = PlotModel.assign_plot_model(
+            groups, DisplayFallbacks(loops_per_row=3, loop_subplot_height=200)
+        )[0]
+        assert model.figure.layout.width == 3 * 200
+
+    def test_n_cols_exposes_the_grid_to_the_ui(self):
+        """The UI maps traces to subplots with n_cols, so it must follow the setting."""
+        model = PlotModel.assign_plot_model(
+            self._loop_groups(4), DisplayFallbacks(loops_per_row=3)
+        )[0]
+        assert model.n_cols == 3
+
+    def test_single_loop_stays_one_column(self):
+        model = PlotModel.assign_plot_model(
+            self._loop_groups(1), DisplayFallbacks(loops_per_row=3)
+        )[0]
+        assert model.n_cols == 1
+
+    def test_time_series_is_always_one_column(self):
+        model = PlotModel.assign_plot_model(
+            [PlotGroup.from_single_signal(_make_signal(raw_name=name)) for name in ("a", "b")],
+            DisplayFallbacks(loops_per_row=3),
+        )[0]
+        assert model.n_cols == 1
+
+
+class TestPrintOutFigure:
+    def test_cdn_export_references_the_cdn(self, tmp_path):
+        sig = _make_signal()
+        model = PlotModel(groups=[PlotGroup.from_single_signal(sig)])
+        output = tmp_path / "viz.html"
+
+        print_out_figure(output, [model.figure])
+        content = output.read_text()
+        assert 'src="https://cdn.plot.ly' in content
+
+    def test_self_contained_export_embeds_plotly(self, tmp_path):
+        sig = _make_signal()
+        model = PlotModel(groups=[PlotGroup.from_single_signal(sig)])
+        output = tmp_path / "viz.html"
+
+        print_out_figure(output, [model.figure], self_contained=True)
+        content = output.read_text()
+        # No <script src=…>: the file must render on a machine with no network. (Remote URLs
+        # inside the embedded bundle are fine — they are optional map tiles, not the library.)
+        assert re.search(r"<script[^>]*\ssrc=", content) is None
+        assert "Plotly.newPlot" in content
+        # The whole bundle is inlined, so the file is megabytes rather than kilobytes.
+        assert output.stat().st_size > 1_000_000
+
+    def test_bundle_embedded_once_for_several_figures(self, tmp_path):
+        sig = _make_signal()
+        figures = [
+            PlotModel(groups=[PlotGroup.from_single_signal(_make_signal(raw_name="sig_a"))]).figure,
+            PlotModel(groups=[PlotGroup.from_single_signal(sig)]).figure,
+        ]
+        one_figure = tmp_path / "one.html"
+        two_figures = tmp_path / "two.html"
+
+        print_out_figure(one_figure, figures[:1], self_contained=True)
+        print_out_figure(two_figures, figures, self_contained=True)
+        # The second figure adds its own data, not another copy of plotly.js.
+        assert two_figures.stat().st_size - one_figure.stat().st_size < 500_000

@@ -283,6 +283,22 @@ ANNOTATION_MODAL_PANEL: dict = {
 SETTINGS_MODAL_PANEL: dict = {
     **ANNOTATION_MODAL_PANEL,
     "width": "800px",
+    # The settings list grows with every new user option; scroll rather than overflow the viewport.
+    "maxHeight": "85vh",
+    "overflowY": "auto",
+}
+
+# Header above each group of option widgets (SECTION on the schema classes).
+OPTION_SECTION_HEADER: dict = {
+    "fontSize": "12px",
+    "fontWeight": "bold",
+    "textTransform": "uppercase",
+    "letterSpacing": "0.5px",
+    "color": COLOR_GREY,
+    "borderBottom": "1px solid #e9ecef",
+    "paddingBottom": "4px",
+    "marginTop": "16px",
+    "marginBottom": "10px",
 }
 
 ANNOTATION_LIST_ROW: dict = {
