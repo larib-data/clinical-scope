@@ -165,8 +165,8 @@ class TestPushdownBounds:
         assert philips_waves_cls._pushdown_bounds({}, {}, index_tz=None) is None
 
     def test_naive_target_converts_from_display_tz_and_pads(self, philips_waves_cls, monkeypatch):
-        # philips_waves default source tz is UTC; pin the library display default to UTC
-        # too, so the only transformation left to verify is the ± buffer.
+        # philips_waves source tz is UTC; pin the display default to UTC too, isolating the
+        # ± buffer as the only transformation left to verify.
         monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
@@ -317,10 +317,8 @@ class TestQuickLoadCachePushdownEquality:
 
 class TestNaiveAwareBoundEquivalence:
     """
-    Issue #68 additive contract: a tz-aware bound selects exactly what the equivalent
-    naive + display_timezone pair it replaces would — the load path (`_to_aware` in
-    base.py, `filter_data_by_timestamps` in timezone.py) already accepted aware bounds
-    before this issue, so this only needs to prove the two spellings agree.
+    A tz-aware bound must select exactly what the equivalent naive + display_timezone
+    pair would.
     """
 
     @pytest.mark.parametrize(
@@ -364,17 +362,14 @@ class TestNaiveAwareBoundEquivalence:
 
 class TestInspectCosmeticDisplayTimezone:
     """
-    inspect()'s reported date ranges are cosmetic only (issue #69): base.py never reads
-    user_options.json itself, so wrapper.inspect() resolves and passes an explicit
-    display_timezone; a caller that hits DataSourceBase.inspect() directly and omits it
-    falls back to cst.DISPLAY_TIMEZONE.
+    inspect()'s reported date ranges are cosmetic only; an omitted display_timezone falls
+    back to cst.DISPLAY_TIMEZONE.
     """
 
     def test_explicit_param_controls_the_reported_timezone(self, servo_u_cls, patient_full_path):
         patient_options = {"data_folder": str(patient_full_path)}
-        # raw_date_range comes from the pre-_format() index, which is still tz-naive for
-        # servo_u — _to_display_tz is a no-op there, so filtered_date_range (post-_format,
-        # tz-aware) is the one that actually reflects display_timezone.
+        # raw_date_range is pre-_format and tz-naive for servo_u (a no-op for _to_display_tz);
+        # filtered_date_range (post-_format, tz-aware) is the one that reflects display_timezone.
         result = servo_u_cls.inspect(patient_options, {}, display_timezone="Asia/Tokyo")
         assert result.filtered_date_range[0].endswith("JST")
 

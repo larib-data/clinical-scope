@@ -102,7 +102,7 @@ def validate_and_collect(values_dict: dict, schema_lookup: dict) -> tuple[dict, 
 
     for component_id, value in values_dict.items():
         parts = component_id.split(".")
-        is_global = parts[0] == "global"
+        is_global = parts[0] == cst.PatientOptions.GLOBAL
         datasource_name = None if is_global else parts[1]
 
         schema = schema_lookup[component_id]

@@ -25,6 +25,8 @@ from typing import Any
 
 import pandas as pd
 
+import clinical_scope.constants as cst
+
 logger = logging.getLogger(__name__)
 
 # Sentinel value in the ``signal`` column that defines datasource-level defaults
@@ -297,7 +299,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             result[only_ds].setdefault("grouped_fields", {})[group_name] = signals_list
 
     if global_grouped:
-        result["global"] = {"grouped_fields": global_grouped}
+        result[cst.DatabaseOptions.GLOBAL] = {"grouped_fields": global_grouped}
 
     # ------------------------------------------------------------------
     # Process loops sheet

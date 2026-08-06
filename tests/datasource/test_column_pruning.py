@@ -225,8 +225,8 @@ class TestQuickLoadCachePruning:
         assert list(out.columns) == ["HR", "SpO2", "RR"]
 
     def test_composes_row_and_column_pruning(self, servo_u_cls, tmp_path, monkeypatch):
-        # The materialized cache index is genuinely tz-aware UTC (_make_cache); pin the
-        # library display default to UTC so the naive window lands inside it.
+        # The materialized cache index is tz-aware UTC (_make_cache); pin the display default
+        # to UTC so the naive window lands inside it.
         monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         path = _make_cache(tmp_path)
         full = pd.read_parquet(path)

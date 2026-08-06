@@ -344,8 +344,8 @@ def inspect(
     Returns one DataSourceInspection per datasource present in database_options_global.
 
     ``user_options`` only affects the timezone reported dates are displayed in (cosmetic);
-    it is resolved here and passed down as a plain string, so DataSourceBase.inspect() never
-    reads ``user_options.json`` itself — filtering/data returned is unaffected either way.
+    resolved here and passed down as a plain string so DataSourceBase.inspect() never reads
+    ``user_options.json`` itself.
     """
     database_options_global = _resolve_database_options(database_options_global)
     display_timezone = DisplayFallbacks.from_user_options(user_options).display_timezone

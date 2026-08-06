@@ -68,10 +68,8 @@ class TestValueCoercionOnSave:
         self, user_options_home
     ):
         """
-        Regression: store already holds the fallback value (e.g. never touched, still the
-        schema default) and an invalid entry coerces back to that same value — `updated ==
-        store` alone would wrongly read as "nothing changed" and skip the store output, so
-        reflect_user_options never fires and the widget keeps showing the raw invalid text.
+        Regression: an invalid entry can coerce back to the value the store already holds,
+        so ``updated == store`` alone must not read as "nothing changed" and skip the resync.
         """
         name = cst.UserOptions.DisplayTimezone.NAME
         store = {name: cst.DISPLAY_TIMEZONE}

@@ -167,8 +167,8 @@ class DataSourceBase(ABC):
         )
         shift_td = pd.Timedelta(seconds=time_shift)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
-        # A tz-naive bound is interpreted in the library default (issue #69's follow-up): all
-        # current users are in Europe/Paris, so this never mis-reads a real patient_options.json.
+        # A tz-naive bound is interpreted in the library default (if breaking something it will easy
+        # to spot, and only one time error).
         display_timezone = cst.DISPLAY_TIMEZONE
 
         def _to_aware(raw_value: str | None) -> pd.Timestamp | None:
@@ -630,10 +630,8 @@ class DataSourceBase(ABC):
             datasource_name: Name written into the returned DataSourceInspection.
             file_path: Path string to include in the result, or None.
             display_timezone: Timezone the reported date ranges are shown in — cosmetic
-                only, never affects filtering. Resolved by the caller (``wrapper.inspect``)
-                so this library layer never reads ``user_options.json`` itself; falls back
-                to ``cst.DISPLAY_TIMEZONE`` when omitted (e.g. a caller hitting this
-                classmethod directly rather than going through ``wrapper.inspect``).
+                only, never affects filtering. Resolved by the caller (``wrapper.inspect``);
+                falls back to ``cst.DISPLAY_TIMEZONE`` when omitted.
 
         Returns:
             DataSourceInspection with status ``"ok"`` or ``"format_error"``.

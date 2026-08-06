@@ -74,7 +74,7 @@ class TestFromUserOptions:
         )
 
     def test_invalid_display_timezone_falls_back_to_default(self):
-        """display_timezone delegates to resolve_display_timezone, same as everywhere else (#69)."""
+        """display_timezone delegates to resolve_display_timezone, same as everywhere else."""
         fallbacks = DisplayFallbacks.from_user_options(
             {cst.UserOptions.DisplayTimezone.NAME: "NotATimezone"}
         )

@@ -599,9 +599,8 @@ app.layout = html.Div(
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="display-timezone-store", data=None),
-        # Baseline for the datetime-window re-render callback (issue #68/#69): the Settings
-        # display_timezone last applied to the datetime fields, so a Settings edit can tell
-        # what tz to convert *from*. Seeded from the on-disk user_options at layout build.
+        # Tracks the display_timezone last applied to the datetime fields, so the
+        # re-render callback knows what tz to convert *from*. Seeded from disk at layout build.
         dcc.Store(
             id="form-display-timezone-store",
             data=resolve_display_timezone(

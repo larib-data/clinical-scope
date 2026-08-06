@@ -210,8 +210,6 @@ def build_ui_and_schema_registry(
             left_extras = (extra_per_field or {}).get(component_id)
             right_extras = (extra_per_field or {}).get(next_component_id)
             if left_extras or right_extras:
-                # Extras don't fit the compact side-by-side row (pushes it to two lines) —
-                # one row per field instead, each keeping its own extras on one line.
                 components.append(
                     _widget_with_extras(schema_class, prefix, id_type, label_width, left_extras)
                 )

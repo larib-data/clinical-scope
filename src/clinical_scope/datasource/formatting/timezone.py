@@ -24,9 +24,9 @@ def resolve_display_timezone(display_timezone: str | None) -> str:
     """
     Return a usable IANA timezone name, falling back to ``cst.DISPLAY_TIMEZONE``.
 
-    Mirrors :meth:`DisplayFallbacks.from_user_options` (``signal_container.py``): an absent
-    value is the normal case and stays silent, while a present-but-invalid name (hand-edited
-    file, programmatic call) is logged rather than left to raise deep inside pandas/zoneinfo.
+    An absent value is the normal case and stays silent; a present-but-invalid name
+    (hand-edited file, programmatic call) is logged rather than left to raise deep inside
+    pandas/zoneinfo.
     """
     if not display_timezone:
         return cst.DISPLAY_TIMEZONE
@@ -203,9 +203,8 @@ def to_naive_display_ts(ts_str: str, display_timezone: str | None = None, sep: s
     annotations correctly with the trace data.  Non-datetime values (e.g. loop-plot numeric x)
     are returned unchanged.
 
-    ``sep`` selects the date/time separator of the output (default ``"T"``, ISO-standard);
-    the patient-options form calls with ``sep=" "`` to match its ``PLACEHOLDER_TIMESTAMP``
-    spelling — both round-trip through :class:`pandas.Timestamp` identically.
+    ``sep`` selects the date/time separator (default ``"T"``); the patient-options form
+    passes ``sep=" "`` to match its ``PLACEHOLDER_TIMESTAMP`` spelling.
     """
     timestamp = _try_parse_timestamp(ts_str)
     if timestamp is None or timestamp.tzinfo is None:
@@ -228,13 +227,11 @@ def to_aware_display_ts(ts_str: str, display_timezone: str | None = None) -> str
     """
     Convert a naive wall-clock string (as typed in the display timezone) to a tz-aware ISO string.
 
-    Inverse of :func:`to_naive_display_ts`. Used when *saving* the patient-options datetime
-    filters (issue #68): the form only ever holds naive wall-clock text, but the saved file
-    stores an instant, so the writer's ``display_timezone`` is baked in on the way out.
+    Inverse of :func:`to_naive_display_ts`; used when saving patient-options datetime
+    filters, since the form only ever holds naive text but the saved file stores an instant.
 
-    Idempotent: an already tz-aware input (e.g. a pasted offset — accepted by
-    ``validation.py``) passes through unchanged, since there is no naive wall-clock left to
-    interpret. Non-datetime or unparseable values (empty field, mid-typing) also pass through.
+    Idempotent: an already tz-aware input (e.g. a pasted offset) passes through unchanged, as
+    do non-datetime or unparseable values (empty field, mid-typing).
     """
     timestamp = _try_parse_timestamp(ts_str)
     if timestamp is None or timestamp.tzinfo is not None:

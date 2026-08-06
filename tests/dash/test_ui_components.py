@@ -174,7 +174,7 @@ class TestTimestampPairLayout:
             for child in container.children
             if isinstance(child, html.Div) and child.style.get("gap") == "24px"
         )
-        assert len(row.children) == 2  # just the two widgets, nothing else on the row
+        assert len(row.children) == 2
         assert [component_id for component_id, _ in _widgets(row)] == [
             "global.datetime_start",
             "global.datetime_end",
@@ -182,9 +182,8 @@ class TestTimestampPairLayout:
 
     def test_extras_split_the_pair_onto_separate_lines(self):
         """
-        An extra on datetime_start/end used to trail after both boxes on one flex row,
-        wrapping to two lines on a narrow viewport. Each field now gets its own line
-        instead, so its extra sits directly beside it.
+        An extra on datetime_start/end used to trail after both boxes on one row, wrapping
+        on a narrow viewport. Each field now gets its own line so its extra sits beside it.
         """
         start_extra = html.Span("start-extra")
         end_extra = html.Span("end-extra")

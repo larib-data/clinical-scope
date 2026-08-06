@@ -66,8 +66,6 @@ def _coerce(name: str, value: Any) -> Any:
         return value if value in allowed else schema.DEFAULT
 
     if schema.API_TYPE == cst.ApiType.TIMEZONE:
-        # resolve_display_timezone already falls back to cst.DISPLAY_TIMEZONE == DEFAULT here;
-        # reusing it keeps this the one place an invalid IANA name is ever tolerated downstream.
         return resolve_display_timezone(value)
 
     return value
@@ -113,12 +111,9 @@ def persist_user_options(
         updated[key] = fixed
         corrected_a_widget = corrected_a_widget or fixed != decoded
 
-    # A coercion can land back on the value already in the store (e.g. an invalid entry
-    # falling back to a default the store already holds) — updated == store alone would
-    # then skip the round-trip to reflect_user_options, leaving the widget showing the raw
-    # invalid text forever. Only truly skip when nothing changed AND nothing was corrected;
-    # the corrected case still reaches reflect_user_options once, then naturally settles
-    # (its own re-fire decodes the now-valid value, matches on coercion, and stops there).
+    # A coercion can land back on the value already in the store (invalid entry falls back
+    # to an already-stored default) — updated == store alone would then wrongly skip the
+    # resync, leaving the widget showing raw invalid text.
     if updated == store and not corrected_a_widget:
         return no_update
 

@@ -85,6 +85,8 @@ class ApiType:
 
 
 class PatientOptions:
+    GLOBAL = "global"
+
     class PathDataFolder:
         ORDER = 1
         NAME = "data_folder"

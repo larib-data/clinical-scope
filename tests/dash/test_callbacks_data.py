@@ -235,8 +235,8 @@ class TestProcessVisualizationSubmitTimezone:
             "2004-09-15 10:20:00",
         ]
 
-        # database_options only needs to be truthy; wrapper.main is free to fail afterward
-        # (no real datasource data under data_folder) — this test only cares what got saved.
+        # database_options only needs to be truthy; wrapper.main can fail afterward (no real
+        # data under data_folder) since this test only cares what got saved.
         process_visualization(
             1,
             {"philips_waves": {}},

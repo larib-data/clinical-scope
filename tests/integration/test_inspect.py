@@ -82,7 +82,7 @@ class TestInspectSerialization:
 
 
 class TestInspectDisplayTimezone:
-    """Issue #69: display_timezone is a user option now — cosmetic only, resolved by wrapper."""
+    """display_timezone is a user option now — cosmetic only, resolved by wrapper.inspect()."""
 
     def test_user_options_shift_the_reported_date_range(
         self, patient_options_full, default_database_options
