@@ -37,10 +37,11 @@ class TestToNaiveDisplayTs:
     def test_empty_string_passthrough(self):
         assert to_naive_display_ts("", "Europe/Paris") == ""
 
-    def test_invalid_timezone_logs_warning_and_returns_input(self):
+    def test_invalid_timezone_logs_warning_and_falls_back(self):
         ts = "2023-06-15T12:00:00+00:00"
         result = to_naive_display_ts(ts, "Invalid/Timezone")
-        assert result == ts
+        # Falls back to cst.DISPLAY_TIMEZONE rather than raising.
+        assert result == to_naive_display_ts(ts, cst.DISPLAY_TIMEZONE)
 
     def test_sep_argument_controls_separator(self):
         result = to_naive_display_ts("2023-06-15T12:00:00+00:00", "UTC", sep=" ")

@@ -5,6 +5,7 @@ import json
 import pytest
 from dash import no_update
 
+import clinical_scope.constants as cst
 from clinical_scope.dash_api.callbacks.data_callbacks import (
     _build_inspection_content,
     _build_slider_marks,
@@ -299,7 +300,18 @@ class TestRerenderDatetimeOnTimezoneChange:
 
 class TestUpdateDatetimeTzLabel:
     def test_shows_given_timezone(self):
-        assert update_datetime_tz_label("Europe/Paris") == "interpreted in Europe/Paris"
+        assert update_datetime_tz_label("Europe/Paris") == (
+            "interpreted in Europe/Paris",
+            "interpreted in Europe/Paris",
+        )
 
     def test_falls_back_to_default_when_empty(self):
-        assert "interpreted in" in update_datetime_tz_label(None)
+        start_label, end_label = update_datetime_tz_label(None)
+        assert "interpreted in" in start_label
+        assert start_label == end_label
+
+    def test_falls_back_to_default_when_invalid(self):
+        # Never echo an unresolved/invalid name (e.g. mid-typing) as if it were in effect.
+        start_label, end_label = update_datetime_tz_label("Not/AZone")
+        assert "Not/AZone" not in start_label
+        assert f"interpreted in {cst.DISPLAY_TIMEZONE}" == start_label == end_label

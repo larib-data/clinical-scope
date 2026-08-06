@@ -102,6 +102,7 @@ def dash_widget_factory(
             type="text",
             value=default,
             placeholder=placeholder,
+            debounce=True,
             id={"type": id_type, "name": component_id},
             style={"width": "300px"},
         )
@@ -125,6 +126,20 @@ def dash_widget_factory(
     if api_type in (cst.ApiType.PATH_FILE, cst.ApiType.PATH_FOLDER, cst.ApiType.CHOICE):
         container_style |= {"display": "flex", "alignItems": "center"}
     return html.Div(children=[label, input_component], style=container_style)
+
+
+def _widget_with_extras(
+    schema_class: Any, prefix: str, id_type: str, label_width: str, extras: list | None
+) -> html.Div:
+    """Build one field's widget, appended with its extra components on the same line, if any."""
+    widget = dash_widget_factory(schema_class, prefix, id_type, label_width)
+    if not extras:
+        return widget
+    widget.style = {key: value for key, value in widget.style.items() if key != "marginBottom"}
+    return html.Div(
+        [widget, *extras],
+        style={"display": "flex", "alignItems": "flex-start", "marginBottom": "8px"},
+    )
 
 
 def build_ui_and_schema_registry(
@@ -192,34 +207,36 @@ def build_ui_and_schema_registry(
             next_component_id = f"{prefix}.{next_class.NAME}"
             schema_lookup[next_component_id] = next_class
 
-            component_left = dash_widget_factory(schema_class, prefix, id_type, label_width)
-            component_right = dash_widget_factory(next_class, prefix, id_type, label_width)
-            extras = (extra_per_field or {}).get(component_id) or []
-            row = html.Div(
-                [component_left, component_right, *extras],
-                style={
-                    "display": "flex",
-                    "gap": "24px",
-                    "marginBottom": "8px",
-                    "alignItems": "center",
-                },
-            )
-            components.append(row)
-            field_index += 2
-        else:
-            widget = dash_widget_factory(schema_class, prefix, id_type, label_width)
-            extras = (extra_per_field or {}).get(component_id)
-            if extras:
-                widget.style = {
-                    key: value for key, value in widget.style.items() if key != "marginBottom"
-                }
-                component = html.Div(
-                    [widget, *extras],
-                    style={"display": "flex", "alignItems": "flex-start", "marginBottom": "8px"},
+            left_extras = (extra_per_field or {}).get(component_id)
+            right_extras = (extra_per_field or {}).get(next_component_id)
+            if left_extras or right_extras:
+                # Extras don't fit the compact side-by-side row (pushes it to two lines) —
+                # one row per field instead, each keeping its own extras on one line.
+                components.append(
+                    _widget_with_extras(schema_class, prefix, id_type, label_width, left_extras)
+                )
+                components.append(
+                    _widget_with_extras(next_class, prefix, id_type, label_width, right_extras)
                 )
             else:
-                component = widget
-            components.append(component)
+                component_left = dash_widget_factory(schema_class, prefix, id_type, label_width)
+                component_right = dash_widget_factory(next_class, prefix, id_type, label_width)
+                row = html.Div(
+                    [component_left, component_right],
+                    style={
+                        "display": "flex",
+                        "gap": "24px",
+                        "marginBottom": "8px",
+                        "alignItems": "center",
+                    },
+                )
+                components.append(row)
+            field_index += 2
+        else:
+            extras = (extra_per_field or {}).get(component_id)
+            components.append(
+                _widget_with_extras(schema_class, prefix, id_type, label_width, extras)
+            )
             field_index += 1
 
     return html.Div(components), schema_lookup

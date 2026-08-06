@@ -182,6 +182,17 @@ def loop_time_to_display_strings(
 
 
 # ==================================================================================================
+def _try_parse_timestamp(ts_str: str) -> pd.Timestamp | None:
+    """Parse *ts_str*, or return ``None`` for anything not a real timestamp (NaT included)."""
+    try:
+        timestamp = pd.Timestamp(ts_str)
+    except (ValueError, TypeError, OverflowError):
+        # e.g. a numeric loop-plot x value or mid-typed form text — expected, not an error.
+        return None
+    return None if pd.isna(timestamp) else timestamp
+
+
+# ==================================================================================================
 def to_naive_display_ts(ts_str: str, display_timezone: str | None = None, sep: str = "T") -> str:
     """
     Convert a tz-aware ISO timestamp to a naive string in display-TZ wall-clock time.
@@ -196,15 +207,11 @@ def to_naive_display_ts(ts_str: str, display_timezone: str | None = None, sep: s
     the patient-options form calls with ``sep=" "`` to match its ``PLACEHOLDER_TIMESTAMP``
     spelling — both round-trip through :class:`pandas.Timestamp` identically.
     """
+    timestamp = _try_parse_timestamp(ts_str)
+    if timestamp is None or timestamp.tzinfo is None:
+        return ts_str
     resolved_timezone = resolve_display_timezone(display_timezone)
     try:
-        timestamp = pd.Timestamp(ts_str)
-    except (ValueError, TypeError, OverflowError):
-        # ts_str is not a parseable datetime (e.g. a numeric loop-plot x value) — expected path.
-        return ts_str
-    try:
-        if pd.isna(timestamp) or timestamp.tzinfo is None:
-            return ts_str
         return timestamp.tz_convert(resolved_timezone).tz_localize(None).isoformat(sep=sep)
     except Exception:  # noqa: BLE001
         logger.warning(
@@ -229,13 +236,10 @@ def to_aware_display_ts(ts_str: str, display_timezone: str | None = None) -> str
     ``validation.py``) passes through unchanged, since there is no naive wall-clock left to
     interpret. Non-datetime or unparseable values (empty field, mid-typing) also pass through.
     """
+    timestamp = _try_parse_timestamp(ts_str)
+    if timestamp is None or timestamp.tzinfo is not None:
+        return ts_str
     resolved_timezone = resolve_display_timezone(display_timezone)
-    try:
-        timestamp = pd.Timestamp(ts_str)
-    except (ValueError, TypeError, OverflowError):
-        return ts_str
-    if pd.isna(timestamp) or timestamp.tzinfo is not None:
-        return ts_str
     try:
         return timestamp.tz_localize(resolved_timezone).isoformat()
     except Exception:  # noqa: BLE001

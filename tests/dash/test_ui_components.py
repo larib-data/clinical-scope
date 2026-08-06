@@ -158,3 +158,52 @@ class TestSaveHtmlIndicator:
     def test_on_and_off(self):
         assert ui_components.save_html_indicator_text(True).endswith("on")
         assert ui_components.save_html_indicator_text(False).endswith("off")
+
+
+# ---------------------------------------------------------------------------
+# Paired TIMESTAMP fields (datetime_start / datetime_end)
+# ---------------------------------------------------------------------------
+
+
+class TestTimestampPairLayout:
+    def test_without_extras_renders_as_one_side_by_side_row(self):
+        """Regression guard: the compact row is unchanged when nothing is attached to it."""
+        container, _ = build_ui_and_schema_registry(cst.PatientOptions, "global")
+        row = next(
+            child
+            for child in container.children
+            if isinstance(child, html.Div) and child.style.get("gap") == "24px"
+        )
+        assert len(row.children) == 2  # just the two widgets, nothing else on the row
+        assert [component_id for component_id, _ in _widgets(row)] == [
+            "global.datetime_start",
+            "global.datetime_end",
+        ]
+
+    def test_extras_split_the_pair_onto_separate_lines(self):
+        """
+        An extra on datetime_start/end used to trail after both boxes on one flex row,
+        wrapping to two lines on a narrow viewport. Each field now gets its own line
+        instead, so its extra sits directly beside it.
+        """
+        start_extra = html.Span("start-extra")
+        end_extra = html.Span("end-extra")
+        container, _ = build_ui_and_schema_registry(
+            cst.PatientOptions,
+            "global",
+            extra_per_field={
+                "global.datetime_start": [start_extra],
+                "global.datetime_end": [end_extra],
+            },
+        )
+        start_line = next(
+            child
+            for child in container.children
+            if isinstance(child, html.Div) and start_extra in getattr(child, "children", [])
+        )
+        end_line = next(
+            child
+            for child in container.children
+            if isinstance(child, html.Div) and end_extra in getattr(child, "children", [])
+        )
+        assert start_line is not end_line

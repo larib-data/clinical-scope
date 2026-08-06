@@ -266,16 +266,18 @@ def build_patient_options_ui(
             "flexDirection": "column",
         },
     )
-    _datetime_tz_label = html.Span(
-        id="datetime-tz-label",
-        style={"fontSize": "12px", "color": "#666"},
+    _datetime_tz_label_style = {"fontSize": "12px", "color": "#666"}
+    _datetime_tz_label_start = html.Span(
+        id="datetime-tz-label-start", style=_datetime_tz_label_style
     )
+    _datetime_tz_label_end = html.Span(id="datetime-tz-label-end", style=_datetime_tz_label_style)
     component, schema = ui_components.build_ui_and_schema_registry(
         cst.PatientOptions,
         prefix="global",
         extra_per_field={
             "global.data_folder": [_reload_patient_btn, _reload_status],
-            "global.datetime_start": [_datetime_tz_label],
+            "global.datetime_start": [_datetime_tz_label_start],
+            "global.datetime_end": [_datetime_tz_label_end],
         },
     )
     components.append(html.Div(component, style=CARD_STYLE))
@@ -325,12 +327,21 @@ def build_patient_options_ui(
 
 
 @callback(
-    Output("datetime-tz-label", "children"),
+    Output("datetime-tz-label-start", "children"),
+    Output("datetime-tz-label-end", "children"),
     Input({"type": "patient-option", "name": "global.display_timezone"}, "value"),
 )
-def update_datetime_tz_label(display_timezone: str | None) -> str:
-    """Show which timezone the datetime-window fields are typed in (cosmetic; see issue #68)."""
-    return f"interpreted in {display_timezone or cst.DISPLAY_TIMEZONE}"
+def update_datetime_tz_label(display_timezone: str | None) -> tuple[str, str]:
+    """
+    Show which timezone the datetime-window fields are typed in (cosmetic; see issue #68).
+
+    Goes through :func:`resolve_display_timezone` rather than echoing the raw widget value,
+    so a mid-typed or invalid name never gets displayed as if it were in effect — the label
+    always reflects the timezone that is actually resolved (falling back to
+    ``cst.DISPLAY_TIMEZONE``, never to whatever was previously shown).
+    """
+    label = f"interpreted in {resolve_display_timezone(display_timezone)}"
+    return label, label
 
 
 # Component ids of the two datetime-window fields — the only ones whose stored form
