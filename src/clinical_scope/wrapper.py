@@ -335,14 +335,20 @@ def inspect(
     patient_options: dict,
     database_options_global: dict | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
+    user_options: dict | None = None,
 ) -> list[DataSourceInspection]:
     """
     Run find → load → format for each enabled datasource and return inspection results.
 
     Does NOT call _extract_signals() or build PlotModels.
     Returns one DataSourceInspection per datasource present in database_options_global.
+
+    ``user_options`` only affects the timezone reported dates are displayed in (cosmetic);
+    it is resolved here and passed down as a plain string, so DataSourceBase.inspect() never
+    reads ``user_options.json`` itself — filtering/data returned is unaffected either way.
     """
     database_options_global = _resolve_database_options(database_options_global)
+    display_timezone = DisplayFallbacks.from_user_options(user_options).display_timezone
     requested_sources = [
         ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
     ]
@@ -380,7 +386,9 @@ def inspect(
             continue
 
         try:
-            inspection = datasource_cls.inspect(patient_options, database_options)
+            inspection = datasource_cls.inspect(
+                patient_options, database_options, display_timezone=display_timezone
+            )
         except Exception as exc:
             logger.exception("❌ Inspection failed for datasource '%s'.", name)
             inspection = DataSourceInspection(

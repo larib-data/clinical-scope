@@ -224,12 +224,14 @@ class TestQuickLoadCachePruning:
         out = servo_u_cls._quick_load(path, patient_options=None, database_options_specific={})
         assert list(out.columns) == ["HR", "SpO2", "RR"]
 
-    def test_composes_row_and_column_pruning(self, servo_u_cls, tmp_path):
+    def test_composes_row_and_column_pruning(self, servo_u_cls, tmp_path, monkeypatch):
+        # The materialized cache index is genuinely tz-aware UTC (_make_cache); pin the
+        # library display default to UTC so the naive window lands inside it.
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         path = _make_cache(tmp_path)
         full = pd.read_parquet(path)
         patient_options = {
             "data_folder": str(tmp_path),
-            "display_timezone": "UTC",
             "datetime_start": "2020-01-01 00:00:10",
             "datetime_end": "2020-01-01 00:00:20",
         }
@@ -261,7 +263,6 @@ class TestPhilipsWavesColumnPruning:
 
         base_options = {
             "data_folder": str(patient_full_path),
-            "display_timezone": "UTC",
             "datetime_start": None,
             "datetime_end": None,
             "quick_load": False,
@@ -284,7 +285,6 @@ class TestPhilipsWavesColumnPruning:
         insp = philips_waves_cls.inspect(
             {
                 "data_folder": str(patient_full_path),
-                "display_timezone": "UTC",
                 "datetime_start": None,
                 "datetime_end": None,
                 "quick_load": False,
@@ -314,7 +314,6 @@ class TestOtherColumnPruning:
     def test_main_pruned_matches_full(self, other_cls, patient_difficult_path):
         base_options = {
             "data_folder": str(patient_difficult_path),
-            "display_timezone": "UTC",
             "datetime_start": None,
             "datetime_end": None,
             "quick_load": False,

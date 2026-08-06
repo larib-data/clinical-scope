@@ -158,14 +158,14 @@ def _global_ids(*names: str) -> list[dict[str, str]]:
 _DATETIME_SCHEMA_DATA = {
     "global.data_folder": "PathDataFolder",
     "global.output_root": "OutputRoot",
-    "global.display_timezone": "DisplayTimezone",
     "global.datetime_start": "DatetimeStart",
     "global.datetime_end": "DatetimeEnd",
 }
 
 
 class TestReloadPatientOptionsTimezoneRoundTrip:
-    def test_aware_saved_bound_renders_as_naive_in_saved_timezone(self, tmp_path):
+    def test_aware_saved_bound_renders_in_current_settings_timezone(self, tmp_path):
+        """The preview always uses the live Settings tz, not whatever the file was saved in (#69)."""
         data_folder = tmp_path / "patient"
         data_folder.mkdir()
         patient_options_path = get_patient_options_path(str(data_folder))
@@ -174,27 +174,26 @@ class TestReloadPatientOptionsTimezoneRoundTrip:
             json.dumps(
                 {
                     "data_folder": str(data_folder),
-                    "display_timezone": "Europe/Paris",
                     "datetime_start": "2004-09-15T08:20:00+02:00",
                     "datetime_end": "2004-09-15T10:20:00+02:00",
                 }
             )
         )
 
-        ids = _global_ids(
-            "data_folder", "output_root", "display_timezone", "datetime_start", "datetime_end"
-        )
-        current_values = [str(data_folder), "", "UTC", "", ""]
+        ids = _global_ids("data_folder", "output_root", "datetime_start", "datetime_end")
+        current_values = [str(data_folder), "", "", ""]
 
-        new_values, _status, new_timezone = reload_patient_options(
-            1, current_values, ids, _DATETIME_SCHEMA_DATA
+        new_values, _status = reload_patient_options(
+            1,
+            current_values,
+            ids,
+            _DATETIME_SCHEMA_DATA,
+            {"display_timezone": "America/New_York"},
         )
 
         names = [id_["name"] for id_ in ids]
-        assert new_values[names.index("global.display_timezone")] == "Europe/Paris"
-        assert new_values[names.index("global.datetime_start")] == "2004-09-15 08:20:00"
-        assert new_values[names.index("global.datetime_end")] == "2004-09-15 10:20:00"
-        assert new_timezone == "Europe/Paris"
+        assert new_values[names.index("global.datetime_start")] == "2004-09-15 02:20:00"
+        assert new_values[names.index("global.datetime_end")] == "2004-09-15 04:20:00"
 
     def test_legacy_naive_saved_file_is_unaffected(self, tmp_path):
         """Strictly additive: an older, still-naive saved file round-trips unchanged."""
@@ -212,13 +211,11 @@ class TestReloadPatientOptionsTimezoneRoundTrip:
             )
         )
 
-        ids = _global_ids(
-            "data_folder", "output_root", "display_timezone", "datetime_start", "datetime_end"
-        )
-        current_values = [str(data_folder), "", "Europe/Paris", "", ""]
+        ids = _global_ids("data_folder", "output_root", "datetime_start", "datetime_end")
+        current_values = [str(data_folder), "", "", ""]
 
-        new_values, _status, _new_timezone = reload_patient_options(
-            1, current_values, ids, _DATETIME_SCHEMA_DATA
+        new_values, _status = reload_patient_options(
+            1, current_values, ids, _DATETIME_SCHEMA_DATA, {"display_timezone": "Europe/Paris"}
         )
 
         names = [id_["name"] for id_ in ids]
@@ -230,20 +227,24 @@ class TestProcessVisualizationSubmitTimezone:
         data_folder = tmp_path / "patient"
         data_folder.mkdir()
 
-        ids = _global_ids(
-            "data_folder", "output_root", "display_timezone", "datetime_start", "datetime_end"
-        )
+        ids = _global_ids("data_folder", "output_root", "datetime_start", "datetime_end")
         values = [
             str(data_folder),
             "",
-            "Europe/Paris",
             "2004-09-15 08:20:00",
             "2004-09-15 10:20:00",
         ]
 
         # database_options only needs to be truthy; wrapper.main is free to fail afterward
         # (no real datasource data under data_folder) — this test only cares what got saved.
-        process_visualization(1, {"philips_waves": {}}, _DATETIME_SCHEMA_DATA, values, ids, None)
+        process_visualization(
+            1,
+            {"philips_waves": {}},
+            _DATETIME_SCHEMA_DATA,
+            values,
+            ids,
+            {"display_timezone": "Europe/Paris"},
+        )
 
         saved = load_patient_options(str(data_folder))
         assert saved["datetime_start"] == "2004-09-15T08:20:00+02:00"
@@ -252,8 +253,8 @@ class TestProcessVisualizationSubmitTimezone:
 
 class TestRerenderDatetimeOnTimezoneChange:
     def test_preserves_instant_across_timezones(self):
-        ids = _global_ids("display_timezone", "datetime_start", "datetime_end")
-        current_values = ["America/New_York", "2004-09-15 08:20:00", "2004-09-15 10:20:00"]
+        ids = _global_ids("datetime_start", "datetime_end")
+        current_values = ["2004-09-15 08:20:00", "2004-09-15 10:20:00"]
 
         new_values, new_timezone = rerender_datetime_on_timezone_change(
             "America/New_York", current_values, ids, "Europe/Paris"
@@ -265,8 +266,8 @@ class TestRerenderDatetimeOnTimezoneChange:
         assert new_timezone == "America/New_York"
 
     def test_unchanged_timezone_is_a_no_op(self):
-        ids = _global_ids("display_timezone", "datetime_start")
-        current_values = ["Europe/Paris", "2004-09-15 08:20:00"]
+        ids = _global_ids("datetime_start")
+        current_values = ["2004-09-15 08:20:00"]
 
         new_values, new_timezone = rerender_datetime_on_timezone_change(
             "Europe/Paris", current_values, ids, "Europe/Paris"
@@ -276,8 +277,8 @@ class TestRerenderDatetimeOnTimezoneChange:
         assert new_timezone == "Europe/Paris"
 
     def test_mid_typing_invalid_timezone_is_a_no_op(self):
-        ids = _global_ids("display_timezone", "datetime_start")
-        current_values = ["America/New_Y", "2004-09-15 08:20:00"]
+        ids = _global_ids("datetime_start")
+        current_values = ["2004-09-15 08:20:00"]
 
         new_values, new_timezone = rerender_datetime_on_timezone_change(
             "America/New_Y", current_values, ids, "Europe/Paris"
@@ -287,8 +288,8 @@ class TestRerenderDatetimeOnTimezoneChange:
         assert new_timezone == "Europe/Paris"
 
     def test_empty_timezone_is_a_no_op(self):
-        ids = _global_ids("display_timezone", "datetime_start")
-        current_values = ["", "2004-09-15 08:20:00"]
+        ids = _global_ids("datetime_start")
+        current_values = ["2004-09-15 08:20:00"]
 
         new_values, new_timezone = rerender_datetime_on_timezone_change(
             "", current_values, ids, "Europe/Paris"

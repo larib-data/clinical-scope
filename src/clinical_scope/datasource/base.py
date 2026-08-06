@@ -167,9 +167,9 @@ class DataSourceBase(ABC):
         )
         shift_td = pd.Timedelta(seconds=time_shift)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
-        display_timezone = resolve_display_timezone(
-            patient_options.get(cst.PatientOptions.DisplayTimezone.NAME)
-        )
+        # A tz-naive bound is interpreted in the library default (issue #69's follow-up): all
+        # current users are in Europe/Paris, so this never mis-reads a real patient_options.json.
+        display_timezone = cst.DISPLAY_TIMEZONE
 
         def _to_aware(raw_value: str | None) -> pd.Timestamp | None:
             if not raw_value:
@@ -395,9 +395,8 @@ class DataSourceBase(ABC):
         datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
         datetime_start = pd.Timestamp(datetime_start) if datetime_start else None
         datetime_end = pd.Timestamp(datetime_end) if datetime_end else None
-        display_timezone = patient_options.get(
-            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
-        )
+        # See _pushdown_bounds: a tz-naive bound is interpreted in the library default.
+        display_timezone = cst.DISPLAY_TIMEZONE
         return filter_data_by_timestamps(
             df,
             time_start=datetime_start,
@@ -433,7 +432,6 @@ class DataSourceBase(ABC):
     def _extract_signals(
         cls,
         df: pd.DataFrame,
-        patient_options: dict,
         database_options_specific: dict,
         display_fallbacks: DisplayFallbacks | None = None,
     ) -> list[Signal]:
@@ -452,7 +450,6 @@ class DataSourceBase(ABC):
                 kwargs = {
                     "df": df,
                     "raw_signal_name": signal,
-                    "patient_options": patient_options,
                     "database_options_specific": database_options_specific,
                     "display_fallbacks": display_fallbacks,
                 }
@@ -535,7 +532,6 @@ class DataSourceBase(ABC):
         database_options = (
             database_options_specific if database_options_specific is not None else {}
         )
-        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
 
         df, _ = cls._load_raw_dataframe(patient_options, database_options)
         if df is None:
@@ -543,18 +539,8 @@ class DataSourceBase(ABC):
 
         df = cls._format(df, patient_options, database_options)
 
-        # Inject global display_timezone into the per-datasource sub-dict so
-        # _extract_signals (and Signal.time_series_from_dataframe) can read it.
-        patient_options_for_signals = {
-            **patient_options_specific,
-            cst.PatientOptions.DisplayTimezone.NAME: patient_options.get(
-                cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
-            ),
-        }
-
         signals = cls._extract_signals(
             df,
-            patient_options=patient_options_for_signals,
             database_options_specific=database_options,
             display_fallbacks=display_fallbacks,
         )
@@ -629,6 +615,7 @@ class DataSourceBase(ABC):
         database_options_specific: dict,
         datasource_name: str,
         file_path: str | None = None,
+        display_timezone: str | None = None,
     ) -> DataSourceInspection:
         """
         Build a DataSourceInspection from an already-loaded raw DataFrame.
@@ -642,6 +629,11 @@ class DataSourceBase(ABC):
             database_options_specific: Options for this datasource or per-file config.
             datasource_name: Name written into the returned DataSourceInspection.
             file_path: Path string to include in the result, or None.
+            display_timezone: Timezone the reported date ranges are shown in — cosmetic
+                only, never affects filtering. Resolved by the caller (``wrapper.inspect``)
+                so this library layer never reads ``user_options.json`` itself; falls back
+                to ``cst.DISPLAY_TIMEZONE`` when omitted (e.g. a caller hitting this
+                classmethod directly rather than going through ``wrapper.inspect``).
 
         Returns:
             DataSourceInspection with status ``"ok"`` or ``"format_error"``.
@@ -651,9 +643,7 @@ class DataSourceBase(ABC):
         configured_fields = set(
             database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY, list(signals.keys()))
         )
-        display_timezone = patient_options.get(
-            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
-        )
+        display_timezone = resolve_display_timezone(display_timezone)
 
         df_raw_display = _to_display_tz(df_raw, display_timezone=display_timezone)
         raw_date_range = _date_range(df_raw_display)
@@ -686,6 +676,7 @@ class DataSourceBase(ABC):
         cls,
         patient_options: dict,
         database_options_specific: dict | None,
+        display_timezone: str | None = None,
     ) -> DataSourceInspection | list[DataSourceInspection]:
         """
         Run find → load → format for this datasource and return inspection metadata.
@@ -695,6 +686,7 @@ class DataSourceBase(ABC):
 
         Args:
             patient_options: Patient-specific options (same as main())
+            display_timezone: Forwarded to :meth:`_make_inspection` — see its docstring.
 
         Returns:
             DataSourceInspection with status, file info, date ranges, and column stats
@@ -736,4 +728,5 @@ class DataSourceBase(ABC):
             database_options,
             datasource_name=cls.DATASOURCE_NAME,
             file_path=file_path_str,
+            display_timezone=display_timezone,
         )

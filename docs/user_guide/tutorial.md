@@ -291,6 +291,8 @@ These apply to all data sources:
 | **Time end filter** | End of the time window to display. Leave empty to use all available data. |
 | **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `clinical_scope_output/` folder, significantly speeding up subsequent loads. **Un-tick** if raw patient data has been modified |
 
+The time filters are typed and shown in the **Display timezone**, set once in [Settings](#settings) — a label next to the fields names it.
+
 ![Global patient options](images/GlobalPatientOptions.png){ width=100% }
 
 ## Per-Source Options
@@ -325,6 +327,7 @@ The **⚙ Settings** button at the top right opens your personal settings. They 
 
 | Setting | What it does |
 |---|---|
+| Display timezone | The timezone every plot and the Patient Options time filters are shown in (IANA name, e.g. `Europe/Paris`). Changing it does not move your data — the time filters are rewritten to keep pointing at the same instant, just written in the new timezone's local time. |
 | Height of each time-series subplot | Vertical size, in pixels, of every time-series subplot. |
 | Height of each loop subplot | Same, for loop plots — which stay square, so this also sets their width. |
 | Loop subplots per row | How many loops sit side by side, 1 to 3. |

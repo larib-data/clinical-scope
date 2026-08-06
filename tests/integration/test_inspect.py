@@ -81,6 +81,42 @@ class TestInspectSerialization:
             assert len(orig.columns) == len(rest.columns)
 
 
+class TestInspectDisplayTimezone:
+    """Issue #69: display_timezone is a user option now — cosmetic only, resolved by wrapper."""
+
+    def test_user_options_shift_the_reported_date_range(
+        self, patient_options_full, default_database_options
+    ):
+        paris = inspect(
+            patient_options_full,
+            default_database_options,
+            user_options={"display_timezone": "Europe/Paris"},
+        )
+        tokyo = inspect(
+            patient_options_full,
+            default_database_options,
+            user_options={"display_timezone": "Asia/Tokyo"},
+        )
+        paris_ranges = {r.datasource_name: r.raw_date_range for r in paris if r.status == "ok"}
+        tokyo_ranges = {r.datasource_name: r.raw_date_range for r in tokyo if r.status == "ok"}
+        assert paris_ranges  # sanity: at least one datasource actually compared
+        assert paris_ranges != tokyo_ranges
+
+    def test_missing_user_options_defaults_like_before(
+        self, patient_options_full, default_database_options
+    ):
+        """No user_options at all (e.g. a bare library call) behaves like the documented default."""
+        default = inspect(patient_options_full, default_database_options)
+        explicit_default = inspect(
+            patient_options_full,
+            default_database_options,
+            user_options={"display_timezone": "Europe/Paris"},
+        )
+        default_ranges = [r.raw_date_range for r in default if r.status == "ok"]
+        explicit_ranges = [r.raw_date_range for r in explicit_default if r.status == "ok"]
+        assert default_ranges == explicit_ranges
+
+
 class TestInspectWithDatetimeFilter:
     def test_filter_reduces_counts(self, patient_full_path, default_database_options):
         """Narrowing datetime range should reduce filtered_point_count."""

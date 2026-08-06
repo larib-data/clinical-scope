@@ -1,7 +1,7 @@
 """Unit tests for timezone utility functions."""
 
 import clinical_scope.constants as cst
-from clinical_scope.constants import PatientOptions
+from clinical_scope.constants import UserOptions
 from clinical_scope.dash_api.validation import validate_value
 from clinical_scope.datasource.formatting.timezone import (
     resolve_display_timezone,
@@ -106,19 +106,19 @@ class TestTimezoneValidation:
     """Timezone validation via validate_value (schema-class level)."""
 
     def test_valid_timezone_accepted(self):
-        ok, msg = validate_value(PatientOptions.DisplayTimezone, "Europe/Paris")
+        ok, msg = validate_value(UserOptions.DisplayTimezone, "Europe/Paris")
         assert ok
         assert msg == ""
 
     def test_valid_utc_accepted(self):
-        ok, _msg = validate_value(PatientOptions.DisplayTimezone, "UTC")
+        ok, _msg = validate_value(UserOptions.DisplayTimezone, "UTC")
         assert ok
 
     def test_invalid_timezone_rejected(self):
-        ok, msg = validate_value(PatientOptions.DisplayTimezone, "NotATimezone")
+        ok, msg = validate_value(UserOptions.DisplayTimezone, "NotATimezone")
         assert not ok
         assert "IANA" in msg
 
     def test_empty_string_is_not_mandatory(self):
-        ok, _msg = validate_value(PatientOptions.DisplayTimezone, "")
+        ok, _msg = validate_value(UserOptions.DisplayTimezone, "")
         assert ok  # not mandatory, empty is allowed

@@ -138,7 +138,7 @@ def _widget_with_extras(
     widget.style = {key: value for key, value in widget.style.items() if key != "marginBottom"}
     return html.Div(
         [widget, *extras],
-        style={"display": "flex", "alignItems": "flex-start", "marginBottom": "8px"},
+        style={"display": "flex", "alignItems": "flex-start", "marginBottom": "8px", "gap": "8px"},
     )
 
 

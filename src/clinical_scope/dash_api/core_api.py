@@ -46,6 +46,7 @@ from clinical_scope.dash_api.styles import (
     SETTINGS_MODAL_PANEL,
     VERSION_BADGE,
 )
+from clinical_scope.datasource.formatting.timezone import resolve_display_timezone
 
 # === API Version === #
 try:
@@ -598,9 +599,15 @@ app.layout = html.Div(
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="display-timezone-store", data=None),
-        # Baseline for the datetime-window re-render callback (issue #68); becomes a
-        # user_options default with cst.DISPLAY_TIMEZONE fallback once #69 lands.
-        dcc.Store(id="form-display-timezone-store", data=cst.DISPLAY_TIMEZONE),
+        # Baseline for the datetime-window re-render callback (issue #68/#69): the Settings
+        # display_timezone last applied to the datetime fields, so a Settings edit can tell
+        # what tz to convert *from*. Seeded from the on-disk user_options at layout build.
+        dcc.Store(
+            id="form-display-timezone-store",
+            data=resolve_display_timezone(
+                _INITIAL_USER_OPTIONS.get(cst.UserOptions.DisplayTimezone.NAME)
+            ),
+        ),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
         html.Div(

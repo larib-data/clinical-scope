@@ -25,6 +25,7 @@ class TestDefaults:
         assert fallbacks.template == "plotly"
         assert fallbacks.hovermode == "x unified"
         assert fallbacks.hover_time_format == "%H:%M:%S.%3f"
+        assert fallbacks.display_timezone == cst.DISPLAY_TIMEZONE
 
     def test_empty_user_options_gives_defaults(self):
         assert DisplayFallbacks.from_user_options({}) == DisplayFallbacks()
@@ -56,6 +57,7 @@ class TestFromUserOptions:
                 cst.UserOptions.Template.NAME: cst.PlotTemplate.DARK,
                 cst.UserOptions.HoverModeOption.NAME: cst.HoverMode.CLOSEST,
                 cst.UserOptions.HoverTimeFormatOption.NAME: cst.HoverTimeFormat.DATE_TIME,
+                cst.UserOptions.DisplayTimezone.NAME: "America/New_York",
             }
         )
         assert fallbacks == DisplayFallbacks(
@@ -68,7 +70,15 @@ class TestFromUserOptions:
             template=cst.PlotTemplate.DARK,
             hovermode=cst.HoverMode.CLOSEST,
             hover_time_format=cst.HoverTimeFormat.DATE_TIME,
+            display_timezone="America/New_York",
         )
+
+    def test_invalid_display_timezone_falls_back_to_default(self):
+        """display_timezone delegates to resolve_display_timezone, same as everywhere else (#69)."""
+        fallbacks = DisplayFallbacks.from_user_options(
+            {cst.UserOptions.DisplayTimezone.NAME: "NotATimezone"}
+        )
+        assert fallbacks.display_timezone == cst.DISPLAY_TIMEZONE
 
     def test_app_behaviour_tenants_are_ignored(self):
         """save_html_on_process is not a display fallback; it must not leak into the carrier."""

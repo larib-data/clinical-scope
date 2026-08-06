@@ -329,11 +329,14 @@ def build_patient_options_ui(
 @callback(
     Output("datetime-tz-label-start", "children"),
     Output("datetime-tz-label-end", "children"),
-    Input({"type": "patient-option", "name": "global.display_timezone"}, "value"),
+    Input({"type": "user-option", "name": "user_options.display_timezone"}, "value"),
 )
 def update_datetime_tz_label(display_timezone: str | None) -> tuple[str, str]:
     """
-    Show which timezone the datetime-window fields are typed in (cosmetic; see issue #68).
+    Show which timezone the datetime-window fields are typed in.
+
+    Load-bearing since #69: display_timezone lives in the Settings modal now, no longer
+    next to the fields it governs, so this is the only visible link between the two.
 
     Goes through :func:`resolve_display_timezone` rather than echoing the raw widget value,
     so a mid-typed or invalid name never gets displayed as if it were in effect — the label
@@ -352,11 +355,11 @@ _DATETIME_FIELD_NAMES = ("global.datetime_start", "global.datetime_end")
 @callback(
     Output({"type": "patient-option", "name": ALL}, "value"),
     Output("patient-options-reload-status", "children"),
-    Output("form-display-timezone-store", "data", allow_duplicate=True),
     Input("reload-patient-options-btn", "n_clicks"),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
     State("schema-registry", "data"),
+    State("user-options-store", "data"),
     prevent_initial_call=True,
 )
 def reload_patient_options(
@@ -364,7 +367,8 @@ def reload_patient_options(
     current_values: list[Any],
     ids: list[dict[str, str]],
     schema_data: dict[str, str],
-) -> tuple[list[Any], Any, str]:
+    user_options: dict[str, Any] | None,
+) -> tuple[list[Any], Any]:
     """Reload patient options from the saved JSON in the current patient folder."""
     if not n_clicks:
         raise PreventUpdate
@@ -377,7 +381,6 @@ def reload_patient_options(
         return (
             current_values,
             html.Span("No patient folder specified.", style={"color": "#e67e00"}),
-            no_update,
         )
 
     try:
@@ -387,7 +390,6 @@ def reload_patient_options(
         return (
             current_values,
             html.Span(str(exc), style={"color": "#dc3545", "wordBreak": "break-all"}),
-            no_update,
         )
     if saved is None:
         looked_in = get_patient_options_path(data_folder, output_root).parent
@@ -397,17 +399,15 @@ def reload_patient_options(
                 html.Span("No saved patient options found in:", style={"color": "#e67e00"}),
                 html.Span(str(looked_in), style={"color": "#e67e00", "wordBreak": "break-all"}),
             ],
-            no_update,
         )
 
     schema_class_lookup = _rehydrate_schema_classes(schema_data or {})
-    # The saved bound may be a tz-aware instant (issue #68); render it back as the naive
-    # wall-clock text the writer originally typed, in the *saved* file's own display_timezone,
-    # so a reload round-trips to exactly that — a no-op on the older, still-naive files this
-    # format is additive over. Also becomes the new baseline for the live re-render callback,
-    # so a display_timezone edit right after reload still preserves the reloaded instant.
-    saved_display_timezone = resolve_display_timezone(
-        saved.get(cst.PatientOptions.DisplayTimezone.NAME)
+    # The saved bound may be a tz-aware instant (issue #68); render it back as naive
+    # wall-clock text in the *current* Settings display_timezone (issue #69: a live global
+    # preference, not part of the file) — a no-op on the older, still-naive files this
+    # format is additive over, since to_naive_display_ts passes naive input through untouched.
+    current_display_timezone = resolve_display_timezone(
+        (user_options or {}).get(cst.UserOptions.DisplayTimezone.NAME)
     )
 
     new_values = []
@@ -429,18 +429,18 @@ def reload_patient_options(
             raw = raw_default
 
         if field_id in _DATETIME_FIELD_NAMES and raw:
-            raw = to_naive_display_ts(raw, saved_display_timezone, sep=" ")
+            raw = to_naive_display_ts(raw, current_display_timezone, sep=" ")
 
         # Saved JSON holds Python values; re-encode into each widget's expected shape.
         new_values.append(ui_components.to_widget_value(api_type, raw))
 
-    return new_values, "", saved_display_timezone
+    return new_values, ""
 
 
 @callback(
     Output({"type": "patient-option", "name": ALL}, "value", allow_duplicate=True),
     Output("form-display-timezone-store", "data", allow_duplicate=True),
-    Input({"type": "patient-option", "name": "global.display_timezone"}, "value"),
+    Input({"type": "user-option", "name": "user_options.display_timezone"}, "value"),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
     State("form-display-timezone-store", "data"),
@@ -455,8 +455,8 @@ def rerender_datetime_on_timezone_change(
     """
     Rewrite datetime_start/end so editing display_timezone changes the label, not the instant.
 
-    Without this, reload -> change timezone -> re-save would silently move the stored window
-    (issue #68): the naive form fields would keep the same digits but be interpreted in a
+    Without this, change Settings timezone -> Submit would silently move the stored window
+    (issue #68/#69): the naive form fields would keep the same digits but be interpreted in a
     different timezone at Submit. No-op on an empty or unparseable timezone, so half-typed
     IANA names survive without touching the fields.
     """
@@ -721,11 +721,11 @@ def process_visualization(
     patient_options_path = get_patient_options_path(data_folder, output_root)
     folder_visu_path = str(get_output_base(data_folder, output_root))
 
-    # The form only ever holds naive wall-clock text; bake in the writer's display_timezone
-    # here so the saved file stores an instant (issue #68). Same validated_dict is saved
-    # *and* handed to wrapper.main below, so the file and the run cannot disagree.
+    # The form only ever holds naive wall-clock text; bake in the current Settings
+    # display_timezone here so the saved file stores an instant (issue #68). display_timezone
+    # is a user option since #69 — a global display preference, not part of this patient run.
     display_timezone = resolve_display_timezone(
-        validated_dict.get(cst.PatientOptions.DisplayTimezone.NAME)
+        (user_options or {}).get(cst.UserOptions.DisplayTimezone.NAME)
     )
     datetime_fields = (cst.PatientOptions.DatetimeStart.NAME, cst.PatientOptions.DatetimeEnd.NAME)
     for datetime_field in datetime_fields:
@@ -955,6 +955,7 @@ def _build_inspection_content(results: list) -> list:
     State("schema-registry", "data"),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
+    State("user-options-store", "data"),
     prevent_initial_call=True,
 )
 def inspect_data(
@@ -963,6 +964,7 @@ def inspect_data(
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
+    user_options: dict[str, Any] | None,
 ) -> tuple[dict, Any, list | None, None, bool, str]:
     """Run data inspection for all enabled datasources and display results in modal."""
     interval_off, progress_clear = True, ""
@@ -1004,6 +1006,7 @@ def inspect_data(
             patient_options=validated_dict,
             database_options_global=database_options,
             progress_callback=_on_progress,
+            user_options=user_options,
         )
     except Exception as exc:
         logger.exception("Inspection failed: ")
