@@ -16,6 +16,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import clinical_scope.constants as cst
+from clinical_scope.datasource.formatting.timezone import to_aware_display_ts
 from clinical_scope.io.file_utils import (
     _detect_datetime_column_from_parquet,
     _find_datetime_col_parsed,
@@ -312,6 +313,47 @@ class TestQuickLoadCachePushdownEquality:
 
         pd.testing.assert_frame_equal(df_pushdown, df_disabled)
         assert len(df_pushdown) > 0
+
+
+class TestNaiveAwareBoundEquivalence:
+    """
+    Issue #68 additive contract: a tz-aware bound selects exactly what the equivalent
+    naive + display_timezone pair it replaces would — the load path (`_to_aware` in
+    base.py, `filter_data_by_timestamps` in timezone.py) already accepted aware bounds
+    before this issue, so this only needs to prove the two spellings agree.
+    """
+
+    @pytest.mark.parametrize(
+        "datetime_start,datetime_end,display_timezone",
+        [
+            ("2004-09-15 06:12:40", "2004-09-15 06:12:50", "UTC"),
+            ("2004-09-15 08:12:40", "2004-09-15 08:12:50", "Europe/Paris"),
+        ],
+    )
+    def test_aware_bound_matches_naive_plus_display_timezone(
+        self, servo_u_cls, patient_full_path, datetime_start, datetime_end, display_timezone
+    ):
+        naive_options = {
+            "data_folder": str(patient_full_path),
+            "datetime_start": datetime_start,
+            "datetime_end": datetime_end,
+            "display_timezone": display_timezone,
+            "quick_load": True,
+        }
+        df_naive = servo_u_cls.extract(naive_options, {})
+
+        aware_options = {
+            "data_folder": str(patient_full_path),
+            "datetime_start": to_aware_display_ts(datetime_start, display_timezone),
+            "datetime_end": to_aware_display_ts(datetime_end, display_timezone),
+            # Deliberately a different timezone: an aware bound must not need this to agree.
+            "display_timezone": "America/New_York",
+            "quick_load": True,
+        }
+        df_aware = servo_u_cls.extract(aware_options, {})
+
+        pd.testing.assert_frame_equal(df_naive, df_aware)
+        assert len(df_naive) > 0
 
 
 class TestPhilipsWavesPushdownEquality:

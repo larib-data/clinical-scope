@@ -598,6 +598,9 @@ app.layout = html.Div(
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="display-timezone-store", data=None),
+        # Timezone the datetime-window fields are currently displayed in — the baseline the
+        # live re-render callback converts *from* on the next display_timezone edit (issue #68).
+        dcc.Store(id="form-display-timezone-store", data=cst.DISPLAY_TIMEZONE),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
         html.Div(

@@ -834,10 +834,10 @@ If signals from different sources appear misaligned in time:
 - Ensure the data files are not corrupted or truncated.
 - If you think you are facing a real bug, please report it on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
 
-## Known limitation
+## Known limitations
 
 These may or may not be tackled in the future, depending on the needs of the users. Feel free to ask for one of the below or any other feature demand/bug report on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
 
 - No timeshift inside a datasource, e.g. if 2 timeseries from `philips_waves` are not aligned, this currently can't be solved in the app.
-- Display timezone in plots is hardcoded to Europe/Paris. This will be modified.
 - `output_root` keys each patient by its folder name only, so two different Databases that share a patient-folder name (e.g. `patient_01`) under the **same** `output_root` overwrite each other. Use one `output_root` per Database.
+- EIT recordings spanning more than one calendar day are unsupported: the device's own files carry no date, so the day is inferred from the **day** option (or, if unset, from **Time start filter**) and applied to the whole recording.

@@ -20,6 +20,7 @@ from clinical_scope.datasource.formatting.timezone import (
     _to_display_tz,
     apply_timezone_to_dataframe,
     filter_data_by_timestamps,
+    resolve_display_timezone,
     shift_data_by_seconds,
 )
 from clinical_scope.datasource.inspection import (
@@ -166,8 +167,8 @@ class DataSourceBase(ABC):
         )
         shift_td = pd.Timedelta(seconds=time_shift)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
-        display_timezone = patient_options.get(
-            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
+        display_timezone = resolve_display_timezone(
+            patient_options.get(cst.PatientOptions.DisplayTimezone.NAME)
         )
 
         def _to_aware(raw_value: str | None) -> pd.Timestamp | None:

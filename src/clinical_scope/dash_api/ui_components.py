@@ -194,9 +194,15 @@ def build_ui_and_schema_registry(
 
             component_left = dash_widget_factory(schema_class, prefix, id_type, label_width)
             component_right = dash_widget_factory(next_class, prefix, id_type, label_width)
+            extras = (extra_per_field or {}).get(component_id) or []
             row = html.Div(
-                [component_left, component_right],
-                style={"display": "flex", "gap": "24px", "marginBottom": "8px"},
+                [component_left, component_right, *extras],
+                style={
+                    "display": "flex",
+                    "gap": "24px",
+                    "marginBottom": "8px",
+                    "alignItems": "center",
+                },
             )
             components.append(row)
             field_index += 2

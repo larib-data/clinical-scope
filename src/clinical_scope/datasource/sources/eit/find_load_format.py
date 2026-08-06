@@ -344,6 +344,11 @@ class EITDataSource(DataSourceBase):
             if day_str:
                 logger.info("EIT day not provided, inferring from datetime_start: %s", day_str)
         day = pd.Timestamp(day_str) if day_str else None
+        if day is not None and day.tzinfo is not None:
+            # datetime_start may now be a tz-aware instant (issue #68); drop the offset so the
+            # inferred day stays "typed calendar day", not a day shifted by the submitter's
+            # offset, and so the branch below still localizes into the device's own timezone.
+            day = day.tz_localize(None)
         df = _add_index_timestamp_to_eit_dataframe(df, day=day, timezone=timezone)
 
         df = cls._apply_time_shift(df, patient_options)

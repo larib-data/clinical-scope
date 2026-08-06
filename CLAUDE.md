@@ -67,6 +67,7 @@ Reference configs in `example/option_files/`.
   - **Button color = action role**: orange = primary (Process), teal = Inspect, blue/grey/green = secondary (upload config / reload last / default-viz).
   - The patient-options form is a 2-column grid that **auto-grows per datasource** — adding a source needs no layout edit.
   - The annotation toolbar stays hidden until a visualization succeeds.
+  - Widgets that feed the **next** Process update live (edit and the next Submit picks it up); anything rendering the **last** Process reads the `display_timezone` snapshot from its own cache instead (`LOOP_DATA_CACHE`, annotation `modal_data`) — this is why the datetime-window re-render callback (issue #68) is the only widget with live cross-field wiring, rather than every timezone-dependent widget needing it.
 
 ## Testing
 
