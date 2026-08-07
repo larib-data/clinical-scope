@@ -85,6 +85,8 @@ class ApiType:
 
 
 class PatientOptions:
+    GLOBAL = "global"
+
     class PathDataFolder:
         ORDER = 1
         NAME = "data_folder"
@@ -104,17 +106,8 @@ class PatientOptions:
         # Output goes to <output_root>/<patient_folder_name>/clinical_scope_output/.
         PLACEHOLDER = "e.g. /clinical_scope_output — needed if input folder is read-only"
 
-    class DisplayTimezone:
-        ORDER = 3
-        NAME = "display_timezone"
-        API_TYPE = ApiType.TIMEZONE
-        DEFAULT = DISPLAY_TIMEZONE
-        MANDATORY = False
-        DESCRIPTION = "Display timezone (IANA name)"
-        PLACEHOLDER = "e.g. Europe/Paris"
-
     class DatetimeStart:
-        ORDER = 4
+        ORDER = 3
         NAME = "datetime_start"
         API_TYPE = ApiType.TIMESTAMP
         DEFAULT = ""
@@ -123,7 +116,7 @@ class PatientOptions:
         PLACEHOLDER = PLACEHOLDER_TIMESTAMP
 
     class DatetimeEnd:
-        ORDER = 5
+        ORDER = 4
         NAME = "datetime_end"
         API_TYPE = ApiType.TIMESTAMP
         DEFAULT = ""
@@ -132,7 +125,7 @@ class PatientOptions:
         PLACEHOLDER = PLACEHOLDER_TIMESTAMP
 
     class QuickLoad:
-        ORDER = 6
+        ORDER = 5
         NAME = "quick_load"
         API_TYPE = ApiType.BOOL
         DEFAULT = True
@@ -302,8 +295,18 @@ class UserOptions:
         DEFAULT = False
         DESCRIPTION = "Embed Plotly in the HTML export (opens offline, ~3.5 MB heavier)"
 
-    class DefaultSubplotHeight:
+    class DisplayTimezone:
         ORDER = 1
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "display_timezone"
+        API_TYPE = ApiType.TIMEZONE
+        DEFAULT = DISPLAY_TIMEZONE
+        MANDATORY = False
+        DESCRIPTION = "Display timezone (IANA name) — also governs the datetime filter fields"
+        PLACEHOLDER = "e.g. Europe/Paris"
+
+    class DefaultSubplotHeight:
+        ORDER = 2
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "default_subplot_height"
         API_TYPE = ApiType.INT
@@ -313,7 +316,7 @@ class UserOptions:
         DESCRIPTION = "Height of each time-series subplot (px)"
 
     class LoopSubplotHeight:
-        ORDER = 2
+        ORDER = 3
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "loop_subplot_height"
         API_TYPE = ApiType.INT
@@ -323,7 +326,7 @@ class UserOptions:
         DESCRIPTION = "Height of each loop subplot (px, square)"
 
     class LoopsPerRow:
-        ORDER = 3
+        ORDER = 4
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "loops_per_row"
         API_TYPE = ApiType.CHOICE
@@ -332,7 +335,7 @@ class UserOptions:
         DESCRIPTION = "Loop subplots per row"
 
     class LegendEntryWidth:
-        ORDER = 4
+        ORDER = 5
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "legend_entry_width"
         API_TYPE = ApiType.INT
@@ -342,7 +345,7 @@ class UserOptions:
         DESCRIPTION = "Maximum width of one legend entry (px)"
 
     class FallbackColorway:
-        ORDER = 5
+        ORDER = 6
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "colorway"
         API_TYPE = ApiType.CHOICE
@@ -351,7 +354,7 @@ class UserOptions:
         DESCRIPTION = "Palette for signals with no color in the config"
 
     class Template:
-        ORDER = 6
+        ORDER = 7
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "plot_template"
         API_TYPE = ApiType.CHOICE
@@ -360,7 +363,7 @@ class UserOptions:
         DESCRIPTION = "Plot theme"
 
     class HoverTimeFormatOption:
-        ORDER = 7
+        ORDER = 8
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "hover_time_format"
         API_TYPE = ApiType.CHOICE
@@ -369,7 +372,7 @@ class UserOptions:
         DESCRIPTION = "Hover: x-axis time format"
 
     class HoverModeOption:
-        ORDER = 8
+        ORDER = 9
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "hovermode"
         API_TYPE = ApiType.CHOICE
@@ -378,7 +381,7 @@ class UserOptions:
         DESCRIPTION = "Hover: panel style"
 
     class YSignificantDigits:
-        ORDER = 9
+        ORDER = 10
         SECTION = UserOptionSection.PLOT_DEFAULTS
         NAME = "y_significant_digits"
         API_TYPE = ApiType.CHOICE

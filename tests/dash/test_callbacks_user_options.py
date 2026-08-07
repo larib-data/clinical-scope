@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from dash import no_update
 
 import clinical_scope.constants as cst
 from clinical_scope.dash_api import helper_api as ui_helper
@@ -54,6 +55,27 @@ class TestValueCoercionOnSave:
     def test_valid_choice_kept(self, user_options_home):
         name = cst.UserOptions.HoverModeOption.NAME
         assert self._saved(name, cst.HoverMode.CLOSEST) == "closest"
+
+    def test_invalid_timezone_falls_back_to_default(self, user_options_home):
+        name = cst.UserOptions.DisplayTimezone.NAME
+        assert self._saved(name, "NotATimezone") == cst.DISPLAY_TIMEZONE
+
+    def test_valid_timezone_kept(self, user_options_home):
+        name = cst.UserOptions.DisplayTimezone.NAME
+        assert self._saved(name, "Asia/Tokyo") == "Asia/Tokyo"
+
+    def test_invalid_value_still_forces_a_widget_resync_when_it_falls_back_to_the_stored_value(
+        self, user_options_home
+    ):
+        """
+        Regression: an invalid entry can coerce back to the value the store already holds,
+        so ``updated == store`` alone must not read as "nothing changed" and skip the resync.
+        """
+        name = cst.UserOptions.DisplayTimezone.NAME
+        store = {name: cst.DISPLAY_TIMEZONE}
+        result = persist_user_options(["NotATimezone"], [_widget_id(name)], store)
+        assert result is not no_update
+        assert result[name] == cst.DISPLAY_TIMEZONE
 
     def test_checklist_is_stored_as_a_bool(self, user_options_home):
         assert self._saved(cst.UserOptions.SaveHtmlOnProcess.NAME, [True]) is True

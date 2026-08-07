@@ -15,6 +15,7 @@ from clinical_scope import hover_formatters
 from clinical_scope.datasource.formatting.timezone import (
     change_ndarray_timezone,
     loop_time_to_display_strings,
+    resolve_display_timezone,
     to_float_seconds,
 )
 from clinical_scope.io.file_utils import get_column_name_from_pattern
@@ -86,6 +87,7 @@ class DisplayFallbacks:
     template: str = cst.DEFAULT_PLOT_TEMPLATE
     hovermode: str = cst.DEFAULT_HOVERMODE
     hover_time_format: str = cst.DEFAULT_HOVER_TIME_FORMAT
+    display_timezone: str = cst.DISPLAY_TIMEZONE
 
     @classmethod
     def from_user_options(cls, user_options: dict[str, Any] | None) -> "DisplayFallbacks":
@@ -150,6 +152,7 @@ class DisplayFallbacks:
             template=one_of(schema.Template),
             hovermode=one_of(schema.HoverModeOption),
             hover_time_format=one_of(schema.HoverTimeFormatOption),
+            display_timezone=resolve_display_timezone(options.get(schema.DisplayTimezone.NAME)),
         )
 
     @property
@@ -431,13 +434,11 @@ class Signal:
         df: pd.DataFrame,
         raw_signal_name: str,
         source_options: dict | None = None,
-        patient_options: dict | None = None,
         database_options_specific: dict | None = None,
         display_fallbacks: DisplayFallbacks | None = None,
     ) -> "Signal":
         start_total = time.perf_counter()
         source_options = source_options or {}
-        patient_options = patient_options or {}
         database_options_specific = database_options_specific or {}
         display_fallbacks = display_fallbacks or DisplayFallbacks()
         timing = {}
@@ -486,15 +487,12 @@ class Signal:
             y=y,
             timezone=timezone,
         )
-        display_timezone = patient_options.get(
-            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
-        )
         trace_options = cls._build_trace_options(
             raw_signal_name,
             database_options_specific,
             source_options,
             plot_type=cst.PlotType.TIME_SERIES,
-            display_timezone=display_timezone,
+            display_timezone=display_fallbacks.display_timezone,
         )
         metadata = Metadata(
             period_resampling=period_resampling,

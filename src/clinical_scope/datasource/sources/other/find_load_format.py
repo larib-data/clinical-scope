@@ -254,6 +254,7 @@ class OtherDataSource(DataSourceBase):
         cls,
         patient_options: dict,
         database_options_specific: dict | None,
+        display_timezone: str | None = None,
     ) -> list[DataSourceInspection]:
         """
         Inspect each CSV/parquet file in the other datasource folder independently.
@@ -314,7 +315,12 @@ class OtherDataSource(DataSourceBase):
 
                 results.append(
                     cls._make_inspection(
-                        df, patient_options, file_config, inspection_name, str(file_path)
+                        df,
+                        patient_options,
+                        file_config,
+                        inspection_name,
+                        str(file_path),
+                        display_timezone=display_timezone,
                     )
                 )
 

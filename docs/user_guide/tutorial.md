@@ -291,6 +291,8 @@ These apply to all data sources:
 | **Time end filter** | End of the time window to display. Leave empty to use all available data. |
 | **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `clinical_scope_output/` folder, significantly speeding up subsequent loads. **Un-tick** if raw patient data has been modified |
 
+The time filters are typed and shown in the **Display timezone**, set once in [Settings](#settings) — a label next to the fields names it.
+
 ![Global patient options](images/GlobalPatientOptions.png){ width=100% }
 
 ## Per-Source Options
@@ -325,6 +327,7 @@ The **⚙ Settings** button at the top right opens your personal settings. They 
 
 | Setting | What it does |
 |---|---|
+| Display timezone | The timezone every plot and the Patient Options time filters are shown in (IANA name, e.g. `Europe/Paris`). Changing it does not move your data — the time filters are rewritten to keep pointing at the same instant, just written in the new timezone's local time. |
 | Height of each time-series subplot | Vertical size, in pixels, of every time-series subplot. |
 | Height of each loop subplot | Same, for loop plots — which stay square, so this also sets their width. |
 | Loop subplots per row | How many loops sit side by side, 1 to 3. |
@@ -834,10 +837,10 @@ If signals from different sources appear misaligned in time:
 - Ensure the data files are not corrupted or truncated.
 - If you think you are facing a real bug, please report it on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
 
-## Known limitation
+## Known limitations
 
 These may or may not be tackled in the future, depending on the needs of the users. Feel free to ask for one of the below or any other feature demand/bug report on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
 
 - No timeshift inside a datasource, e.g. if 2 timeseries from `philips_waves` are not aligned, this currently can't be solved in the app.
-- Display timezone in plots is hardcoded to Europe/Paris. This will be modified.
 - `output_root` keys each patient by its folder name only, so two different Databases that share a patient-folder name (e.g. `patient_01`) under the **same** `output_root` overwrite each other. Use one `output_root` per Database.
+- EIT recordings spanning more than one calendar day are unsupported: the device's own files carry no date, so the day is inferred from the **day** option (or, if unset, from **Time start filter**) and applied to the whole recording.

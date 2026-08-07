@@ -20,6 +20,7 @@ from clinical_scope.dash_api.styles import (
     ANNOTATION_MODAL_STYLE_HIDDEN,
     ANNOTATION_MODAL_STYLE_SHOWN,
 )
+from clinical_scope.datasource.formatting.timezone import resolve_display_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,8 @@ def _coerce(name: str, value: Any) -> Any:
     """
     Keep a stored user option inside what its schema allows.
 
-    Numeric fields are clamped to MIN/MAX and choices fall back to DEFAULT, so a cleared
-    input or a stale value from an older file can never reach the render layer.
+    Numeric fields are clamped to MIN/MAX, choices and timezones fall back to DEFAULT, so a
+    cleared input or a stale value from an older file can never reach the render layer.
     """
     schema = _field_by_name(name)
     if schema is None:
@@ -63,6 +64,9 @@ def _coerce(name: str, value: Any) -> Any:
     if schema.API_TYPE == cst.ApiType.CHOICE:
         allowed = {choice_value for choice_value, _ in schema.CHOICES}
         return value if value in allowed else schema.DEFAULT
+
+    if schema.API_TYPE == cst.ApiType.TIMEZONE:
+        return resolve_display_timezone(value)
 
     return value
 
@@ -96,14 +100,21 @@ def persist_user_options(
 ) -> dict[str, Any] | Any:
     """Persist a settings-modal change to the store and to disk."""
     updated = dict(store or {})
+    corrected_a_widget = False
 
     # Decode each modal widget value to its Python form (BOOL checklist [True]/[] → bool),
     # then hold it to what its schema allows.
     for value, widget_id in zip(widget_values, widget_ids, strict=False):
         key = _option_key(widget_id)
-        updated[key] = _coerce(key, ui_components.from_widget_value(_api_type(key), value))
+        decoded = ui_components.from_widget_value(_api_type(key), value)
+        fixed = _coerce(key, decoded)
+        updated[key] = fixed
+        corrected_a_widget = corrected_a_widget or fixed != decoded
 
-    if updated == store:
+    # A coercion can land back on the value already in the store (invalid entry falls back
+    # to an already-stored default) — updated == store alone would then wrongly skip the
+    # resync, leaving the widget showing raw invalid text.
+    if updated == store and not corrected_a_widget:
         return no_update
 
     ui_helper.save_user_options(updated)

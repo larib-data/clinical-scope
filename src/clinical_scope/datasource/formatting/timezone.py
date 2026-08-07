@@ -9,6 +9,7 @@ Also includes display formatting helpers that were previously in datasource_base
 
 import contextlib
 import logging
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,29 @@ import pandas as pd
 import clinical_scope.constants as cst
 
 logger = logging.getLogger(__name__)
+
+
+# ==================================================================================================
+def resolve_display_timezone(display_timezone: str | None) -> str:
+    """
+    Return a usable IANA timezone name, falling back to ``cst.DISPLAY_TIMEZONE``.
+
+    An absent value is the normal case and stays silent; a present-but-invalid name
+    (hand-edited file, programmatic call) is logged rather than left to raise deep inside
+    pandas/zoneinfo.
+    """
+    if not display_timezone:
+        return cst.DISPLAY_TIMEZONE
+    try:
+        ZoneInfo(display_timezone)
+    except (ZoneInfoNotFoundError, KeyError, ValueError):
+        logger.warning(
+            "display_timezone %r is not a valid IANA name; using %s",
+            display_timezone,
+            cst.DISPLAY_TIMEZONE,
+        )
+        return cst.DISPLAY_TIMEZONE
+    return display_timezone
 
 
 # ==================================================================================================
@@ -78,7 +102,7 @@ def filter_data_by_timestamps(
 
     # Shallow copy since below only rebinds the index or row-filters, never mutates columns.
     filtered = data.copy(deep=False)
-    resolved_timezone = display_timezone or cst.DISPLAY_TIMEZONE
+    resolved_timezone = resolve_display_timezone(display_timezone)
 
     if filtered.index.tz is None:
         msg = "Dataframe 'data' index should be timezone-aware"
@@ -150,7 +174,7 @@ def loop_time_to_display_strings(
     Used for loop hover customdata and slider-callback customdata so both come
     from a single, testable conversion path.
     """
-    resolved_timezone = display_timezone or cst.DISPLAY_TIMEZONE
+    resolved_timezone = resolve_display_timezone(display_timezone)
     display_datetimes = pd.to_datetime(utc_float_seconds, unit="s", utc=True).tz_convert(
         resolved_timezone
     )
@@ -158,7 +182,18 @@ def loop_time_to_display_strings(
 
 
 # ==================================================================================================
-def to_naive_display_ts(ts_str: str, display_timezone: str | None = None) -> str:
+def _try_parse_timestamp(ts_str: str) -> pd.Timestamp | None:
+    """Parse *ts_str*, or return ``None`` for anything not a real timestamp (NaT included)."""
+    try:
+        timestamp = pd.Timestamp(ts_str)
+    except (ValueError, TypeError, OverflowError):
+        # e.g. a numeric loop-plot x value or mid-typed form text — expected, not an error.
+        return None
+    return None if pd.isna(timestamp) else timestamp
+
+
+# ==================================================================================================
+def to_naive_display_ts(ts_str: str, display_timezone: str | None = None, sep: str = "T") -> str:
     """
     Convert a tz-aware ISO timestamp to a naive string in display-TZ wall-clock time.
 
@@ -167,20 +202,46 @@ def to_naive_display_ts(ts_str: str, display_timezone: str | None = None) -> str
     ISO strings.  This converts them to the same naive format so Plotly aligns shapes and
     annotations correctly with the trace data.  Non-datetime values (e.g. loop-plot numeric x)
     are returned unchanged.
+
+    ``sep`` selects the date/time separator (default ``"T"``); the patient-options form
+    passes ``sep=" "`` to match its ``PLACEHOLDER_TIMESTAMP`` spelling.
     """
-    resolved_timezone = display_timezone or cst.DISPLAY_TIMEZONE
-    try:
-        timestamp = pd.Timestamp(ts_str)
-    except (ValueError, TypeError, OverflowError):
-        # ts_str is not a parseable datetime (e.g. a numeric loop-plot x value) — expected path.
+    timestamp = _try_parse_timestamp(ts_str)
+    if timestamp is None or timestamp.tzinfo is None:
         return ts_str
+    resolved_timezone = resolve_display_timezone(display_timezone)
     try:
-        if pd.isna(timestamp) or timestamp.tzinfo is None:
-            return ts_str
-        return timestamp.tz_convert(resolved_timezone).tz_localize(None).isoformat()
+        return timestamp.tz_convert(resolved_timezone).tz_localize(None).isoformat(sep=sep)
     except Exception:  # noqa: BLE001
         logger.warning(
             "Could not convert annotation timestamp %r to display timezone %r",
+            ts_str,
+            resolved_timezone,
+            exc_info=True,
+        )
+        return ts_str
+
+
+# ==================================================================================================
+def to_aware_display_ts(ts_str: str, display_timezone: str | None = None) -> str:
+    """
+    Convert a naive wall-clock string (as typed in the display timezone) to a tz-aware ISO string.
+
+    Inverse of :func:`to_naive_display_ts`; used when saving patient-options datetime
+    filters, since the form only ever holds naive text but the saved file stores an instant.
+
+    Idempotent: an already tz-aware input (e.g. a pasted offset) passes through unchanged, as
+    do non-datetime or unparseable values (empty field, mid-typing).
+    """
+    timestamp = _try_parse_timestamp(ts_str)
+    if timestamp is None or timestamp.tzinfo is not None:
+        return ts_str
+    resolved_timezone = resolve_display_timezone(display_timezone)
+    try:
+        return timestamp.tz_localize(resolved_timezone).isoformat()
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "Could not localize timestamp %r to display timezone %r",
             ts_str,
             resolved_timezone,
             exc_info=True,
@@ -277,7 +338,7 @@ def _to_display_tz(df: pd.DataFrame, display_timezone: str | None = None) -> pd.
     """
     if not (isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None):
         return df
-    resolved_timezone = display_timezone or cst.DISPLAY_TIMEZONE
+    resolved_timezone = resolve_display_timezone(display_timezone)
     result = df.copy(deep=False)
     result.index = df.index.tz_convert(resolved_timezone)
     return result

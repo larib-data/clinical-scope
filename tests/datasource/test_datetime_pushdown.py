@@ -16,6 +16,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import clinical_scope.constants as cst
+from clinical_scope.datasource.formatting.timezone import to_aware_display_ts
 from clinical_scope.io.file_utils import (
     _detect_datetime_column_from_parquet,
     _find_datetime_col_parsed,
@@ -163,24 +164,24 @@ class TestPushdownBounds:
     def test_no_window_returns_none(self, philips_waves_cls):
         assert philips_waves_cls._pushdown_bounds({}, {}, index_tz=None) is None
 
-    def test_naive_target_converts_from_display_tz_and_pads(self, philips_waves_cls):
-        # philips_waves default source tz is UTC; display_timezone pinned to UTC too,
-        # so the only transformation left to verify is the ± buffer.
+    def test_naive_target_converts_from_display_tz_and_pads(self, philips_waves_cls, monkeypatch):
+        # philips_waves source tz is UTC; pin the display default to UTC too, isolating the
+        # ± buffer as the only transformation left to verify.
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
-            "display_timezone": "UTC",
         }
         start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz=None)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
         assert start == pd.Timestamp("2004-09-15 08:20:00") - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00") + buffer
 
-    def test_time_shift_is_inverted(self, philips_waves_cls):
+    def test_time_shift_is_inverted(self, philips_waves_cls, monkeypatch):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
-            "display_timezone": "UTC",
             "philips_waves": {"time_shift": 30.0},
         }
         start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz=None)
@@ -188,11 +189,11 @@ class TestPushdownBounds:
         assert start == pd.Timestamp("2004-09-15 08:20:00") - pd.Timedelta(seconds=30.0) - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00") - pd.Timedelta(seconds=30.0) + buffer
 
-    def test_negative_time_shift_is_inverted(self, philips_waves_cls):
+    def test_negative_time_shift_is_inverted(self, philips_waves_cls, monkeypatch):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
-            "display_timezone": "UTC",
             "philips_waves": {"time_shift": -30.0},
         }
         start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz=None)
@@ -201,24 +202,24 @@ class TestPushdownBounds:
         assert end == pd.Timestamp("2004-09-15 08:25:00") + pd.Timedelta(seconds=30.0) + buffer
 
     def test_one_sided_start_only(self, philips_waves_cls):
-        patient_options = {"datetime_start": "2004-09-15 08:20:00", "display_timezone": "UTC"}
+        patient_options = {"datetime_start": "2004-09-15 08:20:00"}
         start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz=None)
         assert start is not None
         assert end is None
 
     def test_naive_target_falls_back_to_database_options_timezone_override(
-        self, philips_waves_cls
+        self, philips_waves_cls, monkeypatch
     ):
         """
         The exact configuration behind issue #57's bug: no materialized index tz, and a
-        per-source timezone override that differs from both display_timezone and the
-        datasource default — must actually shift the bounds, not just take the fallback
+        per-source timezone override that differs from both the library display default and
+        the datasource default — must actually shift the bounds, not just take the fallback
         branch as a no-op (both prior unit tests above used UTC==UTC, hiding this).
         """
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
-            "display_timezone": "UTC",
         }
         additional_info = philips_waves_cls.OPTIONS_MODULE.DatabaseOptionsAdditionalInformations
         database_options_specific = {
@@ -235,11 +236,11 @@ class TestPushdownBounds:
         assert start.tzinfo is None
         assert end.tzinfo is None
 
-    def test_aware_target_uses_index_tz_directly(self, philips_waves_cls):
+    def test_aware_target_uses_index_tz_directly(self, philips_waves_cls, monkeypatch):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
-            "display_timezone": "UTC",
         }
         start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz="UTC")
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
@@ -272,13 +273,13 @@ class TestQuickLoadCachePushdownEquality:
         ],
     )
     def test_naive_cache_pushdown_matches_disabled(
-        self, servo_u_cls, patient_full_path, datetime_start, datetime_end
+        self, servo_u_cls, patient_full_path, monkeypatch, datetime_start, datetime_end
     ):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": datetime_start,
             "datetime_end": datetime_end,
-            "display_timezone": "UTC",
             "quick_load": True,
         }
         df_pushdown = servo_u_cls.extract(patient_options, {})
@@ -292,13 +293,13 @@ class TestQuickLoadCachePushdownEquality:
         pd.testing.assert_frame_equal(df_pushdown, df_disabled)
 
     def test_aware_cache_pushdown_matches_disabled_with_time_shift(
-        self, mindray_respi_numerics_cls, patient_full_path
+        self, mindray_respi_numerics_cls, patient_full_path, monkeypatch
     ):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": "2004-09-15 08:12:40",
             "datetime_end": "2004-09-15 08:13:00",
-            "display_timezone": "UTC",
             "quick_load": True,
             "mindray_respi_numerics": {"time_shift": 5.0},
         }
@@ -314,6 +315,73 @@ class TestQuickLoadCachePushdownEquality:
         assert len(df_pushdown) > 0
 
 
+class TestNaiveAwareBoundEquivalence:
+    """
+    A tz-aware bound must select exactly what the equivalent naive + display_timezone
+    pair would.
+    """
+
+    @pytest.mark.parametrize(
+        "datetime_start,datetime_end,display_timezone",
+        [
+            ("2004-09-15 06:12:40", "2004-09-15 06:12:50", "UTC"),
+            ("2004-09-15 08:12:40", "2004-09-15 08:12:50", "Europe/Paris"),
+        ],
+    )
+    def test_aware_bound_matches_naive_plus_display_timezone(
+        self,
+        servo_u_cls,
+        patient_full_path,
+        monkeypatch,
+        datetime_start,
+        datetime_end,
+        display_timezone,
+    ):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", display_timezone)
+        naive_options = {
+            "data_folder": str(patient_full_path),
+            "datetime_start": datetime_start,
+            "datetime_end": datetime_end,
+            "quick_load": True,
+        }
+        df_naive = servo_u_cls.extract(naive_options, {})
+
+        # Deliberately a different library default: an aware bound must not need this to agree.
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "America/New_York")
+        aware_options = {
+            "data_folder": str(patient_full_path),
+            "datetime_start": to_aware_display_ts(datetime_start, display_timezone),
+            "datetime_end": to_aware_display_ts(datetime_end, display_timezone),
+            "quick_load": True,
+        }
+        df_aware = servo_u_cls.extract(aware_options, {})
+
+        pd.testing.assert_frame_equal(df_naive, df_aware)
+        assert len(df_naive) > 0
+
+
+class TestInspectCosmeticDisplayTimezone:
+    """
+    inspect()'s reported date ranges are cosmetic only; an omitted display_timezone falls
+    back to cst.DISPLAY_TIMEZONE.
+    """
+
+    def test_explicit_param_controls_the_reported_timezone(self, servo_u_cls, patient_full_path):
+        patient_options = {"data_folder": str(patient_full_path)}
+        # raw_date_range is pre-_format and tz-naive for servo_u (a no-op for _to_display_tz);
+        # filtered_date_range (post-_format, tz-aware) is the one that reflects display_timezone.
+        result = servo_u_cls.inspect(patient_options, {}, display_timezone="Asia/Tokyo")
+        assert result.filtered_date_range[0].endswith("JST")
+
+    def test_omitted_param_falls_back_to_library_default(
+        self, servo_u_cls, patient_full_path, monkeypatch
+    ):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "Asia/Tokyo")
+        patient_options = {"data_folder": str(patient_full_path)}
+        result = servo_u_cls.inspect(patient_options, {})
+        assert result.filtered_date_range[0].endswith("JST")
+
+
 class TestPhilipsWavesPushdownEquality:
     """Path 2 (issue #57): philips_waves — no cache, parquet branch only, every run."""
 
@@ -327,18 +395,18 @@ class TestPhilipsWavesPushdownEquality:
         ],
     )
     def test_pushdown_matches_disabled(
-        self, philips_waves_cls, patient_full_path, datetime_start, datetime_end
+        self, philips_waves_cls, patient_full_path, monkeypatch, datetime_start, datetime_end
     ):
         folder = philips_waves_cls._find_folder(patient_full_path)
         file_path = philips_waves_cls._find(folder)
         if file_path is None or file_path.suffix.lower() != ".parquet":
             pytest.skip("philips_waves parquet fixture not found in demo_patient")
 
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": datetime_start,
             "datetime_end": datetime_end,
-            "display_timezone": "UTC",
             "quick_load": False,
         }
         df_pushdown = philips_waves_cls.extract(patient_options, {})
@@ -365,13 +433,13 @@ class TestOtherParquetPushdownEquality:
         ],
     )
     def test_pushdown_matches_disabled(
-        self, other_cls, patient_difficult_path, datetime_start, datetime_end
+        self, other_cls, patient_difficult_path, monkeypatch, datetime_start, datetime_end
     ):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "data_folder": str(patient_difficult_path),
             "datetime_start": datetime_start,
             "datetime_end": datetime_end,
-            "display_timezone": "UTC",
             "quick_load": False,
         }
 
@@ -411,8 +479,9 @@ class TestOtherDatetimeColumnDetectionTimezoneOverride:
     """
 
     def test_naive_utc_named_column_with_timezone_override_matches_disabled(
-        self, other_cls, tmp_path
+        self, other_cls, tmp_path, monkeypatch
     ):
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         other_dir = tmp_path / "other"
         other_dir.mkdir()
         file_path = other_dir / "device_export.parquet"
@@ -428,7 +497,6 @@ class TestOtherDatetimeColumnDetectionTimezoneOverride:
             "data_folder": str(tmp_path),
             "datetime_start": "2004-09-15 06:00:00",
             "datetime_end": "2004-09-15 10:00:00",
-            "display_timezone": "UTC",
             "quick_load": False,
         }
         file_config = {
@@ -567,7 +635,6 @@ class TestInspectIgnoresPushdownWindow:
     ):
         base_options = {
             "data_folder": str(patient_full_path),
-            "display_timezone": "UTC",
             "quick_load": False,
         }
         full = philips_waves_cls.inspect(base_options, {})
