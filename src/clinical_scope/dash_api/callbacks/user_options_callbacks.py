@@ -25,6 +25,7 @@ from clinical_scope.datasource.formatting.timezone import resolve_display_timezo
 logger = logging.getLogger(__name__)
 
 _SAVE_HTML = cst.UserOptions.SaveHtmlOnProcess.NAME
+_INSPECT_PRUNING = cst.UserOptions.InspectConfiguredColumnsOnly.NAME
 
 
 def _field_by_name(name: str) -> Any | None:
@@ -126,14 +127,15 @@ def persist_user_options(
 @callback(
     Output({"type": "user-option", "name": ALL}, "value"),
     Output("save-html-indicator", "children"),
+    Output("inspect-pruning-indicator", "children"),
     Input("user-options-store", "data"),
     State({"type": "user-option", "name": ALL}, "id"),
     prevent_initial_call=False,
 )
 def reflect_user_options(
     store: dict[str, Any] | None, widget_ids: list[dict[str, str]]
-) -> tuple[list[Any], str]:
-    """Mirror the store onto the modal widgets and the Process-side indicator."""
+) -> tuple[list[Any], str, str]:
+    """Mirror the store onto the modal widgets and the Process-/Inspect-side indicators."""
     store = store or {}
     values: list[Any] = []
     for widget_id in widget_ids:
@@ -141,5 +143,8 @@ def reflect_user_options(
         # A key absent from the store (older options file) shows its schema default, not a blank.
         stored = store.get(key, getattr(_field_by_name(key), "DEFAULT", None))
         values.append(ui_components.to_widget_value(_api_type(key), stored))
-    indicator = ui_components.save_html_indicator_text(bool(store.get(_SAVE_HTML)))
-    return values, indicator
+    save_html_indicator = ui_components.save_html_indicator_text(bool(store.get(_SAVE_HTML)))
+    pruning_indicator = ui_components.inspect_pruning_indicator_text(
+        bool(store.get(_INSPECT_PRUNING))
+    )
+    return values, save_html_indicator, pruning_indicator

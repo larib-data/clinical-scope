@@ -297,6 +297,14 @@ class UserOptions:
         DEFAULT = False
         DESCRIPTION = "Embed Plotly in the HTML export (opens offline, ~3.5 MB heavier)"
 
+    class InspectConfiguredColumnsOnly:
+        ORDER = 3
+        SECTION = UserOptionSection.APP_BEHAVIOR
+        NAME = "inspect_configured_columns_only"
+        API_TYPE = ApiType.BOOL
+        DEFAULT = False
+        DESCRIPTION = "Inspect: read only configured signals (parquet reads only)"
+
     class DisplayTimezone:
         ORDER = 1
         SECTION = UserOptionSection.PLOT_DEFAULTS

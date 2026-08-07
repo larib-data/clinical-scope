@@ -368,6 +368,7 @@ def inspect(
     database_options_global: dict | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
     user_options: dict | None = None,
+    configured_columns_only: bool = False,
 ) -> list[DataSourceInspection]:
     """
     Run find → load → format for each enabled datasource and return inspection results.
@@ -378,6 +379,9 @@ def inspect(
     ``user_options`` only affects the timezone reported dates are displayed in (cosmetic);
     resolved here and passed down as a plain string so DataSourceBase.inspect() never reads
     ``user_options.json`` itself.
+
+    ``configured_columns_only`` restricts the read to the configured signals — see
+    :meth:`DataSourceBase.inspect` for what it costs and where it applies.
     """
     database_options_global = _resolve_database_options(database_options_global)
     display_timezone = DisplayFallbacks.from_user_options(user_options).display_timezone
@@ -385,9 +389,10 @@ def inspect(
         ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
     ]
     logger.info(
-        "🔎 Starting inspection for %d datasource(s): %s",
+        "🔎 Starting inspection for %d datasource(s): %s%s",
         len(requested_sources),
         requested_sources,
+        " (configured columns only)" if configured_columns_only else "",
     )
 
     total_count = len(requested_sources)
@@ -419,7 +424,10 @@ def inspect(
 
         try:
             inspection = datasource_cls.inspect(
-                patient_options, database_options, display_timezone=display_timezone
+                patient_options,
+                database_options,
+                display_timezone=display_timezone,
+                configured_columns_only=configured_columns_only,
             )
         except Exception as exc:
             logger.exception("❌ Inspection failed for datasource '%s'.", name)

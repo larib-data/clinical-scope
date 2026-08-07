@@ -58,6 +58,13 @@ class ColumnInfo:
         ]
 
 
+# Shown by both the Dash modal and the CLI summary whenever columns_pruned is set.
+PRUNED_VIEW_NOTICE = (
+    "Pruned view: only signals configured in database_options were read — "
+    "an absent column is unconfigured, not missing from the data."
+)
+
+
 @dataclass
 class DataSourceInspection:
     """Inspection result for one data source."""
@@ -69,6 +76,9 @@ class DataSourceInspection:
     raw_date_range: tuple[str, str] | None = None  # (iso_start, iso_end) before filter
     filtered_date_range: tuple[str, str] | None = None  # (iso_start, iso_end) after filter
     columns: list[ColumnInfo] = field(default_factory=list)
+    # True when only the configured columns were read: the table is then a partial view of
+    # the file, so an absent column means "not configured", not "not in the data".
+    columns_pruned: bool = False
 
 
 # CSV headers: datasource-level fields (hardcoded) + column-level fields (auto-derived)
@@ -81,6 +91,7 @@ _CSV_DATASOURCE_HEADERS = [
     "raw_date_end",
     "filtered_date_start",
     "filtered_date_end",
+    "columns_pruned",
 ]
 _CSV_COLUMN_HEADERS = [column_field.name for column_field in dataclasses.fields(ColumnInfo)]
 _CSV_HEADERS = [*_CSV_DATASOURCE_HEADERS, *_CSV_COLUMN_HEADERS]
@@ -112,6 +123,7 @@ def to_csv_string(results: list[DataSourceInspection]) -> str:
             raw_end,
             flt_start,
             flt_end,
+            result.columns_pruned,
         ]
         if not result.columns:
             writer.writerow(datasource_row + [""] * len(_CSV_COLUMN_HEADERS))
@@ -154,6 +166,8 @@ def to_text_summary(results: list[DataSourceInspection]) -> str:
                 f"         Filtered dates: "
                 f"{result.filtered_date_range[0]}  →  {result.filtered_date_range[1]}"
             )
+        if result.columns_pruned:
+            lines.append(f"         {PRUNED_VIEW_NOTICE}")
         if result.columns:
             lines.append(f"         Columns ({len(result.columns)}):")
             for column in result.columns:

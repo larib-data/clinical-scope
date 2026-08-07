@@ -44,6 +44,7 @@ from clinical_scope.datasource.formatting.timezone import (
     to_naive_display_ts,
 )
 from clinical_scope.datasource.inspection import (
+    PRUNED_VIEW_NOTICE,
     ColumnInfo,
     results_from_json,
     results_to_json,
@@ -898,6 +899,13 @@ def _build_inspection_content(results: list) -> list:
                     style={"fontSize": "12px", "color": "#dc3545"},
                 )
             )
+        if result.columns_pruned:
+            meta_parts.append(
+                html.Div(
+                    PRUNED_VIEW_NOTICE,
+                    style={"fontSize": "12px", "color": "#856404", "fontStyle": "italic"},
+                )
+            )
 
         table_rows = [html.Tr(_col_cell(col)) for col in result.columns]
 
@@ -1007,6 +1015,9 @@ def inspect_data(
             database_options_global=database_options,
             progress_callback=_on_progress,
             user_options=user_options,
+            configured_columns_only=bool(
+                (user_options or {}).get(cst.UserOptions.InspectConfiguredColumnsOnly.NAME)
+            ),
         )
     except Exception as exc:
         logger.exception("Inspection failed: ")

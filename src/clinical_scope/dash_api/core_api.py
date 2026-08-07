@@ -543,6 +543,9 @@ _annotation_list_panel = html.Div(
 # Loaded once at layout build; the reflect callback re-syncs widgets to the store on startup.
 _INITIAL_USER_OPTIONS = load_user_options()
 _INITIAL_SAVE_HTML = bool(_INITIAL_USER_OPTIONS.get(cst.UserOptions.SaveHtmlOnProcess.NAME))
+_INITIAL_INSPECT_PRUNING = bool(
+    _INITIAL_USER_OPTIONS.get(cst.UserOptions.InspectConfiguredColumnsOnly.NAME)
+)
 
 _user_options_form, _ = ui_components.build_ui_and_schema_registry(
     cst.UserOptions, "user_options", id_type="user-option", label_width="420px"
@@ -659,6 +662,15 @@ app.layout = html.Div(
                             "Inspect data",
                             id="inspect-button",
                             style=BUTTON_INSPECT,
+                        ),
+                        # One-way mirror of inspect_configured_columns_only; edited in the
+                        # settings modal — so a pruned inspection is never mistaken for a full one.
+                        html.Span(
+                            id="inspect-pruning-indicator",
+                            children=ui_components.inspect_pruning_indicator_text(
+                                _INITIAL_INSPECT_PRUNING
+                            ),
+                            style={"fontSize": "13px", "color": "#666"},
                         ),
                     ],
                     style=ACTION_CARD,

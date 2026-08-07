@@ -322,6 +322,7 @@ The **⚙ Settings** button at the top right opens your personal settings. They 
 |---|---|
 | Save a full-resolution HTML export on each Process | Writes `visualization.html` into `clinical_scope_output/` every time you process. Off by default, because the export takes extra time on large recordings. |
 | Embed Plotly in the HTML export | Makes the exported file self-contained, so it opens on a machine with no internet access. The file grows by roughly 3.5 MB. Leave it off if the file is only ever opened online. |
+| Inspect: read only configured signals | Makes **Inspect data** read only the signals your database options list, instead of everything in the file — lighter on memory, at the price of no longer seeing the signals you have not configured yet. Off by default (see [Inspecting only the signals you configured](#inspecting-only-the-signals-you-configured)). |
 
 ## Plot defaults
 
@@ -407,6 +408,17 @@ datasource containing:
 A **"Download CSV"** button in the modal header exports the full inspection result as a CSV
 for offline analysis, sharing, or import into the `generate-database-options` helper.
 
+## Inspecting only the signals you configured
+
+Once your database options are settled, the unconfigured columns are usually noise, and reading them costs memory you may not have on a long recording. The setting **"Inspect: read only configured signals"** ([Settings](#settings) → App behavior) makes Inspect read only the signals listed in your database options. A section built that way says so above its table, so a column you do not see is one you have not configured — never one missing from the data.
+
+A small **"Configured columns only: on/off"** label sits next to the Inspect data button itself, mirroring the setting so it stays visible even with the Settings modal closed — a safeguard against running a search for a signal you expect to see, on a setting you forgot was on.
+
+Two things stay true whatever you set here:
+
+- **The time window is never applied while reading.** Inspect's whole point is to compare the file against the window you asked for — how many points survive it, and whether the file even covers it. Reading the window directly would make every source look like a perfect 100% match, and the single most common problem Inspect catches (a window off by an hour, about to plot forty points) would become invisible.
+- **The saving only ever applies to a parquet read.** For most sources that means a patient you have already processed once: the first run has to read the manufacturer's export as it comes, and only the copy the application then saves in `clinical_scope_output/` can be read selectively. On a first-ever inspection of those sources the setting changes nothing, and the table shows every column as usual. The **Other (Generic)** source is the exception — it reads its own CSV/parquet files directly rather than through that cache, so a `.parquet` file there is pruned starting on the very first inspection (a `.csv` file there still shows every column, whatever this setting is).
+
 ![Inspect data pop up](images/InspectFeature.png){ width=100% }
 
 ## Inspecting from the Command Line
@@ -418,11 +430,13 @@ python scripts/inspect_patient_data.py <patient_folder> \
     [--database-options <path>] \
     [--patient-options <path>] \
     [--output-csv out.csv] \
+    [--configured-columns-only] \
     [--verbose]
 ```
 
 Without `--database-options`, all registered datasources are inspected with their defaults.
 Pass `--output-csv` to save the same per-column table the UI download produces.
+`--configured-columns-only` is the command-line form of the Settings option above, with the same two caveats.
 
 \newpage
 

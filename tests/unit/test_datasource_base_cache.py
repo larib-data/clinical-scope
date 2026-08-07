@@ -130,7 +130,7 @@ def test_quick_load_truth_table(
         cache_seed.to_parquet(cache_path)
 
     source = _make_fake_source(fresh_data)
-    df, _ = source._load_raw_dataframe(
+    df, _, _ = source._load_raw_dataframe(
         _patient_options(patient_folder, quick_load=quick_load), database_options={}
     )
 
@@ -151,7 +151,7 @@ def test_allow_quick_load_false_never_writes_cache(patient_folder: Path) -> None
     source = _make_fake_source(_df_v1(), allow_quick_load=False)
     cache_path = patient_folder / cst.FOLDER_NAME_OUTPUT / "fake_source.parquet"
 
-    df, _ = source._load_raw_dataframe(
+    df, _, _ = source._load_raw_dataframe(
         _patient_options(patient_folder, quick_load=True), database_options={}
     )
 

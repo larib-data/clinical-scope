@@ -268,15 +268,27 @@ class DataSourceBase(ABC):
         patient_options: dict,
         database_options: dict,
         apply_datetime_pushdown: bool = True,
-    ) -> tuple[pd.DataFrame | None, str | None]:
+        configured_field_display: list[str] | None = None,
+    ) -> tuple[pd.DataFrame | None, str | None, bool]:
         """
         Find, locate, and load the raw DataFrame for this datasource.
 
         *apply_datetime_pushdown* set to ``False`` bypasses parquet row-pushdown
         (used by ``inspect()``, which needs the full raw file for date-range stats).
 
+        *configured_field_display* restores ``field_display`` into *database_options* for
+        reading — but only on branches where doing so is provably safe (a cache read, or a
+        fresh load this datasource never caches). It exists for
+        ``inspect(configured_columns_only=True)``: putting ``field_display`` back in front of
+        a fresh, cache-writing ``_load()`` would narrow the cache that load writes (EIT
+        pre-filters its parser on it), corrupting every future read of that patient.
+
         Returns:
-            (df, file_path_str) on success, (None, None) if file not found.
+            (df, file_path_str, columns_pruned) on success, (None, None, False) if the file
+            was not found. ``columns_pruned`` reflects whether ``field_display`` actually
+            reached the read that ran — never inferred from the resulting frame's columns,
+            which can't tell "restricted at read time" apart from "the file only ever had
+            these columns" (a data-dependent coincidence, not pruning).
             Raises exceptions for actual load errors.
 
         """
@@ -291,27 +303,44 @@ class DataSourceBase(ABC):
 
         if reuse_cache and dataframe_path.is_file():
             logger.info("[%s] Quick loading from cache.", cls.DATASOURCE_NAME)
+            column_options = database_options
+            if configured_field_display is not None:
+                column_options = {
+                    **database_options,
+                    cst.DatabaseOptions.FIELD_DISPLAY: configured_field_display,
+                }
             df = cls._quick_load(
                 dataframe_path,
                 patient_options=patient_options if apply_datetime_pushdown else None,
-                database_options_specific=database_options,
+                database_options_specific=column_options,
             )
-            return df, str(dataframe_path)
+            columns_pruned = bool(column_options.get(cst.DatabaseOptions.FIELD_DISPLAY))
+            return df, str(dataframe_path), columns_pruned
 
         search_folder = cls._find_folder(folder_path)
         if search_folder is None:
-            return None, None
+            return None, None, False
 
         file_path = cls._find(search_folder)
         if file_path is None:
-            return None, None
+            return None, None, False
 
         file_path_str = str(file_path[0]) if isinstance(file_path, list) else str(file_path)
         logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
+        # write_cache=False means this _load() output is never cached, so — unlike the EIT
+        # pre-filter hazard above — honoring field_display here can't narrow a future full read.
+        # Sources that opt out of caching (ALLOW_QUICK_LOAD=False, e.g. philips_waves) are
+        # otherwise always on this branch and could never benefit from configured_columns_only.
+        load_column_options = database_options
+        if configured_field_display is not None and not write_cache:
+            load_column_options = {
+                **database_options,
+                cst.DatabaseOptions.FIELD_DISPLAY: configured_field_display,
+            }
         df = cls._load(
             file_path,
             dataframe_path if write_cache else None,
-            database_options_specific=database_options,
+            database_options_specific=load_column_options,
             patient_options=patient_options if apply_datetime_pushdown else None,
         )
         logger.info(
@@ -322,7 +351,8 @@ class DataSourceBase(ABC):
         )
         if not write_cache and cls.CREATE_SOURCE_SYMLINK:
             cls._create_source_symlink(file_path, dataframe_path.parent)
-        return df, file_path_str
+        columns_pruned = bool(load_column_options.get(cst.DatabaseOptions.FIELD_DISPLAY))
+        return df, file_path_str, columns_pruned
 
     @classmethod
     def _save_dataframe(cls, df: pd.DataFrame, path_output: Path) -> None:
@@ -533,7 +563,7 @@ class DataSourceBase(ABC):
             database_options_specific if database_options_specific is not None else {}
         )
 
-        df, _ = cls._load_raw_dataframe(patient_options, database_options)
+        df, _, _ = cls._load_raw_dataframe(patient_options, database_options)
         if df is None:
             return []
 
@@ -579,7 +609,7 @@ class DataSourceBase(ABC):
         )
 
         try:
-            df, _ = cls._load_raw_dataframe(patient_options, database_options)
+            df, _, _ = cls._load_raw_dataframe(patient_options, database_options)
         except Exception:
             logger.exception("[%s] extract: load failed.", cls.DATASOURCE_NAME)
             return None
@@ -616,6 +646,7 @@ class DataSourceBase(ABC):
         datasource_name: str,
         file_path: str | None = None,
         display_timezone: str | None = None,
+        columns_pruned: bool = False,
     ) -> DataSourceInspection:
         """
         Build a DataSourceInspection from an already-loaded raw DataFrame.
@@ -632,6 +663,10 @@ class DataSourceBase(ABC):
             display_timezone: Timezone the reported date ranges are shown in — cosmetic
                 only, never affects filtering. Resolved by the caller (``wrapper.inspect``);
                 falls back to ``cst.DISPLAY_TIMEZONE`` when omitted.
+            columns_pruned: Whether the caller's read was structurally restricted to configured
+                columns — decided by the caller from which branch actually ran, not re-derived
+                here from *df_raw*'s columns (a file that happens to hold only configured
+                columns was not necessarily pruned to get there).
 
         Returns:
             DataSourceInspection with status ``"ok"`` or ``"format_error"``.
@@ -657,6 +692,7 @@ class DataSourceBase(ABC):
                 file_path=file_path,
                 raw_date_range=raw_date_range,
                 columns=_column_infos(df_raw_display, df_raw_display, configured_fields),
+                columns_pruned=columns_pruned,
             )
 
         df_filtered_display = _to_display_tz(df_filtered, display_timezone=display_timezone)
@@ -667,6 +703,7 @@ class DataSourceBase(ABC):
             raw_date_range=raw_date_range,
             filtered_date_range=_date_range(df_filtered_display),
             columns=_column_infos(df_raw_display, df_filtered_display, configured_fields),
+            columns_pruned=columns_pruned,
         )
 
     @classmethod
@@ -675,6 +712,7 @@ class DataSourceBase(ABC):
         patient_options: dict,
         database_options_specific: dict | None,
         display_timezone: str | None = None,
+        configured_columns_only: bool = False,
     ) -> DataSourceInspection | list[DataSourceInspection]:
         """
         Run find → load → format for this datasource and return inspection metadata.
@@ -685,6 +723,13 @@ class DataSourceBase(ABC):
         Args:
             patient_options: Patient-specific options (same as main())
             display_timezone: Forwarded to :meth:`_make_inspection` — see its docstring.
+            configured_columns_only: Read only the ``field_display`` columns, trading the
+                unconfigured-column rows for the memory. Only ever narrows a **parquet** read
+                (a CSV or XML first load ignores it); for most sources that means the
+                ``clinical_scope_output/`` cache from a previous run, so it speeds up
+                re-inspection rather than first contact. Row/time pushdown stays disabled
+                either way — inspect's ``% retained`` and ``raw_date_range`` are comparisons
+                against the *unwindowed* file.
 
         Returns:
             DataSourceInspection with status, file info, date ranges, and column stats
@@ -703,8 +748,15 @@ class DataSourceBase(ABC):
 
         file_path_str = None
         try:
-            df_raw, file_path_str = cls._load_raw_dataframe(
-                patient_options, database_options_for_load, apply_datetime_pushdown=False
+            df_raw, file_path_str, columns_pruned = cls._load_raw_dataframe(
+                patient_options,
+                database_options_for_load,
+                apply_datetime_pushdown=False,
+                configured_field_display=(
+                    database_options.get(cst.DatabaseOptions.FIELD_DISPLAY)
+                    if configured_columns_only
+                    else None
+                ),
             )
         except Exception as exc:
             logger.exception("[%s] inspect: load failed.", cls.DATASOURCE_NAME)
@@ -727,4 +779,5 @@ class DataSourceBase(ABC):
             datasource_name=cls.DATASOURCE_NAME,
             file_path=file_path_str,
             display_timezone=display_timezone,
+            columns_pruned=columns_pruned,
         )

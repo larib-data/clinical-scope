@@ -161,6 +161,17 @@ class TestSaveHtmlIndicator:
 
 
 # ---------------------------------------------------------------------------
+# Inspect column-pruning indicator — same one-way-mirror contract as save-html
+# ---------------------------------------------------------------------------
+
+
+class TestInspectPruningIndicator:
+    def test_on_and_off(self):
+        assert ui_components.inspect_pruning_indicator_text(True).endswith("on")
+        assert ui_components.inspect_pruning_indicator_text(False).endswith("off")
+
+
+# ---------------------------------------------------------------------------
 # Paired TIMESTAMP fields (datetime_start / datetime_end)
 # ---------------------------------------------------------------------------
 

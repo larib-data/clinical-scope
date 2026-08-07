@@ -117,6 +117,39 @@ class TestInspectDisplayTimezone:
         assert default_ranges == explicit_ranges
 
 
+class TestInspectConfiguredColumnsOnlyReachesDatasources:
+    """
+    wrapper.inspect(configured_columns_only=...) must actually reach DataSourceBase.inspect() —
+    every real caller (Python API, CLI script, Dash callback) goes through this one function,
+    so a seam that silently dropped the flag here would make the feature inert everywhere.
+    """
+
+    STEM = "waves_first_half_filtered"
+    SELECTED = ["Solar8000/HR", "BIS/BIS"]
+
+    def _database_options(self):
+        return {"other": {"files": {self.STEM: {"field_display": self.SELECTED}}}}
+
+    def _entry(self, results):
+        return next(r for r in results if r.datasource_name == f"other::{self.STEM}")
+
+    def test_default_does_not_prune(self, patient_options_difficult):
+        entry = self._entry(inspect(patient_options_difficult, self._database_options()))
+        assert entry.columns_pruned is False
+        assert {c.raw_name for c in entry.columns} > set(self.SELECTED)
+
+    def test_flag_reaches_the_datasource_and_prunes(self, patient_options_difficult):
+        entry = self._entry(
+            inspect(
+                patient_options_difficult,
+                self._database_options(),
+                configured_columns_only=True,
+            )
+        )
+        assert entry.columns_pruned is True
+        assert {c.raw_name for c in entry.columns} == set(self.SELECTED)
+
+
 class TestInspectWithDatetimeFilter:
     def test_filter_reduces_counts(self, patient_full_path, default_database_options):
         """Narrowing datetime range should reduce filtered_point_count."""

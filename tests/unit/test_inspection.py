@@ -83,6 +83,10 @@ class TestDataSourceInspection:
         assert insp.columns == []
         assert insp.raw_date_range is None
 
+    def test_full_view_by_default(self):
+        insp = DataSourceInspection(datasource_name="servo_u", status="ok")
+        assert insp.columns_pruned is False
+
 
 # ---------------------------------------------------------------------------
 # Serialization roundtrip
@@ -170,6 +174,19 @@ class TestToCsvString:
         lines = csv_str.strip().split("\n")
         assert len(lines) == 1  # header only
 
+    def test_pruned_view_is_recorded(self):
+        results = [
+            DataSourceInspection(
+                datasource_name="test_ds",
+                status="ok",
+                columns=[ColumnInfo("col1", True, 100, 50)],
+                columns_pruned=True,
+            )
+        ]
+        header, row = to_csv_string(results).strip().split("\n")[:2]
+        assert "columns_pruned" in header
+        assert "True" in row
+
 
 # ---------------------------------------------------------------------------
 # to_text_summary
@@ -204,3 +221,13 @@ class TestToTextSummary:
         text = to_text_summary(results)
         assert "FAIL" in text
         assert "file corrupt" in text
+
+    def test_pruned_view_is_announced(self):
+        # A shorter table must never read as missing data — the summary has to say why.
+        columns = [ColumnInfo("ART", True, 100, 50)]
+        pruned = to_text_summary(
+            [DataSourceInspection("philips_waves", "ok", columns=columns, columns_pruned=True)]
+        )
+        full = to_text_summary([DataSourceInspection("philips_waves", "ok", columns=columns)])
+        assert "Pruned view" in pruned
+        assert "Pruned view" not in full

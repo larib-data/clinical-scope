@@ -122,7 +122,7 @@ class TestDataSourceBaseExtract:
 
         cls = _make_datasource_cls()
         df = _make_df()
-        cls._load_raw_dataframe.return_value = (df, "/file")
+        cls._load_raw_dataframe.return_value = (df, "/file", False)
         cls._format.return_value = df
 
         # Call the real extract() bound to our mock class
@@ -135,7 +135,7 @@ class TestDataSourceBaseExtract:
         from clinical_scope.datasource.base import DataSourceBase
 
         cls = _make_datasource_cls()
-        cls._load_raw_dataframe.return_value = (None, None)
+        cls._load_raw_dataframe.return_value = (None, None, False)
 
         result = DataSourceBase.extract.__func__(cls, {"data_folder": "/p"}, {})
         assert result is None
@@ -146,7 +146,7 @@ class TestDataSourceBaseExtract:
 
         cls = _make_datasource_cls()
         df = _make_df()
-        cls._load_raw_dataframe.return_value = (df, "/file")
+        cls._load_raw_dataframe.return_value = (df, "/file", False)
         cls._format.return_value = df
 
         save_path = tmp_path / "out.parquet"

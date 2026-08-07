@@ -256,6 +256,7 @@ class OtherDataSource(DataSourceBase):
         patient_options: dict,
         database_options_specific: dict | None,
         display_timezone: str | None = None,
+        configured_columns_only: bool = False,
     ) -> list[DataSourceInspection]:
         """
         Inspect each CSV/parquet file in the other datasource folder independently.
@@ -264,6 +265,10 @@ class OtherDataSource(DataSourceBase):
         the database_options key convention (``other::waves``, ``other::numerics``, …).
         This avoids cross-file aggregation issues (e.g. mixed tz-naive/tz-aware indices)
         and gives the caller per-file date ranges and column stats.
+
+        *configured_columns_only* prunes each file to its per-file ``field_display``; 'other'
+        reads its source files directly, so pruning lands on the parquet ones without a cache
+        having to exist. See :meth:`DataSourceBase.inspect` for the full contract.
 
         Overrides DataSourceBase.inspect() because OtherDataSource._load() raises
         NotImplementedError (files are processed individually in main()).
@@ -291,9 +296,22 @@ class OtherDataSource(DataSourceBase):
         for file_path in file_paths:
             inspection_name = f"{cls.DATASOURCE_NAME}::{file_path.stem}"
             file_config = per_file_options.get(file_path.stem, {})
+            # _load_single_file only honors select_columns on the parquet branch (no partial
+            # scan for CSV) — mirror that here so the pruned-view marker below is structural,
+            # not inferred from whether the loaded frame happens to match the configured set.
+            columns_pruned = (
+                configured_columns_only
+                and file_path.suffix.lower() == ".parquet"
+                and bool(file_config.get(cst.DatabaseOptions.FIELD_DISPLAY))
+            )
 
             try:
-                df = _load_single_file(file_path)
+                df = _load_single_file(
+                    file_path,
+                    select_columns=(
+                        make_column_selector(file_config) if configured_columns_only else None
+                    ),
+                )
                 try:
                     df = set_datetime_index(df)
                 except ValueError as exc:
@@ -322,6 +340,7 @@ class OtherDataSource(DataSourceBase):
                         inspection_name,
                         str(file_path),
                         display_timezone=display_timezone,
+                        columns_pruned=columns_pruned,
                     )
                 )
 

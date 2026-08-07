@@ -10,6 +10,7 @@ Usage
     python scripts/inspect_patient_data.py /data/Patient01 --database-options db.json
     python scripts/inspect_patient_data.py /data/Patient01 --patient-options opts.json
     python scripts/inspect_patient_data.py ... --output-csv out.csv
+    python scripts/inspect_patient_data.py ... --configured-columns-only
 """
 
 import argparse
@@ -39,6 +40,7 @@ def main(option_dict: dict) -> None:
     results = wrapper.inspect(
         patient_options=patient_options,
         database_options_global=database_options,
+        configured_columns_only=option_dict["configured_columns_only"],
     )
 
     if not any(result.status == "ok" for result in results):
@@ -89,6 +91,16 @@ def args_parser(args: list[str]) -> None:
         default=None,
         dest="output_csv",
         help="Optional path to write inspection results as CSV.",
+    )
+    parser.add_argument(
+        "--configured-columns-only",
+        action="store_true",
+        dest="configured_columns_only",
+        help="Read only the signals listed in database_options field_display, instead of "
+        "every column in the file. Unconfigured columns are then not reported. Only ever "
+        "narrows a parquet read: for most sources that means a patient already cached by a "
+        "previous run; the Other (Generic) source reads its own files directly, so this also "
+        "applies there on a first inspection.",
     )
     parser.add_argument("--debug", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument(

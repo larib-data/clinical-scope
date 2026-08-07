@@ -12,6 +12,10 @@ matches}, on every wire point: the low-level `read_parquet_pruned`, the quick-lo
 
 Column pruning is orthogonal to the datetime window — it must fire even with no window set
 (the common case) — so most tests deliberately set no window.
+
+`inspect(configured_columns_only=True)` is the one caller that opts *into* pruning while still
+refusing row pushdown; its section checks both halves of that, plus the promise that a pruned
+table says so.
 """
 
 import logging
@@ -22,6 +26,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import clinical_scope.constants as cst
+from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.io.file_utils import (
     _pruned_columns,
     get_column_name_from_pattern,
@@ -296,6 +301,36 @@ class TestPhilipsWavesColumnPruning:
         assert "art" in reported
         assert "vol" in reported  # unconfigured, but inspect must still surface it
 
+    @pytest.mark.parametrize("quick_load", [False, True])
+    def test_inspect_configured_columns_only_prunes_the_fresh_read(
+        self, philips_waves_cls, patient_full_path, quick_load
+    ):
+        # Regression: philips_waves opts out of caching (ALLOW_QUICK_LOAD=False), so every
+        # inspect() call -- quick_load on or off -- lands on the fresh-load branch. Before the
+        # fix, that branch ignored configured_columns_only entirely: the flag could never prune
+        # anything for this datasource, no matter how many times it was rerun.
+        folder = philips_waves_cls._find_folder(patient_full_path)
+        file_path = philips_waves_cls._find(folder)
+        if file_path is None or file_path.suffix.lower() != ".parquet":
+            pytest.skip("philips_waves parquet fixture not found in demo_patient")
+
+        field_display = ["art", "p*"]  # 'art' literal + 'p*' wildcard (paw / pleth / p4)
+        insp = philips_waves_cls.inspect(
+            {
+                "data_folder": str(patient_full_path),
+                "datetime_start": None,
+                "datetime_end": None,
+                "quick_load": quick_load,
+            },
+            {"field_display": field_display},
+            configured_columns_only=True,
+        )
+        assert insp.status == "ok"
+        assert insp.columns_pruned is True
+        reported = {c.raw_name for c in insp.columns}
+        assert reported == {"art", "paw", "pleth", "p4"}
+        assert "vol" not in reported  # unconfigured column must not survive pruning
+
 
 # ---------------------------------------------------------------------------
 # Wire point 3: other (uncached, per-file config, bare-name field_display)
@@ -327,6 +362,162 @@ class TestOtherColumnPruning:
         for name, sig in pruned.items():
             assert list(sig.data.x) == list(full[name].data.x)
             assert list(sig.data.y) == list(full[name].data.y)
+
+    def _inspect(self, other_cls, patient_difficult_path, **kwargs):
+        results = other_cls.inspect(
+            {
+                "data_folder": str(patient_difficult_path),
+                "datetime_start": None,
+                "datetime_end": None,
+                "quick_load": False,
+            },
+            {cst.DatabaseOptions.FILES: {self.STEM: {"field_display": self.SELECTED}}},
+            **kwargs,
+        )
+        return next(r for r in results if r.datasource_name == f"other::{self.STEM}")
+
+    def test_inspect_default_reports_unconfigured_columns(self, other_cls, patient_difficult_path):
+        entry = self._inspect(other_cls, patient_difficult_path)
+        reported = {column.raw_name for column in entry.columns}
+        assert reported > set(self.SELECTED), "default inspect must surface unconfigured columns"
+        assert entry.columns_pruned is False
+
+    def test_inspect_configured_columns_only_prunes_the_source_parquet(
+        self, other_cls, patient_difficult_path
+    ):
+        # 'other' reads its source files directly, so pruning lands without any cache existing.
+        entry = self._inspect(other_cls, patient_difficult_path, configured_columns_only=True)
+        assert {column.raw_name for column in entry.columns} == set(self.SELECTED)
+        assert entry.columns_pruned is True
+
+
+# ---------------------------------------------------------------------------
+# Wire point 4: inspect's opt-in column pruning
+# ---------------------------------------------------------------------------
+
+
+class _FakeOptions:
+    """Minimal stand-in for an options module — only what `_format` reaches for."""
+
+    class PatientOptionsDataSourceRelative:
+        class TimeShift:
+            NAME = "time_shift"
+
+
+def _wide_frame() -> pd.DataFrame:
+    idx = pd.date_range("2024-01-01", periods=100, freq="1s", tz="UTC")
+    idx.name = "datetime_index"
+    return pd.DataFrame(
+        {"HR": range(100), "SpO2": range(100, 200), "RR": range(200, 300)}, index=idx
+    )
+
+
+def _make_source(load_calls: list | None = None) -> type:
+    """A datasource whose fresh `_load` returns the same wide frame the cache holds."""
+
+    class _FakeCachedSource(DataSourceBase):
+        DATASOURCE_NAME = "fake_cached"
+        FILE_NAME_DATAFRAME_LOADED = "fake_cached.parquet"
+        OPTIONS_MODULE = _FakeOptions
+
+        @classmethod
+        def _find_folder(cls, folder_path: Path) -> Path:
+            return folder_path
+
+        @classmethod
+        def _find(cls, folder_path: Path) -> Path:
+            return folder_path / "raw_data.bin"
+
+        @classmethod
+        def _load(cls, file_path, path_output, **kwargs):  # noqa: ARG003
+            if load_calls is not None:
+                load_calls.append(kwargs)
+            return _wide_frame()
+
+    return _FakeCachedSource
+
+
+def _patient_options(folder: Path, **overrides) -> dict:
+    return {"data_folder": str(folder), "quick_load": True, **overrides}
+
+
+@pytest.fixture
+def cached_patient(tmp_path: Path) -> Path:
+    """A patient folder already carrying a wide parquet cache (i.e. re-inspection)."""
+    output_folder = tmp_path / cst.FOLDER_NAME_OUTPUT
+    output_folder.mkdir()
+    _wide_frame().to_parquet(output_folder / "fake_cached.parquet")
+    return tmp_path
+
+
+class TestInspectConfiguredColumnsOnly:
+    """
+    The opt-in trades the unconfigured-column rows for the memory — and nothing else.
+
+    Rows stay unpruned in every case (inspect's `% retained` and raw date range are
+    comparisons against the *unwindowed* file), and the fresh-load path keeps seeing no
+    `field_display` at all, so the cache a first load writes is never narrowed by an inspect.
+    """
+
+    DB_OPTIONS = {"field_display": ["HR", "SpO2"]}
+
+    def test_default_reports_every_column(self, cached_patient):
+        result = _make_source().inspect(_patient_options(cached_patient), self.DB_OPTIONS)
+        assert {column.raw_name for column in result.columns} == {"HR", "SpO2", "RR"}
+        assert result.columns_pruned is False
+
+    def test_flag_reads_only_configured_columns(self, cached_patient):
+        result = _make_source().inspect(
+            _patient_options(cached_patient), self.DB_OPTIONS, configured_columns_only=True
+        )
+        assert {column.raw_name for column in result.columns} == {"HR", "SpO2"}
+        assert result.columns_pruned is True
+
+    def test_flag_without_field_display_reads_everything(self, cached_patient):
+        # Nothing configured → nothing to prune by; the marker must stay off rather than
+        # claim a pruned view of a full table.
+        result = _make_source().inspect(
+            _patient_options(cached_patient), {}, configured_columns_only=True
+        )
+        assert {column.raw_name for column in result.columns} == {"HR", "SpO2", "RR"}
+        assert result.columns_pruned is False
+
+    def test_flag_on_a_first_load_reports_every_column(self, tmp_path):
+        # No cache yet: the manufacturer's export has no pushdown, so the flag can't bite.
+        (tmp_path / cst.FOLDER_NAME_OUTPUT).mkdir()
+        result = _make_source().inspect(
+            _patient_options(tmp_path), self.DB_OPTIONS, configured_columns_only=True
+        )
+        assert {column.raw_name for column in result.columns} == {"HR", "SpO2", "RR"}
+        assert result.columns_pruned is False
+
+    def test_fresh_load_never_sees_field_display(self, tmp_path):
+        # Regression guard: EIT's `_load` pre-filters on field_display and caches the result,
+        # so letting the flag reach a fresh load would write a narrowed cache.
+        (tmp_path / cst.FOLDER_NAME_OUTPUT).mkdir()
+        load_calls: list = []
+        _make_source(load_calls).inspect(
+            _patient_options(tmp_path), self.DB_OPTIONS, configured_columns_only=True
+        )
+        assert load_calls, "the fresh load path should have run"
+        assert "field_display" not in load_calls[0]["database_options_specific"]
+
+    @pytest.mark.parametrize("configured_columns_only", [False, True])
+    def test_rows_are_never_pruned(self, cached_patient, monkeypatch, configured_columns_only):
+        # The window must cut only *after* the read, or "% retained" would always be 100%.
+        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        result = _make_source().inspect(
+            _patient_options(
+                cached_patient,
+                datetime_start="2024-01-01 00:00:10",
+                datetime_end="2024-01-01 00:00:19",
+            ),
+            self.DB_OPTIONS,
+            configured_columns_only=configured_columns_only,
+        )
+        heart_rate = next(column for column in result.columns if column.raw_name == "HR")
+        assert heart_rate.raw_point_count == 100  # the whole file, window ignored on read
+        assert heart_rate.filtered_point_count == 10
 
 
 # ---------------------------------------------------------------------------

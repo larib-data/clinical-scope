@@ -20,6 +20,11 @@ def save_html_indicator_text(enabled: bool) -> str:
     return f"HTML export on Process: {'on' if enabled else 'off'}"
 
 
+def inspect_pruning_indicator_text(enabled: bool) -> str:
+    """Read-only label mirroring the inspect_configured_columns_only user option beside Inspect."""
+    return f"Configured columns only: {'on' if enabled else 'off'}"
+
+
 # Widget value contract: BOOL renders as a dcc.Checklist whose value is a list
 # ([True] when checked, [] when not); every other API_TYPE round-trips as its scalar.
 # These two functions are the single owner of that mapping — keep them inverse.

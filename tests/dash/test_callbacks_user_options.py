@@ -121,16 +121,25 @@ class TestReflectUserOptions:
         names = [cst.UserOptions.SaveHtmlOnProcess.NAME, cst.UserOptions.HoverModeOption.NAME]
         store = {names[0]: True, names[1]: cst.HoverMode.CLOSEST}
 
-        values, indicator = reflect_user_options(store, [_widget_id(name) for name in names])
+        values, save_html_indicator, pruning_indicator = reflect_user_options(
+            store, [_widget_id(name) for name in names]
+        )
 
         assert values == [[True], cst.HoverMode.CLOSEST]
-        assert indicator.endswith("on")
+        assert save_html_indicator.endswith("on")
+        # Absent from the store -> schema default (False) -> "off", same rule as save-html.
+        assert pruning_indicator.endswith("off")
 
     def test_missing_key_shows_the_schema_default(self):
         """An options file written before a setting existed must not blank its widget."""
         name = cst.UserOptions.FallbackColorway.NAME
-        values, _ = reflect_user_options({}, [_widget_id(name)])
+        values, _, _ = reflect_user_options({}, [_widget_id(name)])
         assert values == ["okabe_ito"]
+
+    def test_pruning_indicator_reflects_the_store(self):
+        name = cst.UserOptions.InspectConfiguredColumnsOnly.NAME
+        _, _, pruning_indicator = reflect_user_options({name: True}, [_widget_id(name)])
+        assert pruning_indicator.endswith("on")
 
 
 # ---------------------------------------------------------------------------
