@@ -57,7 +57,7 @@ _JUNK_FILENAME_RE = re.compile("|".join(cst.JUNK_FILENAME_PATTERNS))
 
 
 def is_junk_file(path: Path) -> bool:
-    """Return True if *path* is VCS/OS housekeeping cruft (e.g. ``.gitkeep``), not real data."""
+    """Return True if *path* is VCS/OS cruft or documentation (``.gitkeep``, ``readme.txt``)."""
     return bool(_JUNK_FILENAME_RE.match(path.name))
 
 

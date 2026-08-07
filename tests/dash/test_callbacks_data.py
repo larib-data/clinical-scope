@@ -9,6 +9,7 @@ import clinical_scope.constants as cst
 from clinical_scope.dash_api.callbacks.data_callbacks import (
     _build_inspection_content,
     _build_slider_marks,
+    _inspect_patient_folder,
     _parse_database_options_file,
     _status_badge,
     format_time_range,
@@ -316,3 +317,70 @@ class TestUpdateDatetimeTzLabel:
         start_label, end_label = update_datetime_tz_label("Not/AZone")
         assert "Not/AZone" not in start_label
         assert f"interpreted in {cst.DISPLAY_TIMEZONE}" == start_label == end_label
+
+
+# ---------------------------------------------------------------------------
+# _inspect_patient_folder — now sourced from datasource.scan_patient_folder() (#53)
+# ---------------------------------------------------------------------------
+
+
+class TestInspectPatientFolder:
+    """
+    Uses an explicit 'patient' folder name (not bare tmp_path) throughout, since
+    tmp_path's auto-generated name is derived from the test name and could otherwise
+    accidentally collide with a datasource FOLDER_KEYWORDS match (e.g. "other").
+    """
+
+    def test_missing_folder(self, tmp_path):
+        span = _inspect_patient_folder(tmp_path / "patient" / "does_not_exist")
+        assert span.children == "⚠ This folder doesn't exist."
+
+    def test_path_is_a_file(self, tmp_path):
+        file_path = tmp_path / "patient.csv"
+        file_path.touch()
+        span = _inspect_patient_folder(file_path)
+        assert "not a folder" in span.children
+
+    def test_found_device_folder_with_content(self, tmp_path):
+        patient_folder = tmp_path / "patient"
+        eit_folder = patient_folder / "eit"
+        eit_folder.mkdir(parents=True)
+        (eit_folder / "recording.asc").touch()
+
+        span = _inspect_patient_folder(patient_folder)
+
+        assert span.children == "✓ Found 1 device folder(s): EIT - PulmoVista."
+
+    def test_recognized_but_empty_device_folder(self, tmp_path):
+        patient_folder = tmp_path / "patient"
+        (patient_folder / "eit").mkdir(parents=True)
+
+        span = _inspect_patient_folder(patient_folder)
+
+        assert "1 recognized but empty" in span.children
+
+    def test_path_itself_looks_like_a_device_folder(self, tmp_path):
+        device_folder = tmp_path / "patient" / "eit"
+        device_folder.mkdir(parents=True)
+        (device_folder / "recording.asc").touch()
+
+        span = _inspect_patient_folder(device_folder)
+
+        assert "looks like a" in span.children
+        assert "EIT - PulmoVista" in span.children
+
+    def test_unrecognized_subfolder(self, tmp_path):
+        patient_folder = tmp_path / "patient"
+        (patient_folder / "ventilator_data").mkdir(parents=True)
+
+        span = _inspect_patient_folder(patient_folder)
+
+        assert "ventilator_data" in span.children
+
+    def test_empty_folder_no_subfolders(self, tmp_path):
+        patient_folder = tmp_path / "patient"
+        patient_folder.mkdir()
+
+        span = _inspect_patient_folder(patient_folder)
+
+        assert "contains no device subfolders" in span.children

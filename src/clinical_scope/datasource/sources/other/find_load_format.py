@@ -94,11 +94,12 @@ class OtherDataSource(DataSourceBase):
         save_path: str | Path | None = None,  # noqa: ARG003
     ) -> pd.DataFrame | None:
         """
-        Not supported for the 'other' datasource.
+        Not supported for the 'other' datasource -- by design.
 
-        The 'other' datasource processes multiple files independently (each file
-        becomes its own signal group), so a single-DataFrame extraction is not
-        meaningful. Use main() for visualization or inspect() for metadata.
+        extract()'s job elsewhere is reformatting a device's raw export (pivoting,
+        parsing a proprietary layout, …) into the library DataFrame format. 'other' exists
+        for files that are *already* tidy CSV/parquet -- there is nothing to reformat.
+        Use main() for visualization or inspect() for per-file metadata instead.
         """
         logger.debug(
             "[%s] extract() is not supported — each file is processed independently. Skipping.",

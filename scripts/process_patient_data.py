@@ -34,6 +34,7 @@ from clinical_scope.config.parsing import (
     build_patient_options,
     load_database_options_from_path,
 )
+from clinical_scope.datasource import registry as datasource_registry
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,9 @@ def cmd_patient(options: dict) -> None:
         patient_options=patient_options,
         save_folder=options.get("output_folder"),
     )
+
+    if not any(value is not None for value in results.values()):
+        datasource_registry.emit_zero_result_diagnostic(options["patient_folder"])
 
     if options["verbose"]:
         _print_results(results)

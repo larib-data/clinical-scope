@@ -515,6 +515,19 @@ class TestLoopGrid:
         assert model.n_cols == 1
 
 
+class TestToHtml:
+    def test_skips_write_when_no_figures(self, tmp_path, caplog):
+        # Regression: previously wrote an empty visualization.html — and needed
+        # clinical_scope_output/ to already exist — even when nothing was plotted.
+        patient_options = {cst.PatientOptions.PathDataFolder.NAME: str(tmp_path)}
+
+        with caplog.at_level("WARNING"):
+            PlotModel.to_html([], patient_options)
+
+        assert not (tmp_path / "clinical_scope_output").exists()
+        assert "no figures to write" in caplog.text
+
+
 class TestPrintOutFigure:
     def test_cdn_export_references_the_cdn(self, tmp_path):
         sig = _make_signal()
@@ -538,6 +551,18 @@ class TestPrintOutFigure:
         assert "Plotly.newPlot" in content
         # The whole bundle is inlined, so the file is megabytes rather than kilobytes.
         assert output.stat().st_size > 1_000_000
+
+    def test_creates_missing_output_directory(self, tmp_path):
+        # Regression: clinical_scope_output/ is normally created as a side effect of parquet
+        # caching during data load. When 0 datasources produce any data (e.g. pointing the CLI
+        # at a device subfolder instead of a patient folder), that side effect never runs, so
+        # this must not assume the parent directory already exists.
+        sig = _make_signal()
+        model = PlotModel(groups=[PlotGroup.from_single_signal(sig)])
+        output = tmp_path / "clinical_scope_output" / "viz.html"
+
+        print_out_figure(output, [model.figure])
+        assert output.exists()
 
     def test_bundle_embedded_once_for_several_figures(self, tmp_path):
         sig = _make_signal()

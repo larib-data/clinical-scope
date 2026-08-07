@@ -512,7 +512,7 @@ class DataSourceBase(ABC):
                     )
                 return subfolder
 
-        logger.warning(
+        logger.debug(
             "No folder found in '%s' containing all keywords %s for datasource '%s'",
             folder_path,
             folder_keywords,
@@ -585,7 +585,7 @@ class DataSourceBase(ABC):
             return None
 
         if df is None:
-            logger.info("[%s] No data file found.", cls.DATASOURCE_NAME)
+            logger.debug("[%s] No data file found.", cls.DATASOURCE_NAME)
             return None
 
         df_raw = df

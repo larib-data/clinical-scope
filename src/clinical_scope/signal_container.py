@@ -993,14 +993,15 @@ class PlotModel:
         self_contained: bool = False,
     ) -> None:
         """Write every figure to the patient's visualization.html (see print_out_figure)."""
-        if not plot_models:
-            logger.warning("⚠️ PlotModel figure generation to html was called with empty list")
-        data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
-        output_path = get_visualization_path(data_folder, output_root)
         fig_list = [
             plot_model.figure for plot_model in plot_models if plot_model.figure is not None
         ]
+        if not fig_list:
+            logger.warning("⚠️ PlotModel figure generation to html skipped: no figures to write")
+            return
+        data_folder = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
+        output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
+        output_path = get_visualization_path(data_folder, output_root)
         start = time.perf_counter()
         print_out_figure(output_path, fig_list, self_contained=self_contained)
         elapsed = time.perf_counter() - start
@@ -1050,6 +1051,7 @@ def print_out_figure(path_output: Path, fig_list: list, self_contained: bool = F
     so the file renders on a machine with no network — at ~3.5 MB. Otherwise it is fetched
     from a CDN, which keeps the file small but shows a blank page offline.
     """
+    path_output.parent.mkdir(parents=True, exist_ok=True)
     with Path.open(path_output, "w") as file_out:
         for figure_index, fig in enumerate(fig_list):
             if self_contained:

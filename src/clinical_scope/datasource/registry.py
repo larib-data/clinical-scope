@@ -1,9 +1,11 @@
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
 from typing import ClassVar
 
+import clinical_scope.constants as cst
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.sources.eit import find_load_format as _eit
 from clinical_scope.datasource.sources.fluxmed_parameters import (
@@ -30,7 +32,11 @@ from clinical_scope.datasource.sources.philips_waves import (
 )
 from clinical_scope.datasource.sources.servo_u import find_load_format as _servo_u
 from clinical_scope.datasource.sources.syringe import find_load_format as _syringe
-from clinical_scope.io.file_utils import folder_name_matches_keywords
+from clinical_scope.io.file_utils import (
+    folder_has_real_content,
+    folder_name_matches_keywords,
+    is_junk_file,
+)
 from clinical_scope.signal_container import Signal
 
 # ==================================================================================================
@@ -207,6 +213,161 @@ def detect_datasource_from_folder(folder: str | Path) -> type | None:
                 best_score = score
                 best_match = datasource
     return best_match
+
+
+@dataclass
+class PatientFolderScan:
+    """
+    Result of scanning a candidate patient folder for datasource subfolders.
+
+    Produced by :func:`scan_patient_folder`, shared by the Dash live preview (cheap core)
+    and the CLI zero-result diagnostic (deep mode) -- see ADR-0001.
+    """
+
+    path: Path
+    status: str  # "ok" | "missing" | "is_file" | "unreadable"
+    self_datasource: type | None = None  # set when `path` itself looks like a device subfolder
+    found: list[type] = field(default_factory=list)  # device subfolders with real content
+    empty: list[type] = field(default_factory=list)  # device subfolders recognized but empty
+    other_subfolders: list[str] = field(default_factory=list)  # subfolders matching no datasource
+    loose_files: dict[str, list[str]] | None = None  # deep=True only: location -> filenames
+
+
+def scan_patient_folder(path: str | Path, *, deep: bool = False) -> PatientFolderScan:
+    """
+    Classify *path* as a candidate patient folder and report its datasource subfolders.
+
+    Cheap by default -- safe to call on every Dash keystroke: classifies the path, detects
+    device subfolders, and names unrecognized ones. Pass ``deep=True`` (CLI only) to
+    additionally enumerate loose files matching any datasource's ``FILE_EXTENSIONS`` in the
+    root and any unrecognized subfolder -- the extra ``iterdir()`` calls are kept off the
+    Dash hot path.
+    """
+    path = Path(path)
+    if not path.is_dir():
+        status = "is_file" if path.is_file() else "missing"
+        return PatientFolderScan(path=path, status=status)
+
+    try:
+        self_datasource = detect_datasource_from_folder(path)
+
+        found: list[type] = []
+        empty: list[type] = []
+        other_subfolders: list[str] = []
+        for sub in sorted(path.iterdir()):
+            if not sub.is_dir() or sub.name == cst.FOLDER_NAME_OUTPUT or sub.name.startswith("."):
+                continue
+            matched = detect_datasource_from_folder(sub)
+            if matched is None:
+                other_subfolders.append(sub.name)
+            elif folder_has_real_content(sub):
+                found.append(matched)
+            else:
+                empty.append(matched)
+    except OSError:
+        # e.g. a restricted network share that exists but can't be listed.
+        logger.warning("Could not scan patient folder %r.", str(path))
+        return PatientFolderScan(path=path, status="unreadable")
+
+    scan = PatientFolderScan(
+        path=path,
+        status="ok",
+        self_datasource=self_datasource,
+        found=found,
+        empty=empty,
+        other_subfolders=other_subfolders,
+    )
+    if deep:
+        scan.loose_files = _scan_loose_files(path, other_subfolders)
+    return scan
+
+
+def _scan_loose_files(path: Path, other_subfolders: list[str]) -> dict[str, list[str]]:
+    """Files matching any datasource's FILE_EXTENSIONS, grouped by location (deep mode only)."""
+    all_extensions = {
+        ext.lower()
+        for ds in DataSource.AVAILABLE
+        for ext in getattr(ds.OPTIONS, "FILE_EXTENSIONS", [])
+    }
+    locations = {".": path} | {name: path / name for name in other_subfolders}
+
+    loose_files: dict[str, list[str]] = {}
+    for location, folder in locations.items():
+        try:
+            matches = sorted(
+                entry.name
+                for entry in folder.iterdir()
+                if entry.is_file()
+                and entry.suffix.lower() in all_extensions
+                and not is_junk_file(entry)
+            )
+        except OSError:
+            continue
+        if matches:
+            loose_files[location] = matches
+    return loose_files
+
+
+def format_zero_result_diagnostic(scan: PatientFolderScan) -> str:
+    """Render *scan* (ideally ``deep=True``) as a plain-text diagnostic for a zero-result run."""
+    lines = [f"No datasource produced any data from: {scan.path}"]
+
+    if scan.status == "missing":
+        lines.append("This folder doesn't exist.")
+    elif scan.status == "is_file":
+        lines.append("That's a file, not a folder.")
+    elif scan.status == "unreadable":
+        lines.append("This folder couldn't be read (permission or path issue).")
+    else:
+        if scan.found:
+            names = ", ".join(ds.DESCRIPTION for ds in scan.found)
+            lines.append(
+                f"Device folder(s) with content were found ({names}), but none produced data -- "
+                "check that your database_options configuration includes them, and check the "
+                "error(s) logged above for load failures."
+            )
+        if scan.self_datasource is not None:
+            lines.append(
+                f"This folder itself looks like a '{scan.self_datasource.DESCRIPTION}' device "
+                f"folder, not a patient folder -- try its parent ({scan.path.parent})."
+            )
+        if scan.empty:
+            names = ", ".join(ds.DESCRIPTION for ds in scan.empty)
+            lines.append(f"Recognized device folder(s), but empty: {names}.")
+        if scan.other_subfolders:
+            names = ", ".join(scan.other_subfolders)
+            lines.append(f"Unrecognized subfolder(s): {names}.")
+        if scan.loose_files:
+            lines.append("Data file(s) found outside any recognized device folder:")
+            for location, files in scan.loose_files.items():
+                where = "patient root" if location == "." else f"'{location}/'"
+                lines.append(f"  {where}: {', '.join(files)}")
+        nothing_found = not (
+            scan.found
+            or scan.self_datasource
+            or scan.empty
+            or scan.other_subfolders
+            or scan.loose_files
+        )
+        if nothing_found:
+            lines.append("No device subfolders or recognizable data files found.")
+
+    lines.append(
+        "A patient folder holds one subfolder per device (monitor, ventilator, ...); the "
+        "'organize-patient-folder' helper can sort loose files into place."
+    )
+    return "\n".join(lines)
+
+
+def emit_zero_result_diagnostic(patient_folder: str | Path) -> None:
+    """
+    Log a diagnostic for a zero-result CLI run of *patient_folder*.
+
+    CLI-only, bakes in the deep scan (``deep=True``) so callers don't have to know that
+    detail. Not called for batch runs, to avoid flooding a large run -- see issue #53.
+    """
+    diagnostic = format_zero_result_diagnostic(scan_patient_folder(patient_folder, deep=True))
+    logger.warning(diagnostic)
 
 
 def generate_default_database_options() -> dict:

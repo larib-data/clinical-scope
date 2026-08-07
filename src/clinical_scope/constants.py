@@ -10,6 +10,8 @@ JUNK_FILENAME_PATTERNS = frozenset(
         r"^desktop\.ini$",  # Windows folder-view settings
         r"^System Volume Information$",  # Windows restore-point folder
         r"^\$RECYCLE\.BIN$",  # Windows recycle bin folder
+        r"^(?i:readme)(\..+)?$",  # documentation, not device data (readme.txt collides with
+        # fluxmed's .txt signal files, so extension alone can't tell them apart)
     }
 )
 

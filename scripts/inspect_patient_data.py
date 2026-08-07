@@ -22,6 +22,7 @@ from clinical_scope.config.parsing import (
     build_patient_options,
     load_database_options_from_path,
 )
+from clinical_scope.datasource import registry as datasource_registry
 from clinical_scope.datasource.inspection import to_csv_string, to_text_summary
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,9 @@ def main(option_dict: dict) -> None:
         patient_options=patient_options,
         database_options_global=database_options,
     )
+
+    if not any(result.status == "ok" for result in results):
+        datasource_registry.emit_zero_result_diagnostic(option_dict["patient_folder"])
 
     verbose = option_dict["verbose"]
 

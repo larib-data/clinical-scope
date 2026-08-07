@@ -87,6 +87,28 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
     return matched
 
 
+def _format_datasource_summary(found: dict[str, str], requested: list[str]) -> str:
+    """
+    Render a one-line found/not-found tally for a single-patient run.
+
+    *found* maps datasource name -> an optional annotation (e.g. file stems for the
+    generic ``other`` datasource); an empty annotation renders the bare name. Cheap by
+    construction: callers derive it from data the pipeline already holds in memory, no
+    extra I/O. Meant to be visible without ``--debug`` -- a first debugging step before
+    the full per-datasource DEBUG log.
+    """
+    not_found = [name for name in requested if name not in found]
+    parts = []
+    if found:
+        found_str = ", ".join(
+            f"{name} ({annotation})" if annotation else name for name, annotation in found.items()
+        )
+        parts.append(f"Found: {found_str}")
+    if not_found:
+        parts.append(f"Not found ({len(not_found)}): {', '.join(not_found)}")
+    return " | ".join(parts) if parts else "No datasource requested."
+
+
 def main(
     patient_options: dict,
     database_options_global: dict | None = None,
@@ -100,6 +122,7 @@ def main(
     all_signal_list = []
     already_used_in_group = []
     plot_group_list = []
+    found_datasources: dict[str, str] = {}
 
     requested_sources = [
         ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
@@ -133,6 +156,14 @@ def main(
                 )
                 all_signal_list.extend(list_signal)
                 logger.info("✅ [%s] %d signal(s) loaded.", name, len(list_signal))
+                if list_signal:
+                    if name == datasource_list.DataSource.Other.NAME:
+                        # "other" is a generic multi-file catch-all: which files actually
+                        # matched is the useful signal, not a bare "found".
+                        file_stems = {sig.raw_name.split("::", 1)[0] for sig in list_signal}
+                        found_datasources[name] = ", ".join(sorted(file_stems))
+                    else:
+                        found_datasources[name] = ""
             except Exception:
                 logger.exception("❌ Failed to create signals for datasource '%s'. Skipping.", name)
                 continue
@@ -328,6 +359,7 @@ def main(
         len(plot_group_list),
         len(plot_model_list),
     )
+    logger.info(_format_datasource_summary(found_datasources, requested_sources))
     return plot_model_list
 
 
@@ -403,6 +435,24 @@ def inspect(
             results.append(inspection)
 
     logger.info("🔎 Inspection complete: %d datasource(s) inspected.", len(results))
+
+    # "other" reports one entry per file as "other::<stem>" (see OtherDataSource.inspect) --
+    # surface which files actually matched rather than a bare "found".
+    found_stems: dict[str, set[str]] = {}
+    found_plain: set[str] = set()
+    for result in results:
+        if result.status != "ok":
+            continue
+        base_name, sep, stem = result.datasource_name.partition("::")
+        if sep:
+            found_stems.setdefault(base_name, set()).add(stem)
+        else:
+            found_plain.add(base_name)
+    found_datasources = dict.fromkeys(found_plain, "")
+    for name, stems in found_stems.items():
+        found_datasources[name] = ", ".join(sorted(stems))
+    logger.info(_format_datasource_summary(found_datasources, requested_sources))
+
     return results
 
 
@@ -518,6 +568,18 @@ def extract_patient(
 
     success = sum(1 for value in results.values() if value is not None)
     logger.info("📤 Extraction complete: %d/%d datasource(s) succeeded.", success, len(results))
+
+    # "other" is excluded here: extract() always returns None for it by design (it's
+    # already a tidy CSV/parquet format, so there's nothing for extract's reformat+cache
+    # job to do -- see OtherDataSource.extract()), so it would always misreport as "not
+    # found" rather than "not applicable". Use main() or inspect() to see other's files.
+    other_name = datasource_list.DataSource.Other.NAME
+    found_datasources = {
+        name: "" for name, value in results.items() if value is not None and name != other_name
+    }
+    extract_requested = [name for name in requested_sources if name != other_name]
+    logger.info(_format_datasource_summary(found_datasources, extract_requested))
+
     return results
 
 

@@ -49,7 +49,6 @@ from clinical_scope.datasource.inspection import (
     results_to_json,
     to_csv_string,
 )
-from clinical_scope.io.file_utils import folder_has_real_content
 from clinical_scope.io.paths import (
     get_database_options_path,
     get_output_base,
@@ -537,45 +536,30 @@ def _build_data_folder_preview(value: str | None) -> Any:
 
 def _inspect_patient_folder(path: Path) -> Any:
     """Scan *path* and return the preview Span. Runs in a worker thread (see caller)."""
-    try:
-        if path.is_file():
-            return html.Span(
-                "⚠ That's a file, not a folder. Pick the patient folder (maybe its parent? "
-                f"{path.parent.parent} ?)",
-                style=_PREVIEW_ERROR,
-            )
-        # A suffix but no such directory: almost certainly a data file, not the folder.
-        if path.suffix and not path.is_dir():
-            return html.Span(
-                f"⚠ '{path.name}' looks like a file, not a folder. Pick the patient folder, not a "
-                "data file.",
-                style=_PREVIEW_ERROR,
-            )
-        if not path.is_dir():
-            return html.Span("⚠ This folder doesn't exist.", style=_PREVIEW_WARN)
+    scan = datasource.scan_patient_folder(path)
 
-        # If the path itself is named like a device folder, the user went one level too deep.
-        self_datasource = datasource.detect_datasource_from_folder(path)
-
-        found = []
-        empty = []
-        other_subfolders = []
-        for sub in sorted(path.iterdir()):
-            if not sub.is_dir() or sub.name == cst.FOLDER_NAME_OUTPUT:
-                continue
-            matched_datasource = datasource.detect_datasource_from_folder(sub)
-            if matched_datasource is None:
-                other_subfolders.append(sub.name)
-            elif folder_has_real_content(sub):
-                found.append(matched_datasource.DESCRIPTION)
-            else:
-                empty.append(matched_datasource.DESCRIPTION)
-    except OSError as exc:
-        # e.g. a restricted network share that exists but can't be listed.
-        logger.warning("Could not inspect patient folder %r: %s", str(path), exc)
+    if scan.status == "is_file":
+        return html.Span(
+            "⚠ That's a file, not a folder. Pick the patient folder (maybe its parent? "
+            f"{path.parent.parent} ?)",
+            style=_PREVIEW_ERROR,
+        )
+    # A suffix but no such directory: almost certainly a data file, not the folder.
+    if scan.status == "missing" and path.suffix:
+        return html.Span(
+            f"⚠ '{path.name}' looks like a file, not a folder. Pick the patient folder, not a "
+            "data file.",
+            style=_PREVIEW_ERROR,
+        )
+    if scan.status == "missing":
+        return html.Span("⚠ This folder doesn't exist.", style=_PREVIEW_WARN)
+    if scan.status == "unreadable":
         return html.Span(
             "⚠ Couldn't read this folder (permission or path issue).", style=_PREVIEW_WARN
         )
+
+    found = [ds.DESCRIPTION for ds in scan.found]
+    empty = [ds.DESCRIPTION for ds in scan.empty]
 
     if found or empty:
         msg = ""
@@ -584,14 +568,15 @@ def _inspect_patient_folder(path: Path) -> Any:
         if empty:
             msg += f" ({len(empty)} recognized but empty: {', '.join(empty)})"
         return html.Span(msg.strip(), style=_PREVIEW_OK if found else _PREVIEW_WARN)
-    if self_datasource is not None:
+    # If the path itself is named like a device folder, the user went one level too deep.
+    if scan.self_datasource is not None:
         return html.Span(
-            f"⚠ This looks like a '{self_datasource.DESCRIPTION}' device folder, not a patient "
-            f"folder. Pick the patient folder (maybe its parent? {path.parent} ?)",
+            f"⚠ This looks like a '{scan.self_datasource.DESCRIPTION}' device folder, not a "
+            f"patient folder. Pick the patient folder (maybe its parent? {path.parent} ?)",
             style=_PREVIEW_WARN,
         )
-    if other_subfolders:
-        names = ", ".join(other_subfolders)
+    if scan.other_subfolders:
+        names = ", ".join(scan.other_subfolders)
         return html.Span(
             f"⚠ This doesn't look like a patient folder — its subfolders ({names}) don't match "
             f"any known device. A patient folder holds one subfolder per device.",
