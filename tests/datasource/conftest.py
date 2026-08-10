@@ -72,5 +72,10 @@ def fluxmed_parameters_cls():
 
 
 @pytest.fixture(scope="session")
+def edf_cls():
+    return _get_datasource_class("edf")
+
+
+@pytest.fixture(scope="session")
 def other_cls():
     return _get_datasource_class("other")

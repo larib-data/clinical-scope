@@ -654,6 +654,22 @@
         }
     },
 
+    "edf": {
+        "field_display": ["chan 1", "chan 2", "chan 3"],
+        "signals": {
+            "chan 1": {"label": "EEG 1", "unit": "µV", "color": "steelblue"},
+            "chan 2": {"label": "EEG 2", "unit": "µV", "color": "darkorange"},
+            "chan 3": {"label": "EEG 3", "unit": "µV", "color": "seagreen"}
+        },
+        "grouped_fields": {
+            "EEG": ["chan 1", "chan 2", "chan 3"]
+        },
+        "spectrogram": {
+            "EEG 1 spectrogram": {"signal": "chan 1", "freq_range": [0.5, 30.0]},
+            "EEG 3 spectrogram": {"signal": "chan 3", "freq_range": [0.5, 30.0], "db_range": [-20, 90]}
+        }
+    },
+
     "other::waves_first_half_filtered": {
         "field_display": [
             "Solar8000/HR",

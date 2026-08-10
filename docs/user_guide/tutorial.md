@@ -115,6 +115,7 @@ Patient1/
   fluxmed_parameters/
   servo_u/
   syringe/
+  edf/
   clinical_scope_output/               ← auto-created,
 ```
 
@@ -170,6 +171,7 @@ folder-discovery / skill logic refers to.
 | Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single file | High-frequency respiratory waveforms |
 | Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single file | Respiratory parameters (Vt, RR, PEEP, etc.) |
 | Syringe | `syringe` | `syringe` | `.parquet`, `.csv` | Single file | Infusion rates and volumes |
+| EDF / EDF+ | `edf` | `edf` | `.edf` | All files | Any signal an amplifier or recorder exports as EDF (typically EEG) |
 | Other (Generic) | `other` | `other` | `.csv`, `.parquet` | All files (one entry **per file**) | Any time-series with a datetime column |
 
 **Single file** sources expect exactly one data file per folder. When several formats coexist
@@ -178,6 +180,16 @@ stems remain after that filter, the source is skipped and a warning is logged.
 
 **All files** sources load every matching file in the folder and concatenate them. The `Other`
 source is special: each file produces an independent entry named `other::<stem>` (see below).
+
+**EDF recordings.** Channels are read exactly as the file stores them — a file holding bipolar derivations (`Fp1-F7`) shows those, a file holding referential channels shows those. Channels recorded at different sample rates are placed on a shared time axis, each keeping its own sampling.
+
+An EDF header always states a start date and a start time, but de-identification commonly blanks them (the format's "unknown date" is `01.01.1985`), leaving a recording that is effectively relative time only. Place such a recording with the per-source `recording_start` option in [patient_options.json](#patient_optionsjson):
+
+- **A full timestamp** (`2024-10-08 08:12:33`) puts the first sample at that instant — use this when the file's clock time was blanked too.
+- **A date alone** (`2024-10-08`) shifts the recording by whole days and keeps the file's own time of day — use this when only the date was scrubbed.
+- Times are read in the **device's** timezone (the source's `additional_informations.timezone`, `Europe/Paris` by default), not your display timezone.
+
+A file that still carries a real start date keeps it, and `recording_start` is ignored. A file with no date and no `recording_start` is still plotted, anchored at 1985-01-01, with a warning in the log.
 
 Per-source configuration options (`field_display`, `signals`, `grouped_fields`, `loop`,
 `additional_informations`, etc.) are documented in the [Configuration File Reference section](#configuration-file-reference).
@@ -399,9 +411,14 @@ datasource containing:
     - red `load_error` or `format_error` — loading or formatting raised an exception (the
       error message is shown below the badge)
 - **File path** — the detected data file or folder.
-- **Date ranges** — both the raw (unfiltered) and filtered time ranges.
+- **Date ranges** — two lines. *Date range in file* is the source's own timestamps, untouched.
+  *After time options* is what the application will actually plot, once **every** time setting has
+  been applied: the source's time shift, its recording start or day for sources that need one, its
+  timezone, and finally the `datetime_start` / `datetime_end` window. The second line differing from
+  the first is therefore normal and not necessarily a sign that data was cut.
 - **Columns table** — each column with: raw name, whether it is configured in the database
-  options, raw point count, filtered point count, and first/last filtered timestamps.
+  options, the point count in the file, the count kept after the same time options, and the first
+  and last kept timestamps.
 
 > **Note for the Other (Generic) source**: because the `other` folder may contain several
 > independent files, the inspection modal shows **one entry per file** (e.g. `other::waves`,
@@ -556,6 +573,9 @@ subfolder each time you click "Process visualization".
     },
     "eit": {
         "day": "2024-10-08"
+    },
+    "edf": {
+        "recording_start": "2024-10-08 08:12:33"
     }
 }
 ```
@@ -693,7 +713,7 @@ It does not filter which signals are affected — it simply provides fallback va
 The `spectrogram` block defines time-vs-frequency-vs-power plots — one entry produces one subplot, a heatmap with time on the x-axis, frequency on the y-axis, and power as colour. EEG is the main use case, but any sufficiently sampled signal works.
 
 ```json
-"other::eeg": {
+"edf": {
     "spectrogram": {
         "Fp1 spectrogram": {
             "signal": "Fp1",

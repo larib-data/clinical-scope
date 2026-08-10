@@ -194,7 +194,7 @@ class TestMainSpectrograms:
     def db_opts_with_spectrogram(self, example_database_options):
         """example_database_options extended with a spectrogram on the shipped demo EEG file."""
         opts = copy.deepcopy(example_database_options)
-        opts["other::eeg"] = {
+        opts["edf"] = {
             "spectrogram": {
                 "chan1 spectrogram": {"signal": "chan 1", "freq_range": [0.5, 30.0]},
             }
@@ -233,7 +233,7 @@ class TestMainSpectrogramRefusal:
     def db_opts_with_decimated_spectrogram(self, example_database_options):
         """Same spectrogram config, but its source signal is decimated (period_resampling<1)."""
         opts = copy.deepcopy(example_database_options)
-        opts["other::eeg"] = {
+        opts["edf"] = {
             "signals": {"chan 1": {"period_resampling": 0.5}},
             "spectrogram": {
                 "chan1 spectrogram": {"signal": "chan 1", "freq_range": [0.5, 30.0]},

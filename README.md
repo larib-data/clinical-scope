@@ -99,6 +99,7 @@ The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for e
 | Mindray Respi Waves | Mindray respiratory | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | High-frequency respiratory waveforms |
 | Mindray Respi Numerics | Mindray respiratory | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Vt, RR, PEEP, and more |
 | Syringe | Syringe pump | `syringe` | `.parquet`, `.csv` | Infusion rates and volumes |
+| EDF / EDF+ | Amplifiers and polygraphic recorders | `edf` | `.edf` | Any EDF-exported signal, typically EEG |
 | Other (Generic) | Any CSV / Parquet | `other` | `.csv`, `.parquet` | Any time-series with a datetime column |
 
 Each patient folder should contain one subfolder per data source. See the [user guide](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* for folder naming rules and configuration details.

@@ -52,6 +52,7 @@ def patient_options_full(patient_full_path):
         "datetime_end": None,
         "quick_load": False,
         "eit": {"day": "2004-09-15"},
+        "edf": {"recording_start": "2004-09-15 08:12:33"},
     }
 
 

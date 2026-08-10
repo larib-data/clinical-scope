@@ -7,6 +7,7 @@ from typing import ClassVar
 
 import clinical_scope.constants as cst
 from clinical_scope.datasource.base import DataSourceBase
+from clinical_scope.datasource.sources.edf import find_load_format as _edf
 from clinical_scope.datasource.sources.eit import find_load_format as _eit
 from clinical_scope.datasource.sources.fluxmed_parameters import (
     find_load_format as _fluxmed_parameters,
@@ -154,6 +155,13 @@ class DataSource:
         MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
+    @add_main_module(_edf)
+    class Edf:
+        NAME = "edf"
+        DESCRIPTION = "EDF / EDF+"
+        MAIN_MODULE: ClassVar[MainModule]
+        OPTIONS: object
+
     @add_main_module(_other)
     class Other:
         NAME = "other"
@@ -173,6 +181,7 @@ class DataSource:
         MindRayRespiNumerics,
         MindRayRespiWaves,
         MindRayScope,
+        Edf,
         Other,
     )
 

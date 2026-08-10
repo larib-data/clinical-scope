@@ -17,6 +17,7 @@ JUNK_FILENAME_PATTERNS = frozenset(
 
 LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"
+DATETIME_INDEX_NAME = "datetime_index"
 
 # Safety pad added around parquet row-pushdown bounds (issue #57): bounds are deliberately
 # conservative-loose, since _filter_by_datetime remains the authoritative cut afterwards.

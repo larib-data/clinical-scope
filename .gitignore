@@ -43,8 +43,7 @@ LOCAL_SCRIPT/*
 # IA
 PLANS/*
 # QWEN.md — now a symlink to CLAUDE.md
-.qwen/settings.json.orig
-.qwen/settings.json
+.qwen/
 
 # mattpocock skills
 docs/agents/

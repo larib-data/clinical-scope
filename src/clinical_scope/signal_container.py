@@ -4,7 +4,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -68,9 +68,6 @@ def merge_y_ranges(
     return [min(bound[0] for bound in ranges), max(bound[1] for bound in ranges)]
 
 
-_NumberT = TypeVar("_NumberT", int, float)
-
-
 @dataclass(frozen=True)
 class DisplayFallbacks:
     """
@@ -109,7 +106,7 @@ class DisplayFallbacks:
         options = user_options or {}
         schema = cst.UserOptions
 
-        def bounded_number(field_schema: Any, cast: Callable[[Any], _NumberT] = int) -> _NumberT:
+        def bounded_number(field_schema: Any, cast: Callable[[Any], Any] = int) -> int | float:
             if field_schema.NAME not in options:
                 return field_schema.DEFAULT
             try:
@@ -224,7 +221,7 @@ class PlotOptions:
         if self.plot_type is None:
             logger.warning("PlotOptions.plot_type should not be initialized to None")
         if self.plot_priority is None:
-            self.plot_priority = 10000  # By default, after everything else
+            self.plot_priority = 10000
 
     @staticmethod
     def combine_from_signals(signals: list["Signal"], group_name: str) -> "PlotOptions":

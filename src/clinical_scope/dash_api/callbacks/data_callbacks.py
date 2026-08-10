@@ -833,10 +833,10 @@ _COL_CELL_STYLES: list[dict | None] = [
     {"fontFamily": "monospace", "fontSize": "13px"},  # Column
     None,  # Configured — style computed dynamically below
     {"textAlign": "right"},  # Raw pts
-    {"textAlign": "right"},  # Filtered pts
+    {"textAlign": "right"},  # Kept pts
     {"textAlign": "right"},  # % retained
-    {"textAlign": "left", "fontSize": "11px"},  # First (filtered)
-    {"textAlign": "left", "fontSize": "11px"},  # Last (filtered)
+    {"textAlign": "left", "fontSize": "11px"},  # First
+    {"textAlign": "left", "fontSize": "11px"},  # Last
 ]
 
 
@@ -887,7 +887,7 @@ def _build_inspection_content(results: list) -> list:
         if result.filtered_date_range:
             meta_parts.append(
                 html.Div(
-                    f"After filter:        "
+                    f"After time options:  "
                     f"{result.filtered_date_range[0]}  →  {result.filtered_date_range[1]}",
                     style={"fontSize": "12px", "color": "#666"},
                 )
