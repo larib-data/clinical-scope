@@ -665,8 +665,8 @@
             "EEG": ["chan 1", "chan 2", "chan 3"]
         },
         "spectrogram": {
-            "EEG 1 spectrogram": {"signal": "chan 1", "freq_range": [0.5, 30.0]},
-            "EEG 3 spectrogram": {"signal": "chan 3", "freq_range": [0.5, 30.0], "db_range": [-20, 90]}
+            "EEG 1 spectrogram": {"signal": "chan 1", "freq_range": [0.5, 30.0], "db_range": [50, 85]},
+            "EEG 3 spectrogram": {"signal": "chan 3", "freq_range": [0.5, 30.0], "db_range": [50, 85]}
         }
     },
 
