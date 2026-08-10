@@ -31,6 +31,10 @@ _Avoid_: field, parameter, channel, trace, series, variable
 A plot of one Signal's values against another's (X–Y) rather than against time — e.g. a pressure–volume loop. Configured via the `loop` key (which Signal pairs to pair up).
 _Avoid_: cycle, P–V plot
 
+**Spectrogram**:
+A time-vs-frequency-vs-power plot of one Signal — time on x, frequency on y, power as colour (what bedside monitors call a Density Spectral Array). Configured via the `spectrogram` key (one Signal, a frequency band, and an optional colour range). EEG is the driving use case, but the plot type takes any sufficiently sampled Signal.
+_Avoid_: DSA, CSA, compressed spectral array, spectral analysis (the category containing both this and the not-yet-built PSD plot, so it can't name one member)
+
 **Grouping**:
 The drawing of several Signals on one subplot with shared axes, configured via `grouped_fields` (within a datasource) or `global.grouped_fields` (across datasources).
 _Avoid_: merge, combine
@@ -41,7 +45,7 @@ _Avoid_: label, tag, comment
 - **Time event** — a vertical line at a single timestamp.
 - **Time window** — a shaded interval between two timestamps.
 - **Point** — a labelled marker at an (x, y) location.
-- Time event and Time window need a time axis, so **Point is the only type that can be placed on a Loop.**
+- Time event and Time window need a time axis, so **Point is the only type that can be placed on a Loop** — a Loop's x-axis is another Signal's values, not time. This is a property of Loop specifically, not of derived plots generally: a **Spectrogram**'s x-axis is still time, so it takes all three types like a plain time-series plot.
 
 ### Actions
 
@@ -85,6 +89,7 @@ The `database_options` block of per-datasource defaults — resampling period an
 - A **Patient** contains one or more **Datasources** (one subfolder each).
 - A **Datasource** produces many **Signals**.
 - A **Loop** is derived from two **Signals**.
+- A **Spectrogram** is derived from one **Signal**.
 - A **Grouping** draws several **Signals** on one subplot.
 - An **Annotation** is attached to one plot (optionally one subplot) and may carry a **Patient** identifier when loaded across a **Database**.
 

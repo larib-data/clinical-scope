@@ -83,20 +83,40 @@ def _check_unknown_keys(section: dict, path_prefix: str, issues: list[Validation
             )
         )
     signals = section.get(cst.DatabaseOptions.SIGNALS)
-    if not signals or not isinstance(signals, dict):
+    if signals and isinstance(signals, dict):
+        for raw_name, signal_options in signals.items():
+            if not isinstance(signal_options, dict):
+                continue
+            unknown_sig = set(signal_options.keys()) - cst.DatabaseOptions.SignalConfig.KNOWN_KEYS
+            if unknown_sig:
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        path=f"{path_prefix}.signals.{raw_name}",
+                        message=(
+                            f"Unknown keys: {sorted(unknown_sig)}. "
+                            f"Expected: {sorted(cst.DatabaseOptions.SignalConfig.KNOWN_KEYS)}"
+                        ),
+                    )
+                )
+
+    spectrograms = section.get(cst.DatabaseOptions.SPECTROGRAM)
+    if not spectrograms or not isinstance(spectrograms, dict):
         return
-    for raw_name, signal_options in signals.items():
-        if not isinstance(signal_options, dict):
+    for spectrogram_name, spectrogram_options in spectrograms.items():
+        if not isinstance(spectrogram_options, dict):
             continue
-        unknown_sig = set(signal_options.keys()) - cst.DatabaseOptions.SignalConfig.KNOWN_KEYS
-        if unknown_sig:
+        unknown_spec = (
+            set(spectrogram_options.keys()) - cst.DatabaseOptions.SpectrogramConfig.KNOWN_KEYS
+        )
+        if unknown_spec:
             issues.append(
                 ValidationIssue(
                     severity="warning",
-                    path=f"{path_prefix}.signals.{raw_name}",
+                    path=f"{path_prefix}.spectrogram.{spectrogram_name}",
                     message=(
-                        f"Unknown keys: {sorted(unknown_sig)}. "
-                        f"Expected: {sorted(cst.DatabaseOptions.SignalConfig.KNOWN_KEYS)}"
+                        f"Unknown keys: {sorted(unknown_spec)}. "
+                        f"Expected: {sorted(cst.DatabaseOptions.SpectrogramConfig.KNOWN_KEYS)}"
                     ),
                 )
             )
@@ -135,6 +155,47 @@ def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue])
                 message=f"Must be a dict, got {type(grouped_fields).__name__}",
             )
         )
+
+    spectrogram_config = cst.DatabaseOptions.SpectrogramConfig
+    spectrograms = section.get(cst.DatabaseOptions.SPECTROGRAM)
+    if spectrograms is not None and not isinstance(spectrograms, dict):
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                path=f"{path_prefix}.spectrogram",
+                message=f"Must be a dict, got {type(spectrograms).__name__}",
+            )
+        )
+    else:
+        for spectrogram_name, spectrogram_options in (spectrograms or {}).items():
+            if not isinstance(spectrogram_options, dict):
+                continue
+            spectrogram_path = f"{path_prefix}.spectrogram.{spectrogram_name}"
+
+            if spectrogram_config.SIGNAL not in spectrogram_options:
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        path=spectrogram_path,
+                        message="Missing required key 'signal'",
+                    )
+                )
+
+            freq_range = spectrogram_options.get(spectrogram_config.FREQ_RANGE)
+            if freq_range is None or not (
+                isinstance(freq_range, list)
+                and len(freq_range) == 2  # noqa: PLR2004
+                and all(isinstance(bound, (int, float)) for bound in freq_range)
+            ):
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        path=f"{spectrogram_path}.freq_range",
+                        message=(
+                            f"Must be a required 2-element list of numbers, got {freq_range!r}"
+                        ),
+                    )
+                )
 
     signals = signals_raw if isinstance(signals_raw, dict) else {}
     for raw_name, signal_options in signals.items():

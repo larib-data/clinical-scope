@@ -248,10 +248,15 @@ DEFAULT_COLORWAY = Colorway.OKABE_ITO
 DEFAULT_PLOT_TEMPLATE = PlotTemplate.LIGHT
 DEFAULT_HOVERMODE = HoverMode.X_UNIFIED
 DEFAULT_HOVER_TIME_FORMAT = HoverTimeFormat.TIME_ONLY
+# Fixed rather than auto-scaled: colour range must stay comparable across patients for a
+# trained eye reading it like a bedside monitor.
+DEFAULT_SPECTROGRAM_DB_MIN = -10.0
+DEFAULT_SPECTROGRAM_DB_MAX = 30.0
 
 # Bounds for the size settings, so a typo can't produce an unrenderable figure.
 SUBPLOT_HEIGHT_MIN, SUBPLOT_HEIGHT_MAX = 100, 2000
 LEGEND_ENTRY_WIDTH_MIN, LEGEND_ENTRY_WIDTH_MAX = 60, 600
+SPECTROGRAM_DB_BOUND_MIN, SPECTROGRAM_DB_BOUND_MAX = -100.0, 100.0
 
 LOOPS_PER_ROW_CHOICES = ((1, "1"), (2, "2"), (3, "3"))
 Y_SIGNIFICANT_DIGITS_CHOICES = ((2, "2"), (3, "3"), (4, "4"), (6, "6"))
@@ -399,6 +404,26 @@ class UserOptions:
         CHOICES = Y_SIGNIFICANT_DIGITS_CHOICES
         DESCRIPTION = "Hover: significant digits of the y value"
 
+    class SpectrogramDbMin:
+        ORDER = 11
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "spectrogram_db_min"
+        API_TYPE = ApiType.FLOAT
+        DEFAULT = DEFAULT_SPECTROGRAM_DB_MIN
+        MIN = SPECTROGRAM_DB_BOUND_MIN
+        MAX = SPECTROGRAM_DB_BOUND_MAX
+        DESCRIPTION = "Spectrogram colour range fallback — minimum (dB)"
+
+    class SpectrogramDbMax:
+        ORDER = 12
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "spectrogram_db_max"
+        API_TYPE = ApiType.FLOAT
+        DEFAULT = DEFAULT_SPECTROGRAM_DB_MAX
+        MIN = SPECTROGRAM_DB_BOUND_MIN
+        MAX = SPECTROGRAM_DB_BOUND_MAX
+        DESCRIPTION = "Spectrogram colour range fallback — maximum (dB)"
+
 
 class DatabaseOptions:
     """
@@ -435,13 +460,23 @@ class DatabaseOptions:
     ADDITIONAL_INFORMATIONS = "additional_informations"
     GROUPED_FIELDS = "grouped_fields"
     LOOP = "loop"
+    SPECTROGRAM = "spectrogram"
     FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
 
     # Trailing marker that turns a field_display entry into a prefix wildcard (e.g. "Local 1*").
     WILDCARD_SUFFIX = "*"
 
     KNOWN_SECTION_KEYS = frozenset(
-        {SIGNALS, FIELD_DISPLAY, NUMERICS, ADDITIONAL_INFORMATIONS, GROUPED_FIELDS, LOOP, FILES}
+        {
+            SIGNALS,
+            FIELD_DISPLAY,
+            NUMERICS,
+            ADDITIONAL_INFORMATIONS,
+            GROUPED_FIELDS,
+            LOOP,
+            SPECTROGRAM,
+            FILES,
+        }
     )
 
     # --- Per-signal configuration (inside "signals" → "<raw_name>" dict) ---
@@ -476,6 +511,16 @@ class DatabaseOptions:
             }
         )
 
+    # --- Per-spectrogram configuration (inside "spectrogram" → "<name>" dict) ---
+    class SpectrogramConfig:
+        SIGNAL = "signal"  # one raw name — no arithmetic, no pairs, no wildcards
+        FREQ_RANGE = "freq_range"  # [min_hz, max_hz], required — no workable global default
+        DB_RANGE = "db_range"  # [min_db, max_db], optional — falls back to a user option
+        WINDOW_S = "window_s"  # optional override; derived from freq_min by default
+        OVERLAP = "overlap"  # optional override; fixed at 50% by default
+
+        KNOWN_KEYS = frozenset({SIGNAL, FREQ_RANGE, DB_RANGE, WINDOW_S, OVERLAP})
+
     # --- Datasource-level numerics defaults ---
     class Numerics:
         PRIORITY = "priority"
@@ -493,17 +538,49 @@ class SourceOptions:
     TRACE_OPTIONS = "trace_options"
 
 
+class Spectral:
+    """Defaults for spectral.py's STFT-based spectrogram computation."""
+
+    # Cycles of the lowest frequency of interest a window must span, for the STFT to
+    # resolve freq_min at all. 4-8 is the usual DSP range; 5 splits the difference.
+    WINDOW_CYCLES = 5
+
+    # Fixed by design, not user-configurable (see database_options spectrogram schema).
+    OVERLAP_FRACTION = 0.5
+
+    # Fraction of median Δt a step can deviate by and still count as "already uniform"
+    # (skip interpolation). Kept tight since the reference EEG recording measured
+    # jitter=0; revisit once validated against real hardware timestamp noise.
+    JITTER_TOLERANCE = 0.05
+
+    # Multiple of median Δt beyond which a step is a recording gap (masked as NaN in
+    # the STFT output) rather than jitter (interpolated across).
+    GAP_FACTOR = 3.0
+
+    # Perceptually uniform and colorblind-safe, like the Okabe-Ito trace palette above.
+    COLORSCALE = "Viridis"
+
+    # Narrower than Plotly's default so a colorbar stays clear of neighboring stacked rows.
+    COLORBAR_THICKNESS = 15
+
+
 class PlotType:
     TIME_SERIES = "time_series"
+    SPECTROGRAM = "spectrogram"
     LOOP = "loop"
 
     # Page order of the plot models (top to bottom); types not listed here go last.
     PAGE_ORDER = (
         TIME_SERIES,
+        SPECTROGRAM,
         LOOP,
     )
 
 
 if PlotType.LOOP != DatabaseOptions.LOOP:
+    msg = "No idea if that would work. Error here to warn you"
+    raise NotImplementedError(msg)
+
+if PlotType.SPECTROGRAM != DatabaseOptions.SPECTROGRAM:
     msg = "No idea if that would work. Error here to warn you"
     raise NotImplementedError(msg)

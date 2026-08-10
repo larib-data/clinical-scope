@@ -19,6 +19,7 @@ from clinical_scope.signal_container import (
     merge_y_ranges,
     print_out_figure,
 )
+from clinical_scope.spectral import SpectralRefusalError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -40,6 +41,19 @@ def _make_signal(raw_name="sig_a", name=None, n=50, unit="mmHg", plot_type="time
         "signals": {raw_name: {"label": name or raw_name, "unit": unit}},
         "field_display": [raw_name],
     }
+    return Signal.time_series_from_dataframe(df, raw_name, database_options_specific=db_opts)
+
+
+def _make_spectrogram_source_signal(
+    raw_name="eeg", n=1280, sample_rate_hz=128.0, period_resampling=None
+):
+    """A time-series Signal sampled fast/long enough for a real spectrogram window."""
+    idx = pd.date_range("2024-01-01", periods=n, freq=f"{1000 / sample_rate_hz}ms", tz="UTC")
+    values = np.sin(2 * np.pi * 10.0 * np.arange(n) / sample_rate_hz)
+    df = pd.DataFrame({raw_name: values}, index=idx)
+    db_opts = {}
+    if period_resampling is not None:
+        db_opts = {"numerics": {"period_resampling": period_resampling}}
     return Signal.time_series_from_dataframe(df, raw_name, database_options_specific=db_opts)
 
 
@@ -210,6 +224,47 @@ class TestSignalLoop:
         sig_y = Signal.time_series_from_dataframe(df2, "b")
         with pytest.raises(ValueError, match="no data"):
             Signal.loop_from_signals(sig_x, sig_y)
+
+
+class TestSignalSpectrogram:
+    def test_basic_spectrogram(self):
+        source = _make_spectrogram_source_signal()
+        spec = Signal.spectrogram_from_signal(
+            source, name="EEG spectrogram", freq_range=(1.0, 30.0)
+        )
+        assert spec.trace_options.plot_options.plot_type == cst.PlotType.SPECTROGRAM
+        assert spec.name == "EEG spectrogram"
+        assert isinstance(spec.trace, go.Heatmap)
+        assert spec.data.spectrogram_freq_axis is not None
+        assert spec.data.y.shape == (len(spec.data.x), len(spec.data.spectrogram_freq_axis))
+
+    def test_decimated_signal_refuses(self):
+        source = _make_spectrogram_source_signal(period_resampling=0.5)
+        with pytest.raises(SpectralRefusalError, match="decimated"):
+            Signal.spectrogram_from_signal(source, name="x", freq_range=(1.0, 30.0))
+
+    def test_non_time_series_input_raises(self):
+        loop = Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
+        with pytest.raises(ValueError, match="time_series"):
+            Signal.spectrogram_from_signal(loop, name="x", freq_range=(1.0, 30.0))
+
+    def test_db_range_override(self):
+        source = _make_spectrogram_source_signal()
+        spec = Signal.spectrogram_from_signal(
+            source, name="x", freq_range=(1.0, 30.0), db_range=[-20, 10]
+        )
+        assert spec.trace_options.plot_options.color_range == [-20, 10]
+        assert (spec.trace.zmin, spec.trace.zmax) == (-20, 10)
+
+    def test_db_range_falls_back_to_display_fallbacks(self):
+        df = pd.DataFrame(
+            {"eeg": np.sin(2 * np.pi * 10.0 * np.arange(1280) / 128.0)},
+            index=pd.date_range("2024-01-01", periods=1280, freq="7.8125ms", tz="UTC"),
+        )
+        fallbacks = DisplayFallbacks(spectrogram_db_range=(-5.0, 15.0))
+        source = Signal.time_series_from_dataframe(df, "eeg", display_fallbacks=fallbacks)
+        spec = Signal.spectrogram_from_signal(source, name="x", freq_range=(1.0, 30.0))
+        assert spec.trace_options.plot_options.color_range == [-5.0, 15.0]
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +499,16 @@ class TestHoverFallbacks:
         )
         assert model.figure.layout.hovermode is None
 
+    def test_spectrograms_keep_plotly_hovermode(self):
+        spec = Signal.spectrogram_from_signal(
+            _make_spectrogram_source_signal(), name="x", freq_range=(1.0, 30.0)
+        )
+        model = PlotModel(
+            groups=[PlotGroup.from_single_signal(spec)],
+            display_fallbacks=DisplayFallbacks(hovermode=cst.HoverMode.X_UNIFIED),
+        )
+        assert model.figure.layout.hovermode is None
+
 
 class TestLayoutFallbacks:
     def test_template_applied(self):
@@ -513,6 +578,39 @@ class TestLoopGrid:
             DisplayFallbacks(loops_per_row=3),
         )[0]
         assert model.n_cols == 1
+
+
+class TestSpectrogramFigure:
+    def _spectrogram_groups(self, count):
+        return [
+            PlotGroup.from_single_signal(
+                Signal.spectrogram_from_signal(
+                    _make_spectrogram_source_signal(raw_name=f"eeg_{index}"),
+                    name=f"spectrogram_{index}",
+                    freq_range=(1.0, 30.0),
+                )
+            )
+            for index in range(count)
+        ]
+
+    def test_stacks_in_one_column_like_time_series(self):
+        model = PlotModel.assign_plot_model(self._spectrogram_groups(3))[0]
+        assert model.n_cols == 1
+
+    def test_colorbars_are_scoped_to_their_own_row(self):
+        """Each heatmap's colorbar must fit its own subplot row, not span the whole figure."""
+        model = PlotModel.assign_plot_model(self._spectrogram_groups(2))[0]
+        colorbars = [trace.colorbar for trace in model.figure.data]
+        assert len(colorbars) == 2
+        # Stacked top-to-bottom: the first group's row sits above the second's.
+        assert colorbars[0].y > colorbars[1].y
+        for colorbar in colorbars:
+            assert colorbar.len < 1.0
+
+    def test_shares_x_axis_across_stacked_spectrograms(self):
+        """Zooming one spectrogram should keep the others aligned, like time-series subplots."""
+        model = PlotModel.assign_plot_model(self._spectrogram_groups(2))[0]
+        assert model.figure.layout.xaxis2.matches == "x"
 
 
 class TestToHtml:

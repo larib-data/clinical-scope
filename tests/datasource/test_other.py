@@ -256,6 +256,34 @@ class TestLoopConfig:
         ]
 
 
+class TestSpectrogramConfig:
+    """Per-file spectrogram definitions from other::filename are injected into database_options."""
+
+    def test_per_file_spectrogram_injected_with_prefix(self, patient_difficult_path):
+        """The bare 'signal' name is prefixed with file_stem::, other keys pass through as-is."""
+
+        db_opts = {
+            "other::waves_first_half_filtered": {
+                "spectrogram": {
+                    "HR spectrogram": {"signal": "Solar8000/HR", "freq_range": [0.5, 30.0]}
+                }
+            }
+        }
+        normalize_database_options(db_opts)
+        from clinical_scope.datasource.registry import DataSource
+
+        ds = DataSource.get_subclass_by_name("other")
+        patient_options = {**PATIENT_OPTIONS, "data_folder": str(patient_difficult_path)}
+        ds.MAIN_MODULE(patient_options, db_opts["other"])
+
+        spectrogram = db_opts["other"].get("spectrogram", {})
+        assert "HR spectrogram" in spectrogram
+        assert spectrogram["HR spectrogram"] == {
+            "signal": "waves_first_half_filtered::Solar8000/HR",
+            "freq_range": [0.5, 30.0],
+        }
+
+
 class TestNormalizeDatabaseOptions:
     """Unit tests for database_options_parser.normalize_database_options()."""
 

@@ -187,3 +187,66 @@ class TestMainGlobalLoops:
         for m in loop_models:
             assert isinstance(m.figure, go.Figure)
             assert len(m.figure.data) > 0
+
+
+class TestMainSpectrograms:
+    @pytest.fixture(scope="class")
+    def db_opts_with_spectrogram(self, example_database_options):
+        """example_database_options extended with a spectrogram on the shipped demo EEG file."""
+        opts = copy.deepcopy(example_database_options)
+        opts["other::eeg"] = {
+            "spectrogram": {
+                "chan1 spectrogram": {"signal": "chan 1", "freq_range": [0.5, 30.0]},
+            }
+        }
+        return opts
+
+    def test_spectrogram_config_produces_spectrogram_plot_model(
+        self, patient_options_full, db_opts_with_spectrogram
+    ):
+        """wrapper.main() must produce one 'spectrogram' PlotModel with real computed STFT data."""
+        models = main(patient_options_full, db_opts_with_spectrogram)
+        spectrogram_models = [m for m in models if m.plot_type == "spectrogram"]
+        assert len(spectrogram_models) == 1
+        group = spectrogram_models[0].groups[0]
+        assert group.name == "chan1 spectrogram"
+        freq_axis = group.signals[0].data.spectrogram_freq_axis
+        assert freq_axis is not None
+        assert freq_axis.min() >= 0.5
+        assert freq_axis.max() <= 30.0
+
+    def test_spectrogram_model_has_heatmap_figure(
+        self, patient_options_full, db_opts_with_spectrogram
+    ):
+        """The spectrogram PlotModel must carry a rendered go.Heatmap trace."""
+        models = main(patient_options_full, db_opts_with_spectrogram)
+        spectrogram_models = [m for m in models if m.plot_type == "spectrogram"]
+        assert len(spectrogram_models) == 1
+        figure = spectrogram_models[0].figure
+        assert isinstance(figure, go.Figure)
+        assert len(figure.data) == 1
+        assert isinstance(figure.data[0], go.Heatmap)
+
+
+class TestMainSpectrogramRefusal:
+    @pytest.fixture(scope="class")
+    def db_opts_with_decimated_spectrogram(self, example_database_options):
+        """Same spectrogram config, but its source signal is decimated (period_resampling<1)."""
+        opts = copy.deepcopy(example_database_options)
+        opts["other::eeg"] = {
+            "signals": {"chan 1": {"period_resampling": 0.5}},
+            "spectrogram": {
+                "chan1 spectrogram": {"signal": "chan 1", "freq_range": [0.5, 30.0]},
+            },
+        }
+        return opts
+
+    def test_decimated_signal_is_refused_not_raised(
+        self, patient_options_full, db_opts_with_decimated_spectrogram
+    ):
+        """A decimated source signal must be refused (logged) rather than crashing main()."""
+        models = main(patient_options_full, db_opts_with_decimated_spectrogram)
+        assert isinstance(models, list)
+        assert len(models) > 0, "The rest of the pipeline must still produce PlotModels"
+        spectrogram_models = [m for m in models if m.plot_type == "spectrogram"]
+        assert spectrogram_models == []

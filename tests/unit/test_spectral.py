@@ -1,0 +1,114 @@
+"""
+Tests for spectral.py: STFT-based spectrogram computation on plain numpy arrays.
+
+No example data needed — synthetic arrays are enough to pin the grid-validation
+policy (uniform passthrough, jittered-grid interpolation, gap masking, decimation
+refusal) and the maths (a known sinusoid lands in the expected frequency bin).
+"""
+
+import numpy as np
+import pytest
+
+from clinical_scope.spectral import (
+    SpectralRefusalError,
+    build_uniform_grid,
+    spectrogram,
+    stft,
+)
+
+
+def _datetime_x(t_seconds: np.ndarray, start: str = "2024-01-01T00:00:00") -> np.ndarray:
+    return np.datetime64(start) + (t_seconds * 1e9).astype(np.int64).astype("timedelta64[ns]")
+
+
+def _uniform_series(fs: float, duration_s: float, freq_hz: float = 10.0):
+    t_seconds = np.arange(int(fs * duration_s)) / fs
+    y = np.sin(2 * np.pi * freq_hz * t_seconds)
+    return _datetime_x(t_seconds), y
+
+
+def test_build_uniform_grid_passes_through_already_uniform_series():
+    x, y = _uniform_series(fs=128.0, duration_s=5.0)
+
+    x_out, y_out, dt_seconds = build_uniform_grid(x, y)
+
+    assert x_out is x
+    assert y_out is y
+    assert dt_seconds == pytest.approx(1 / 128.0, rel=1e-6)
+
+
+def test_build_uniform_grid_interpolates_jitter_beyond_tolerance():
+    fs = 128.0
+    x, y = _uniform_series(fs=fs, duration_s=5.0)
+    x_ns = x.astype("datetime64[ns]").astype(np.int64)
+    median_dt_ns = float(np.median(np.diff(x_ns)))
+
+    # 20% jitter on every step, well past the 5% default tolerance.
+    rng = np.random.default_rng(0)
+    jitter_ns = (rng.uniform(-0.2, 0.2, size=len(x_ns) - 1) * median_dt_ns).astype(np.int64)
+    x_ns[1:] += np.cumsum(jitter_ns)
+    x_jittered = np.sort(x_ns).astype("datetime64[ns]")
+
+    x_out, y_out, dt_seconds = build_uniform_grid(x_jittered, y)
+
+    out_steps = np.diff(x_out.astype(np.int64))
+    assert (out_steps == out_steps[0]).all()
+    assert dt_seconds == pytest.approx(1 / fs, rel=0.05)
+
+
+def test_build_uniform_grid_masks_gap_as_nan_rather_than_interpolating():
+    fs = 128.0
+    x, y = _uniform_series(fs=fs, duration_s=5.0)
+    x_ns = x.astype("datetime64[ns]").astype(np.int64)
+    median_dt_ns = float(np.median(np.diff(x_ns)))
+
+    # Open up a gap 10x the median step partway through.
+    gap_start_idx = len(x_ns) // 2
+    x_ns[gap_start_idx:] += int(10 * median_dt_ns)
+    x_gapped = x_ns.astype("datetime64[ns]")
+
+    x_out, y_out, _ = build_uniform_grid(x_gapped, y)
+
+    assert np.isnan(y_out).any()
+    assert not np.isnan(y_out).all()
+
+
+def test_stft_refuses_signal_shorter_than_window():
+    y = np.zeros(10)
+    with pytest.raises(SpectralRefusalError, match="too short"):
+        stft(y, dt_seconds=1 / 128.0, window_s=5.0)
+
+
+def test_spectrogram_finds_known_sinusoid_in_expected_bin():
+    x, y = _uniform_series(fs=128.0, duration_s=20.0, freq_hz=10.0)
+
+    times, freqs, power_db = spectrogram(x, y, freq_range=(1.0, 30.0))
+
+    peak_freq = freqs[np.nanargmax(power_db[len(power_db) // 2])]
+    assert peak_freq == pytest.approx(10.0, abs=0.5)
+    assert len(times) == power_db.shape[0]
+    assert len(freqs) == power_db.shape[1]
+
+
+def test_spectrogram_refuses_decimated_signal():
+    x, y = _uniform_series(fs=128.0, duration_s=5.0)
+
+    with pytest.raises(SpectralRefusalError, match="decimated"):
+        spectrogram(x, y, freq_range=(1.0, 10.0), period_resampling=0.5)
+
+
+def test_spectrogram_refuses_freq_range_above_nyquist():
+    x, y = _uniform_series(fs=10.0, duration_s=5.0, freq_hz=2.0)
+
+    with pytest.raises(SpectralRefusalError, match="Nyquist"):
+        spectrogram(x, y, freq_range=(1.0, 20.0))
+
+
+def test_spectrogram_derives_window_from_freq_min():
+    # window_cycles=5 (default) / freq_min=2Hz -> window_s=2.5s -> 320 samples @128Hz.
+    x, y = _uniform_series(fs=128.0, duration_s=20.0, freq_hz=10.0)
+
+    times, freqs, power_db = spectrogram(x, y, freq_range=(2.0, 30.0))
+
+    freq_resolution = freqs[1] - freqs[0]
+    assert freq_resolution == pytest.approx(1 / 2.5, rel=1e-6)

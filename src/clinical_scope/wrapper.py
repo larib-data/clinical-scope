@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -20,6 +21,7 @@ from clinical_scope.signal_container import (
     PlotModel,
     Signal,
 )
+from clinical_scope.spectral import SpectralRefusalError
 
 # ==================================================================================================
 logger = logging.getLogger(__name__)
@@ -107,6 +109,97 @@ def _format_datasource_summary(found: dict[str, str], requested: list[str]) -> s
     if not_found:
         parts.append(f"Not found ({len(not_found)}): {', '.join(not_found)}")
     return " | ".join(parts) if parts else "No datasource requested."
+
+
+class _SourceSignalNotFoundError(Exception):
+    """Raised by a plot-group builder when its source signal isn't in ``list_signal``."""
+
+
+def _add_derived_plot_group(
+    kind: str,
+    item_name: str,
+    datasource_name: str,
+    build_signal: Callable[[], Signal],
+    plot_group_list: list[PlotGroup],
+    refusal_exceptions: tuple[type[Exception], ...] = (),
+) -> None:
+    """
+    Build one derived Signal (loop, spectrogram, ...) and add it as its own PlotGroup.
+
+    Every failure is logged and skipped rather than raised, so one bad entry in
+    ``database_options`` doesn't abort the rest of a datasource's plots. *build_signal*
+    should raise ``_SourceSignalNotFoundError`` for a missing source signal and, optionally,
+    one of *refusal_exceptions* for a deliberate, named refusal -- both are logged as
+    warnings; anything else is logged with a full traceback.
+    """
+    try:
+        signal = build_signal()
+    except _SourceSignalNotFoundError as exc:
+        logger.warning(
+            "⚠️ Could not construct %s '%s' in datasource '%s'. Missing signal '%s'.",
+            kind,
+            item_name,
+            datasource_name,
+            exc,
+        )
+        return
+    except refusal_exceptions as exc:
+        logger.warning(
+            "⚠️ %s '%s' in datasource '%s' refused: %s",
+            kind.capitalize(),
+            item_name,
+            datasource_name,
+            exc,
+        )
+        return
+    except Exception:
+        logger.exception(
+            "⚠️ Error constructing %s '%s' in datasource '%s'.", kind, item_name, datasource_name
+        )
+        return
+
+    try:
+        plot_group_list.append(PlotGroup.from_single_signal(signal))
+    except Exception:
+        logger.exception(
+            "⚠️ Failed to create PlotGroup from %s signal '%s' in datasource '%s'.",
+            kind,
+            item_name,
+            datasource_name,
+        )
+
+
+def _build_loop_signal(
+    list_signal: list[Signal], loop_name: str, loop_field_list: list[str]
+) -> Signal:
+    signal_x = next((s for s in list_signal if s.raw_name == loop_field_list[0]), None)
+    signal_y = next((s for s in list_signal if s.raw_name == loop_field_list[1]), None)
+    if signal_x is None or signal_y is None:
+        missing = loop_field_list[0] if signal_x is None else loop_field_list[1]
+        raise _SourceSignalNotFoundError(missing)
+    return Signal.loop_from_signals(signal_x, signal_y, name=loop_name)
+
+
+def _build_spectrogram_signal(
+    list_signal: list[Signal], spectrogram_name: str, spectrogram_config: dict
+) -> Signal:
+    config_cls = cst.DatabaseOptions.SpectrogramConfig
+    source_raw_name = spectrogram_config.get(config_cls.SIGNAL)
+    source_signal = next((s for s in list_signal if s.raw_name == source_raw_name), None)
+    if source_signal is None:
+        raise _SourceSignalNotFoundError(source_raw_name)
+    try:
+        return Signal.spectrogram_from_signal(
+            source_signal,
+            name=spectrogram_name,
+            freq_range=tuple(spectrogram_config[config_cls.FREQ_RANGE]),
+            db_range=spectrogram_config.get(config_cls.DB_RANGE),
+            window_s=spectrogram_config.get(config_cls.WINDOW_S),
+            overlap=spectrogram_config.get(config_cls.OVERLAP),
+        )
+    except SpectralRefusalError as exc:
+        msg = f"signal '{source_signal.name}' -- {exc}"
+        raise SpectralRefusalError(msg) from exc
 
 
 def main(
@@ -221,53 +314,29 @@ def main(
 
             # (4) Add loop signals
             for loop_name, loop_field_list in local_loop_group.items():
-                try:
-                    signal_x = next(
-                        (signal for signal in list_signal if signal.raw_name == loop_field_list[0]),
-                        None,
-                    )
-                    signal_y = next(
-                        (signal for signal in list_signal if signal.raw_name == loop_field_list[1]),
-                        None,
-                    )
+                _add_derived_plot_group(
+                    kind="loop",
+                    item_name=loop_name,
+                    datasource_name=name,
+                    build_signal=partial(
+                        _build_loop_signal, list_signal, loop_name, loop_field_list
+                    ),
+                    plot_group_list=plot_group_list,
+                )
 
-                    if signal_x is None or signal_y is None:
-                        missing = loop_field_list[0] if signal_x is None else loop_field_list[1]
-                        logger.warning(
-                            "⚠️ Could not construct loop '%s' in datasource '%s'. Missing signal "
-                            "'%s'.",
-                            loop_name,
-                            name,
-                            missing,
-                        )
-                        continue
-
-                    try:
-                        loop_signal = Signal.loop_from_signals(signal_x, signal_y, name=loop_name)
-                    except Exception:
-                        logger.exception(
-                            "⚠️ Error constructing loop '%s' in datasource '%s'.",
-                            loop_name,
-                            name,
-                        )
-                        continue
-
-                    try:
-                        plot_group_list.append(PlotGroup.from_single_signal(loop_signal))
-                    except Exception:
-                        logger.exception(
-                            "⚠️ Failed to create PlotGroup from loop signal '%s' in datasource "
-                            "'%s'.",
-                            loop_name,
-                            name,
-                        )
-
-                except Exception:
-                    logger.exception(
-                        "❌ Unexpected error while processing loop '%s' in datasource '%s'.",
-                        loop_name,
-                        name,
-                    )
+            # (5) Add spectrogram signals
+            local_spectrogram_group = database_options.get(cst.DatabaseOptions.SPECTROGRAM, {})
+            for spectrogram_name, spectrogram_config in local_spectrogram_group.items():
+                _add_derived_plot_group(
+                    kind="spectrogram",
+                    item_name=spectrogram_name,
+                    datasource_name=name,
+                    build_signal=partial(
+                        _build_spectrogram_signal, list_signal, spectrogram_name, spectrogram_config
+                    ),
+                    plot_group_list=plot_group_list,
+                    refusal_exceptions=(SpectralRefusalError,),
+                )
 
         except Exception:
             logger.exception("❌ Error while treating datasource '%s'.", name)

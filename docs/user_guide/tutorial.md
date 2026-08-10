@@ -38,6 +38,8 @@ from multiple medical devices in a single unified interface.
   and group related signals together — in JSON or Excel format.
 - **Cross-datasource phase loops**: Define loop entries to build phase plots that
   combine signals from different devices.
+- **Spectrograms**: Render a time-vs-frequency-vs-power view of any signal (e.g. EEG) over a
+  configurable frequency band, with a fixed colour range for consistent reading across patients.
 - **Per-datasource timezone control**: Override the timezone of any supported source via
   `additional_informations.timezone` (all plots still render in the configured display timezone).
 - **Export**: Generate standalone HTML visualizations for sharing.
@@ -338,6 +340,7 @@ The **⚙ Settings** button at the top right opens your personal settings. They 
 | Hover: x-axis time format | Whether the hover panel shows the time only, or the full date and time. |
 | Hover: panel style | *Unified* lists every trace at the hovered time in one panel; *closest point only* shows just the nearest trace. Unified is comfortable for a few signals and crowded on a subplot with many. |
 | Hover: significant digits of the y value | How precisely hovered values are printed. A signal with its own hover format in the database options keeps it. |
+| Spectrogram colour range — minimum / maximum (dB) | Colour scale bounds used by any spectrogram whose configuration leaves `db_range` unset. |
 
 \newpage
 
@@ -501,6 +504,9 @@ After a successful visualization, the **annotation toolbar** appears above the p
 Click a type button to activate it, then click (or click-and-drag for Time Window) on a plot.
 A creation modal appears where you can set a **label** and **color** before confirming.
 
+Spectrograms have a time axis like a time-series plot, so all three types can be placed on them —
+loop plots are the only exception, since their axes are two signal values rather than time.
+
 ## Groups
 
 Annotations can be organised into named groups. Click **New Group**, enter a name, and all
@@ -612,6 +618,13 @@ source key in this file is what activates that source; removing it disables it e
     "loop": {
         "pv_loop": ["P-aer", "CrbVol"]
     },
+    "spectrogram": {
+        "Fp1 spectrogram": {
+            "signal": "Fp1",
+            "freq_range": [0.5, 30.0],
+            "db_range": [-10, 30]
+        }
+    },
     "numerics": {
         "period_resampling": 0.5,
         "priority": 1.0
@@ -630,6 +643,7 @@ source key in this file is what activates that source; removing it disables it e
 | `signals` | object | `{}` | Per-signal display options (see [Per-Signal Fields Reference](#per-signal-fields-reference-signalssignal_name) below). |
 | `grouped_fields` | object | `{}` | Groups of signals to overlay on the same subplot, within this datasource. `{"Respiratory waves": ["signal_1", "signal_2", ...], ...}`|
 | `loop` | object | `{}` | PV-loop definitions: `{"loop_name": ["x_signal", "y_signal"], ...}`. |
+| `spectrogram` | object | `{}` | Spectrogram definitions (see [`spectrogram`](#spectrogram-block) below). |
 | `numerics` | object | `{}` | Datasource-level defaults for numeric parameters (see [`numerics`](#numerics-block-datasource-level-defaults) below). |
 | `additional_informations` | object | `{}` | Device-level metadata, including timezone override (see [`additional_informations`](#additional_informations-block) below). |
 
@@ -673,6 +687,32 @@ It does not filter which signals are affected — it simply provides fallback va
 
 > In the Excel format, these values are set via the **sentinel row** (`signal = *`).
 > See [database_options.xlsx](#database_optionsxlsx).
+
+### `spectrogram` Block {#spectrogram-block}
+
+The `spectrogram` block defines time-vs-frequency-vs-power plots — one entry produces one subplot, a heatmap with time on the x-axis, frequency on the y-axis, and power as colour. EEG is the main use case, but any sufficiently sampled signal works.
+
+```json
+"other::eeg": {
+    "spectrogram": {
+        "Fp1 spectrogram": {
+            "signal": "Fp1",
+            "freq_range": [0.5, 30.0],
+            "db_range": [-10, 30]
+        }
+    }
+}
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `signal` | string | — (required) | Raw name of the one signal to analyze. No arithmetic — pair or aggregate signals in the source data first if needed. |
+| `freq_range` | `[min_hz, max_hz]` | — (required) | Frequency band to display. There is no workable default — pick the band relevant to the signal (e.g. 0.5–30 Hz for EEG). |
+| `db_range` | `[min_db, max_db]` or null | your [Settings](#settings) | Fixed colour scale bounds. Left unset, it falls back to your personal colour range setting — fixed rather than auto-scaled, so appearance stays comparable across patients. |
+| `window_s` | float | derived from `freq_range` | Advanced: override the analysis window length in seconds. Leave unset unless you know you need it. |
+| `overlap` | float | `0.5` | Advanced: override the fraction of overlap between consecutive analysis windows. Leave unset unless you know you need it. |
+
+A signal whose `period_resampling` decimates it (see [Per-Signal Fields Reference](#per-signal-fields-reference-signalssignal_name)) cannot be turned into a spectrogram — decimation has no anti-aliasing filter, so the result would show rhythms that are not really there. Remove `period_resampling` for that signal to enable its spectrogram; the log explains which signal and why when this happens.
 
 ### `additional_informations` Block
 
@@ -744,7 +784,8 @@ requires no knowledge of JSON and can be edited in any spreadsheet application. 
 is automatically converted to the equivalent [JSON structure](#database_optionsjson), so every
 option available in JSON is also available in the spreadsheet.
 
-The file must contain a sheet named **`signals`** and optionally a sheet named **`loops`**.
+The file must contain a sheet named **`signals`** and optionally sheets named **`loops`** and
+**`spectrograms`**.
 
 ### `signals` sheet
 
@@ -794,6 +835,22 @@ or malformed it is silently skipped.
 | `loop_name` | Yes | Name for the loop plot (e.g., `pv_loop`). |
 | `x_signal` | Yes | Signal name for the X axis. |
 | `y_signal` | Yes | Signal name for the Y axis. |
+
+### `spectrograms` sheet (optional)
+
+One row per spectrogram definition — equivalent to the `spectrogram` key in the
+[JSON per-source block](#spectrogram-block). If the sheet is absent or malformed it is silently
+skipped.
+
+| Column | Required | Description |
+|---|---|---|
+| `datasource` | Yes | Data source that owns the signal. |
+| `spectrogram_name` | Yes | Name for the spectrogram plot (e.g., `Fp1 spectrogram`). |
+| `signal` | Yes | Raw name of the signal to analyze. |
+| `freq_min` | Yes | Minimum frequency to display (Hz). |
+| `freq_max` | Yes | Maximum frequency to display (Hz). |
+| `db_min` | No | Colour scale minimum (dB). Leave both `db_min` and `db_max` empty to use your personal colour range setting. |
+| `db_max` | No | Colour scale maximum (dB). Must be set together with `db_min`, or both are ignored. |
 
 See `example/option_files/` in the source repository for complete example files in both formats.
 

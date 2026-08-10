@@ -832,7 +832,6 @@ def render_annotations(
         plot_name = graph_id["name"]
         subplots_data = subplot_map.get(plot_name, {})
         subplot_title_annotations = subplots_data.get("subplot_annotations", [])
-        is_loop = subplots_data.get("plot_type") == cst.PlotType.LOOP
 
         raw_pending_x0 = pending_x0 if pending_plot == plot_name else None
         graph_pending_x0 = (
@@ -854,7 +853,10 @@ def render_annotations(
         # subplot-annotations store is still unpopulated, so leave them untouched instead.
         if all_annotations:
             patch.layout.annotations = all_annotations
-        if not is_loop:
+        # Matches PlotModel.to_figure: only time_series sets a hovermode. Loop and spectrogram
+        # keep Plotly's default ("closest") -- a unified panel is meaningless for either (an
+        # independent x per point for loop, an independent cell per pixel for a heatmap).
+        if subplots_data.get("plot_type") == cst.PlotType.TIME_SERIES:
             patch.layout.hovermode = "closest" if point_mode_active else "x unified"
         patches.append(patch)
 

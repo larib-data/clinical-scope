@@ -38,6 +38,9 @@ _SIGNALS_REQUIRED_COLS = {"datasource", "signal"}
 _LOOPS_SHEET_NAME = "loops"
 _LOOPS_REQUIRED_COLS = {"datasource", "loop_name", "x_signal", "y_signal"}
 
+_SPECTROGRAMS_SHEET_NAME = "spectrograms"
+_SPECTROGRAMS_REQUIRED_COLS = {"datasource", "spectrogram_name", "signal", "freq_min", "freq_max"}
+
 
 # ---------------------------------------------------------------------------
 # Cell-value helpers
@@ -92,6 +95,39 @@ def _parse_groups(value: Any) -> list[str]:
     return [group.strip() for group in str(value).split(";") if group.strip()]
 
 
+def _read_optional_sheet(
+    file_obj: Any, sheet_name: str, required_cols: set[str], item_label: str
+) -> pd.DataFrame:
+    """
+    Read one optional sheet, normalizing columns and validating *required_cols*.
+
+    Unlike the required ``signals`` sheet, a missing sheet or a missing required column
+    both log and fall back to an empty DataFrame rather than raising -- these sheets are
+    purely additive, so a bad "loops"/"spectrograms" sheet shouldn't block the rest.
+    """
+    if hasattr(file_obj, "seek"):
+        file_obj.seek(0)
+    try:
+        df = pd.read_excel(
+            file_obj, sheet_name=sheet_name, dtype=str, keep_default_na=False, engine="openpyxl"
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("No '%s' sheet found, skipping %s definitions.", sheet_name, item_label)
+        return pd.DataFrame(columns=list(required_cols))
+
+    df.columns = [column.strip().lower() for column in df.columns]
+    missing_cols = required_cols - set(df.columns)
+    if missing_cols:
+        logger.warning(
+            "'%s' sheet is missing required columns %s — %s definitions will be skipped.",
+            sheet_name,
+            sorted(missing_cols),
+            item_label,
+        )
+        return pd.DataFrame(columns=list(required_cols))
+    return df
+
+
 # ---------------------------------------------------------------------------
 # Core parser
 # ---------------------------------------------------------------------------
@@ -127,43 +163,20 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
         msg = f"Could not read 'signals' sheet: {exc}"
         raise ValueError(msg) from exc
 
-    # Re-wind if BytesIO so we can read the second sheet
-    if hasattr(file_obj, "seek"):
-        file_obj.seek(0)
-
-    try:
-        loops_df = pd.read_excel(
-            file_obj,
-            sheet_name=_LOOPS_SHEET_NAME,
-            dtype=str,
-            keep_default_na=False,
-            engine="openpyxl",
-        )
-    except Exception:  # noqa: BLE001
-        logger.debug("No 'loops' sheet found, skipping loop definitions.")
-        loops_df = pd.DataFrame(columns=list(_LOOPS_REQUIRED_COLS))
+    loops_df = _read_optional_sheet(file_obj, _LOOPS_SHEET_NAME, _LOOPS_REQUIRED_COLS, "loop")
+    spectrograms_df = _read_optional_sheet(
+        file_obj, _SPECTROGRAMS_SHEET_NAME, _SPECTROGRAMS_REQUIRED_COLS, "spectrogram"
+    )
 
     # ------------------------------------------------------------------
-    # Normalize column names (case-insensitive, strip whitespace)
+    # Normalize column names and validate required columns -- required sheet only; the
+    # optional sheets above already did both inside _read_optional_sheet.
     # ------------------------------------------------------------------
     signals_df.columns = [column.strip().lower() for column in signals_df.columns]
-    loops_df.columns = [column.strip().lower() for column in loops_df.columns]
-
-    # ------------------------------------------------------------------
-    # Validate required columns
-    # ------------------------------------------------------------------
     missing_signal_cols = _SIGNALS_REQUIRED_COLS - set(signals_df.columns)
     if missing_signal_cols:
         msg = f"'signals' sheet is missing required columns: {sorted(missing_signal_cols)}"
         raise ValueError(msg)
-
-    missing_loop_cols = _LOOPS_REQUIRED_COLS - set(loops_df.columns)
-    if missing_loop_cols:
-        logger.warning(
-            "'loops' sheet is missing required columns %s — loop definitions will be skipped.",
-            sorted(missing_loop_cols),
-        )
-        loops_df = pd.DataFrame(columns=list(_LOOPS_REQUIRED_COLS))
 
     # ------------------------------------------------------------------
     # Process signals sheet
@@ -320,6 +333,52 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
 
         except Exception:  # noqa: BLE001
             logger.warning("Skipping loops row %s due to unexpected error.", row_idx, exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Process spectrograms sheet
+    # ------------------------------------------------------------------
+    spectrogram_config = cst.DatabaseOptions.SpectrogramConfig
+    for row_idx, row in spectrograms_df.iterrows():
+        try:
+            ds = str(row.get("datasource", "")).strip()
+            spectrogram_name = str(row.get("spectrogram_name", "")).strip()
+            signal = str(row.get("signal", "")).strip()
+            freq_min = _to_float(row.get("freq_min", ""))
+            freq_max = _to_float(row.get("freq_max", ""))
+
+            if any(_is_empty(field) for field in (ds, spectrogram_name, signal)):
+                continue
+            if freq_min is None or freq_max is None:
+                logger.warning(
+                    "Skipping spectrograms row %s: freq_min/freq_max must both be set.", row_idx
+                )
+                continue
+
+            spectrogram_options: dict[str, Any] = {
+                spectrogram_config.SIGNAL: signal,
+                spectrogram_config.FREQ_RANGE: [freq_min, freq_max],
+            }
+
+            db_min = _to_float(row.get("db_min", ""))
+            db_max = _to_float(row.get("db_max", ""))
+            if db_min is not None and db_max is not None:
+                spectrogram_options[spectrogram_config.DB_RANGE] = [db_min, db_max]
+            elif db_min is not None or db_max is not None:
+                logger.warning(
+                    "Skipping db_range for spectrograms row %s: db_min/db_max must both be set.",
+                    row_idx,
+                )
+
+            if ds not in result:
+                result[ds] = {}
+            result[ds].setdefault(cst.DatabaseOptions.SPECTROGRAM, {})[spectrogram_name] = (
+                spectrogram_options
+            )
+
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Skipping spectrograms row %s due to unexpected error.", row_idx, exc_info=True
+            )
 
     return result
 

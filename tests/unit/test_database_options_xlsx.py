@@ -13,12 +13,16 @@ from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 # ---------------------------------------------------------------------------
 
 
-def _build_xlsx(signals_rows: list[list], loops_rows: list[list] | None = None) -> bytes:
+def _build_xlsx(
+    signals_rows: list[list],
+    loops_rows: list[list] | None = None,
+    spectrograms_rows: list[list] | None = None,
+) -> bytes:
     """
-    Build a minimal XLSX bytes object with a ``signals`` sheet and optional ``loops`` sheet.
+    Build a minimal XLSX bytes object with a ``signals`` sheet and optional other sheets.
 
     *signals_rows* must include the header as the first element.
-    *loops_rows* must include the header as the first element (if provided).
+    *loops_rows*/*spectrograms_rows* must include the header as the first element (if provided).
     """
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -30,6 +34,11 @@ def _build_xlsx(signals_rows: list[list], loops_rows: list[list] | None = None) 
         ws_loops = wb.create_sheet("loops")
         for row in loops_rows:
             ws_loops.append(row)
+
+    if spectrograms_rows is not None:
+        ws_spectrograms = wb.create_sheet("spectrograms")
+        for row in spectrograms_rows:
+            ws_spectrograms.append(row)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -54,6 +63,16 @@ SIGNALS_HEADER = [
 ]
 
 LOOPS_HEADER = ["datasource", "loop_name", "x_signal", "y_signal"]
+
+SPECTROGRAMS_HEADER = [
+    "datasource",
+    "spectrogram_name",
+    "signal",
+    "freq_min",
+    "freq_max",
+    "db_min",
+    "db_max",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +429,69 @@ class TestLoopsSheet:
         result = xlsx_bytes_to_database_options(data)
         assert "grouped_fields" in result["global"]
         assert "loop" in result["global"]
+
+
+class TestSpectrogramsSheet:
+    def test_spectrogram_parsed(self):
+        data = _build_xlsx(
+            [SIGNALS_HEADER, ["ds_a", "S1", "", "", "", "", "", "", "", "", "", "", "", ""]],
+            spectrograms_rows=[
+                SPECTROGRAMS_HEADER, ["ds_a", "S1 spectrogram", "S1", "0.5", "30", "", ""]
+            ],
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert result["ds_a"]["spectrogram"] == {
+            "S1 spectrogram": {"signal": "S1", "freq_range": [0.5, 30.0]}
+        }
+
+    def test_db_range_parsed_when_both_set(self):
+        data = _build_xlsx(
+            [SIGNALS_HEADER, ["ds_a", "S1", "", "", "", "", "", "", "", "", "", "", "", ""]],
+            spectrograms_rows=[
+                SPECTROGRAMS_HEADER, ["ds_a", "S1 spectrogram", "S1", "0.5", "30", "-10", "20"]
+            ],
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert result["ds_a"]["spectrogram"]["S1 spectrogram"]["db_range"] == [-10.0, 20.0]
+
+    def test_db_range_ignored_when_only_one_bound_set(self):
+        data = _build_xlsx(
+            [SIGNALS_HEADER, ["ds_a", "S1", "", "", "", "", "", "", "", "", "", "", "", ""]],
+            spectrograms_rows=[
+                SPECTROGRAMS_HEADER, ["ds_a", "S1 spectrogram", "S1", "0.5", "30", "-10", ""]
+            ],
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert "db_range" not in result["ds_a"]["spectrogram"]["S1 spectrogram"]
+
+    def test_missing_freq_range_skips_row(self):
+        data = _build_xlsx(
+            [SIGNALS_HEADER, ["ds_a", "S1", "", "", "", "", "", "", "", "", "", "", "", ""]],
+            spectrograms_rows=[
+                SPECTROGRAMS_HEADER, ["ds_a", "S1 spectrogram", "S1", "", "30", "", ""]
+            ],
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert "spectrogram" not in result.get("ds_a", {})
+
+    def test_no_spectrograms_sheet(self):
+        data = _build_xlsx(
+            [SIGNALS_HEADER, ["ds_a", "S1", "", "", "", "", "", "", "", "", "", "", "", ""]]
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert "spectrogram" not in result["ds_a"]
+
+    def test_spectrogram_for_unknown_datasource_creates_entry(self):
+        data = _build_xlsx(
+            [SIGNALS_HEADER, ["ds_a", "S1", "", "", "", "", "", "", "", "", "", "", "", ""]],
+            spectrograms_rows=[
+                SPECTROGRAMS_HEADER, ["ds_b", "X spectrogram", "X", "0.5", "30", "", ""]
+            ],
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert result["ds_b"]["spectrogram"] == {
+            "X spectrogram": {"signal": "X", "freq_range": [0.5, 30.0]}
+        }
 
 
 # ---------------------------------------------------------------------------

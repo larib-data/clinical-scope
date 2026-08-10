@@ -1,9 +1,10 @@
 import logging
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -11,7 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import clinical_scope.constants as cst
-from clinical_scope import hover_formatters
+from clinical_scope import hover_formatters, spectral
 from clinical_scope.datasource.formatting.timezone import (
     change_ndarray_timezone,
     loop_time_to_display_strings,
@@ -67,6 +68,9 @@ def merge_y_ranges(
     return [min(bound[0] for bound in ranges), max(bound[1] for bound in ranges)]
 
 
+_NumberT = TypeVar("_NumberT", int, float)
+
+
 @dataclass(frozen=True)
 class DisplayFallbacks:
     """
@@ -88,6 +92,10 @@ class DisplayFallbacks:
     hovermode: str = cst.DEFAULT_HOVERMODE
     hover_time_format: str = cst.DEFAULT_HOVER_TIME_FORMAT
     display_timezone: str = cst.DISPLAY_TIMEZONE
+    spectrogram_db_range: tuple[float, float] = (
+        cst.DEFAULT_SPECTROGRAM_DB_MIN,
+        cst.DEFAULT_SPECTROGRAM_DB_MAX,
+    )
 
     @classmethod
     def from_user_options(cls, user_options: dict[str, Any] | None) -> "DisplayFallbacks":
@@ -101,11 +109,11 @@ class DisplayFallbacks:
         options = user_options or {}
         schema = cst.UserOptions
 
-        def bounded_int(field_schema: Any) -> int:
+        def bounded_number(field_schema: Any, cast: Callable[[Any], _NumberT] = int) -> _NumberT:
             if field_schema.NAME not in options:
                 return field_schema.DEFAULT
             try:
-                value = int(options[field_schema.NAME])
+                value = cast(options[field_schema.NAME])
             except (TypeError, ValueError):
                 logger.warning(
                     "user_options['%s'] = %r is not a number; using %s",
@@ -143,16 +151,20 @@ class DisplayFallbacks:
             return value
 
         return cls(
-            subplot_height=bounded_int(schema.DefaultSubplotHeight),
-            loop_subplot_height=bounded_int(schema.LoopSubplotHeight),
+            subplot_height=bounded_number(schema.DefaultSubplotHeight),
+            loop_subplot_height=bounded_number(schema.LoopSubplotHeight),
             loops_per_row=one_of(schema.LoopsPerRow),
-            legend_entry_width=bounded_int(schema.LegendEntryWidth),
+            legend_entry_width=bounded_number(schema.LegendEntryWidth),
             y_significant_digits=one_of(schema.YSignificantDigits),
             colorway=one_of(schema.FallbackColorway),
             template=one_of(schema.Template),
             hovermode=one_of(schema.HoverModeOption),
             hover_time_format=one_of(schema.HoverTimeFormatOption),
             display_timezone=resolve_display_timezone(options.get(schema.DisplayTimezone.NAME)),
+            spectrogram_db_range=(
+                bounded_number(schema.SpectrogramDbMin, cast=float),
+                bounded_number(schema.SpectrogramDbMax, cast=float),
+            ),
         )
 
     @property
@@ -172,6 +184,8 @@ class Data:
     y: np.ndarray | None = None
     timezone: str | None = None  # Stored here, not per-value in x, for efficiency.
     loop_time_axis: np.ndarray | None = None  # UTC epoch seconds (float64), only for loops
+    # Hz, only for spectrograms. y then holds the 2-D power (dB), shaped (len(x), len(freq axis)).
+    spectrogram_freq_axis: np.ndarray | None = None
 
 
 @dataclass
@@ -200,6 +214,7 @@ class PlotOptions:
     plot_type: str | None = None
     plot_priority: float | None = None
     display_timezone: str = field(default_factory=lambda: cst.DISPLAY_TIMEZONE)
+    color_range: list[float] | None = None  # Heatmap zmin/zmax (dB), spectrogram only
 
     def __post_init__(self) -> None:
         if self.y_unit_name is None:
@@ -605,8 +620,68 @@ class Signal:
         )
         return obj
 
+    @classmethod
+    def spectrogram_from_signal(
+        cls,
+        signal: "Signal",
+        name: str,
+        freq_range: tuple[float, float],
+        db_range: list[float] | None = None,
+        window_s: float | None = None,
+        overlap: float | None = None,
+    ) -> "Signal":
+        """
+        Build a spectrogram signal from one time-series; display fallbacks come from *signal*.
+
+        Raises ``spectral.SpectralRefusalError`` when the source Signal's grid can't be safely
+        turned into a spectrogram (too short, decimated, out-of-range) — callers decide whether
+        that is a warning or an error.
+        """
+        if signal.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES:
+            msg = "Input signal must be of type 'time_series'."
+            raise ValueError(msg)
+
+        spectral_overrides = {}
+        if window_s is not None:
+            spectral_overrides["window_s"] = window_s
+        if overlap is not None:
+            spectral_overrides["overlap"] = overlap
+
+        times, freqs, power_db = spectral.spectrogram(
+            signal.data.x,
+            signal.data.y,
+            freq_range=freq_range,
+            period_resampling=signal.metadata.period_resampling,
+            **spectral_overrides,
+        )
+
+        color_range = (
+            list(db_range) if db_range else list(signal.display_fallbacks.spectrogram_db_range)
+        )
+
+        # signal.data.x/timezone were already converted to display timezone by signal's own
+        # to_plotly_trace() (__post_init__ runs it eagerly) -- nothing left to convert here,
+        # same reasoning as loop_from_signals leaving timezone unset above.
+        data = Data(x=times, y=power_db, timezone=None, spectrogram_freq_axis=freqs)
+        plot_options = PlotOptions(
+            plot_type=cst.PlotType.SPECTROGRAM,
+            y_axis_title="Frequency (Hz)",
+            show_legend=False,
+            color_range=color_range,
+            display_timezone=signal.trace_options.plot_options.display_timezone,
+        )
+        trace_options = TraceOptions(plot_options=plot_options)
+        return cls(
+            raw_name=name,
+            name=name,
+            data=data,
+            trace_options=trace_options,
+            metadata=Metadata(),
+            display_fallbacks=signal.display_fallbacks,
+        )
+
     # ---------------- Regular Methods ----------------
-    def to_plotly_trace(self) -> go.Scatter:
+    def to_plotly_trace(self) -> go.Scatter | go.Heatmap:
         start = time.perf_counter()
         if self.trace is not None:
             logger.warning("Trace of %s will be overwritten", self.name)
@@ -616,6 +691,27 @@ class Signal:
             self.data.x, self.data.timezone = change_ndarray_timezone(
                 self.data.x, self.data.timezone, display_tz
             )
+
+        if self.trace_options.plot_options.plot_type == cst.PlotType.SPECTROGRAM:
+            color_range = self.trace_options.plot_options.color_range
+            # z is (freq, time): the transpose of data.y's (time, freq) shape from spectral.py,
+            # since go.Heatmap indexes z as [row=y value][col=x value].
+            trace = go.Heatmap(
+                x=self.data.x,
+                y=self.data.spectrogram_freq_axis,
+                z=self.data.y.T if self.data.y is not None else None,
+                colorscale=cst.Spectral.COLORSCALE,
+                zmin=color_range[0] if color_range else None,
+                zmax=color_range[1] if color_range else None,
+                colorbar={"title": {"text": "dB"}},
+                hovertemplate=(
+                    f"<b>{self.name}</b><br>%{{x}}<br>%{{y:.1f}} Hz<br>%{{z:.1f}} dB<extra></extra>"
+                ),
+            )
+            elapsed = time.perf_counter() - start
+            self.timing["to_plotly_trace"] = elapsed
+            logger.debug("⏳ %.4fs for to_plotly_trace for signal '%s'", elapsed, self.name)
+            return trace
 
         x = self.data.x
         # Prepare line dict only if mode includes lines
@@ -780,6 +876,13 @@ class PlotModel:
         return 1
 
     def to_figure(self, min_spacing: float = 0.005) -> go.Figure:
+        """
+        Build the Plotly figure for this PlotModel's stacked/grid subplots.
+
+        Spectrogram colorbars are sized off ``fig.data[-1]`` right after each
+        ``add_trace()`` call, not off the original trace object -- ``add_trace()`` copies the
+        trace into the figure, so mutations to the original are never reflected in ``fig``.
+        """
         start = time.perf_counter()
         n_groups = len(self.groups)
         is_loop = self.plot_type == cst.PlotType.LOOP
@@ -852,6 +955,17 @@ class PlotModel:
             traces_with_axes = group.assign_axes()
             for trace, secondary_y in traces_with_axes:
                 fig.add_trace(trace, row=plotly_row, col=plotly_col, secondary_y=secondary_y)
+                if self.plot_type == cst.PlotType.SPECTROGRAM:
+                    # Scope this trace's colorbar to its own row, else it spans the whole figure.
+                    added_trace = fig.data[-1]
+                    axis_suffix = added_trace.yaxis[1:] if added_trace.yaxis else ""
+                    domain = fig.layout[f"yaxis{axis_suffix}"].domain
+                    added_trace.colorbar.update(
+                        y=(domain[0] + domain[1]) / 2,
+                        yanchor="middle",
+                        len=domain[1] - domain[0],
+                        thickness=cst.Spectral.COLORBAR_THICKNESS,
+                    )
 
             y_title = group.plot_options.y_axis_title or ""
             fig.update_yaxes(

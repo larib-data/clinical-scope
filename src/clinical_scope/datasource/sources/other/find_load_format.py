@@ -126,7 +126,7 @@ class OtherDataSource(DataSourceBase):
         is populated by ``wrapper._collect_other_per_file()`` from ``other::<stem>`` keys.
         Each ``other::<stem>`` section supports the full set of database_options keys:
         ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
-        ``grouped_fields``, and ``loop``.
+        ``grouped_fields``, ``loop``, and ``spectrogram``.
         """
         database_options = (
             database_options_specific if database_options_specific is not None else {}
@@ -153,6 +153,7 @@ class OtherDataSource(DataSourceBase):
         all_signals: list[Signal] = []
         grouped_fields: dict = {}
         per_file_loops: dict = {}
+        per_file_spectrograms: dict = {}
 
         for file_path in file_paths:
             try:
@@ -238,15 +239,28 @@ class OtherDataSource(DataSourceBase):
                             f"{file_stem}::{bare_column}" for bare_column in bare_columns
                         ]
 
+                    # Spectrograms: prefix the bare 'signal' name with file_stem, same as loops
+                    signal_key = cst.DatabaseOptions.SpectrogramConfig.SIGNAL
+                    for spectrogram_name, spectrogram_entry in file_config.get(
+                        cst.DatabaseOptions.SPECTROGRAM, {}
+                    ).items():
+                        prefixed_entry = dict(spectrogram_entry)
+                        if signal_key in prefixed_entry:
+                            bare_signal = prefixed_entry[signal_key]
+                            prefixed_entry[signal_key] = f"{file_stem}::{bare_signal}"
+                        per_file_spectrograms[spectrogram_name] = prefixed_entry
+
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
                 continue
 
-        # Inject grouped_fields and loop into database_options for the wrapper to use
+        # Inject grouped_fields, loop and spectrogram into database_options for the wrapper to use
         if grouped_fields:
             database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
         if per_file_loops:
             database_options[cst.DatabaseOptions.LOOP] = per_file_loops
+        if per_file_spectrograms:
+            database_options[cst.DatabaseOptions.SPECTROGRAM] = per_file_spectrograms
 
         return all_signals
 

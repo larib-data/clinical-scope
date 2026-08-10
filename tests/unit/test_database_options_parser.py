@@ -49,6 +49,17 @@ class TestUnknownKeys:
         assert len(warnings) == 1
         assert "other.files.waves" in warnings[0].path
 
+    def test_unknown_spectrogram_key(self):
+        db = {
+            "eit": {
+                "spectrogram": {
+                    "S1": {"signal": "S1", "freq_range": [0.5, 30.0], "bogus_key": 1}
+                }
+            }
+        }
+        warnings = _issues("warning", db)
+        assert any("bogus_key" in i.message for i in warnings)
+
 
 # ---------------------------------------------------------------------------
 # Type errors
@@ -103,6 +114,30 @@ class TestTypeChecks:
                 }
             }
         }
+        assert _issues("error", db) == []
+
+    def test_spectrogram_must_be_dict(self):
+        db = {"eit": {"spectrogram": ["S1"]}}
+        errors = _issues("error", db)
+        assert any("spectrogram" in i.path for i in errors)
+
+    def test_spectrogram_missing_signal_key(self):
+        db = {"eit": {"spectrogram": {"S1": {"freq_range": [0.5, 30.0]}}}}
+        errors = _issues("error", db)
+        assert any("Missing required key 'signal'" in i.message for i in errors)
+
+    def test_spectrogram_freq_range_missing(self):
+        db = {"eit": {"spectrogram": {"S1": {"signal": "S1"}}}}
+        errors = _issues("error", db)
+        assert any("freq_range" in i.path for i in errors)
+
+    def test_spectrogram_freq_range_must_be_two_numbers(self):
+        db = {"eit": {"spectrogram": {"S1": {"signal": "S1", "freq_range": [0.5]}}}}
+        errors = _issues("error", db)
+        assert any("freq_range" in i.path for i in errors)
+
+    def test_spectrogram_valid_no_errors(self):
+        db = {"eit": {"spectrogram": {"S1": {"signal": "S1", "freq_range": [0.5, 30.0]}}}}
         assert _issues("error", db) == []
 
 
