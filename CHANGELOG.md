@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+### Removed — **breaking**
+- Drop the `philips_waves`, `philips_numerics` and `syringe` datasources. They performed no format-specific parsing — a plain `read_csv` / `read_parquet` — so they were the generic `other` source with extra machinery. Now that each file inside `other/` carries its own configuration and its own `time_shift`, they no longer earn a module.
+
+  **To migrate:** move the files into the patient's `other/` subfolder, then rename their `database_options` and `patient_options` sections from `philips_waves` / `philips_numerics` / `syringe` to `other::<filename-without-extension>`. A folder still named after a removed source is now reported with a warning instead of being loaded. Three details to check while migrating:
+  - **Syringe timestamps.** The old source defaulted to `Europe/Paris`; `other` defaults to UTC. Add `"additional_informations": {"timezone": "Europe/Paris"}` to the section, or timestamps shift by an hour or two.
+  - **Marker traces.** Syringe and Philips numerics drew `lines+markers`. Restore it with the new per-file `trace_options` block (see the user guide).
+  - **Signal names and plot order.** Signals inside `other/` are named `<stem>::<column>`, so cross-source `grouped_fields` and `loop` entries need the qualified form (`other::waves::art`). `other` also renders last by default; use per-signal `priority` to restore a specific order.
+
+### Added
+- Per-file `trace_options` in an `other::<stem>` section (`mode`, `line_width`, `line_dash`, `opacity`), so one file can be drawn with markers while its neighbours stay plain lines.
+- Files read from `other/` are now symlinked into `clinical_scope_output/`, extending the traceability guarantee previously limited to `philips_waves`.
+
+### Fixed
+- A folder holding both `data.csv` and `data.parquet` no longer loads the same data twice under colliding names — one file per stem is kept, preferring parquet.
+- Global groups authored in the Excel format now emit qualified references for `other::<stem>` signals, which previously could not resolve.
+
+---
+
 ## [1.0.0] — 2026-06-24 *(First public release)*
 
 > **Note:** First public, open-source release of ClinicalScope — installable from PyPI

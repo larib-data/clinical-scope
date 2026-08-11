@@ -5,7 +5,7 @@ description: Add a brand-new data source module to the ClinicalScope project. Us
 
 # New Datasource Skill
 
-Add a complete, production-ready datasource module by **mirroring the closest existing source**. The 11 existing datasources already encode every pattern this skill needs to cover — the skill's job is to route correctly and remind you of the cross-cutting concerns (registration, tests, snapshots, docs).
+Add a complete, production-ready datasource module by **mirroring the closest existing source**. The existing datasources already encode every pattern this skill needs to cover — the skill's job is to route correctly and remind you of the cross-cutting concerns (registration, tests, snapshots, docs).
 
 ## Step 0 — Gather materials and identity
 
@@ -57,7 +57,7 @@ Internal — **do not show this table to the user**. Use it to choose which exis
 
 | Raw format / complexity | Primary |
 |---|---|
-| Plain CSV/parquet, datetime column present, one signal per column | `philips_waves` |
+| Plain CSV/parquet, datetime column present, one signal per column | **Stop — write no module.** Tell the user to drop the file into `other/` and configure it under an `other::<stem>` key; a datasource is only justified by format-specific parsing. |
 | Long-format, needs pivot to wide | `mindray_respi_numerics` |
 | Custom text parser (header blocks, metadata sections) | `servo_u` |
 | Custom binary/XML/less-structured | `eit` |

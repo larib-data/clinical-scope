@@ -19,7 +19,7 @@ _Avoid_: case, admission
 **Datasource**:
 A registered source of Signals identified by a folder-naming convention — a (device × data category) unit, not one-per-device.
 _Avoid_: device, modality
-- A Philips monitor yields two datasources (`philips_waves`, `philips_numerics`); the `_waves`/`_numerics` suffix is only a naming hint (see _Flagged ambiguities_).
+- A FluxMed device yields two datasources (`fluxmed_signals`, `fluxmed_parameters`); the waveform/parameter split is a data-category distinction, not a device one (see _Flagged ambiguities_).
 
 **Signal**:
 A single measured channel sampled over time from one datasource (e.g. arterial pressure, SpO₂).
@@ -100,7 +100,7 @@ The `database_options` block of per-datasource defaults — resampling period an
 
 ## Example dialogue
 
-> **Dev:** "For this **Patient**, the Philips monitor gives two **Datasources** — `philips_waves` and `philips_numerics`. To show airway pressure against tidal volume as a **Loop**, both have to be **Signals** first, right?"
+> **Dev:** "For this **Patient**, the FluxMed device gives two **Datasources** — `fluxmed_signals` and `fluxmed_parameters`. To show airway pressure against tidal volume as a **Loop**, both have to be **Signals** first, right?"
 >
 > **Domain expert:** "Yes — pair the two **Signals** in the `loop` config. Before we **Visualize**, **Inspect** the folder to confirm the raw names are present; if you only need the data for a model, **Extract** is enough."
 >
@@ -108,5 +108,5 @@ The `database_options` block of per-datasource defaults — resampling period an
 
 ## Flagged ambiguities
 
-- **"numerics"** names two unrelated things: (a) the `_numerics` suffix in datasource names (e.g. `philips_numerics`), a naming convention hinting at low-frequency data — not load-bearing; and (b) the **Numerics** config block (resampling-period + plot-priority defaults shared across a datasource's Signals). Resolution: keep the word for both; disambiguate by context — "the numerics block" vs "a `_numerics` source". High/low-frequency itself is just a datasource property, not a core distinction.
+- **"numerics"** names two unrelated things: (a) the `_numerics` suffix in datasource names (e.g. `mindray_respi_numerics`), a naming convention hinting at low-frequency data — not load-bearing; and (b) the **Numerics** config block (resampling-period + plot-priority defaults shared across a datasource's Signals). Resolution: keep the word for both; disambiguate by context — "the numerics block" vs "a `_numerics` source". High/low-frequency itself is just a datasource property, not a core distinction.
 - **"process"** denotes two different **Actions**: the `process_patient_data.py` script performs **Extract** (no plots), while the UI's "Process visualization" button performs **Visualize**. Resolution: prefer the precise verbs **Inspect / Extract / Visualize**; avoid bare "process".

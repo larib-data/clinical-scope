@@ -49,6 +49,8 @@ src/clinical_scope/
 
 Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical list plus folder/file-naming rules live in the [tutorial](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources*. A patient folder holds one subfolder per source.
 
+**A module is justified only by format-specific parsing.** Plain CSV/parquet with a datetime column belongs in `other/`, configured per file under an `other::<stem>` key — that scope carries its own `time_shift`, timezone, grouping and trace style, so a dedicated module would add machinery and no capability.
+
 **Adding one**: use the `/new-datasource` skill — it is authoritative for the module layout, `options.py` constants, the loader, registration (Other stays last), example data, tests, snapshots, and the tutorial table.
 
 ## Config files

@@ -25,8 +25,8 @@ from multiple medical devices in a single unified interface.
 ## Key Features
 
 - **Multi-source visualization**: Display signals from multiple clinical data sources
-  simultaneously (Philips, FluxMed, Mindray, EIT, Servo-U, syringe pumps, plus a
-  generic "Other" source for any CSV/parquet).
+  simultaneously (FluxMed, Mindray, EIT, Servo-U, EDF recorders, plus a generic
+  "Other" source for any CSV/parquet — monitors, syringe pumps, anything tabular).
 - **Generic "Other" data source**: Drop any CSV or Parquet file with a datetime column
   into an `other/` folder — signals are auto-discovered and can be configured per file.
 - **Interactive plots**: Zoom, pan, and explore data at any time scale with automatic resampling.
@@ -110,14 +110,13 @@ A full setup with several devices:
 
 ```
 Patient1/
-  philips_waves/
-  philips_numerics/
   eit/
   fluxmed_signals/
   fluxmed_parameters/
   servo_u/
-  syringe/
+  mindray_scope/
   edf/
+  other/
   clinical_scope_output/               ← auto-created,
 ```
 
@@ -125,7 +124,8 @@ A minimal setup:
 
 ```
 Patient1/
-  philips_waves/
+  other/
+    waves.parquet
   clinical_scope_output/
 ```
 
@@ -146,9 +146,9 @@ Patient1/
 
 Folder names are **flexible** — they just need to contain the required keywords:
 
-- **Case-insensitive** — `Philips_Waves`, `PHILIPS-WAVES`, `philips waves` all match.
+- **Case-insensitive** — `Mindray_Scope`, `MINDRAY-SCOPE`, `mindray scope` all match.
 - **Any separator** — underscore, dash, space, or none.
-- **Any order** — `waves_philips` works just as well as `philips_waves`.
+- **Any order** — `scope_mindray` works just as well as `mindray_scope`.
 - **Partial keywords don't match** — `flux` alone will not match `fluxmed_*`; the full word is required.
 
 A few sources are also **identified by file extension** when the folder is ambiguous or
@@ -163,8 +163,6 @@ folder-discovery / skill logic refers to.
 
 | Source | Module name | Folder keywords | Accepted extensions (ordered by preference) | Discovery mode | Typical signals |
 |---|---|---|---|---|---|
-| Philips Waves | `philips_waves` | `philips`, `waves` | `.parquet`, `.csv` | Single file | ART, PAP, CO2, respiratory pressure/volume |
-| Philips Numerics | `philips_numerics` | `philips`, `numerics` | `.parquet`, `.csv` | Single file | Heart rate, SpO2, FiO2, blood pressure |
 | EIT (PulmoVista) | `eit` | `eit` | `.asc` | All files | Global/local impedance, impedance percentages |
 | FluxMed Signals | `fluxmed_signals` | `fluxmed`, `signals` | `.parquet`, `.txt`, `.csv` | Single file | Respiratory waveforms |
 | FluxMed Parameters | `fluxmed_parameters` | `fluxmed`, `parameters` | `.parquet`, `.txt`, `.csv` | Single file | Respiratory parameters |
@@ -172,9 +170,8 @@ folder-discovery / skill logic refers to.
 | Mindray Scope | `mindray_scope` | `mindray` | `.xml`, `.csv` | All files | Monitor waveforms (ECG, SpO2, pressure) |
 | Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single file | High-frequency respiratory waveforms |
 | Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single file | Respiratory parameters (Vt, RR, PEEP, etc.) |
-| Syringe | `syringe` | `syringe` | `.parquet`, `.csv` | Single file | Infusion rates and volumes |
 | EDF / EDF+ | `edf` | `edf` | `.edf` | All files | Any signal an amplifier or recorder exports as EDF (typically EEG) |
-| Other (Generic) | `other` | `other` | `.csv`, `.parquet` | All files (one entry **per file**) | Any time-series with a datetime column |
+| Other (Generic) | `other` | `other` | `.parquet`, `.csv` | All files (one entry **per file**) | Any time-series with a datetime column |
 
 **Single file** sources expect exactly one data file per folder. When several formats coexist
 (e.g., `data.csv` and `data.parquet`), the most preferred extension wins. If multiple unrelated
@@ -236,7 +233,24 @@ file — exactly like any other datasource:
 
 **Per-file timezone.** Each `other::<stem>` block may declare its own
 `additional_informations.timezone` — useful when the CSV you dropped in comes from a
-device in a different timezone than your default.
+device in a different timezone than your default. Without it, timestamps that carry no
+timezone of their own are read as UTC.
+
+**Per-file trace style.** A `trace_options` block changes how that file's traces are drawn.
+Sparse, step-like data (infusion rates, hand-entered values) reads much better with visible
+points than as a bare line:
+
+```json
+"other::syringe": {
+    "trace_options": { "mode": "lines+markers", "line_width": 2.0 },
+    "additional_informations": { "timezone": "Europe/Paris" }
+}
+```
+
+`mode` accepts `lines`, `markers` or `lines+markers`; `line_width`, `line_dash` and
+`opacity` are also available. Keys you leave out keep their default. Per-signal `color`,
+`line_dash` and `visible` still live in the `signals` block and win over `trace_options`.
+This key is JSON-only — the Excel format has no column for it.
 
 **Per-file processing options.** Every file you declare with an `other::<stem>` key also gets its own box in the *Specific Options* panel, sitting alongside the device boxes rather than nested under a shared "Other" one. Each box carries that file's own `time_shift` and *Group signals by source file*, so a curated two-column export and a ninety-column raw dump can be corrected and laid out independently. Files present in the folder but not declared in `database_options` fall back to the shared "Other (generic)" box. See [patient_options.json](#patient_optionsjson).
 
@@ -572,7 +586,7 @@ subfolder each time you click "Process visualization".
     "datetime_start": "2024-10-08 10:00:00",
     "datetime_end": "2024-10-08 12:00:00",
     "quick_load": false,
-    "philips_waves": {
+    "other::numerics": {
         "time_shift": 20.0
     },
     "eit": {
@@ -611,10 +625,10 @@ automatically saved to `clinical_scope_output/database_options.json` each time y
 ```json
 {
     "global": {
-        "grouped_fields": { "Pressure": ["ART", "PNIs", "PNIm", "PNId"] }
+        "grouped_fields": { "Pressure": ["other::waves::ART", "servo_u::Airway Press. (cmH2O)"] }
     },
-    "philips_waves": { ... },
-    "philips_numerics": { ... },
+    "other::waves": { ... },
+    "servo_u": { ... },
     "eit": { ... }
 }
 ```
@@ -625,7 +639,7 @@ source key in this file is what activates that source; removing it disables it e
 ### Per-Source Block Structure
 
 ```json
-"philips_waves": {
+"other::waves": {
     "field_display": ["ART", "PAP", "P-aer"],
     "signals": {
         "ART": {
@@ -699,7 +713,7 @@ datasource — without listing each signal individually. Any per-signal entry in
 takes precedence; signals without an explicit entry inherit from here.
 
 ```json
-"philips_numerics": {
+"other::numerics": {
     "numerics": {
         "period_resampling": 0.5,
         "priority": 2.0
@@ -885,7 +899,7 @@ The **Scope** column below indicates where each field is meaningful:
 
 | Column | Required | Scope | Description |
 |---|---|---|---|
-| `datasource` | Yes | Both | Data source name (e.g., `philips_waves`, `eit`). |
+| `datasource` | Yes | Both | Data source name (e.g., `servo_u`, `eit`, `other::waves`). |
 | `signal` | Yes | Both | Raw signal name. Use `*` for a sentinel row that sets datasource-level defaults. |
 | `label` | No | Signal | Display label. Defaults to the signal name if empty or identical. |
 | `unit` | No | Signal | Unit string (e.g., `mmHg`). |
@@ -1015,6 +1029,6 @@ If signals from different sources appear misaligned in time:
 
 These may or may not be tackled in the future, depending on the needs of the users. Feel free to ask for one of the below or any other feature demand/bug report on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
 
-- No timeshift inside a datasource, e.g. if 2 timeseries from `philips_waves` are not aligned, this currently can't be solved in the app.
+- No timeshift inside a datasource, e.g. if 2 timeseries from `servo_u` are not aligned, this currently can't be solved in the app. (Files inside `other/` are the exception — each gets its own `time_shift`.)
 - `output_root` keys each patient by its folder name only, so two different Databases that share a patient-folder name (e.g. `patient_01`) under the **same** `output_root` overwrite each other. Use one `output_root` per Database.
 - EIT recordings spanning more than one calendar day are unsupported: the device's own files carry no date, so the day is inferred from the **day** option (or, if unset, from **Time start filter**) and applied to the whole recording.
