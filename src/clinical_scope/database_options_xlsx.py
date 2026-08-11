@@ -339,10 +339,17 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
 
     for group_name, signals_by_datasource in group_membership.items():
         if len(signals_by_datasource) > 1:
-            # Global: union of all signals across datasources (preserve order)
+            # Global: union of all signals across datasources (preserve order). Signals from an
+            # 'other::<stem>' section are renamed '<stem>::<signal>' at load time, so a bare name
+            # would never resolve here — emit the qualified reference instead.
             all_signals = []
-            for signal_names in signals_by_datasource.values():
-                all_signals.extend(signal_names)
+            for datasource_name, signal_names in signals_by_datasource.items():
+                prefix = (
+                    f"{datasource_name}{cst.QUALIFIED_NAME_SEPARATOR}"
+                    if datasource_name.startswith(cst.OTHER_FILE_PREFIX)
+                    else ""
+                )
+                all_signals.extend(f"{prefix}{signal}" for signal in signal_names)
             global_grouped[group_name] = all_signals
         else:
             (only_ds, signals_list) = next(iter(signals_by_datasource.items()))

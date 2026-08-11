@@ -335,15 +335,15 @@ class TestFindFilesSingleCombined:
         result = find_files(tmp_path, [".parquet", ".csv"], "ds", keywords=["waves"])
         assert result == path[0]
 
-    def test_realistic_philips_scenario(self, tmp_path):
+    def test_realistic_monitor_scenario(self, tmp_path):
         """
-        Simulates a folder with both Philips waves and numerics files.
+        Simulates a folder with both a monitor's waves and numerics exports.
         extensions=['.parquet', '.csv'], keywords=['waves']
         """
-        path = create(tmp_path, "philips_numerics.parquet", "philips_waves.parquet", "philips_waves.csv")
+        path = create(tmp_path, "monitor_numerics.parquet", "monitor_waves.parquet", "monitor_waves.csv")
         # Both .parquet files survive extension filter; numerics + waves unique stems
-        # Stem dedup: philips_numerics.parquet, philips_waves.parquet (preferred over .csv)
-        # Keyword 'waves' → philips_waves.parquet
+        # Stem dedup: monitor_numerics.parquet, monitor_waves.parquet (preferred over .csv)
+        # Keyword 'waves' → monitor_waves.parquet
         result = find_files(tmp_path, [".parquet", ".csv"], "ds", keywords=["waves"])
         assert result is not None
         assert result == path[1]

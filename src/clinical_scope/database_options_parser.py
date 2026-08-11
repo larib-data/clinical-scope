@@ -260,6 +260,16 @@ def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue])
             )
         )
 
+    trace_options = section.get(cst.DatabaseOptions.TRACE_OPTIONS)
+    if trace_options is not None and not isinstance(trace_options, dict):
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                path=f"{path_prefix}.trace_options",
+                message=f"Must be a dict, got {type(trace_options).__name__}",
+            )
+        )
+
     _check_spectral_types(section, path_prefix, issues)
 
     signals = signals_raw if isinstance(signals_raw, dict) else {}

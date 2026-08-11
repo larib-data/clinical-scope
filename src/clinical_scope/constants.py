@@ -467,6 +467,9 @@ class DatabaseOptions:
     SPECTROGRAM = "spectrogram"
     PSD = "psd"
     FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
+    # Per-section trace styling (mode, line_width, ...), overriding the datasource's
+    # source_options. Only 'other' reads it: elsewhere the module's own options.py is the place.
+    TRACE_OPTIONS = "trace_options"
 
     # Trailing marker that turns a field_display entry into a prefix wildcard (e.g. "Local 1*").
     WILDCARD_SUFFIX = "*"
@@ -482,6 +485,7 @@ class DatabaseOptions:
             SPECTROGRAM,
             PSD,
             FILES,
+            TRACE_OPTIONS,
         }
     )
 

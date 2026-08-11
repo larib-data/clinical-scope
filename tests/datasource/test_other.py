@@ -1,12 +1,16 @@
 """
 Tests for other (generic) datasource — auto datetime detection, per-file grouping.
 
-The 'other' datasource only exists in Patient_difficult_format, not demo_patient.
 It has a custom main() that processes files individually rather than using _load().
 """
 
+import os
+from pathlib import Path
+
+import pandas as pd
 import pytest
 
+import clinical_scope.constants as cst
 from clinical_scope.database_options_parser import normalize_database_options
 
 
@@ -416,3 +420,91 @@ class TestTimezone:
         assert len(file_signals) > 0
         for sig in file_signals:
             assert str(sig.data.timezone) == "Europe/Paris"
+
+
+def _write_other_patient(root, stems_with_suffixes):
+    """Build a throwaway patient folder whose other/ holds one file per (stem, suffix)."""
+    folder = root / "other"
+    folder.mkdir(parents=True, exist_ok=True)
+    index = pd.date_range("2004-09-15 08:00:00", periods=10, freq="1s", name="datetime_index")
+    for stem, suffix in stems_with_suffixes:
+        df = pd.DataFrame({"art": range(10), "paw": range(10, 20)}, index=index)
+        if suffix == ".parquet":
+            df.to_parquet(folder / f"{stem}{suffix}")
+        else:
+            df.to_csv(folder / f"{stem}{suffix}")
+    return folder
+
+
+class TestStemDeduplication:
+    """A folder holding both extensions for one stem must not load the file twice."""
+
+    def test_parquet_shadows_csv_of_the_same_stem(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("waves", ".csv")])
+        found = other_cls._find(other_cls._find_folder(tmp_path))
+        assert [path.name for path in found] == ["waves.parquet"]
+
+    def test_distinct_stems_are_all_kept(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("numerics", ".csv")])
+        found = other_cls._find(other_cls._find_folder(tmp_path))
+        assert sorted(path.name for path in found) == ["numerics.csv", "waves.parquet"]
+
+    def test_signals_are_not_duplicated(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("waves", ".csv")])
+        signals = other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+        raw_names = [sig.raw_name for sig in signals]
+        assert sorted(raw_names) == ["waves::art", "waves::paw"]
+
+
+class TestPerFileTraceOptions:
+    """A trace_options block in an other::<stem> section overrides the datasource default."""
+
+    def _signals(self, tmp_path, other_cls, db_opts):
+        _write_other_patient(tmp_path, [("waves", ".parquet")])
+        return other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, db_opts)
+
+    def test_default_mode_without_config(self, tmp_path, other_cls):
+        signals = self._signals(tmp_path, other_cls, {})
+        assert all(sig.trace.mode == "lines" for sig in signals)
+
+    def test_per_file_mode_overrides_the_default(self, tmp_path, other_cls):
+        db_opts = {"files": {"waves": {"trace_options": {"mode": "lines+markers"}}}}
+        signals = self._signals(tmp_path, other_cls, db_opts)
+        assert signals
+        assert all(sig.trace.mode == "lines+markers" for sig in signals)
+
+    def test_unset_keys_keep_the_datasource_value(self, tmp_path, other_cls):
+        """Merging, not replacing: line_width survives an override that only sets mode."""
+        db_opts = {"files": {"waves": {"trace_options": {"mode": "lines+markers"}}}}
+        signals = self._signals(tmp_path, other_cls, db_opts)
+        assert all(sig.trace.line.width == 1.5 for sig in signals)
+
+    def test_a_files_options_do_not_leak_to_its_neighbours(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("numerics", ".parquet")])
+        db_opts = {"files": {"waves": {"trace_options": {"mode": "lines+markers"}}}}
+        signals = other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, db_opts)
+        modes = {sig.raw_name.split("::")[0]: sig.trace.mode for sig in signals}
+        assert modes["waves"] == "lines+markers"
+        assert modes["numerics"] == "lines"
+
+
+class TestSourceSymlink:
+    """'other' writes no parquet cache, so a symlink is the output folder's only provenance."""
+
+    def test_each_loaded_file_is_symlinked(self, tmp_path, other_cls):
+        source_folder = _write_other_patient(
+            tmp_path, [("waves", ".parquet"), ("numerics", ".csv")]
+        )
+        other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        output_folder = tmp_path / cst.FOLDER_NAME_OUTPUT
+        for name in ("waves.parquet", "numerics.csv"):
+            link = output_folder / name
+            assert link.is_symlink()
+            assert link.resolve() == (source_folder / name).resolve()
+
+    def test_symlink_is_relative_so_the_folder_stays_movable(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet")])
+        other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+        link = tmp_path / cst.FOLDER_NAME_OUTPUT / "waves.parquet"
+        assert not Path(os.readlink(link)).is_absolute()

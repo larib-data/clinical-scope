@@ -26,7 +26,7 @@ def get_output_base(patient_folder: str | Path, output_root: str | Path | None =
     return Path(patient_folder)
 
 
-def _get_output_folder(patient_folder: str | Path, output_root: str | Path | None = None) -> Path:
+def get_output_folder(patient_folder: str | Path, output_root: str | Path | None = None) -> Path:
     """Return the ``clinical_scope_output/`` folder (see :func:`get_output_base`)."""
     return get_output_base(patient_folder, output_root) / cst.FOLDER_NAME_OUTPUT
 
@@ -35,30 +35,30 @@ def get_visualization_path(
     patient_folder: str | Path, output_root: str | Path | None = None
 ) -> Path:
     """Return the HTML visualization output path."""
-    return _get_output_folder(patient_folder, output_root) / cst.DEFAULT_NAME_VISUALIZATION
+    return get_output_folder(patient_folder, output_root) / cst.DEFAULT_NAME_VISUALIZATION
 
 
 def get_database_options_path(
     patient_folder: str | Path, output_root: str | Path | None = None
 ) -> Path:
     """Return the cached database options path."""
-    return _get_output_folder(patient_folder, output_root) / cst.DEFAULT_NAME_DATABASE_OPTIONS
+    return get_output_folder(patient_folder, output_root) / cst.DEFAULT_NAME_DATABASE_OPTIONS
 
 
 def get_patient_options_path(
     patient_folder: str | Path, output_root: str | Path | None = None
 ) -> Path:
     """Return the saved patient options path."""
-    return _get_output_folder(patient_folder, output_root) / cst.DEFAULT_NAME_PATIENT_OPTIONS
+    return get_output_folder(patient_folder, output_root) / cst.DEFAULT_NAME_PATIENT_OPTIONS
 
 
 def get_annotations_path(patient_folder: str | Path, output_root: str | Path | None = None) -> Path:
     """Return the annotations file path."""
-    return _get_output_folder(patient_folder, output_root) / cst.ANNOTATION_FILE_NAME
+    return get_output_folder(patient_folder, output_root) / cst.ANNOTATION_FILE_NAME
 
 
 def get_datasource_cache_path(
     patient_folder: str | Path, filename: str, output_root: str | Path | None = None
 ) -> Path:
     """Return ``<output_folder>/<filename>`` for parquet caches."""
-    return _get_output_folder(patient_folder, output_root) / filename
+    return get_output_folder(patient_folder, output_root) / filename

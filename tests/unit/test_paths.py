@@ -11,7 +11,7 @@ from pathlib import Path
 
 import clinical_scope.constants as cst
 from clinical_scope.io.paths import (
-    _get_output_folder,
+    get_output_folder,
     get_annotations_path,
     get_database_options_path,
     get_datasource_cache_path,
@@ -38,10 +38,10 @@ class TestOutputBase:
 
 class TestOutputFolder:
     def test_legacy_layout(self):
-        assert _get_output_folder(PATIENT) == PATIENT / LEAF
+        assert get_output_folder(PATIENT) == PATIENT / LEAF
 
     def test_redirected_layout(self):
-        assert _get_output_folder(PATIENT, "/scratch") == Path("/scratch/patient_007") / LEAF
+        assert get_output_folder(PATIENT, "/scratch") == Path("/scratch/patient_007") / LEAF
 
 
 class TestArtifactPaths:

@@ -15,6 +15,7 @@ from clinical_scope.io.file_utils import (
     read_parquet_pruned,
     set_datetime_index,
 )
+from clinical_scope.io.paths import get_output_folder
 from clinical_scope.signal_container import (
     DisplayFallbacks,
     Signal,
@@ -76,6 +77,22 @@ def _patient_options_for_file(patient_options: dict, file_stem: str) -> dict:
         return patient_options
     generic = patient_options.get(options_naming.DATASOURCE_NAME, {})
     return {**patient_options, options_naming.DATASOURCE_NAME: {**generic, **per_file}}
+
+
+def _source_options_for_file(base_source_options: dict | None, file_config: dict) -> dict:
+    """
+    Return *base_source_options* with the file's own ``trace_options`` merged over it.
+
+    Trace styling (``mode``, ``line_width``, …) normally lives in a datasource's options.py,
+    which leaves no route for a single ``other`` file to look different from its neighbours —
+    a sparse infusion log needs markers where a waveform does not.
+    """
+    per_file = file_config.get(cst.DatabaseOptions.TRACE_OPTIONS)
+    if not per_file:
+        return base_source_options or {}
+    base = base_source_options or {}
+    base_trace = base.get(cst.SourceOptions.TRACE_OPTIONS, {})
+    return {**base, cst.SourceOptions.TRACE_OPTIONS: {**base_trace, **per_file}}
 
 
 def _resolve_columns(df: pd.DataFrame, file_config: dict) -> list[str]:
@@ -141,10 +158,10 @@ class OtherDataSource(DataSourceBase):
         signals by source file.
 
         Per-file configuration is read from ``database_options_specific["files"]``, which
-        is populated by ``wrapper._collect_other_per_file()`` from ``other::<stem>`` keys.
-        Each ``other::<stem>`` section supports the full set of database_options keys:
+        ``database_options_parser.normalize_database_options`` populates from ``other::<stem>``
+        keys. Each ``other::<stem>`` section supports the full set of database_options keys:
         ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
-        ``grouped_fields``, ``loop``, and ``spectrogram``.
+        ``grouped_fields``, ``loop``, ``spectrogram``, and ``trace_options``.
 
         Per-file *patient* options (``time_shift``, ``group_by_file``) are read the same way,
         from a standalone ``patient_options["other::<stem>"]`` block — see
@@ -167,6 +184,7 @@ class OtherDataSource(DataSourceBase):
         per_file_options: dict = database_options.get(cst.DatabaseOptions.FILES, {})
 
         all_signals: list[Signal] = []
+        loaded_files: list[Path] = []
         grouped_fields: dict = {}
         per_file_loops: dict = {}
         per_file_spectrograms: dict = {}
@@ -193,6 +211,8 @@ class OtherDataSource(DataSourceBase):
                     logger.warning("Skipping file '%s': %s", file_path.name, exc)
                     continue
 
+                loaded_files.append(file_path)
+
                 for column in df.columns:
                     df[column] = pd.to_numeric(df[column], errors="coerce")
 
@@ -217,6 +237,8 @@ class OtherDataSource(DataSourceBase):
                     logger.debug("No columns selected for '%s', skipping file", file_path.name)
                     continue
 
+                file_source_options = _source_options_for_file(cls.SOURCE_OPTIONS, file_config)
+
                 file_signal_raw_names: list[str] = []
                 for column_name in columns:
                     raw_name = f"{file_stem}::{column_name}"
@@ -224,7 +246,7 @@ class OtherDataSource(DataSourceBase):
                         signal_obj = Signal.time_series_from_dataframe(
                             df=df,
                             raw_signal_name=column_name,
-                            source_options=cls.SOURCE_OPTIONS,
+                            source_options=file_source_options,
                             database_options_specific=file_config,
                             display_fallbacks=display_fallbacks,
                         )
@@ -274,6 +296,12 @@ class OtherDataSource(DataSourceBase):
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
                 continue
+
+        # 'other' never writes a parquet cache, so the symlink is the only trace the output
+        # folder keeps of which files a run actually read.
+        if loaded_files and cls.CREATE_SOURCE_SYMLINK:
+            output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
+            cls._create_source_symlink(loaded_files, get_output_folder(folder_path, output_root))
 
         # Inject grouped_fields, loop and spectrogram into database_options for the wrapper to use
         if grouped_fields:
