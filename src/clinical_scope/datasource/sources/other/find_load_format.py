@@ -226,7 +226,7 @@ class OtherDataSource(DataSourceBase):
                     continue
 
                 # Drop all-NaN columns *after* the datetime filter so a column's presence is
-                # judged on the final window, not on whether row-pushdown narrowed the read (#57).
+                # judged on the final window, not on whether row-pushdown narrowed the read.
                 df = df.dropna(axis=1, how="all")
                 if df.empty or len(df.columns) == 0:
                     logger.warning("No numeric columns in '%s', skipping file", file_path.name)

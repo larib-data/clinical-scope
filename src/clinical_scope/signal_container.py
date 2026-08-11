@@ -624,6 +624,21 @@ class Signal:
         )
         return obj
 
+    @staticmethod
+    def _require_time_series(signal: "Signal") -> None:
+        if signal.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES:
+            msg = "Input signal must be of type 'time_series'."
+            raise ValueError(msg)
+
+    @staticmethod
+    def _spectral_overrides(window_s: float | None, overlap: float | None) -> dict:
+        overrides = {}
+        if window_s is not None:
+            overrides["window_s"] = window_s
+        if overlap is not None:
+            overrides["overlap"] = overlap
+        return overrides
+
     @classmethod
     def spectrogram_from_signal(
         cls,
@@ -641,15 +656,8 @@ class Signal:
         turned into a spectrogram (too short, decimated, out-of-range) — callers decide whether
         that is a warning or an error.
         """
-        if signal.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES:
-            msg = "Input signal must be of type 'time_series'."
-            raise ValueError(msg)
-
-        spectral_overrides = {}
-        if window_s is not None:
-            spectral_overrides["window_s"] = window_s
-        if overlap is not None:
-            spectral_overrides["overlap"] = overlap
+        cls._require_time_series(signal)
+        spectral_overrides = cls._spectral_overrides(window_s, overlap)
 
         times, freqs, power_db = spectral.spectrogram(
             signal.data.x,
@@ -707,15 +715,8 @@ class Signal:
         *window_s*) that would otherwise share both name and raw_name; *color*/*line_dash*
         do the same visually, since both otherwise default to the source signal's own.
         """
-        if signal.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES:
-            msg = "Input signal must be of type 'time_series'."
-            raise ValueError(msg)
-
-        spectral_overrides = {}
-        if window_s is not None:
-            spectral_overrides["window_s"] = window_s
-        if overlap is not None:
-            spectral_overrides["overlap"] = overlap
+        cls._require_time_series(signal)
+        spectral_overrides = cls._spectral_overrides(window_s, overlap)
 
         freqs, power_db = spectral.psd(
             signal.data.x,
@@ -781,7 +782,9 @@ class Signal:
                 zmax=color_range[1] if color_range else None,
                 colorbar={"title": {"text": "dB"}},
                 hovertemplate=(
-                    f"<b>{self.name}</b><br>%{{x}}<br>%{{y:.1f}} Hz<br>%{{z:.1f}} dB<extra></extra>"
+                    f"<b>{self.name}</b><br>%{{x}}"
+                    f"<br>%{{y:{cst.Spectral.HOVER_HEATMAP_FREQ_FORMAT}}} Hz"
+                    f"<br>%{{z:{cst.Spectral.HOVER_DB_FORMAT}}} dB<extra></extra>"
                 ),
             )
             elapsed = time.perf_counter() - start
@@ -833,7 +836,11 @@ class Signal:
             hovertemplate = f"<b>{self.name}</b>: {_y_fmt}{y_unit_suffix}<extra></extra>"
         elif self.trace_options.plot_options.plot_type == cst.PlotType.PSD:
             # x is frequency and y always dB, so neither unit comes from the signal itself.
-            hovertemplate = f"<b>{self.name}</b><br>%{{x:.3g}} Hz<br>%{{y:.1f}} dB<extra></extra>"
+            hovertemplate = (
+                f"<b>{self.name}</b>"
+                f"<br>%{{x:{cst.Spectral.HOVER_PSD_FREQ_FORMAT}}} Hz"
+                f"<br>%{{y:{cst.Spectral.HOVER_DB_FORMAT}}} dB<extra></extra>"
+            )
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
             _x_unit_suffix = (

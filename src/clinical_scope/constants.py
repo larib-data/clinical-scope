@@ -616,6 +616,14 @@ class Spectral:
     # Clamp under the dB log, so a silent bin yields a floor value instead of -inf.
     POWER_FLOOR = 1e-20
 
+    # Hover formats: precision here is fixed by the axis unit, not by the signal's own
+    # y_significant_digits (that setting governs the source series, not Hz/dB).
+    HOVER_DB_FORMAT = ".1f"
+    # Spectrogram heatmap: Hz is the y-axis over a narrow zoomed range, one decimal reads well.
+    HOVER_HEATMAP_FREQ_FORMAT = ".1f"
+    # PSD: Hz spans the whole freq_range on the x-axis, so significant digits scale better.
+    HOVER_PSD_FREQ_FORMAT = ".3g"
+
 
 class PlotType:
     TIME_SERIES = "time_series"

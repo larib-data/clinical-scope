@@ -332,8 +332,15 @@ class TestSentinelRow:
         result = xlsx_bytes_to_database_options(data)
         assert "*" not in result["ds_a"].get("field_display", [])
 
+    def test_sentinel_creates_timezone(self):
+        row = ["other::stem", "*"] + [""] * (len(SIGNALS_HEADER) - 2) + ["", "", "", "", "UTC"]
+        data = _build_xlsx([FULL_SIGNALS_HEADER, row])
+        result = xlsx_bytes_to_database_options(data)
+        assert result["other::stem"]["additional_informations"] == {"timezone": "UTC"}
+
 
 TRACE_SIGNALS_HEADER = [*SIGNALS_HEADER, "trace_mode", "line_width", "opacity", "marker_symbol"]
+FULL_SIGNALS_HEADER = [*TRACE_SIGNALS_HEADER, "timezone"]
 
 
 class TestSentinelRowTraceOptions:
@@ -400,6 +407,26 @@ class TestSentinelRowTraceOptions:
         result = xlsx_bytes_to_database_options(data)
         assert result["ds_a"]["trace_options"] == {"mode": "lines+markers"}
 
+    @pytest.mark.parametrize(
+        ("column_name", "column_index", "value", "expected"),
+        [
+            # No range/enum validation happens here -- values pass through as-is; Plotly is
+            # the one that eventually rejects an out-of-range or unknown value.
+            ("trace_mode", 14, "not+a+real+mode", "not+a+real+mode"),
+            ("line_width", 15, "-3", -3.0),
+            ("opacity", 16, "1.5", 1.5),
+        ],
+    )
+    def test_sentinel_trace_options_are_not_range_or_enum_checked(
+        self, column_name, column_index, value, expected
+    ):
+        row = ["ds_a", "*"] + [""] * (len(SIGNALS_HEADER) - 2) + ["", "", "", ""]
+        row[column_index] = value
+        data = _build_xlsx([TRACE_SIGNALS_HEADER, row])
+        result = xlsx_bytes_to_database_options(data)
+        key = {"trace_mode": "mode"}.get(column_name, column_name)
+        assert result["ds_a"]["trace_options"] == {key: expected}
+
     def test_trace_mode_on_per_signal_row_is_ignored_with_warning(self, caplog):
         data = _build_xlsx(
             [
@@ -429,6 +456,74 @@ class TestSentinelRowTraceOptions:
         result = xlsx_bytes_to_database_options(data)
         assert "trace_options" not in result["ds_a"]
         assert "trace_mode" in caplog.text
+
+    @pytest.mark.parametrize(
+        ("column_name", "value"),
+        [
+            ("trace_mode", "lines+markers"),
+            ("line_width", "2.5"),
+            ("opacity", "0.8"),
+            ("marker_symbol", "circle"),
+            ("timezone", "Europe/Paris"),
+        ],
+    )
+    def test_sentinel_only_column_on_per_signal_row_warns(self, caplog, column_name, value):
+        row = ["ds_a", "SIG1"] + [""] * (len(SIGNALS_HEADER) - 2) + ["", "", "", "", ""]
+        row[FULL_SIGNALS_HEADER.index(column_name)] = value
+        data = _build_xlsx([FULL_SIGNALS_HEADER, row])
+        result = xlsx_bytes_to_database_options(data)
+        assert "trace_options" not in result["ds_a"]
+        assert column_name in caplog.text
+
+    def test_trace_options_are_isolated_per_datasource(self):
+        data = _build_xlsx(
+            [
+                TRACE_SIGNALS_HEADER,
+                [
+                    "ds_a",
+                    "*",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "lines",
+                    "",
+                    "",
+                    "",
+                ],
+                [
+                    "ds_b",
+                    "*",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "markers",
+                    "",
+                    "",
+                    "",
+                ],
+            ]
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert result["ds_a"]["trace_options"] == {"mode": "lines"}
+        assert result["ds_b"]["trace_options"] == {"mode": "markers"}
 
 
 # ---------------------------------------------------------------------------
