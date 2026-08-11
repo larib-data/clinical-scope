@@ -22,6 +22,16 @@ DATETIME_INDEX_NAME = "datetime_index"
 QUALIFIED_NAME_SEPARATOR = "::"
 OTHER_FILE_PREFIX = f"other{QUALIFIED_NAME_SEPARATOR}"
 
+# Datasources dropped once 'other' gained per-file configuration: they parsed plain CSV/parquet
+# and carried no format-specific logic. Their folders are still *detected* — only to tell the
+# user where the data should move now. Values are the retired FOLDER_KEYWORDS, so a folder
+# named "Philips Waves" is still recognized exactly as it used to be.
+RETIRED_DATASOURCE_FOLDERS = {
+    "philips_waves": ["philips", "waves"],
+    "philips_numerics": ["philips", "numerics"],
+    "syringe": ["syringe"],
+}
+
 # Safety pad added around parquet row-pushdown bounds (issue #57): bounds are deliberately
 # conservative-loose, since _filter_by_datetime remains the authoritative cut afterwards.
 DATETIME_PUSHDOWN_BUFFER_SECONDS = 1.0

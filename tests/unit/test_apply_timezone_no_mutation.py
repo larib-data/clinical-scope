@@ -3,7 +3,7 @@ Regression test: ``apply_timezone_to_dataframe`` must localize onto a copy, neve
 the caller's DataFrame in place.
 
 ``df.index = df.index.tz_localize(...)`` rebinds the index *on the passed object*. The
-``_format`` overrides that don't copy first (servo_u, philips_waves/numerics, eit) hand
+``_format`` overrides that don't copy first (servo_u, servo_u, eit) hand
 their caller's DataFrame straight in, so an in-place localize would tz-shift the original —
 e.g. polluting a module-scoped ``loaded_df`` test fixture and making a "loaded" snapshot
 pass only depending on whether a ``_format`` call ran earlier in the session.

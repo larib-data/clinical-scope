@@ -3,10 +3,7 @@
     "datetime_start": null,
     "datetime_end": null,
     "quick_load": false,
-    "philips_waves": {
-        "time_shift": 20.0
-    },
-    "philips_numerics": {
+    "other::numerics": {
         "time_shift": 20.0
     },
     "eit": {

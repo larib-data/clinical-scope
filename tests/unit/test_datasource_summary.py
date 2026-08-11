@@ -30,17 +30,17 @@ class TestFormatDatasourceSummary:
         assert _format_datasource_summary({}, []) == "No datasource requested."
 
     def test_all_found_no_annotation(self):
-        found = {"eit": "", "philips_waves": ""}
-        message = _format_datasource_summary(found, ["eit", "philips_waves"])
-        assert message == "Found: eit, philips_waves"
+        found = {"eit": "", "servo_u": ""}
+        message = _format_datasource_summary(found, ["eit", "servo_u"])
+        assert message == "Found: eit, servo_u"
 
     def test_all_not_found(self):
-        message = _format_datasource_summary({}, ["eit", "philips_waves"])
-        assert message == "Not found (2): eit, philips_waves"
+        message = _format_datasource_summary({}, ["eit", "servo_u"])
+        assert message == "Not found (2): eit, servo_u"
 
     def test_mixed_found_and_not_found(self):
-        message = _format_datasource_summary({"eit": ""}, ["eit", "philips_waves", "syringe"])
-        assert message == "Found: eit | Not found (2): philips_waves, syringe"
+        message = _format_datasource_summary({"eit": ""}, ["eit", "servo_u", "edf"])
+        assert message == "Found: eit | Not found (2): servo_u, edf"
 
     def test_annotation_is_rendered_in_parens(self):
         message = _format_datasource_summary({"other": "waves, numerics"}, ["other"])
@@ -64,7 +64,7 @@ class TestMainDatasourceSummary:
 
         lines = _summary_lines(caplog)
         assert len(lines) == 1
-        assert "philips_waves" in lines[0]
+        assert "mindray_scope" in lines[0]
         assert "eit" in lines[0]  # eit has no folder in Patient_difficult_format -> "not found"
 
     def test_other_shows_file_stems_not_bare_found(self, patient_options_difficult, caplog):
@@ -112,5 +112,5 @@ class TestExtractPatientDatasourceSummary:
             wrapper.extract_patient(patient_difficult_path)
 
         summary = _summary_lines(caplog)[0]
-        assert "philips_waves" in summary
+        assert "mindray_scope" in summary
         assert "eit" in summary  # not found in Patient_difficult_format

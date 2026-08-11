@@ -8,7 +8,7 @@ values, and never the datetime axis (dropping it would crash `set_datetime_index
 The invariant everywhere is ``read(pruned) == read(all)[list(pruned.columns)]``, checked
 across {materialized cache index, non-materialized raw index} × {literal, wildcard 0/1/2+
 matches}, on every wire point: the low-level `read_parquet_pruned`, the quick-load cache
-(`_quick_load`), `philips_waves` (uncached parquet), and `other`.
+(`_quick_load`), and `other` (uncached parquet, read fresh every run).
 
 Column pruning is orthogonal to the datetime window — it must fire even with no window set
 (the common case) — so most tests deliberately set no window.
@@ -253,87 +253,7 @@ class TestQuickLoadCachePruning:
 
 
 # ---------------------------------------------------------------------------
-# Wire point 2: philips_waves (uncached, wide, parquet branch)
-# ---------------------------------------------------------------------------
-
-
-class TestPhilipsWavesColumnPruning:
-    """philips_waves reads its source parquet fresh every run — pruning applies each time."""
-
-    def test_extract_pruned_matches_full_subset(self, philips_waves_cls, patient_full_path):
-        folder = philips_waves_cls._find_folder(patient_full_path)
-        file_path = philips_waves_cls._find(folder)
-        if file_path is None or file_path.suffix.lower() != ".parquet":
-            pytest.skip("philips_waves parquet fixture not found in demo_patient")
-
-        base_options = {
-            "data_folder": str(patient_full_path),
-            "datetime_start": None,
-            "datetime_end": None,
-            "quick_load": False,
-        }
-        full = philips_waves_cls.extract(base_options, {})
-        # 'art' literal + 'p*' wildcard (paw / pleth / p4) — a real 1 + 2+ mix.
-        field_display = ["art", "p*"]
-        pruned = philips_waves_cls.extract(base_options, {"field_display": field_display})
-
-        assert list(pruned.columns) == _expected_cols(full, field_display)
-        pd.testing.assert_frame_equal(pruned, full[list(pruned.columns)])
-
-    def test_inspect_reports_unconfigured_columns(self, philips_waves_cls, patient_full_path):
-        """inspect() strips field_display → full read → unconfigured columns still reported."""
-        folder = philips_waves_cls._find_folder(patient_full_path)
-        file_path = philips_waves_cls._find(folder)
-        if file_path is None or file_path.suffix.lower() != ".parquet":
-            pytest.skip("philips_waves parquet fixture not found in demo_patient")
-
-        insp = philips_waves_cls.inspect(
-            {
-                "data_folder": str(patient_full_path),
-                "datetime_start": None,
-                "datetime_end": None,
-                "quick_load": False,
-            },
-            {"field_display": ["art"]},  # only 'art' configured
-        )
-        assert insp.status == "ok"
-        reported = {c.raw_name for c in insp.columns}
-        assert "art" in reported
-        assert "vol" in reported  # unconfigured, but inspect must still surface it
-
-    @pytest.mark.parametrize("quick_load", [False, True])
-    def test_inspect_configured_columns_only_prunes_the_fresh_read(
-        self, philips_waves_cls, patient_full_path, quick_load
-    ):
-        # Regression: philips_waves opts out of caching (ALLOW_QUICK_LOAD=False), so every
-        # inspect() call -- quick_load on or off -- lands on the fresh-load branch. Before the
-        # fix, that branch ignored configured_columns_only entirely: the flag could never prune
-        # anything for this datasource, no matter how many times it was rerun.
-        folder = philips_waves_cls._find_folder(patient_full_path)
-        file_path = philips_waves_cls._find(folder)
-        if file_path is None or file_path.suffix.lower() != ".parquet":
-            pytest.skip("philips_waves parquet fixture not found in demo_patient")
-
-        field_display = ["art", "p*"]  # 'art' literal + 'p*' wildcard (paw / pleth / p4)
-        insp = philips_waves_cls.inspect(
-            {
-                "data_folder": str(patient_full_path),
-                "datetime_start": None,
-                "datetime_end": None,
-                "quick_load": quick_load,
-            },
-            {"field_display": field_display},
-            configured_columns_only=True,
-        )
-        assert insp.status == "ok"
-        assert insp.columns_pruned is True
-        reported = {c.raw_name for c in insp.columns}
-        assert reported == {"art", "paw", "pleth", "p4"}
-        assert "vol" not in reported  # unconfigured column must not survive pruning
-
-
-# ---------------------------------------------------------------------------
-# Wire point 3: other (uncached, per-file config, bare-name field_display)
+# Wire point 2: other (uncached, per-file config, bare-name field_display)
 # ---------------------------------------------------------------------------
 
 
@@ -392,7 +312,7 @@ class TestOtherColumnPruning:
 
 
 # ---------------------------------------------------------------------------
-# Wire point 4: inspect's opt-in column pruning
+# Wire point 3: inspect's opt-in column pruning
 # ---------------------------------------------------------------------------
 
 

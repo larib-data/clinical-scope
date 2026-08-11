@@ -292,6 +292,9 @@ def main(
         len(requested_sources),
         requested_sources,
     )
+    datasource_list.warn_retired_datasource_folders(
+        patient_options[cst.PatientOptions.PathDataFolder.NAME]
+    )
 
     total_count = len(requested_sources)
     processed_count = 0
@@ -542,6 +545,9 @@ def inspect(
         requested_sources,
         " (configured columns only)" if configured_columns_only else "",
     )
+    datasource_list.warn_retired_datasource_folders(
+        patient_options[cst.PatientOptions.PathDataFolder.NAME]
+    )
 
     total_count = len(requested_sources)
     processed_count = 0
@@ -631,7 +637,7 @@ def extract_datasource(
 
     Args:
         datasource_folder: Path to the datasource subfolder
-            (e.g. ``/data/Patient01/philips_waves``).
+            (e.g. ``/data/Patient01/servo_u``).
         database_options_specific: Per-datasource database options (optional).
         patient_options: Patient-level options (``datetime_start``, ``datetime_end``, …).
             ``data_folder`` is always overridden.

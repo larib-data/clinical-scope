@@ -304,7 +304,7 @@ def apply_timezone_to_dataframe(
         return df
 
     # Shallow-copy before rebinding the index: `df.index = …` mutates in place, and the
-    # no-copy `_format` overrides (servo_u, philips_waves/numerics, eit) pass their caller's
+    # no-copy `_format` overrides (servo_u, eit) pass their caller's
     # DataFrame straight in — without this, localization would tz-shift the original.
     localized_index = df.index.tz_localize(timezone)
     df = df.copy(deep=False)

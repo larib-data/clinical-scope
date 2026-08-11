@@ -56,8 +56,8 @@ class DataSourceBase(ABC):
     """
 
     # Subclass configuration - must be set by concrete implementations
-    DATASOURCE_NAME: str = None  # e.g., "philips_waves"
-    FILE_NAME_DATAFRAME_LOADED: str = None  # e.g., "philips_waves_loaded.parquet"
+    DATASOURCE_NAME: str = None  # e.g., "servo_u"
+    FILE_NAME_DATAFRAME_LOADED: str = None  # e.g., "servo_u_loaded.parquet"
     OPTIONS_MODULE = None
     ALLOW_QUICK_LOAD: bool = True
     # When True and ALLOW_QUICK_LOAD is False, a symlink to the source file is created in the
@@ -329,7 +329,7 @@ class DataSourceBase(ABC):
         logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
         # write_cache=False means this _load() output is never cached, so — unlike the EIT
         # pre-filter hazard above — honoring field_display here can't narrow a future full read.
-        # Sources that opt out of caching (ALLOW_QUICK_LOAD=False, e.g. philips_waves) are
+        # Sources that opt out of caching (ALLOW_QUICK_LOAD=False, e.g. other) are
         # otherwise always on this branch and could never benefit from configured_columns_only.
         load_column_options = database_options
         if configured_field_display is not None and not write_cache:

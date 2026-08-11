@@ -229,7 +229,9 @@
         }
     },
 
-    "syringe": {
+    "other::syringe": {
+        "additional_informations": { "timezone": "Europe/Paris" },
+        "trace_options": { "mode": "lines+markers", "line_width": 2.0 },
         "field_display": [
             "Vitesse Propofol",
             "Vitesse Remifentanil",

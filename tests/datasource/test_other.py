@@ -396,7 +396,7 @@ class TestNormalizeDatabaseOptions:
 
     def test_noop_when_no_per_file_keys(self):
 
-        db = {"other": {"signals": {}}, "philips_waves": {}}
+        db = {"other": {"signals": {}}, "servo_u": {}}
         original = dict(db)
         normalize_database_options(db)
         assert db == original

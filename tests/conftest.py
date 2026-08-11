@@ -29,7 +29,7 @@ def patient_difficult_path():
 
 @pytest.fixture(scope="session")
 def example_database_options():
-    """Parsed example_database_options.json (covers philips_waves, philips_numerics, syringe, eit)."""
+    """Parsed example_database_options.json (covers the other::<stem> files, eit, servo_u, …)."""
     path = EXAMPLE_DIR / "option_files" / "example_database_options.json"
     with open(path) as f:
         return json.load(f)
@@ -37,7 +37,7 @@ def example_database_options():
 
 @pytest.fixture(scope="session")
 def default_database_options():
-    """Default database options from generate_default_database_options() — all 11 datasources."""
+    """Default database options from generate_default_database_options() — every datasource."""
     from clinical_scope.datasource.registry import generate_default_database_options
 
     return generate_default_database_options()

@@ -34,7 +34,7 @@ class TestParseDbOptionsFile:
         content = json.dumps(example_database_options).encode("utf-8")
         result, issues = _parse_database_options_file(content, "test.json")
         assert isinstance(result, dict)
-        assert "philips_waves" in result
+        assert "other::waves" in result
         assert isinstance(issues, list)
 
     def test_parse_unsupported_extension(self):
@@ -79,7 +79,7 @@ class TestBuildInspectionContent:
     def test_ok_result(self):
         results = [
             DataSourceInspection(
-                datasource_name="philips_waves",
+                datasource_name="servo_u",
                 status="ok",
                 file_path="/data/waves.parquet",
                 raw_date_range=("24-01-01 08:00:00", "24-01-01 09:00:00"),
@@ -242,7 +242,7 @@ class TestProcessVisualizationSubmitTimezone:
         # data under data_folder) since this test only cares what got saved.
         process_visualization(
             1,
-            {"philips_waves": {}},
+            {"servo_u": {}},
             _DATETIME_SCHEMA_DATA,
             values,
             ids,
@@ -422,8 +422,8 @@ class TestOtherPerFileCards:
         assert scopes == {"other::waves"}
 
     def test_no_other_config_no_other_card(self):
-        scopes = self._scopes({"philips_waves": {}})
-        assert scopes == {"philips_waves"}
+        scopes = self._scopes({"servo_u": {}})
+        assert scopes == {"servo_u"}
 
     def test_per_file_widgets_carry_both_fields(self):
         _, schema_data = build_patient_options_ui({"other::waves": {}})
@@ -440,5 +440,5 @@ class TestRehydrateSchemaClasses:
         assert schema.NAME == "time_shift"
 
     def test_plain_datasource_id_still_resolves(self):
-        lookup = _rehydrate_schema_classes({"specific.philips_waves.time_shift": "TimeShift"})
-        assert lookup["specific.philips_waves.time_shift"].NAME == "time_shift"
+        lookup = _rehydrate_schema_classes({"specific.servo_u.time_shift": "TimeShift"})
+        assert lookup["specific.servo_u.time_shift"].NAME == "time_shift"

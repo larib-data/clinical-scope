@@ -1,7 +1,11 @@
 {
     "global": {
         "grouped_fields": {
-            "NI Pressure": ["PNId", "PNIm", "PNIs"],
+            "NI Pressure": [
+                "other::numerics::PNId",
+                "other::numerics::PNIm",
+                "other::numerics::PNIs"
+            ],
             "Paw [cross-source qualified refs]": [
                 "fluxmed_signals::Paw(cmH2O)",
                 "mindray_scope::Paw",
@@ -10,7 +14,7 @@
         }
     },
 
-    "philips_waves": {
+    "other::waves": {
         "field_display": ["art", "pleth", "paw", "vol"],
         "signals": {
             "art": {
@@ -129,7 +133,8 @@
         }
     },
 
-    "philips_numerics": {
+    "other::numerics": {
+        "trace_options": { "mode": "lines+markers", "line_width": 2.0 },
         "field_display": [
             "FC",
             "SpO₂",
@@ -213,7 +218,9 @@
         }
     },
 
-    "syringe": {
+    "other::syringe": {
+        "additional_informations": { "timezone": "Europe/Paris" },
+        "trace_options": { "mode": "lines+markers", "line_width": 2.0 },
         "field_display": [
             "Vitesse Propofol",
             "Vitesse Remifentanil",

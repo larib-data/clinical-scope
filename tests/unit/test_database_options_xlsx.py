@@ -743,7 +743,7 @@ class TestExampleFileRoundTrip:
             pytest.skip("Example XLSX not found")
         data = example.read_bytes()
         result = xlsx_bytes_to_database_options(data)
-        assert "philips_waves" in result
+        assert "other::waves" in result
         assert "eit" in result
         assert "global" in result
 

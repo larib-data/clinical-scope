@@ -629,6 +629,14 @@ def _inspect_patient_folder(path: Path) -> Any:
 
     found = [ds.DESCRIPTION for ds in scan.found]
     empty = [ds.DESCRIPTION for ds in scan.empty]
+    # Retired folders sit alongside recognized ones, so they must be called out on the success
+    # path too — otherwise a patient with eit/ + philips_waves/ reads as a clean "✓ Found".
+    retired_note = (
+        f" ⚠ Ignoring {', '.join(scan.retired)}: removed datasource(s) — move these files "
+        "into 'other/'."
+        if scan.retired
+        else ""
+    )
 
     if found or empty:
         msg = ""
@@ -636,7 +644,9 @@ def _inspect_patient_folder(path: Path) -> Any:
             msg += f"✓ Found {len(found)} device folder(s): {', '.join(found)}."
         if empty:
             msg += f" ({len(empty)} recognized but empty: {', '.join(empty)})"
-        return html.Span(msg.strip(), style=_PREVIEW_OK if found else _PREVIEW_WARN)
+        msg += retired_note
+        style = _PREVIEW_WARN if (scan.retired or not found) else _PREVIEW_OK
+        return html.Span(msg.strip(), style=style)
     # If the path itself is named like a device folder, the user went one level too deep.
     if scan.self_datasource is not None:
         return html.Span(
@@ -648,7 +658,7 @@ def _inspect_patient_folder(path: Path) -> Any:
         names = ", ".join(scan.other_subfolders)
         return html.Span(
             f"⚠ This doesn't look like a patient folder — its subfolders ({names}) don't match "
-            f"any known device. A patient folder holds one subfolder per device.",
+            f"any known device. A patient folder holds one subfolder per device.{retired_note}",
             style=_PREVIEW_WARN,
         )
     return html.Span(
