@@ -333,6 +333,104 @@ class TestSentinelRow:
         assert "*" not in result["ds_a"].get("field_display", [])
 
 
+TRACE_SIGNALS_HEADER = [*SIGNALS_HEADER, "trace_mode", "line_width", "opacity", "marker_symbol"]
+
+
+class TestSentinelRowTraceOptions:
+    def test_sentinel_creates_trace_options(self):
+        data = _build_xlsx(
+            [
+                TRACE_SIGNALS_HEADER,
+                [
+                    "other::syringe",
+                    "*",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "lines+markers",
+                    "2.5",
+                    "0.8",
+                    "circle",
+                ],
+            ]
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert result["other::syringe"]["trace_options"] == {
+            "mode": "lines+markers",
+            "line_width": 2.5,
+            "opacity": 0.8,
+            "marker_symbol": "circle",
+        }
+
+    def test_sentinel_partial_trace_options(self):
+        data = _build_xlsx(
+            [
+                TRACE_SIGNALS_HEADER,
+                [
+                    "ds_a",
+                    "*",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "lines+markers",
+                    "",
+                    "",
+                    "",
+                ],
+            ]
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert result["ds_a"]["trace_options"] == {"mode": "lines+markers"}
+
+    def test_trace_mode_on_per_signal_row_is_ignored_with_warning(self, caplog):
+        data = _build_xlsx(
+            [
+                TRACE_SIGNALS_HEADER,
+                [
+                    "ds_a",
+                    "SIG1",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "lines+markers",
+                    "",
+                    "",
+                    "",
+                ],
+            ]
+        )
+        result = xlsx_bytes_to_database_options(data)
+        assert "trace_options" not in result["ds_a"]
+        assert "trace_mode" in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # Tests: group scope resolution
 # ---------------------------------------------------------------------------

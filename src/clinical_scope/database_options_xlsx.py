@@ -252,6 +252,25 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 if timezone:
                     result[ds].setdefault("additional_informations", {})["timezone"] = timezone
 
+                trace_config = cst.DatabaseOptions.TraceOptionsConfig
+                trace_options = {}
+                trace_mode = str(row.get("trace_mode", "")).strip()
+                if trace_mode:
+                    trace_options[trace_config.MODE] = trace_mode
+                line_width = _to_float(row.get("line_width", ""))
+                if line_width is not None:
+                    trace_options[trace_config.LINE_WIDTH] = line_width
+                opacity = _to_float(row.get("opacity", ""))
+                if opacity is not None:
+                    trace_options[trace_config.OPACITY] = opacity
+                marker_symbol = str(row.get("marker_symbol", "")).strip()
+                if marker_symbol:
+                    trace_options[trace_config.MARKER_SYMBOL] = marker_symbol
+                if trace_options:
+                    result[ds].setdefault(cst.DatabaseOptions.TRACE_OPTIONS, {}).update(
+                        trace_options
+                    )
+
                 continue
 
             # ----------------------------------------------------------
@@ -301,15 +320,23 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 signal_options["hover_template"] = hover_template
 
             # Warn about fields that are only meaningful in the sentinel (*) row
-            timezone_val = str(row.get("timezone", "")).strip()
-            if timezone_val:
-                logger.warning(
-                    "Row %s (datasource=%r, signal=%r): 'timezone' is only valid in the "
-                    "sentinel ('*') row — ignored for per-signal rows.",
-                    row_idx,
-                    ds,
-                    signal,
-                )
+            sentinel_only_columns = (
+                "timezone",
+                "trace_mode",
+                "line_width",
+                "opacity",
+                "marker_symbol",
+            )
+            for column_name in sentinel_only_columns:
+                if str(row.get(column_name, "")).strip():
+                    logger.warning(
+                        "Row %s (datasource=%r, signal=%r): '%s' is only valid in the "
+                        "sentinel ('*') row — ignored for per-signal rows.",
+                        row_idx,
+                        ds,
+                        signal,
+                        column_name,
+                    )
 
             result[ds].setdefault(_SIGNALS_SHEET_NAME, {})[signal] = signal_options
 

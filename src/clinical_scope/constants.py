@@ -564,6 +564,13 @@ class DatabaseOptions:
 
             KNOWN_KEYS = frozenset({SIGNAL, WINDOW_S, OVERLAP, LABEL, COLOR, LINE_DASH})
 
+    # --- Datasource-level trace styling (inside "trace_options" dict) ---
+    class TraceOptionsConfig:
+        MODE = "mode"
+        LINE_WIDTH = "line_width"
+        OPACITY = "opacity"
+        MARKER_SYMBOL = "marker_symbol"
+
     # --- Datasource-level numerics defaults ---
     class Numerics:
         PRIORITY = "priority"

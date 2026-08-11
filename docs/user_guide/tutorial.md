@@ -250,7 +250,8 @@ points than as a bare line:
 `mode` accepts `lines`, `markers` or `lines+markers`; `line_width`, `line_dash` and
 `opacity` are also available. Keys you leave out keep their default. Per-signal `color`,
 `line_dash` and `visible` still live in the `signals` block and win over `trace_options`.
-This key is JSON-only — the Excel format has no column for it.
+In Excel, set `trace_mode`, `line_width`, `opacity` and `marker_symbol` on the sentinel
+(`*`) row instead — see [`signals` sheet](#signals-sheet).
 
 **Per-file processing options.** Every file you declare with an `other::<stem>` key also gets its own box in the *Specific Options* panel, sitting alongside the device boxes rather than nested under a shared "Other" one. Each box carries that file's own `time_shift` and *Group signals by source file*, so a curated two-column export and a ninety-column raw dump can be corrected and laid out independently. Files present in the folder but not declared in `database_options` fall back to the shared "Other (generic)" box. See [patient_options.json](#patient_optionsjson).
 
@@ -915,6 +916,10 @@ The **Scope** column below indicates where each field is meaningful:
 | `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. |
 | `groups` | No | Signal | Semicolon-separated group names (e.g., `Respiratory;Pressure`). Groups within one datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
 | `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. Works with `other::<stem>` datasource keys. See [`additional_informations` Block](#additional_informations-block) for which datasources support this. |
+| `trace_mode` | No | **Sentinel** | `lines`, `markers` or `lines+markers` for every trace in this datasource. Only valid in `*` rows. Works with `other::<stem>` datasource keys — e.g. a sparse infusion log reads better as `markers` than as connected `lines`. |
+| `line_width` | No | **Sentinel** | Line width in pixels for every trace in this datasource. Only valid in `*` rows. |
+| `opacity` | No | **Sentinel** | Trace opacity, `0`-`1`. Only valid in `*` rows. |
+| `marker_symbol` | No | **Sentinel** | Plotly marker symbol (e.g., `circle`, `square`) used when `trace_mode` includes `markers`. Only valid in `*` rows. |
 
 ### `loops` sheet (optional)
 
