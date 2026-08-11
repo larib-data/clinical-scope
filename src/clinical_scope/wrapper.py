@@ -119,12 +119,16 @@ def _add_derived_plot_group(
     kind: str,
     item_name: str,
     datasource_name: str,
-    build_signal: Callable[[], Signal],
+    build_signal: Callable[[], Signal | list[Signal]],
     plot_group_list: list[PlotGroup],
     refusal_exceptions: tuple[type[Exception], ...] = (),
 ) -> None:
     """
-    Build one derived Signal (loop, spectrogram, ...) and add it as its own PlotGroup.
+    Build one derived plot (loop, spectrogram, psd, ...) and add it as its own PlotGroup.
+
+    *build_signal* returns one Signal, or a list of Signals to overlay on a single subplot
+    (a psd entry naming several signals). A list is titled by *item_name*, since the entry
+    names the plot rather than any one trace in it.
 
     Every failure is logged and skipped rather than raised, so one bad entry in
     ``database_options`` doesn't abort the rest of a datasource's plots. *build_signal*
@@ -159,7 +163,12 @@ def _add_derived_plot_group(
         return
 
     try:
-        plot_group_list.append(PlotGroup.from_single_signal(signal))
+        if isinstance(signal, list):
+            plot_group_list.append(
+                PlotGroup(name=item_name, signals=signal, allow_secondary_y=False)
+            )
+        else:
+            plot_group_list.append(PlotGroup.from_single_signal(signal))
     except Exception:
         logger.exception(
             "⚠️ Failed to create PlotGroup from %s signal '%s' in datasource '%s'.",
@@ -200,6 +209,64 @@ def _build_spectrogram_signal(
     except SpectralRefusalError as exc:
         msg = f"signal '{source_signal.name}' -- {exc}"
         raise SpectralRefusalError(msg) from exc
+
+
+def _build_psd_signals(list_signal: list[Signal], psd_name: str, psd_config: dict) -> list[Signal]:
+    """Build one PSD trace per configured entry; they share a subplot, so a list comes back."""
+    config_cls = cst.DatabaseOptions.PsdConfig
+    entry_cls = config_cls.Entry
+    # A plain string is shorthand for an Entry naming just a signal, no per-trace overrides.
+    entries = [
+        entry if isinstance(entry, dict) else {entry_cls.SIGNAL: entry}
+        for entry in psd_config.get(config_cls.SIGNALS) or []
+    ]
+
+    freq_range = tuple(psd_config[config_cls.FREQ_RANGE])
+    db_range = psd_config.get(config_cls.DB_RANGE)
+    psd_signals = []
+    not_found = 0
+    for entry in entries:
+        reference = entry[entry_cls.SIGNAL]
+        # Same three-mode chain as grouped_fields: qualified, display name, or raw name.
+        # Resolved one entry at a time (rather than batched) so a per-entry window_s/overlap
+        # override stays attached to the right match.
+        source_signals = _resolve_signal_references([reference], list_signal)
+        if not source_signals:
+            not_found += 1
+            continue
+        for source_signal in source_signals:
+            try:
+                psd_signals.append(
+                    Signal.psd_from_signal(
+                        source_signal,
+                        psd_name=psd_name,
+                        freq_range=freq_range,
+                        db_range=db_range,
+                        window_s=entry.get(entry_cls.WINDOW_S),
+                        overlap=entry.get(entry_cls.OVERLAP),
+                        label=entry.get(entry_cls.LABEL),
+                        color=entry.get(entry_cls.COLOR),
+                        line_dash=entry.get(entry_cls.LINE_DASH),
+                    )
+                )
+            except SpectralRefusalError as exc:
+                # Refuse the whole entry: a comparison missing one of its channels invites the
+                # wrong reading more than an absent plot does.
+                msg = f"signal '{source_signal.name}' -- {exc}"
+                raise SpectralRefusalError(msg) from exc
+
+    if not psd_signals:
+        raise _SourceSignalNotFoundError(
+            ", ".join(str(entry[entry_cls.SIGNAL]) for entry in entries)
+        )
+    if not_found:
+        logger.warning(
+            "⚠️ PSD '%s': %d of %d signal(s) not found; plotting the rest.",
+            psd_name,
+            not_found,
+            len(entries),
+        )
+    return psd_signals
 
 
 def main(
@@ -334,6 +401,18 @@ def main(
                     build_signal=partial(
                         _build_spectrogram_signal, list_signal, spectrogram_name, spectrogram_config
                     ),
+                    plot_group_list=plot_group_list,
+                    refusal_exceptions=(SpectralRefusalError,),
+                )
+
+            # (6) Add PSD signals
+            local_psd_group = database_options.get(cst.DatabaseOptions.PSD, {})
+            for psd_name, psd_config in local_psd_group.items():
+                _add_derived_plot_group(
+                    kind="psd",
+                    item_name=psd_name,
+                    datasource_name=name,
+                    build_signal=partial(_build_psd_signals, list_signal, psd_name, psd_config),
                     plot_group_list=plot_group_list,
                     refusal_exceptions=(SpectralRefusalError,),
                 )

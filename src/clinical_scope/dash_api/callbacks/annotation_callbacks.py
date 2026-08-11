@@ -422,23 +422,26 @@ def handle_graph_click(
     annotation_type = mode.get("type", AnnotationType.TIME_EVENT.value)
     no_update_patches = [no_update] * len(graph_ids)
 
-    is_loop = subplots_data.get("plot_type") == cst.PlotType.LOOP
-    if is_loop and annotation_type in TIME_BASED_ANNOTATION_TYPES:
+    plot_type = subplots_data.get("plot_type")
+    is_loop = plot_type == cst.PlotType.LOOP
+    has_time_axis = plot_type in cst.PlotType.TIME_AXIS
+    if not has_time_axis and annotation_type in TIME_BASED_ANNOTATION_TYPES:
         logger.warning(
-            "User attempted to create %s annotation on a loop plot. "
-            "Loop plots have non-time x-axes, so only Point annotations are valid.",
+            "User attempted to create %s annotation on a '%s' plot. Its x-axis is not time, "
+            "so only Point annotations are valid.",
             annotation_type,
+            plot_type,
         )
         return (
             mode,
             no_update,
             ANNOTATION_MODAL_STYLE_HIDDEN,
             no_update_patches,
-            "⚠ Time-based annotations are not supported on loop plots — switch to Point.",
+            f"⚠ Time-based annotations are not supported on {plot_type} plots — switch to Point.",
             no_update,
         )
 
-    x_str = str(x_val) if is_loop else _localize_x_val(str(x_val), display_tz)
+    x_str = _localize_x_val(str(x_val), display_tz) if has_time_axis else str(x_val)
 
     # Built in data_callbacks.py, so it reflects the real layout (sparse grids, secondary
     # y-axes). Used for the subplot NAME only — row/col still come from the grid formula.

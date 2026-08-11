@@ -462,6 +462,7 @@ class DatabaseOptions:
     GROUPED_FIELDS = "grouped_fields"
     LOOP = "loop"
     SPECTROGRAM = "spectrogram"
+    PSD = "psd"
     FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
 
     # Trailing marker that turns a field_display entry into a prefix wildcard (e.g. "Local 1*").
@@ -476,6 +477,7 @@ class DatabaseOptions:
             GROUPED_FIELDS,
             LOOP,
             SPECTROGRAM,
+            PSD,
             FILES,
         }
     )
@@ -522,6 +524,29 @@ class DatabaseOptions:
 
         KNOWN_KEYS = frozenset({SIGNAL, FREQ_RANGE, DB_RANGE, WINDOW_S, OVERLAP})
 
+    # --- Per-PSD configuration (inside "psd" → "<name>" dict) ---
+    class PsdConfig:
+        # Plural where a spectrogram has a single SIGNAL: PSDs share a subplot, so one
+        # entry overlays several. Freq/db range are shared axis properties of the whole
+        # subplot, so they stay here; window_s/overlap/label are per-trace (see Entry)
+        # since two traces sharing one channel need their own processing/legend.
+        SIGNALS = "signals"
+        FREQ_RANGE = "freq_range"  # [min_hz, max_hz], required — no workable global default
+        DB_RANGE = "db_range"  # [min_db, max_db], optional — y-axis range; autoscales when unset
+
+        KNOWN_KEYS = frozenset({SIGNALS, FREQ_RANGE, DB_RANGE})
+
+        # --- One item of SIGNALS; a plain string is shorthand for {SIGNAL: <str>} ---
+        class Entry:
+            SIGNAL = "signal"
+            WINDOW_S = "window_s"  # optional override; derived from freq_min by default
+            OVERLAP = "overlap"  # optional override; fixed at 50% by default
+            LABEL = "label"  # optional trace label; needed to tell apart 2 entries sharing a signal
+            COLOR = "color"  # optional override; defaults to the source signal's own color
+            LINE_DASH = "line_dash"  # optional override; defaults to the source signal's own
+
+            KNOWN_KEYS = frozenset({SIGNAL, WINDOW_S, OVERLAP, LABEL, COLOR, LINE_DASH})
+
     # --- Datasource-level numerics defaults ---
     class Numerics:
         PRIORITY = "priority"
@@ -564,17 +589,30 @@ class Spectral:
     # Narrower than Plotly's default so a colorbar stays clear of neighboring stacked rows.
     COLORBAR_THICKNESS = 15
 
+    # Clamp under the dB log, so a silent bin yields a floor value instead of -inf.
+    POWER_FLOOR = 1e-20
+
 
 class PlotType:
     TIME_SERIES = "time_series"
     SPECTROGRAM = "spectrogram"
+    PSD = "psd"
     LOOP = "loop"
 
     # Page order of the plot models (top to bottom); types not listed here go last.
     PAGE_ORDER = (
         TIME_SERIES,
         SPECTROGRAM,
+        PSD,
         LOOP,
+    )
+
+    # Plot types whose x-axis is time — they share a zoom range across subplots, localize
+    # hovered x, and accept time-based annotations. Loop's x is another signal's values and
+    # PSD's is frequency, so neither belongs here.
+    TIME_AXIS = (
+        TIME_SERIES,
+        SPECTROGRAM,
     )
 
 
@@ -583,5 +621,9 @@ if PlotType.LOOP != DatabaseOptions.LOOP:
     raise NotImplementedError(msg)
 
 if PlotType.SPECTROGRAM != DatabaseOptions.SPECTROGRAM:
+    msg = "No idea if that would work. Error here to warn you"
+    raise NotImplementedError(msg)
+
+if PlotType.PSD != DatabaseOptions.PSD:
     msg = "No idea if that would work. Error here to warn you"
     raise NotImplementedError(msg)

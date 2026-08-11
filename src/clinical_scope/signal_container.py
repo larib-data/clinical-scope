@@ -277,8 +277,15 @@ class PlotOptions:
             context="PlotOptions from signals",
         )
 
+        # x-axis identity belongs to the plot type, not the signal, so signals[0] speaks for the
+        # group — it is overlaid PSDs, sharing one frequency axis, that need it carried.
+        first_plot_options = signals[0].trace_options.plot_options
+
         # --- Initialize combined PlotOptions ---
         combined = PlotOptions(
+            x_axis_title=first_plot_options.x_axis_title,
+            x_axis_range=first_plot_options.x_axis_range,
+            x_unit_name=first_plot_options.x_unit_name,
             y_axis_title=y_axis_title,
             y_unit_name=primary_unit,
             y2_axis_title=y2_axis_title,
@@ -677,6 +684,78 @@ class Signal:
             display_fallbacks=signal.display_fallbacks,
         )
 
+    @classmethod
+    def psd_from_signal(
+        cls,
+        signal: "Signal",
+        psd_name: str,
+        freq_range: tuple[float, float],
+        db_range: list[float] | None = None,
+        window_s: float | None = None,
+        overlap: float | None = None,
+        label: str | None = None,
+        color: str | None = None,
+        line_dash: str | None = None,
+    ) -> "Signal":
+        """
+        Build one PSD signal from one time-series; display fallbacks come from *signal*.
+
+        One trace, not one subplot: several PSDs share a subplot when a ``psd`` entry names
+        several signals, so the caller groups them. Raises ``spectral.SpectralRefusalError``
+        on a grid that can't be safely analysed, like ``spectrogram_from_signal``. *label*
+        distinguishes two traces built from the same *signal* (e.g. compared with different
+        *window_s*) that would otherwise share both name and raw_name; *color*/*line_dash*
+        do the same visually, since both otherwise default to the source signal's own.
+        """
+        if signal.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES:
+            msg = "Input signal must be of type 'time_series'."
+            raise ValueError(msg)
+
+        spectral_overrides = {}
+        if window_s is not None:
+            spectral_overrides["window_s"] = window_s
+        if overlap is not None:
+            spectral_overrides["overlap"] = overlap
+
+        freqs, power_db = spectral.psd(
+            signal.data.x,
+            signal.data.y,
+            freq_range=freq_range,
+            period_resampling=signal.metadata.period_resampling,
+            **spectral_overrides,
+        )
+
+        data = Data(x=freqs, y=power_db, timezone=None)
+        plot_options = PlotOptions(
+            plot_type=cst.PlotType.PSD,
+            x_axis_title="Frequency (Hz)",
+            x_unit_name="Hz",
+            x_axis_range=list(freq_range),
+            y_axis_title="Power (dB)",
+            y_unit_name="dB",
+            y_axis_range=list(db_range) if db_range else None,
+            show_legend=False,
+            display_timezone=signal.trace_options.plot_options.display_timezone,
+        )
+        trace_options = TraceOptions(
+            plot_options=plot_options,
+            # Match the source signal's colour/dash by default, so an overlay reads as the
+            # same channel; both are overridable to tell apart 2 traces sharing a signal.
+            line_color=color or signal.trace_options.line_color,
+            marker_color=color or signal.trace_options.marker_color,
+            line_dash=line_dash or signal.trace_options.line_dash,
+        )
+        return cls(
+            # Qualified rather than the bare source raw_name: wrapper.main prunes single-signal
+            # PlotGroups whose raw_name is in a global group, which would swallow the PSD too.
+            raw_name=f"{psd_name}::{label or signal.raw_name}",
+            name=label or signal.name,
+            data=data,
+            trace_options=trace_options,
+            metadata=Metadata(),
+            display_fallbacks=signal.display_fallbacks,
+        )
+
     # ---------------- Regular Methods ----------------
     def to_plotly_trace(self) -> go.Scatter | go.Heatmap:
         start = time.perf_counter()
@@ -752,6 +831,9 @@ class Signal:
             # Compact single-line template: time is shown once in the "x unified"
             # header, so each trace only needs name + value.
             hovertemplate = f"<b>{self.name}</b>: {_y_fmt}{y_unit_suffix}<extra></extra>"
+        elif self.trace_options.plot_options.plot_type == cst.PlotType.PSD:
+            # x is frequency and y always dB, so neither unit comes from the signal itself.
+            hovertemplate = f"<b>{self.name}</b><br>%{{x:.3g}} Hz<br>%{{y:.1f}} dB<extra></extra>"
         elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
             x_unit_name = self.trace_options.plot_options.x_unit_name
             _x_unit_suffix = (
@@ -989,9 +1071,9 @@ class PlotModel:
                 range=group.plot_options.x_axis_range,
             )
 
-            # Shared x-axis only applies to time-series (loop subplots each have
-            # an independent x-axis representing a different signal).
-            if not is_loop:
+            # Shared x-axis only applies where x is time. A loop's x is another signal's
+            # values and a PSD's is frequency, so each of their subplots stands alone.
+            if self.plot_type in cst.PlotType.TIME_AXIS:
                 x_data_type = type(group.signals[0].data.x)
                 if x_data_type in x_type_to_master_row:
                     master_row = x_type_to_master_row[x_data_type]

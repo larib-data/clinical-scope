@@ -1,4 +1,4 @@
-"""Pure-numpy spectrogram computation: grid validation, STFT, dB scaling."""
+"""Pure-numpy spectral computation: grid validation, STFT, dB scaling."""
 
 import numpy as np
 
@@ -6,7 +6,7 @@ import clinical_scope.constants as cst
 
 
 class SpectralRefusalError(ValueError):
-    """A Signal's grid or configuration can't be safely turned into a spectrogram."""
+    """A Signal's grid or configuration can't be safely turned into a spectral plot."""
 
 
 def build_uniform_grid(
@@ -26,7 +26,7 @@ def build_uniform_grid(
     that, the whole series is linearly interpolated onto a grid at the median step.
     """
     if len(x) < 2:  # noqa: PLR2004
-        msg = "Need at least 2 samples to build a spectrogram grid."
+        msg = "Need at least 2 samples to build a uniform grid."
         raise SpectralRefusalError(msg)
 
     x_ns = x.astype("datetime64[ns]").astype(np.int64)
@@ -96,31 +96,30 @@ def stft(
     return frame_starts, freqs, power
 
 
-def spectrogram(
+def _framed_power(
     x: np.ndarray,
     y: np.ndarray,
     freq_range: tuple[float, float],
-    period_resampling: float | None = 1.0,
-    window_s: float | None = None,
-    overlap: float = cst.Spectral.OVERLAP_FRACTION,
-    window_cycles: float = cst.Spectral.WINDOW_CYCLES,
-    jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE,
-    gap_factor: float = cst.Spectral.GAP_FACTOR,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    period_resampling: float | None,
+    window_s: float | None,
+    overlap: float,
+    window_cycles: float,
+    jitter_tolerance: float,
+    gap_factor: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Compute a dB-scaled spectrogram for one Signal's raw ``x``/``y`` arrays.
+    Validate, grid, and frame one Signal, returning ``(x_uniform, frame_starts, freqs, power)``.
 
-    Pure numpy: takes arrays, returns ``(times, freqs, power_db)`` with
-    ``power_db`` shaped ``(len(times), len(freqs))``. Refuses — raises
-    ``SpectralRefusalError`` — rather than silently mis-rendering a decimated,
-    too-short, or out-of-range Signal.
+    Every refusal a spectral plot can raise lives here, so :func:`spectrogram` and :func:`psd`
+    reject the same inputs for the same reasons. ``power`` is **linear**, shaped
+    ``(n_frames, len(freqs))`` — each caller applies its own dB scaling last.
     """
     if period_resampling is not None and 0 < period_resampling < 1.0:
-        # period_resampling step-decimates with no anti-alias filter, so its spectrogram
-        # would show aliased energy that looks like a real rhythm — refuse rather than render.
+        # period_resampling step-decimates with no anti-alias filter, so the spectrum would
+        # show aliased energy that looks like a real rhythm — refuse rather than render.
         msg = (
             f"Signal was decimated via period_resampling={period_resampling}. "
-            "Drop period_resampling for this Signal to enable its spectrogram."
+            "Drop period_resampling for this Signal to enable frequency analysis."
         )
         raise SpectralRefusalError(msg)
 
@@ -145,9 +144,78 @@ def spectrogram(
     frame_starts, freqs, power = stft(y_uniform, dt_seconds, window_s, overlap)
 
     freq_mask = (freqs >= freq_min) & (freqs <= freq_max)
-    freqs = freqs[freq_mask]
-    power = power[:, freq_mask]
+    return x_uniform, frame_starts, freqs[freq_mask], power[:, freq_mask]
 
-    power_db = 10 * np.log10(np.maximum(power, 1e-20))
-    times = x_uniform[frame_starts]
-    return times, freqs, power_db
+
+def spectrogram(
+    x: np.ndarray,
+    y: np.ndarray,
+    freq_range: tuple[float, float],
+    period_resampling: float | None = 1.0,
+    window_s: float | None = None,
+    overlap: float = cst.Spectral.OVERLAP_FRACTION,
+    window_cycles: float = cst.Spectral.WINDOW_CYCLES,
+    jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE,
+    gap_factor: float = cst.Spectral.GAP_FACTOR,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute a dB-scaled spectrogram for one Signal's raw ``x``/``y`` arrays.
+
+    Pure numpy: takes arrays, returns ``(times, freqs, power_db)`` with
+    ``power_db`` shaped ``(len(times), len(freqs))``. Refuses — raises
+    ``SpectralRefusalError`` — rather than silently mis-rendering a decimated,
+    too-short, or out-of-range Signal.
+    """
+    x_uniform, frame_starts, freqs, power = _framed_power(
+        x,
+        y,
+        freq_range,
+        period_resampling,
+        window_s,
+        overlap,
+        window_cycles,
+        jitter_tolerance,
+        gap_factor,
+    )
+    power_db = 10 * np.log10(np.maximum(power, cst.Spectral.POWER_FLOOR))
+    return x_uniform[frame_starts], freqs, power_db
+
+
+def psd(
+    x: np.ndarray,
+    y: np.ndarray,
+    freq_range: tuple[float, float],
+    period_resampling: float | None = 1.0,
+    window_s: float | None = None,
+    overlap: float = cst.Spectral.OVERLAP_FRACTION,
+    window_cycles: float = cst.Spectral.WINDOW_CYCLES,
+    jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE,
+    gap_factor: float = cst.Spectral.GAP_FACTOR,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute a dB-scaled power spectral density (Welch) for one Signal's ``x``/``y`` arrays.
+
+    Same validation and framing as :func:`spectrogram`, then the mean periodogram over the
+    whole series — so a PSD covers exactly the time range that was loaded. Returns
+    ``(freqs, power_db)``, both 1-D.
+    """
+    _, _, freqs, power = _framed_power(
+        x,
+        y,
+        freq_range,
+        period_resampling,
+        window_s,
+        overlap,
+        window_cycles,
+        jitter_tolerance,
+        gap_factor,
+    )
+
+    # A masked gap makes a whole frame NaN, so all-NaN means every window fell in a gap.
+    if np.isnan(power).all():
+        msg = "Every analysis window falls inside a recording gap."
+        raise SpectralRefusalError(msg)
+
+    # Average linear power, then take the log: averaging dB would give a geometric mean.
+    mean_power = np.nanmean(power, axis=0)
+    return freqs, 10 * np.log10(np.maximum(mean_power, cst.Spectral.POWER_FLOOR))

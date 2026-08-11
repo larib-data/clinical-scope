@@ -666,7 +666,31 @@
         },
         "spectrogram": {
             "EEG 1 spectrogram": {"signal": "chan 1", "freq_range": [0.5, 30.0], "db_range": [50, 85]},
-            "EEG 3 spectrogram": {"signal": "chan 3", "freq_range": [0.5, 30.0], "db_range": [50, 85]}
+            "EEG 2 spectrogram": {"signal": "chan 2", "freq_range": [0.5, 30.0], "db_range": [50, 85]},
+            "EEG 3 spectrogram": {
+                "signal": "chan 3",
+                "freq_range": [0.5, 30.0],
+                "db_range": [50, 85],
+                "window_s": 4.0,
+                "overlap": 0.75
+            }
+        },
+        "psd": {
+            "EEG PSD (chan 1+2)": {"signals": ["chan 1", "chan 2"], "freq_range": [0.5, 30.0]},
+            "EEG PSD (chan 3)": {"signals": ["chan 3"], "freq_range": [0.5, 30.0]},
+            "EEG PSD (chan 3, window comparison)": {
+                "signals": [
+                    {"signal": "chan 3", "window_s": 2.0, "label": "chan 3 (2s window)"},
+                    {
+                        "signal": "chan 3",
+                        "window_s": 8.0,
+                        "label": "chan 3 (8s window)",
+                        "color": "darkred",
+                        "line_dash": "dash"
+                    }
+                ],
+                "freq_range": [0.5, 30.0]
+            }
         }
     },
 

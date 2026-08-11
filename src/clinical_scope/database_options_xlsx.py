@@ -41,6 +41,9 @@ _LOOPS_REQUIRED_COLS = {"datasource", "loop_name", "x_signal", "y_signal"}
 _SPECTROGRAMS_SHEET_NAME = "spectrograms"
 _SPECTROGRAMS_REQUIRED_COLS = {"datasource", "spectrogram_name", "signal", "freq_min", "freq_max"}
 
+_PSDS_SHEET_NAME = "psds"
+_PSDS_REQUIRED_COLS = {"datasource", "groups", "signal", "freq_min", "freq_max"}
+
 
 # ---------------------------------------------------------------------------
 # Cell-value helpers
@@ -93,6 +96,39 @@ def _parse_groups(value: Any) -> list[str]:
     if _is_empty(value):
         return []
     return [group.strip() for group in str(value).split(";") if group.strip()]
+
+
+def _resolve_shared_range(
+    current: list[float] | None,
+    candidate: list[float] | None,
+    *,
+    label: str,
+    row_idx: int,
+    group_name: str,
+    ds: str,
+) -> list[float] | None:
+    """
+    Keep the first ``[min, max]`` seen for a group; a later mismatch warns and is dropped.
+
+    A psds group is denormalized across rows, but the axis range it produces is shared by
+    the whole subplot -- so once a row has set it, later rows can only confirm or conflict.
+    """
+    if candidate is None:
+        return current
+    if current is None:
+        return candidate
+    if candidate != current:
+        logger.warning(
+            "psds row %s: %s %s conflicts with %s already set for group %r (datasource %r); "
+            "keeping the first.",
+            row_idx,
+            label,
+            candidate,
+            current,
+            group_name,
+            ds,
+        )
+    return current
 
 
 def _read_optional_sheet(
@@ -167,6 +203,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
     spectrograms_df = _read_optional_sheet(
         file_obj, _SPECTROGRAMS_SHEET_NAME, _SPECTROGRAMS_REQUIRED_COLS, "spectrogram"
     )
+    psds_df = _read_optional_sheet(file_obj, _PSDS_SHEET_NAME, _PSDS_REQUIRED_COLS, "psd")
 
     # ------------------------------------------------------------------
     # Normalize column names and validate required columns -- required sheet only; the
@@ -369,6 +406,13 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                     row_idx,
                 )
 
+            window_s = _to_float(row.get("window_s", ""))
+            if window_s is not None:
+                spectrogram_options[spectrogram_config.WINDOW_S] = window_s
+            overlap = _to_float(row.get("overlap", ""))
+            if overlap is not None:
+                spectrogram_options[spectrogram_config.OVERLAP] = overlap
+
             if ds not in result:
                 result[ds] = {}
             result[ds].setdefault(cst.DatabaseOptions.SPECTROGRAM, {})[spectrogram_name] = (
@@ -379,6 +423,126 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             logger.warning(
                 "Skipping spectrograms row %s due to unexpected error.", row_idx, exc_info=True
             )
+
+    # ------------------------------------------------------------------
+    # Process psds sheet
+    # ------------------------------------------------------------------
+    # Two-phase, mirroring the signals sheet's groups resolution above: accumulate every
+    # row's contribution per (datasource, group) first, then resolve each group once --
+    # so a freq/db mismatch across rows can be reported instead of silently dropped.
+    psd_config = cst.DatabaseOptions.PsdConfig
+    psd_entry = psd_config.Entry
+    psd_membership: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+    for row_idx, row in psds_df.iterrows():
+        try:
+            ds = str(row.get("datasource", "")).strip()
+            signal = str(row.get("signal", "")).strip()
+            groups_list = _parse_groups(row.get("groups", ""))
+
+            if _is_empty(ds) or _is_empty(signal) or not groups_list:
+                continue
+
+            contribution: dict[str, Any] = {
+                "row_idx": row_idx,
+                psd_entry.SIGNAL: signal,
+                "freq_min": _to_float(row.get("freq_min", "")),
+                "freq_max": _to_float(row.get("freq_max", "")),
+                "db_min": _to_float(row.get("db_min", "")),
+                "db_max": _to_float(row.get("db_max", "")),
+            }
+            window_s = _to_float(row.get("window_s", ""))
+            if window_s is not None:
+                contribution[psd_entry.WINDOW_S] = window_s
+            overlap = _to_float(row.get("overlap", ""))
+            if overlap is not None:
+                contribution[psd_entry.OVERLAP] = overlap
+            label = str(row.get("label", "")).strip()
+            if label:
+                contribution[psd_entry.LABEL] = label
+            color = str(row.get("color", "")).strip()
+            if color:
+                contribution[psd_entry.COLOR] = color
+            line_dash = str(row.get("line_dash", "")).strip()
+            if line_dash:
+                contribution[psd_entry.LINE_DASH] = line_dash
+
+            for group_name in groups_list:
+                psd_membership.setdefault((ds, group_name), []).append(contribution)
+
+        except Exception:  # noqa: BLE001
+            logger.warning("Skipping psds row %s due to unexpected error.", row_idx, exc_info=True)
+
+    for (ds, group_name), contributions in psd_membership.items():
+        freq_range = None
+        db_range = None
+        entries: list[Any] = []
+
+        for contribution in contributions:
+            row_idx = contribution["row_idx"]
+
+            freq_min, freq_max = contribution["freq_min"], contribution["freq_max"]
+            freq_candidate = (
+                [freq_min, freq_max] if freq_min is not None and freq_max is not None else None
+            )
+            freq_range = _resolve_shared_range(
+                freq_range,
+                freq_candidate,
+                label="freq_range",
+                row_idx=row_idx,
+                group_name=group_name,
+                ds=ds,
+            )
+
+            db_min, db_max = contribution["db_min"], contribution["db_max"]
+            if db_min is not None and db_max is not None:
+                db_range = _resolve_shared_range(
+                    db_range,
+                    [db_min, db_max],
+                    label="db_range",
+                    row_idx=row_idx,
+                    group_name=group_name,
+                    ds=ds,
+                )
+            elif db_min is not None or db_max is not None:
+                logger.warning(
+                    "Skipping db_range for psds row %s: db_min/db_max must both be set.", row_idx
+                )
+
+            # Shorthand: a plain ref string when the row set no per-entry override.
+            entry = {
+                key: contribution[key]
+                for key in (
+                    psd_entry.SIGNAL,
+                    psd_entry.WINDOW_S,
+                    psd_entry.OVERLAP,
+                    psd_entry.LABEL,
+                    psd_entry.COLOR,
+                    psd_entry.LINE_DASH,
+                )
+                if key in contribution
+            }
+            entries.append(entry[psd_entry.SIGNAL] if len(entry) == 1 else entry)
+
+        if freq_range is None:
+            logger.warning(
+                "Skipping PSD group %r (datasource %r): freq_min/freq_max must be set on "
+                "at least one row.",
+                group_name,
+                ds,
+            )
+            continue
+
+        psd_options: dict[str, Any] = {
+            psd_config.SIGNALS: entries,
+            psd_config.FREQ_RANGE: freq_range,
+        }
+        if db_range is not None:
+            psd_options[psd_config.DB_RANGE] = db_range
+
+        if ds not in result:
+            result[ds] = {}
+        result[ds].setdefault(cst.DatabaseOptions.PSD, {})[group_name] = psd_options
 
     return result
 

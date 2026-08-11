@@ -267,6 +267,94 @@ class TestSignalSpectrogram:
         assert spec.trace_options.plot_options.color_range == [-5.0, 15.0]
 
 
+class TestSignalPsd:
+    def test_basic_psd(self):
+        source = _make_spectrogram_source_signal()
+        psd_signal = Signal.psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
+        assert psd_signal.trace_options.plot_options.plot_type == "psd"
+        assert isinstance(psd_signal.trace, go.Scatter)
+        # One power value per frequency, both 1-D: frequency is the x-axis, not a separate axis.
+        assert psd_signal.data.x.ndim == 1
+        assert psd_signal.data.y.shape == psd_signal.data.x.shape
+        assert psd_signal.data.spectrogram_freq_axis is None
+
+    def test_name_is_the_source_signal_but_raw_name_is_qualified(self):
+        source = _make_spectrogram_source_signal(raw_name="eeg")
+        psd_signal = Signal.psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
+        # name is the legend entry; the qualified raw_name keeps wrapper.main's single-signal
+        # group prune from swallowing the PSD.
+        assert psd_signal.name == source.name
+        assert psd_signal.raw_name == "EEG PSD::eeg"
+
+    def test_axes_are_frequency_and_decibels(self):
+        source = _make_spectrogram_source_signal()
+        psd_signal = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0))
+        plot_options = psd_signal.trace_options.plot_options
+        assert plot_options.x_axis_title == "Frequency (Hz)"
+        assert plot_options.x_axis_range == [1.0, 30.0]
+        assert plot_options.y_unit_name == "dB"
+        assert plot_options.y_axis_range is None
+
+    def test_db_range_sets_the_power_axis(self):
+        source = _make_spectrogram_source_signal()
+        psd_signal = Signal.psd_from_signal(
+            source, psd_name="x", freq_range=(1.0, 30.0), db_range=[40, 90]
+        )
+        assert psd_signal.trace_options.plot_options.y_axis_range == [40, 90]
+
+    def test_inherits_source_signal_color(self):
+        source = _make_spectrogram_source_signal()
+        source.trace_options.line_color = "seagreen"
+        psd_signal = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0))
+        assert psd_signal.trace_options.line_color == "seagreen"
+
+    def test_decimated_signal_refuses(self):
+        source = _make_spectrogram_source_signal(period_resampling=0.5)
+        with pytest.raises(SpectralRefusalError, match="decimated"):
+            Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0))
+
+    def test_non_time_series_input_raises(self):
+        loop = Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
+        with pytest.raises(ValueError, match="time_series"):
+            Signal.psd_from_signal(loop, psd_name="x", freq_range=(1.0, 30.0))
+
+    def test_label_overrides_name_and_raw_name(self):
+        """Two traces built from the same source (e.g. comparing window_s) need distinct
+        identities; a label is the only way to tell them apart on legend/hover and raw_name."""
+        source = _make_spectrogram_source_signal(raw_name="eeg")
+        psd_signal = Signal.psd_from_signal(
+            source, psd_name="EEG PSD", freq_range=(1.0, 30.0), label="wide window"
+        )
+        assert psd_signal.name == "wide window"
+        assert psd_signal.raw_name == "EEG PSD::wide window"
+
+    def test_window_s_changes_the_output(self):
+        source = _make_spectrogram_source_signal()
+        narrow = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0), window_s=2.0)
+        wide = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0), window_s=8.0)
+        assert narrow.data.x.shape != wide.data.x.shape
+
+    def test_color_and_line_dash_default_to_the_source_signal(self):
+        source = _make_spectrogram_source_signal()
+        source.trace_options.line_color = "seagreen"
+        source.trace_options.line_dash = "dot"
+        psd_signal = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0))
+        assert psd_signal.trace_options.line_color == "seagreen"
+        assert psd_signal.trace_options.line_dash == "dot"
+
+    def test_color_and_line_dash_are_overridable(self):
+        """Two traces from the same source (e.g. comparing window_s) would otherwise be
+        drawn identically, since color/line_dash both default to the source signal's own."""
+        source = _make_spectrogram_source_signal()
+        source.trace_options.line_color = "seagreen"
+        psd_signal = Signal.psd_from_signal(
+            source, psd_name="x", freq_range=(1.0, 30.0), color="red", line_dash="dash"
+        )
+        assert psd_signal.trace_options.line_color == "red"
+        assert psd_signal.trace_options.marker_color == "red"
+        assert psd_signal.trace_options.line_dash == "dash"
+
+
 # ---------------------------------------------------------------------------
 # PlotOptions.combine_from_signals
 # ---------------------------------------------------------------------------
@@ -292,6 +380,23 @@ class TestPlotOptionsCombine:
         sig2 = _make_signal()
         combined = PlotOptions.combine_from_signals([sig1, sig2], "Group")
         assert combined.show_legend is True
+
+    def test_carries_x_axis_identity(self):
+        """Overlaid PSDs share one frequency axis, so the group must keep its x labelling."""
+        source = _make_spectrogram_source_signal(raw_name="eeg")
+        psd_signals = [
+            Signal.psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
+            for _ in range(2)
+        ]
+        combined = PlotOptions.combine_from_signals(psd_signals, "EEG PSD")
+        assert combined.x_axis_title == "Frequency (Hz)"
+        assert combined.x_axis_range == [1.0, 30.0]
+        assert combined.x_unit_name == "Hz"
+
+    def test_time_series_group_keeps_no_x_axis_identity(self):
+        combined = PlotOptions.combine_from_signals([_make_signal(), _make_signal()], "Group")
+        assert combined.x_axis_title is None
+        assert combined.x_axis_range is None
 
 
 # ---------------------------------------------------------------------------
@@ -611,6 +716,53 @@ class TestSpectrogramFigure:
         """Zooming one spectrogram should keep the others aligned, like time-series subplots."""
         model = PlotModel.assign_plot_model(self._spectrogram_groups(2))[0]
         assert model.figure.layout.xaxis2.matches == "x"
+
+
+class TestPsdFigure:
+    def _psd_group(self, name, signal_count):
+        source = _make_spectrogram_source_signal(raw_name="eeg")
+        return PlotGroup(
+            name=name,
+            signals=[
+                Signal.psd_from_signal(source, psd_name=name, freq_range=(1.0, 30.0))
+                for _ in range(signal_count)
+            ],
+            allow_secondary_y=False,
+        )
+
+    def test_overlaid_signals_share_one_subplot(self):
+        model = PlotModel.assign_plot_model([self._psd_group("EEG PSD", 3)])[0]
+        assert model.plot_type == "psd"
+        assert len(model.figure.data) == 3
+        assert all(isinstance(trace, go.Scatter) for trace in model.figure.data)
+
+    def test_stacks_in_one_column(self):
+        groups = [self._psd_group(f"psd_{index}", 1) for index in range(3)]
+        assert PlotModel.assign_plot_model(groups)[0].n_cols == 1
+
+    def test_does_not_share_x_axis_across_subplots(self):
+        """Two psd entries may cover different bands, so linking their frequency axes is wrong."""
+        groups = [self._psd_group(f"psd_{index}", 1) for index in range(2)]
+        model = PlotModel.assign_plot_model(groups)[0]
+        assert model.figure.layout.xaxis2.matches is None
+
+    def test_keeps_plotly_hovermode(self):
+        model = PlotModel(
+            groups=[self._psd_group("EEG PSD", 1)],
+            display_fallbacks=DisplayFallbacks(hovermode=cst.HoverMode.X_UNIFIED),
+        )
+        assert model.figure.layout.hovermode is None
+
+    def test_page_order_puts_psd_between_spectrogram_and_loop(self):
+        groups = [
+            PlotGroup.from_single_signal(
+                Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
+            ),
+            self._psd_group("EEG PSD", 1),
+            PlotGroup.from_single_signal(_make_signal()),
+        ]
+        models = PlotModel.assign_plot_model(groups)
+        assert [model.plot_type for model in models] == ["time_series", "psd", "loop"]
 
 
 class TestToHtml:

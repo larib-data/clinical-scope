@@ -40,6 +40,8 @@ from multiple medical devices in a single unified interface.
   combine signals from different devices.
 - **Spectrograms**: Render a time-vs-frequency-vs-power view of any signal (e.g. EEG) over a
   configurable frequency band, with a fixed colour range for consistent reading across patients.
+- **Power spectral densities (PSD)**: Render power against frequency, averaged over the loaded
+  time range, with several signals overlaid on one plot for comparison.
 - **Per-datasource timezone control**: Override the timezone of any supported source via
   `additional_informations.timezone` (all plots still render in the configured display timezone).
 - **Export**: Generate standalone HTML visualizations for sharing.
@@ -521,8 +523,8 @@ After a successful visualization, the **annotation toolbar** appears above the p
 Click a type button to activate it, then click (or click-and-drag for Time Window) on a plot.
 A creation modal appears where you can set a **label** and **color** before confirming.
 
-Spectrograms have a time axis like a time-series plot, so all three types can be placed on them —
-loop plots are the only exception, since their axes are two signal values rather than time.
+Spectrograms have a time axis like a time-series plot, so all three types can be placed on them.
+Loop and PSD plots take Point annotations only, because their x-axis is a signal value and a frequency respectively, not a time.
 
 ## Groups
 
@@ -664,6 +666,7 @@ source key in this file is what activates that source; removing it disables it e
 | `grouped_fields` | object | `{}` | Groups of signals to overlay on the same subplot, within this datasource. `{"Respiratory waves": ["signal_1", "signal_2", ...], ...}`|
 | `loop` | object | `{}` | PV-loop definitions: `{"loop_name": ["x_signal", "y_signal"], ...}`. |
 | `spectrogram` | object | `{}` | Spectrogram definitions (see [`spectrogram`](#spectrogram-block) below). |
+| `psd` | object | `{}` | Power spectral density definitions (see [`psd`](#psd-block) below). |
 | `numerics` | object | `{}` | Datasource-level defaults for numeric parameters (see [`numerics`](#numerics-block-datasource-level-defaults) below). |
 | `additional_informations` | object | `{}` | Device-level metadata, including timezone override (see [`additional_informations`](#additional_informations-block) below). |
 
@@ -734,6 +737,55 @@ The `spectrogram` block defines time-vs-frequency-vs-power plots — one entry p
 
 A signal whose `period_resampling` decimates it (see [Per-Signal Fields Reference](#per-signal-fields-reference-signalssignal_name)) cannot be turned into a spectrogram — decimation has no anti-aliasing filter, so the result would show rhythms that are not really there. Remove `period_resampling` for that signal to enable its spectrogram; the log explains which signal and why when this happens.
 
+### `psd` Block {#psd-block}
+
+The `psd` block defines power-vs-frequency plots — frequency on the x-axis, power in dB on the y-axis, averaged over the whole loaded time range. Where a spectrogram shows how a rhythm evolves, a PSD shows the shape of the spectrum at rest. One entry produces one subplot, with **one line per signal listed** so several channels can be compared side by side. Typical uses: frequency-domain heart-rate variability, separating ventilation from cardiac components in EIT, and EEG band content.
+
+```json
+"edf": {
+    "psd": {
+        "EEG PSD": {
+            "signals": ["chan 1", "chan 2", "chan 3"],
+            "freq_range": [0.5, 30.0],
+            "db_range": [40, 90]
+        }
+    }
+}
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `signals` | list | — (required) | Lines to overlay on this plot — see below for the two ways to write one. |
+| `freq_range` | `[min_hz, max_hz]` | — (required) | Frequency band to display. There is no workable default — pick the band relevant to the signal (e.g. 0.5–30 Hz for EEG, 0.04–0.4 Hz for heart-rate variability). |
+| `db_range` | `[min_db, max_db]` or null | auto | Fixed bounds for the power axis. Left unset, the axis scales to the data. |
+
+To compute a PSD over part of a recording rather than all of it, narrow the run with the **Time start** / **Time end** filters — a PSD always covers exactly the time range that was loaded.
+
+Each line takes the colour of its signal, so it matches that signal's time-series trace. The `period_resampling` restriction described for spectrograms above applies here too, and refusing one signal refuses the whole plot: a comparison missing one of its channels invites a wrong reading more than an absent plot does.
+
+**Writing a `signals` entry.** Most of the time a plain name is enough — it is resolved exactly like `grouped_fields` (see [Signal Reference Resolution](#signal-reference-resolution)). Write an object instead when you want to compare the *same* signal analyzed two different ways on the same plot — e.g. a short vs. a long analysis window, to see whether a longer window is smearing two close frequency peaks together:
+
+```json
+"psd": {
+    "EEG PSD": {
+        "signals": [
+            {"signal": "chan 1", "window_s": 2.0, "label": "narrow window"},
+            {"signal": "chan 1", "window_s": 8.0, "label": "wide window"}
+        ],
+        "freq_range": [0.5, 30.0]
+    }
+}
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `signal` | string | — (required) | The signal for this line, resolved the same way as a plain-string entry. |
+| `window_s` | float | derived from `freq_range` | Advanced: override the analysis window length in seconds for this line only. |
+| `overlap` | float | `0.5` | Advanced: override the fraction of overlap between consecutive analysis windows for this line only. |
+| `label` | string | the signal's own name | What this line is called on hover. **Required** when the same signal appears more than once in one plot — otherwise the two lines are indistinguishable. |
+| `color` | string | the signal's own colour | Line colour for this line only. Two lines from the same signal otherwise inherit the same colour and overlap indistinguishably. |
+| `line_dash` | string | the signal's own dash style | `solid`, `dash`, `dot`, `dashdot` for this line only — a second way (besides colour) to tell two lines from the same signal apart. |
+
 ### `additional_informations` Block
 
 The `additional_informations` block carries device-level metadata that affects how raw data
@@ -781,8 +833,8 @@ All datasources apply timezone according to the same rule:
 
 ### Signal Reference Resolution
 
-Signal references in `grouped_fields` and `loop` — both global and per-source — are resolved
-by the following three-mode lookup chain:
+Signal references in `grouped_fields`, `loop` and `psd` — both global and per-source — are
+resolved by the following three-mode lookup chain:
 
 1. **Qualified reference** `datasource::raw_name` — explicit and unambiguous. Recommended
    when the same column name exists in several datasources.
@@ -804,8 +856,8 @@ requires no knowledge of JSON and can be edited in any spreadsheet application. 
 is automatically converted to the equivalent [JSON structure](#database_optionsjson), so every
 option available in JSON is also available in the spreadsheet.
 
-The file must contain a sheet named **`signals`** and optionally sheets named **`loops`** and
-**`spectrograms`**.
+The file must contain a sheet named **`signals`** and optionally sheets named **`loops`**,
+**`spectrograms`** and **`psds`**.
 
 ### `signals` sheet
 
@@ -871,6 +923,30 @@ skipped.
 | `freq_max` | Yes | Maximum frequency to display (Hz). |
 | `db_min` | No | Colour scale minimum (dB). Leave both `db_min` and `db_max` empty to use your personal colour range setting. |
 | `db_max` | No | Colour scale maximum (dB). Must be set together with `db_min`, or both are ignored. |
+| `window_s` | No | Advanced: override the analysis window length in seconds. Leave unset unless you know you need it. |
+| `overlap` | No | Advanced: override the fraction of overlap between consecutive analysis windows. Leave unset unless you know you need it. |
+
+### `psds` sheet (optional)
+
+One row per signal — equivalent to the `psd` key in the [JSON per-source block](#psd-block). A
+signal can belong to zero, one, or several PSD plots, just like the `groups` column on the
+[`signals` sheet](#signals-sheet). Signals sharing a group are overlaid on the same plot, one line
+each. If the sheet is absent or malformed it is silently skipped.
+
+| Column | Required | Description |
+|---|---|---|
+| `datasource` | Yes | Data source that owns the signal. |
+| `groups` | Yes | Semicolon-separated PSD plot names (e.g., `EEG PSD;Low band`). Each name becomes its own plot; signals sharing a name overlay on it. Leave empty to exclude the signal from every PSD plot. |
+| `signal` | Yes | Raw name of the signal for this line. |
+| `freq_min` | Yes | Minimum frequency to display (Hz). Read from the first row that introduces each plot; a later row with a different value logs a warning and is ignored. |
+| `freq_max` | Yes | Maximum frequency to display (Hz). Same first-row-wins rule as `freq_min`. |
+| `db_min` | No | Power axis minimum (dB). Leave both `db_min` and `db_max` empty to scale the axis to the data. Same first-row-wins rule as `freq_min`. |
+| `db_max` | No | Power axis maximum (dB). Must be set together with `db_min`, or both are ignored. |
+| `window_s` | No | Advanced: override the analysis window length in seconds for this row's line only. Leave unset unless you know you need it. |
+| `overlap` | No | Advanced: override the fraction of overlap between analysis windows for this row's line only. |
+| `label` | No | What this line is called on hover. **Required** when the same signal appears more than once in one plot (e.g. comparing two `window_s` values) — otherwise the two lines are indistinguishable. |
+| `color` | No | Line colour for this row's line only. Leave unset to inherit the signal's own colour — two rows for the same signal then need this to tell their lines apart. |
+| `line_dash` | No | `solid`, `dash`, `dot`, `dashdot` for this row's line only. A second way (besides colour) to tell two lines from the same signal apart. |
 
 See `example/option_files/` in the source repository for complete example files in both formats.
 

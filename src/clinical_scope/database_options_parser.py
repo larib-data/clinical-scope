@@ -100,23 +100,127 @@ def _check_unknown_keys(section: dict, path_prefix: str, issues: list[Validation
                     )
                 )
 
-    spectrograms = section.get(cst.DatabaseOptions.SPECTROGRAM)
-    if not spectrograms or not isinstance(spectrograms, dict):
-        return
-    for spectrogram_name, spectrogram_options in spectrograms.items():
-        if not isinstance(spectrogram_options, dict):
+    for section_key, config_cls in (
+        (cst.DatabaseOptions.SPECTROGRAM, cst.DatabaseOptions.SpectrogramConfig),
+        (cst.DatabaseOptions.PSD, cst.DatabaseOptions.PsdConfig),
+    ):
+        entries = section.get(section_key)
+        if not entries or not isinstance(entries, dict):
             continue
-        unknown_spec = (
-            set(spectrogram_options.keys()) - cst.DatabaseOptions.SpectrogramConfig.KNOWN_KEYS
-        )
-        if unknown_spec:
+        for entry_name, entry_options in entries.items():
+            if not isinstance(entry_options, dict):
+                continue
+            unknown_entry = set(entry_options.keys()) - config_cls.KNOWN_KEYS
+            if unknown_entry:
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        path=f"{path_prefix}.{section_key}.{entry_name}",
+                        message=(
+                            f"Unknown keys: {sorted(unknown_entry)}. "
+                            f"Expected: {sorted(config_cls.KNOWN_KEYS)}"
+                        ),
+                    )
+                )
+
+
+def _check_spectral_types(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
+    """Validate ``spectrogram`` and ``psd``, which differ only in how they name their signals."""
+    spectrogram_config = cst.DatabaseOptions.SpectrogramConfig
+    psd_config = cst.DatabaseOptions.PsdConfig
+
+    for section_key, entries in (
+        (cst.DatabaseOptions.SPECTROGRAM, section.get(cst.DatabaseOptions.SPECTROGRAM)),
+        (cst.DatabaseOptions.PSD, section.get(cst.DatabaseOptions.PSD)),
+    ):
+        if entries is not None and not isinstance(entries, dict):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=f"{path_prefix}.{section_key}",
+                    message=f"Must be a dict, got {type(entries).__name__}",
+                )
+            )
+            continue
+
+        for entry_name, entry_options in (entries or {}).items():
+            if not isinstance(entry_options, dict):
+                continue
+            entry_path = f"{path_prefix}.{section_key}.{entry_name}"
+
+            if section_key == cst.DatabaseOptions.PSD:
+                names = entry_options.get(psd_config.SIGNALS)
+                if not (isinstance(names, list) and names):
+                    issues.append(
+                        ValidationIssue(
+                            severity="error",
+                            path=f"{entry_path}.signals",
+                            message=(
+                                f"Must be a required non-empty list of signal names, got {names!r}"
+                            ),
+                        )
+                    )
+                else:
+                    _check_psd_entries(names, entry_path, issues)
+            elif spectrogram_config.SIGNAL not in entry_options:
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        path=entry_path,
+                        message="Missing required key 'signal'",
+                    )
+                )
+
+            freq_range = entry_options.get(spectrogram_config.FREQ_RANGE)
+            if freq_range is None or not (
+                isinstance(freq_range, list)
+                and len(freq_range) == 2  # noqa: PLR2004
+                and all(isinstance(bound, (int, float)) for bound in freq_range)
+            ):
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        path=f"{entry_path}.freq_range",
+                        message=(
+                            f"Must be a required 2-element list of numbers, got {freq_range!r}"
+                        ),
+                    )
+                )
+
+
+def _check_psd_entries(entries: list, entry_path: str, issues: list[ValidationIssue]) -> None:
+    """Validate each ``psd.<name>.signals`` item: a plain ref string, or an Entry dict."""
+    entry_config = cst.DatabaseOptions.PsdConfig.Entry
+    for item_idx, item in enumerate(entries):
+        if isinstance(item, str):
+            continue
+        item_path = f"{entry_path}.signals[{item_idx}]"
+        if not isinstance(item, dict):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=item_path,
+                    message=f"Must be a signal name string or a dict, got {item!r}",
+                )
+            )
+            continue
+        if not isinstance(item.get(entry_config.SIGNAL), str) or not item.get(entry_config.SIGNAL):
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=item_path,
+                    message="Missing required key 'signal'",
+                )
+            )
+        unknown_item = set(item.keys()) - entry_config.KNOWN_KEYS
+        if unknown_item:
             issues.append(
                 ValidationIssue(
                     severity="warning",
-                    path=f"{path_prefix}.spectrogram.{spectrogram_name}",
+                    path=item_path,
                     message=(
-                        f"Unknown keys: {sorted(unknown_spec)}. "
-                        f"Expected: {sorted(cst.DatabaseOptions.SpectrogramConfig.KNOWN_KEYS)}"
+                        f"Unknown keys: {sorted(unknown_item)}. "
+                        f"Expected: {sorted(entry_config.KNOWN_KEYS)}"
                     ),
                 )
             )
@@ -156,46 +260,7 @@ def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue])
             )
         )
 
-    spectrogram_config = cst.DatabaseOptions.SpectrogramConfig
-    spectrograms = section.get(cst.DatabaseOptions.SPECTROGRAM)
-    if spectrograms is not None and not isinstance(spectrograms, dict):
-        issues.append(
-            ValidationIssue(
-                severity="error",
-                path=f"{path_prefix}.spectrogram",
-                message=f"Must be a dict, got {type(spectrograms).__name__}",
-            )
-        )
-    else:
-        for spectrogram_name, spectrogram_options in (spectrograms or {}).items():
-            if not isinstance(spectrogram_options, dict):
-                continue
-            spectrogram_path = f"{path_prefix}.spectrogram.{spectrogram_name}"
-
-            if spectrogram_config.SIGNAL not in spectrogram_options:
-                issues.append(
-                    ValidationIssue(
-                        severity="error",
-                        path=spectrogram_path,
-                        message="Missing required key 'signal'",
-                    )
-                )
-
-            freq_range = spectrogram_options.get(spectrogram_config.FREQ_RANGE)
-            if freq_range is None or not (
-                isinstance(freq_range, list)
-                and len(freq_range) == 2  # noqa: PLR2004
-                and all(isinstance(bound, (int, float)) for bound in freq_range)
-            ):
-                issues.append(
-                    ValidationIssue(
-                        severity="error",
-                        path=f"{spectrogram_path}.freq_range",
-                        message=(
-                            f"Must be a required 2-element list of numbers, got {freq_range!r}"
-                        ),
-                    )
-                )
+    _check_spectral_types(section, path_prefix, issues)
 
     signals = signals_raw if isinstance(signals_raw, dict) else {}
     for raw_name, signal_options in signals.items():

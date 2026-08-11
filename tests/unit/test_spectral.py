@@ -1,5 +1,5 @@
 """
-Tests for spectral.py: STFT-based spectrogram computation on plain numpy arrays.
+Tests for spectral.py: STFT-based spectrogram and PSD computation on plain numpy arrays.
 
 No example data needed — synthetic arrays are enough to pin the grid-validation
 policy (uniform passthrough, jittered-grid interpolation, gap masking, decimation
@@ -12,6 +12,7 @@ import pytest
 from clinical_scope.spectral import (
     SpectralRefusalError,
     build_uniform_grid,
+    psd,
     spectrogram,
     stft,
 )
@@ -112,3 +113,55 @@ def test_spectrogram_derives_window_from_freq_min():
 
     freq_resolution = freqs[1] - freqs[0]
     assert freq_resolution == pytest.approx(1 / 2.5, rel=1e-6)
+
+
+def test_psd_finds_known_sinusoid_in_expected_bin():
+    x, y = _uniform_series(fs=128.0, duration_s=20.0, freq_hz=10.0)
+
+    freqs, power_db = psd(x, y, freq_range=(1.0, 30.0))
+
+    assert power_db.shape == freqs.shape
+    assert freqs[np.argmax(power_db)] == pytest.approx(10.0, abs=0.5)
+
+
+def test_psd_averages_linear_power_not_decibels():
+    """
+    A half-quiet, half-loud series must average its periodograms in linear power.
+
+    Amplitudes 1 then 3 give frame powers P and 9P in equal numbers, so the mean is 5P
+    (+6.99 dB over a reference of amplitude 1). Averaging the dB values instead would
+    give the geometric mean 3P (+4.77 dB) — the bug this test exists to catch.
+    """
+    fs, half_duration_s, freq_hz = 128.0, 10.0, 10.0
+    t_seconds = np.arange(int(fs * half_duration_s * 2)) / fs
+    amplitude = np.where(t_seconds < half_duration_s, 1.0, 3.0)
+    wave = np.sin(2 * np.pi * freq_hz * t_seconds)
+    x = _datetime_x(t_seconds)
+
+    # A whole number of non-overlapping windows per half, so no frame straddles the step.
+    kwargs = {"freq_range": (1.0, 30.0), "window_s": 1.0, "overlap": 0.0}
+    _, reference_db = psd(x, wave, **kwargs)
+    _, mixed_db = psd(x, amplitude * wave, **kwargs)
+
+    gain_db = mixed_db.max() - reference_db.max()
+    assert gain_db == pytest.approx(10 * np.log10(5.0), abs=0.2)
+
+
+def test_psd_refuses_decimated_signal():
+    x, y = _uniform_series(fs=128.0, duration_s=5.0)
+
+    with pytest.raises(SpectralRefusalError, match="decimated"):
+        psd(x, y, freq_range=(1.0, 10.0), period_resampling=0.5)
+
+
+def test_psd_refuses_when_every_window_falls_in_a_gap():
+    # Two one-second clusters an hour apart: on the uniform grid every 5s window straddles
+    # the masked gap, so no frame has real data to average.
+    fs, cluster_s, gap_s = 128.0, 1.0, 3600.0
+    cluster = np.arange(int(fs * cluster_s)) / fs
+    t_seconds = np.concatenate([cluster, cluster + gap_s])
+    x = _datetime_x(t_seconds)
+    y = np.sin(2 * np.pi * 10.0 * t_seconds)
+
+    with pytest.raises(SpectralRefusalError, match="gap"):
+        psd(x, y, freq_range=(1.0, 30.0), window_s=5.0)

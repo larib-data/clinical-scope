@@ -52,10 +52,15 @@ class TestUnknownKeys:
     def test_unknown_spectrogram_key(self):
         db = {
             "eit": {
-                "spectrogram": {
-                    "S1": {"signal": "S1", "freq_range": [0.5, 30.0], "bogus_key": 1}
-                }
+                "spectrogram": {"S1": {"signal": "S1", "freq_range": [0.5, 30.0], "bogus_key": 1}}
             }
+        }
+        warnings = _issues("warning", db)
+        assert any("bogus_key" in i.message for i in warnings)
+
+    def test_unknown_psd_key(self):
+        db = {
+            "eit": {"psd": {"S1": {"signals": ["S1"], "freq_range": [0.5, 30.0], "bogus_key": 1}}}
         }
         warnings = _issues("warning", db)
         assert any("bogus_key" in i.message for i in warnings)
@@ -139,6 +144,81 @@ class TestTypeChecks:
     def test_spectrogram_valid_no_errors(self):
         db = {"eit": {"spectrogram": {"S1": {"signal": "S1", "freq_range": [0.5, 30.0]}}}}
         assert _issues("error", db) == []
+
+    def test_psd_must_be_dict(self):
+        db = {"eit": {"psd": ["S1"]}}
+        errors = _issues("error", db)
+        assert any("psd" in i.path for i in errors)
+
+    def test_psd_missing_signals_key(self):
+        db = {"eit": {"psd": {"S1": {"freq_range": [0.5, 30.0]}}}}
+        errors = _issues("error", db)
+        assert any(i.path.endswith(".signals") for i in errors)
+
+    def test_psd_signals_must_not_be_empty(self):
+        db = {"eit": {"psd": {"S1": {"signals": [], "freq_range": [0.5, 30.0]}}}}
+        errors = _issues("error", db)
+        assert any(i.path.endswith(".signals") for i in errors)
+
+    def test_psd_signals_must_be_a_list_not_a_bare_name(self):
+        db = {"eit": {"psd": {"S1": {"signals": "S1", "freq_range": [0.5, 30.0]}}}}
+        errors = _issues("error", db)
+        assert any(i.path.endswith(".signals") for i in errors)
+
+    def test_psd_freq_range_missing(self):
+        db = {"eit": {"psd": {"S1": {"signals": ["S1"]}}}}
+        errors = _issues("error", db)
+        assert any("freq_range" in i.path for i in errors)
+
+    def test_psd_valid_no_errors(self):
+        db = {"eit": {"psd": {"S1": {"signals": ["S1", "S2"], "freq_range": [0.5, 30.0]}}}}
+        assert _issues("error", db) == []
+
+    def test_psd_entry_dict_valid_no_errors(self):
+        db = {
+            "eit": {
+                "psd": {
+                    "S1": {
+                        "signals": [
+                            {
+                                "signal": "S1",
+                                "window_s": 2,
+                                "overlap": 0.5,
+                                "label": "a",
+                                "color": "red",
+                                "line_dash": "dash",
+                            }
+                        ],
+                        "freq_range": [0.5, 30.0],
+                    }
+                }
+            }
+        }
+        assert _issues("error", db) == []
+
+    def test_psd_entry_dict_missing_signal_key(self):
+        db = {"eit": {"psd": {"S1": {"signals": [{"window_s": 2}], "freq_range": [0.5, 30.0]}}}}
+        errors = _issues("error", db)
+        assert any("Missing required key 'signal'" in i.message for i in errors)
+
+    def test_psd_entry_dict_unknown_key_is_warning(self):
+        db = {
+            "eit": {
+                "psd": {
+                    "S1": {
+                        "signals": [{"signal": "S1", "bogus_key": 1}],
+                        "freq_range": [0.5, 30.0],
+                    }
+                }
+            }
+        }
+        warnings = _issues("warning", db)
+        assert any("bogus_key" in i.message for i in warnings)
+
+    def test_psd_entry_neither_string_nor_dict_is_error(self):
+        db = {"eit": {"psd": {"S1": {"signals": [123], "freq_range": [0.5, 30.0]}}}}
+        errors = _issues("error", db)
+        assert any(i.path.endswith(".signals[0]") for i in errors)
 
 
 # ---------------------------------------------------------------------------

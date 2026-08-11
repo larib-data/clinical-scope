@@ -250,3 +250,98 @@ class TestMainSpectrogramRefusal:
         assert len(models) > 0, "The rest of the pipeline must still produce PlotModels"
         spectrogram_models = [m for m in models if m.plot_type == "spectrogram"]
         assert spectrogram_models == []
+
+
+class TestMainPsd:
+    @pytest.fixture(scope="class")
+    def db_opts_with_psd(self, example_database_options):
+        """example_database_options extended with one PSD overlaying two demo EEG channels."""
+        opts = copy.deepcopy(example_database_options)
+        opts["edf"] = {
+            "signals": {"chan 1": {"label": "EEG 1"}},
+            "psd": {
+                # "EEG 1" is a display name and "chan 2" a raw name: one entry exercises both
+                # modes of the grouped_fields reference chain.
+                "EEG PSD": {"signals": ["EEG 1", "chan 2"], "freq_range": [0.5, 30.0]},
+            },
+        }
+        return opts
+
+    def test_psd_config_produces_one_overlaid_plot_model(
+        self, patient_options_full, db_opts_with_psd
+    ):
+        """Both configured signals must land on a single 'psd' subplot."""
+        models = main(patient_options_full, db_opts_with_psd)
+        psd_models = [m for m in models if m.plot_type == "psd"]
+        assert len(psd_models) == 1
+        assert len(psd_models[0].groups) == 1
+        group = psd_models[0].groups[0]
+        assert group.name == "EEG PSD"
+        assert len(group.signals) == 2
+
+    def test_psd_x_axis_is_frequency_within_the_configured_band(
+        self, patient_options_full, db_opts_with_psd
+    ):
+        models = main(patient_options_full, db_opts_with_psd)
+        signal = [m for m in models if m.plot_type == "psd"][0].groups[0].signals[0]
+        assert signal.data.x.min() >= 0.5
+        assert signal.data.x.max() <= 30.0
+        assert signal.data.y.shape == signal.data.x.shape
+
+    def test_psd_model_has_scatter_traces(self, patient_options_full, db_opts_with_psd):
+        """The PSD PlotModel must render as lines, not a heatmap."""
+        models = main(patient_options_full, db_opts_with_psd)
+        figure = [m for m in models if m.plot_type == "psd"][0].figure
+        assert isinstance(figure, go.Figure)
+        assert len(figure.data) == 2
+        assert all(isinstance(trace, go.Scatter) for trace in figure.data)
+
+
+class TestMainPsdPerEntryOverride:
+    @pytest.fixture(scope="class")
+    def db_opts_with_windowed_comparison(self, example_database_options):
+        """Same channel plotted twice with a different window_s, to compare resolution."""
+        opts = copy.deepcopy(example_database_options)
+        opts["edf"] = {
+            "psd": {
+                "EEG PSD": {
+                    "signals": [
+                        {"signal": "chan 1", "window_s": 2.0, "label": "narrow window"},
+                        {"signal": "chan 1", "window_s": 8.0, "label": "wide window"},
+                    ],
+                    "freq_range": [0.5, 30.0],
+                },
+            },
+        }
+        return opts
+
+    def test_same_channel_twice_with_different_window_s_overlays_two_distinct_traces(
+        self, patient_options_full, db_opts_with_windowed_comparison
+    ):
+        models = main(patient_options_full, db_opts_with_windowed_comparison)
+        group = [m for m in models if m.plot_type == "psd"][0].groups[0]
+        assert len(group.signals) == 2
+        assert group.signals[0].name == "narrow window"
+        assert group.signals[1].name == "wide window"
+        assert group.signals[0].raw_name != group.signals[1].raw_name
+        assert group.signals[0].data.x.shape != group.signals[1].data.x.shape
+
+
+class TestMainPsdRefusal:
+    @pytest.fixture(scope="class")
+    def db_opts_with_decimated_psd(self, example_database_options):
+        """A two-signal PSD whose second source signal is decimated."""
+        opts = copy.deepcopy(example_database_options)
+        opts["edf"] = {
+            "signals": {"chan 2": {"period_resampling": 0.5}},
+            "psd": {"EEG PSD": {"signals": ["chan 1", "chan 2"], "freq_range": [0.5, 30.0]}},
+        }
+        return opts
+
+    def test_one_decimated_signal_refuses_the_whole_entry(
+        self, patient_options_full, db_opts_with_decimated_psd
+    ):
+        """A partial comparison would mislead, so the entry is dropped rather than halved."""
+        models = main(patient_options_full, db_opts_with_decimated_psd)
+        assert len(models) > 0, "The rest of the pipeline must still produce PlotModels"
+        assert [m for m in models if m.plot_type == "psd"] == []
