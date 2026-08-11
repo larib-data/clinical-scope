@@ -228,6 +228,69 @@ def load_database_options(
         )
 
 
+def _options_card(schema_class: Any, prefix: str, title: str) -> tuple[html.Div, dict]:
+    """Build one patient-options card, and the schema lookup for the widgets inside it."""
+    component, schema = ui_components.build_ui_and_schema_registry(schema_class, prefix=prefix)
+    return html.Div([html.H5(title), component], style=DATASOURCE_CARD_STYLE), schema
+
+
+def _other_file_stems(database_options: dict[str, Any]) -> list[str]:
+    """
+    List the file stems declared for the 'other' datasource, from config alone.
+
+    Reads both dict shapes: the raw ``other::<stem>`` top-level keys the store holds, and the
+    ``other.files`` form :func:`normalize_database_options` produces. Never scans the patient
+    folder — widgets follow the config, like every other card here.
+    """
+    section = database_options.get(datasource.DataSource.Other.NAME) or {}
+    return sorted(
+        {
+            key[len(cst.OTHER_FILE_PREFIX) :]
+            for key in database_options
+            if key.startswith(cst.OTHER_FILE_PREFIX)
+        }
+        | set(section.get(cst.DatabaseOptions.FILES, {}))
+    )
+
+
+def _other_cards(
+    other_source: Any, database_options: dict[str, Any], file_stems: list[str]
+) -> list[tuple[html.Div, dict]]:
+    """
+    Build the 'other' cards: one per declared file, plus the generic one when it still earns a spot.
+
+    Each file is a peer of a datasource here, titled by its own ``other::<stem>`` token, so a
+    curated 3-column export and a 90-column raw dump no longer share one time_shift.
+
+    The generic card covers files present on disk but absent from database_options. It is
+    dropped only when per-file cards exist *and* the ``other`` section holds nothing but them —
+    a fully-itemized config gets no leftover card, while a config with generic content (or none
+    at all, as after Default visualization) keeps the safety net.
+    """
+    schema_class = other_source.OPTIONS.PatientOptionsDataSourceRelative
+    section = database_options.get(other_source.NAME)
+    if section is None and not file_stems:
+        return []
+
+    cards = []
+    generic_content = set(section or {}) - {cst.DatabaseOptions.FILES}
+    if generic_content or not file_stems:
+        cards.append(
+            _options_card(
+                schema_class, prefix=f"specific.{other_source.NAME}", title=other_source.DESCRIPTION
+            )
+        )
+
+    token_prefix = other_source.NAME + cst.QUALIFIED_NAME_SEPARATOR
+    cards.extend(
+        _options_card(
+            schema_class, prefix=f"specific.{token_prefix}{stem}", title=f"{token_prefix}{stem}"
+        )
+        for stem in file_stems
+    )
+    return cards
+
+
 @callback(
     Output("patient-options-ui", "children"),
     Output("schema-registry", "data"),
@@ -301,20 +364,25 @@ def build_patient_options_ui(
 
     datasource_cards = []
     requested_data_sources = database_options.keys()
+    other_name = datasource.DataSource.Other.NAME
+    other_file_stems = _other_file_stems(database_options)
+
     for data_source in datasource.DataSource.AVAILABLE:
+        if other_name == data_source.NAME:
+            for card, schema in _other_cards(data_source, database_options, other_file_stems):
+                datasource_cards.append(card)
+                schema_lookup = schema_lookup | schema
+            continue
+
         if data_source.NAME not in requested_data_sources:
             continue
 
-        component, schema = ui_components.build_ui_and_schema_registry(
+        card, schema = _options_card(
             data_source.OPTIONS.PatientOptionsDataSourceRelative,
             prefix=f"specific.{data_source.NAME}",
+            title=data_source.DESCRIPTION,
         )
-        datasource_cards.append(
-            html.Div(
-                [html.H5(data_source.DESCRIPTION), component],
-                style=DATASOURCE_CARD_STYLE,
-            )
-        )
+        datasource_cards.append(card)
         schema_lookup = schema_lookup | schema
 
     components.append(
@@ -612,6 +680,9 @@ def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
 
     A dcc.Store can only hold JSON, so the registry stores class *names*; this resolves
     each one against PatientOptions or the datasource's own options class.
+
+    A scope segment may be a standalone per-file token (``other::waves``); the file part only
+    selects which options *block* the widget writes to, so the schema comes from ``other``.
     """
     schema_class_lookup = {}
     for field_id, class_name in schema_data.items():
@@ -619,11 +690,9 @@ def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
             schema_class_lookup[field_id] = getattr(cst.PatientOptions, class_name)
         elif field_id.startswith("specific"):
             parts = field_id.split(".")
-            datasource_name = parts[1] if len(parts) > 1 else None
+            scope = parts[1] if len(parts) > 1 else ""
+            datasource_name = scope.split(cst.QUALIFIED_NAME_SEPARATOR, 1)[0]
             datasource_class = datasource.DataSource.get_subclass_by_name(datasource_name)
-            logger.debug("parts: %s", parts)
-            logger.debug("datasource_name: %s", datasource_name)
-            logger.debug("datasource_class: %s", datasource_class)
             schema_class_lookup[field_id] = getattr(
                 datasource_class.OPTIONS.PatientOptionsDataSourceRelative, class_name
             )

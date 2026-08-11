@@ -60,6 +60,24 @@ def _load_single_file(
     raise ValueError(msg)
 
 
+def _patient_options_for_file(patient_options: dict, file_stem: str) -> dict:
+    """
+    Return a patient_options view whose ``other`` slot holds *file_stem*'s own options.
+
+    Per-file settings live under a standalone ``other::<stem>`` key — a peer of a datasource,
+    not a nested option. Rebinding the slot keeps the inherited ``_format`` /
+    ``_pushdown_bounds`` machinery resolving by ``DATASOURCE_NAME`` without a new argument.
+    Fields absent from the per-file block fall back to the generic ``other`` one.
+
+    Read-only: the result aliases *patient_options* when the file has no block of its own.
+    """
+    per_file = patient_options.get(cst.OTHER_FILE_PREFIX + file_stem)
+    if not per_file:
+        return patient_options
+    generic = patient_options.get(options_naming.DATASOURCE_NAME, {})
+    return {**patient_options, options_naming.DATASOURCE_NAME: {**generic, **per_file}}
+
+
 def _resolve_columns(df: pd.DataFrame, file_config: dict) -> list[str]:
     """
     Determine which columns to expose as signals for a file.
@@ -127,6 +145,10 @@ class OtherDataSource(DataSourceBase):
         Each ``other::<stem>`` section supports the full set of database_options keys:
         ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
         ``grouped_fields``, ``loop``, and ``spectrogram``.
+
+        Per-file *patient* options (``time_shift``, ``group_by_file``) are read the same way,
+        from a standalone ``patient_options["other::<stem>"]`` block — see
+        :func:`_patient_options_for_file`.
         """
         database_options = (
             database_options_specific if database_options_specific is not None else {}
@@ -144,12 +166,6 @@ class OtherDataSource(DataSourceBase):
 
         per_file_options: dict = database_options.get(cst.DatabaseOptions.FILES, {})
 
-        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
-        group_by_file = patient_options_specific.get(
-            options_naming.PatientOptionsDataSourceRelative.GroupByFile.NAME,
-            options_naming.PatientOptionsDataSourceRelative.GroupByFile.DEFAULT,
-        )
-
         all_signals: list[Signal] = []
         grouped_fields: dict = {}
         per_file_loops: dict = {}
@@ -159,10 +175,15 @@ class OtherDataSource(DataSourceBase):
             try:
                 file_stem = file_path.stem
                 file_config = per_file_options.get(file_stem, {})
+                file_patient_options = _patient_options_for_file(patient_options, file_stem)
+                group_by_file = file_patient_options.get(cls.DATASOURCE_NAME, {}).get(
+                    options_naming.PatientOptionsDataSourceRelative.GroupByFile.NAME,
+                    options_naming.PatientOptionsDataSourceRelative.GroupByFile.DEFAULT,
+                )
 
                 df = _load_single_file(
                     file_path,
-                    compute_bounds=cls._make_bounds_computer(patient_options, file_config),
+                    compute_bounds=cls._make_bounds_computer(file_patient_options, file_config),
                     select_columns=make_column_selector(file_config),
                 )
 
@@ -178,7 +199,7 @@ class OtherDataSource(DataSourceBase):
                 df = deduplicate_then_sort_index(df)
 
                 # Apply formatting (timezone, time shift, datetime filter) with per-file opts
-                df = cls._format(df, patient_options, file_config)
+                df = cls._format(df, file_patient_options, file_config)
 
                 if df.empty:
                     logger.warning("No data after filtering in '%s', skipping file", file_path.name)
@@ -308,8 +329,9 @@ class OtherDataSource(DataSourceBase):
         results: list[DataSourceInspection] = []
 
         for file_path in file_paths:
-            inspection_name = f"{cls.DATASOURCE_NAME}::{file_path.stem}"
+            inspection_name = f"{cls.DATASOURCE_NAME}{cst.QUALIFIED_NAME_SEPARATOR}{file_path.stem}"
             file_config = per_file_options.get(file_path.stem, {})
+            file_patient_options = _patient_options_for_file(patient_options, file_path.stem)
             # _load_single_file only honors select_columns on the parquet branch (no partial
             # scan for CSV) — mirror that here so the pruned-view marker below is structural,
             # not inferred from whether the loaded frame happens to match the configured set.
@@ -349,7 +371,7 @@ class OtherDataSource(DataSourceBase):
                 results.append(
                     cls._make_inspection(
                         df,
-                        patient_options,
+                        file_patient_options,
                         file_config,
                         inspection_name,
                         str(file_path),

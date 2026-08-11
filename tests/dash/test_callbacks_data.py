@@ -11,7 +11,9 @@ from clinical_scope.dash_api.callbacks.data_callbacks import (
     _build_slider_marks,
     _inspect_patient_folder,
     _parse_database_options_file,
+    _rehydrate_schema_classes,
     _status_badge,
+    build_patient_options_ui,
     format_time_range,
     process_visualization,
     reload_patient_options,
@@ -384,3 +386,59 @@ class TestInspectPatientFolder:
         span = _inspect_patient_folder(patient_folder)
 
         assert "contains no device subfolders" in span.children
+
+
+# ---------------------------------------------------------------------------
+# build_patient_options_ui — per-file 'other' cards
+# ---------------------------------------------------------------------------
+
+
+class TestOtherPerFileCards:
+    """Files declared with other::<stem> get their own options card, as datasource peers."""
+
+    def _scopes(self, database_options):
+        """Return the set of 'specific.<scope>' prefixes the form produced widgets for."""
+        _, schema_data = build_patient_options_ui(database_options)
+        return {
+            field_id.split(".")[1] for field_id in schema_data if field_id.startswith("specific.")
+        }
+
+    def test_itemized_config_has_no_generic_card(self):
+        scopes = self._scopes({"other::waves": {}, "other::numerics": {}})
+        assert scopes == {"other::waves", "other::numerics"}
+
+    def test_generic_content_keeps_the_fallback_card(self):
+        scopes = self._scopes({"other": {"field_display": ["col"]}, "other::waves": {}})
+        assert scopes == {"other", "other::waves"}
+
+    def test_default_visualization_keeps_the_generic_card(self):
+        """generate_default_database_options() emits an empty 'other' — the card must survive."""
+        scopes = self._scopes({"other": {}})
+        assert scopes == {"other"}
+
+    def test_normalized_config_is_read_too(self):
+        """The store holds raw config, but the 'files' shape must not silently render nothing."""
+        scopes = self._scopes({"other": {"files": {"waves": {}}}})
+        assert scopes == {"other::waves"}
+
+    def test_no_other_config_no_other_card(self):
+        scopes = self._scopes({"philips_waves": {}})
+        assert scopes == {"philips_waves"}
+
+    def test_per_file_widgets_carry_both_fields(self):
+        _, schema_data = build_patient_options_ui({"other::waves": {}})
+        assert schema_data["specific.other::waves.time_shift"] == "TimeShift"
+        assert schema_data["specific.other::waves.group_by_file"] == "GroupByFile"
+
+
+class TestRehydrateSchemaClasses:
+    """Widget ids carrying an other::<stem> scope resolve to the 'other' schema classes."""
+
+    def test_per_file_id_resolves_to_other_schema(self):
+        lookup = _rehydrate_schema_classes({"specific.other::waves.time_shift": "TimeShift"})
+        schema = lookup["specific.other::waves.time_shift"]
+        assert schema.NAME == "time_shift"
+
+    def test_plain_datasource_id_still_resolves(self):
+        lookup = _rehydrate_schema_classes({"specific.philips_waves.time_shift": "TimeShift"})
+        assert lookup["specific.philips_waves.time_shift"].NAME == "time_shift"

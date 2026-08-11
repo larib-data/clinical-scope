@@ -19,6 +19,9 @@ LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"
 DATETIME_INDEX_NAME = "datetime_index"
 
+QUALIFIED_NAME_SEPARATOR = "::"
+OTHER_FILE_PREFIX = f"other{QUALIFIED_NAME_SEPARATOR}"
+
 # Safety pad added around parquet row-pushdown bounds (issue #57): bounds are deliberately
 # conservative-loose, since _filter_by_datetime remains the authoritative cut afterwards.
 DATETIME_PUSHDOWN_BUFFER_SECONDS = 1.0

@@ -238,6 +238,8 @@ file — exactly like any other datasource:
 `additional_informations.timezone` — useful when the CSV you dropped in comes from a
 device in a different timezone than your default.
 
+**Per-file processing options.** Every file you declare with an `other::<stem>` key also gets its own box in the *Specific Options* panel, sitting alongside the device boxes rather than nested under a shared "Other" one. Each box carries that file's own `time_shift` and *Group signals by source file*, so a curated two-column export and a ninety-column raw dump can be corrected and laid out independently. Files present in the folder but not declared in `database_options` fall back to the shared "Other (generic)" box. See [patient_options.json](#patient_optionsjson).
+
 **Inspection shows one entry per file.** When you click *Inspect data* for a patient with
 an `other/` folder, the modal lists one row per file (`other::waves`, `other::numerics`, …),
 each with its own date range and column list, so you can verify that every file was
@@ -578,6 +580,10 @@ subfolder each time you click "Process visualization".
     },
     "edf": {
         "recording_start": "2024-10-08 08:12:33"
+    },
+    "other::waves": {
+        "time_shift": 5.0,
+        "group_by_file": false
     }
 }
 ```
@@ -590,6 +596,7 @@ subfolder each time you click "Process visualization".
 | `datetime_end` | string or null | null | End of the time window. Leave empty to use all available data. |
 | `quick_load` | boolean | false | Reuse previously cached `.parquet` files in `clinical_scope_output/` |
 | `<source_name>` | object | — | Per-source options block (e.g., `time_shift`, `day`) |
+| `other::<stem>` | object | — | Options for a single file inside `other/`, taking precedence over the shared `other` block. See [Generic "Other" Data Source](#generic-other-data-source). |
 
 > **`output_root` (read-only data folders).** Set this when the patient folder lives on a read-only mount and ClinicalScope cannot write its `clinical_scope_output/` cache, annotations, or saved configs in place. Output is rehomed to `<output_root>/<patient_folder_name>/clinical_scope_output/` — the same layout, one level deeper. Because `output_root` then mirrors a Database (one subfolder per patient), point readers at it: `load_database_annotations("<output_root>")` and batch `save_folder` reads work unchanged. Use **one `output_root` per Database** — two different Databases sharing a patient-folder name (e.g. `patient_01`) under the same root would collide.
 

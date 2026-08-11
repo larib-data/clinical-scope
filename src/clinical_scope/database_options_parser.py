@@ -25,9 +25,9 @@ def normalize_database_options(database_options: dict) -> None:
     so the normal datasource-dispatch loop still triggers the datasource.
     """
     per_file = {
-        key[len("other::") :]: value
+        key[len(cst.OTHER_FILE_PREFIX) :]: value
         for key, value in database_options.items()
-        if key.startswith("other::")
+        if key.startswith(cst.OTHER_FILE_PREFIX)
     }
     if not per_file:
         return
@@ -48,9 +48,9 @@ def validate_database_options(database_options: dict) -> list[ValidationIssue]:
     for section_name, section in database_options.items():
         if section_name == cst.DatabaseOptions.GLOBAL:
             continue
-        if section_name.startswith("other::"):
+        if section_name.startswith(cst.OTHER_FILE_PREFIX):
             if isinstance(section, dict):
-                file_stem = section_name[len("other::") :]
+                file_stem = section_name[len(cst.OTHER_FILE_PREFIX) :]
                 _validate_section(section, f"other.files.{file_stem}", issues)
             continue
         if not isinstance(section, dict):

@@ -284,6 +284,85 @@ class TestSpectrogramConfig:
         }
 
 
+class TestPerFilePatientOptions:
+    """Standalone ``other::<stem>`` blocks in patient_options scope time_shift/group_by_file."""
+
+    # The two files in Patient_difficult_format/other/ that survive datetime detection.
+    PER_FILE = "waves_first_half_filtered"
+    SIBLING = "waves_naive_index_filtered"
+
+    def _run_main(self, patient_difficult_path, patient_options_extra, db_opts=None):
+        from clinical_scope.datasource.registry import DataSource
+
+        ds = DataSource.get_subclass_by_name("other")
+        patient_options = {
+            **PATIENT_OPTIONS,
+            "data_folder": str(patient_difficult_path),
+            **patient_options_extra,
+        }
+        db_opts = {} if db_opts is None else db_opts
+        return ds.MAIN_MODULE(patient_options, db_opts), db_opts
+
+    def _first_timestamp(self, signals, file_stem):
+        file_signals = [s for s in signals if s.raw_name.startswith(f"{file_stem}::")]
+        assert file_signals, f"no signals loaded for {file_stem}"
+        return file_signals[0].data.x[0]
+
+    def test_per_file_group_by_file_overrides_generic(self, patient_difficult_path):
+        """A per-file block wins over the generic 'other' one for the file it names."""
+        _, db_opts = self._run_main(
+            patient_difficult_path,
+            {
+                "other": {"group_by_file": True},
+                f"other::{self.PER_FILE}": {"group_by_file": False},
+            },
+        )
+        groups = db_opts.get("grouped_fields", {})
+        assert self.PER_FILE not in groups
+        assert self.SIBLING in groups
+
+    def test_undeclared_file_inherits_generic_block(self, patient_difficult_path):
+        """A file with no other::<stem> entry keeps using the shared 'other' options."""
+        _, db_opts = self._run_main(
+            patient_difficult_path,
+            {
+                "other": {"group_by_file": False},
+                f"other::{self.PER_FILE}": {"group_by_file": True},
+            },
+        )
+        groups = db_opts.get("grouped_fields", {})
+        assert self.PER_FILE in groups
+        assert self.SIBLING not in groups
+
+    def test_per_file_time_shift_leaves_sibling_untouched(self, patient_difficult_path):
+        """time_shift applies to the named file only — the whole point of per-file scoping."""
+        import pandas as pd
+
+        baseline, _ = self._run_main(patient_difficult_path, {})
+        shifted, _ = self._run_main(
+            patient_difficult_path, {f"other::{self.PER_FILE}": {"time_shift": 3600.0}}
+        )
+
+        delta = self._first_timestamp(shifted, self.PER_FILE) - self._first_timestamp(
+            baseline, self.PER_FILE
+        )
+        assert delta == pd.Timedelta(hours=1)
+        assert self._first_timestamp(shifted, self.SIBLING) == self._first_timestamp(
+            baseline, self.SIBLING
+        )
+
+    def test_partial_per_file_block_falls_back_per_field(self, patient_difficult_path):
+        """A per-file block naming only time_shift still inherits generic group_by_file."""
+        _, db_opts = self._run_main(
+            patient_difficult_path,
+            {
+                "other": {"group_by_file": False},
+                f"other::{self.PER_FILE}": {"time_shift": 60.0},
+            },
+        )
+        assert "grouped_fields" not in db_opts
+
+
 class TestNormalizeDatabaseOptions:
     """Unit tests for database_options_parser.normalize_database_options()."""
 
