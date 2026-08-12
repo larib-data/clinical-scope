@@ -8,9 +8,9 @@ authors:
     given-names: Alexis
     email: alexis.janin@inria.fr
     affiliation: "Assistance Publique – Hôpitaux de Paris"
-version: 1.0.0
+version: 1.1.0
 doi: "10.5281/zenodo.20830140"
-date-released: "2026-06-24"
+date-released: "2026-08-12"
 license: Apache-2.0
 repository-code: "https://github.com/larib-data/clinical-scope"
 url: "https://github.com/larib-data/clinical-scope"
