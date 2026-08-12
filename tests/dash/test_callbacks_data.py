@@ -11,7 +11,9 @@ from clinical_scope.dash_api.callbacks.data_callbacks import (
     _build_slider_marks,
     _inspect_patient_folder,
     _parse_database_options_file,
+    _rehydrate_schema_classes,
     _status_badge,
+    build_patient_options_ui,
     format_time_range,
     process_visualization,
     reload_patient_options,
@@ -32,7 +34,7 @@ class TestParseDbOptionsFile:
         content = json.dumps(example_database_options).encode("utf-8")
         result, issues = _parse_database_options_file(content, "test.json")
         assert isinstance(result, dict)
-        assert "philips_waves" in result
+        assert "other::waves" in result
         assert isinstance(issues, list)
 
     def test_parse_unsupported_extension(self):
@@ -40,7 +42,7 @@ class TestParseDbOptionsFile:
             _parse_database_options_file(b"data", "test.txt")
 
     def test_parse_xlsx(self, project_root):
-        xlsx_path = project_root / "example" / "option_files" / "example_database_options.xlsx"
+        xlsx_path = project_root / "tests/data/option_files/example_database_options.xlsx"
         if not xlsx_path.exists():
             pytest.skip("No example xlsx file")
         content = xlsx_path.read_bytes()
@@ -77,7 +79,7 @@ class TestBuildInspectionContent:
     def test_ok_result(self):
         results = [
             DataSourceInspection(
-                datasource_name="philips_waves",
+                datasource_name="servo_u",
                 status="ok",
                 file_path="/data/waves.parquet",
                 raw_date_range=("24-01-01 08:00:00", "24-01-01 09:00:00"),
@@ -240,7 +242,7 @@ class TestProcessVisualizationSubmitTimezone:
         # data under data_folder) since this test only cares what got saved.
         process_visualization(
             1,
-            {"philips_waves": {}},
+            {"servo_u": {}},
             _DATETIME_SCHEMA_DATA,
             values,
             ids,
@@ -384,3 +386,59 @@ class TestInspectPatientFolder:
         span = _inspect_patient_folder(patient_folder)
 
         assert "contains no device subfolders" in span.children
+
+
+# ---------------------------------------------------------------------------
+# build_patient_options_ui — per-file 'other' cards
+# ---------------------------------------------------------------------------
+
+
+class TestOtherPerFileCards:
+    """Files declared with other::<stem> get their own options card, as datasource peers."""
+
+    def _scopes(self, database_options):
+        """Return the set of 'specific.<scope>' prefixes the form produced widgets for."""
+        _, schema_data = build_patient_options_ui(database_options)
+        return {
+            field_id.split(".")[1] for field_id in schema_data if field_id.startswith("specific.")
+        }
+
+    def test_itemized_config_has_no_generic_card(self):
+        scopes = self._scopes({"other::waves": {}, "other::numerics": {}})
+        assert scopes == {"other::waves", "other::numerics"}
+
+    def test_generic_content_keeps_the_fallback_card(self):
+        scopes = self._scopes({"other": {"field_display": ["col"]}, "other::waves": {}})
+        assert scopes == {"other", "other::waves"}
+
+    def test_default_visualization_keeps_the_generic_card(self):
+        """generate_default_database_options() emits an empty 'other' — the card must survive."""
+        scopes = self._scopes({"other": {}})
+        assert scopes == {"other"}
+
+    def test_normalized_config_is_read_too(self):
+        """The store holds raw config, but the 'files' shape must not silently render nothing."""
+        scopes = self._scopes({"other": {"files": {"waves": {}}}})
+        assert scopes == {"other::waves"}
+
+    def test_no_other_config_no_other_card(self):
+        scopes = self._scopes({"servo_u": {}})
+        assert scopes == {"servo_u"}
+
+    def test_per_file_widgets_carry_both_fields(self):
+        _, schema_data = build_patient_options_ui({"other::waves": {}})
+        assert schema_data["specific.other::waves.time_shift"] == "TimeShift"
+        assert schema_data["specific.other::waves.group_by_file"] == "GroupByFile"
+
+
+class TestRehydrateSchemaClasses:
+    """Widget ids carrying an other::<stem> scope resolve to the 'other' schema classes."""
+
+    def test_per_file_id_resolves_to_other_schema(self):
+        lookup = _rehydrate_schema_classes({"specific.other::waves.time_shift": "TimeShift"})
+        schema = lookup["specific.other::waves.time_shift"]
+        assert schema.NAME == "time_shift"
+
+    def test_plain_datasource_id_still_resolves(self):
+        lookup = _rehydrate_schema_classes({"specific.servo_u.time_shift": "TimeShift"})
+        assert lookup["specific.servo_u.time_shift"].NAME == "time_shift"

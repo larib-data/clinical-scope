@@ -10,7 +10,7 @@ Reorganize files in a user-provided folder into the correct `ClinicalScope` pati
 The expected structure is:
 ```
 Patient01/
-├── philips_waves/          ← one subfolder per active datasource
+├── eit/                    ← one subfolder per active datasource
 ├── fluxmed_signals/
 ├── servo_u/
 ├── other/                  ← catch-all for unclassifiable files
@@ -100,12 +100,12 @@ Collect all files marked `confidence: "ask"` and present them together (not one-
 Ambiguous files — please assign each one:
 
   1. raw_data_20240101.csv  (200 KB)
-     Candidates: philips_waves · philips_numerics · fluxmed_signals · other · skip
+     Candidates: mindray_respi_numerics · fluxmed_signals · other · skip
 
   2. unrecognised_format.bin  (4 KB)
      Candidates: other · skip
 
-Enter: 1=philips_waves, 2=other  (or use numbers from the list above)
+Enter: 1=other, 2=other  (or use numbers from the list above)
 ```
 
 Use `AskUserQuestion` for this — present all ambiguous files in a single question when feasible.
@@ -119,8 +119,8 @@ Before touching anything, print a full summary grouped by target subfolder:
 Organization plan for: /path/to/Patient01
 Operation: COPY
 
-  philips_waves/
-    ├── patient_data_wave.parquet      [auto: unique extension match]
+  other/
+    ├── patient_data_wave.parquet      [auto: generic tabular export]
   servo_u/
     ├── recording.sta                  [auto: unique extension match]
   fluxmed_signals/
@@ -170,8 +170,6 @@ The classification logic in Steps 2–4 must always be driven by the live output
 
 | Datasource | Unique extension? | Reliable file keywords (≥5 chars) | Known ambiguities |
 |---|---|---|---|
-| `philips_waves` | — | `waveform`, `timeseries`, `philips` | Generic names like `data_waves_*.parquet` → ask user |
-| `philips_numerics` | — | `philips_numeric`, `philips` | `*numerics.parquet` ties with mindray_respi_numerics → ask user |
 | `eit` | `.asc` ✓ | — | Unique extension — always auto |
 | `fluxmed_signals` | `.txt` (shared) | `signals`, `signal`, `fluxmed` | `Parameters.txt` disambiguates from fluxmed_signals |
 | `fluxmed_parameters` | `.txt` (shared) | `parameters` | `Signals.txt` disambiguates from fluxmed_parameters |
@@ -179,8 +177,7 @@ The classification logic in Steps 2–4 must always be driven by the live output
 | `mindray_scope` | `.xml` ✓ for xml; `.csv` ambiguous | — | `.csv` mindray files (e.g., `Art-*.csv`) → always ask user |
 | `mindray_respi_waves` | — | `respi_wave`, `resp_wave`, `mndry_wave`, `mndry` | `mndry_waveform*.parquet` → auto |
 | `mindray_respi_numerics` | — | `respi_numeric`, `resp_numeric`, `mndry_numeric`, `mndry` | `mndry_numerics*.parquet` → auto |
-| `syringe` | — | `syringe`, `seringues` | Reliable if filename contains "syringe" |
-| `other` | catch-all | — | — |
+| `other` | catch-all | — | Plain CSV/parquet with a datetime column belongs here — monitor exports, syringe logs, anything tabular |
 
 ## Edge cases
 

@@ -1,8 +1,8 @@
 """
 Parquet read-pruning benchmark harness (issue #57 row pushdown, #58 column pruning).
 
-Measures wall-time and process memory of a ``philips_waves.extract`` on large synthetic
-parquet fixtures. Each ``(shape, scenario)`` case is one extract: the datetime-window
+Measures wall-time and process memory of an ``other.main`` run on large synthetic
+parquet fixtures. Each ``(shape, scenario)`` case is one run: the datetime-window
 scenarios exercise row pushdown, and the ``partial_cols`` scenario exercises column pruning
 (no window, ~1/4 of the columns configured). Validate a change before vs. after by a manual
 ``git stash`` A/B:
@@ -22,13 +22,14 @@ first load, so it is a conservative *lower bound* on the real-world win.
 
 Design constraints (do not break these — they are what makes the stash A/B valid):
 
-* It drives only ``DataSource.extract(patient_options, database_options)`` — the one entry
-  point whose signature is identical at HEAD and in the working tree. The ``field_display``
-  it passes to select columns is simply ignored by a pre-#58 baseline (which reads every
-  column), so the very same call is a valid A/B for column pruning too. It must NOT import
-  any pruning internal (``read_parquet_pruned``, ``_pruned_columns``, ``compute_bounds``,
-  ``ALLOW_DATETIME_PUSHDOWN``); none exist at HEAD, and importing one would stop the script
-  from even running against the baseline.
+* It drives only ``DataSource.main(patient_options, database_options)`` — the public entry
+  point, never a pruning internal (``read_parquet_pruned``, ``_pruned_columns``,
+  ``compute_bounds``, ``ALLOW_DATETIME_PUSHDOWN``), so the same script runs unchanged
+  against an older baseline. ``other`` is the only datasource left that pushes a window
+  and a column set into a *source* parquet read on every run; it has no ``extract()``, so
+  the measurement necessarily includes Signal materialization on top of the read. That
+  overhead is identical in both arms of an A/B, and moves in the same direction as the
+  read itself (fewer rows read = fewer points materialized).
 * Each case is measured in a fresh ``spawn`` subprocess, so peak RSS starts from a clean
   interpreter and pyarrow's memory pool from one case can't bleed into the next. (It does
   *not* reset the OS page cache, which is process-independent — hence the A/B note above.)
@@ -78,7 +79,8 @@ SCENARIOS = (
 
 _COLUMN_KEEP_FRACTION = 4  # partial_cols configures 1/this of the value columns
 
-_DATASOURCE = "philips_waves"  # no quick-load cache, reads the raw file every run
+_DATASOURCE = "other"  # no quick-load cache, reads the raw file every run
+_FIXTURE_STEM = "bench"  # the other::<stem> token the fixture file is configured under
 _DT_COLUMN = "timestamp"  # detect_column shape: the column detection must discover
 _BYTES_PER_CELL = 8  # float64 value cells and the int64 timestamp
 
@@ -150,9 +152,9 @@ def _build_patient_folder(
     row_group_size: int,
     freq: str,
 ) -> tuple[Path, pd.Timestamp, pd.Timestamp]:
-    """Lay out a ``<patient>/philips_waves/philips_waves.parquet`` fixture that extract can find."""
+    """Lay out a ``<patient>/other/bench.parquet`` fixture that the pipeline can find."""
     patient_dir = root / f"patient_{shape}"
-    fixture = patient_dir / _DATASOURCE / f"{_DATASOURCE}.parquet"
+    fixture = patient_dir / _DATASOURCE / f"{_FIXTURE_STEM}.parquet"
     t_min, t_max = _generate_fixture(
         fixture,
         shape=shape,
@@ -192,7 +194,7 @@ def _window_for_scenario(scenario: str, t_min: pd.Timestamp, t_max: pd.Timestamp
 
 def _database_options_for_scenario(scenario: str, num_columns: int) -> dict:
     """
-    Return the ``database_options`` (2nd ``extract`` arg) for *scenario*.
+    Return the ``database_options`` (2nd ``main`` arg) for *scenario*.
 
     Only ``partial_cols`` configures a ``field_display`` — ~1/``_COLUMN_KEEP_FRACTION`` of the
     value columns, by bare name (``col_0 … col_{N-1}``, both shapes), mirroring a real signal
@@ -203,7 +205,8 @@ def _database_options_for_scenario(scenario: str, num_columns: int) -> dict:
     if scenario != SCENARIO_PARTIAL_COLS:
         return {}
     keep = max(1, num_columns // _COLUMN_KEEP_FRACTION)
-    return {"field_display": [f"col_{i}" for i in range(keep)]}
+    # 'other' reads per-file config from the "files" slot, keyed by file stem.
+    return {"files": {_FIXTURE_STEM: {"field_display": [f"col_{i}" for i in range(keep)]}}}
 
 
 # ==================================================================================================
@@ -212,15 +215,15 @@ def _database_options_for_scenario(scenario: str, num_columns: int) -> dict:
 def _measure_worker(
     queue: mp.Queue, patient_dir: str, window: dict[str, str], database_options: dict
 ) -> None:
-    """Run a single windowed extract, reporting time + RSS back through *queue*."""
+    """Run a single windowed load, reporting time + RSS back through *queue*."""
     # Worker-local so the parent process and `--diff` mode stay light: no psutil (dev-only dep)
     # and no clinical_scope import until a case is actually measured in this spawned subprocess.
     import psutil  # noqa: PLC0415
 
     from clinical_scope.datasource.registry import DataSource  # noqa: PLC0415
 
-    # extract() logs a full traceback when it returns None (e.g. a window that prunes every row
-    # on the detect_column shape); silence it so the benchmark's own output stays readable.
+    # main() logs a full traceback when a file yields nothing (e.g. a window that prunes every
+    # row on the detect_column shape); silence it so the benchmark's output stays readable.
     logging.getLogger("clinical_scope").setLevel(logging.CRITICAL)
 
     proc = psutil.Process()
@@ -245,7 +248,7 @@ def _measure_worker(
         **window,
     }
     t0 = time.perf_counter()
-    df = datasource.extract(patient_options, database_options)
+    signals = datasource.main(patient_options, database_options)
     elapsed = time.perf_counter() - t0
     retained = proc.memory_info().rss
 
@@ -257,8 +260,8 @@ def _measure_worker(
             "peak_mb": peak / 1e6,
             "retained_mb": retained / 1e6,
             "baseline_mb": baseline / 1e6,
-            "rows": 0 if df is None else len(df),
-            "ok": df is not None,  # None = extract failed (e.g. empty-window detection), not 0 rows
+            "rows": max((len(sig.data.x) for sig in signals), default=0),
+            "ok": bool(signals),  # empty = the window pruned every row, not "0 rows read"
         }
     )
 
@@ -310,7 +313,7 @@ def _print_table(results: list[dict]) -> None:
             f"{r['time_s']:>10.3f}{r['peak_mb']:>11.1f}{r['retained_mb']:>11.1f}"
         )
     if any(not r.get("ok", True) for r in results):
-        print("\n('None' = extract returned None; see the detect_column empty-window note.)")
+        print("\n('None' = no signal survived; see the detect_column empty-window note.)")
 
 
 def _run(args: argparse.Namespace) -> None:

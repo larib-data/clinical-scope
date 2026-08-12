@@ -82,14 +82,14 @@ class TestSaveDf:
 class TestDetectDatasourceFromFolder:
     @patch("clinical_scope.datasource.registry.DataSource")
     def test_matches_by_keywords(self, mock_ds):
-        ds_entry = _make_ds_entry("philips_waves", MagicMock(), ["philips", "waves"])
+        ds_entry = _make_ds_entry("acme_waves", MagicMock(), ["acme", "waves"])
         mock_ds.AVAILABLE = [ds_entry]
-        result = detect_datasource_from_folder(Path("/data/patient/philips_waves"))
+        result = detect_datasource_from_folder(Path("/data/patient/acme_waves"))
         assert result is ds_entry
 
     @patch("clinical_scope.datasource.registry.DataSource")
     def test_no_match_returns_none(self, mock_ds):
-        ds_entry = _make_ds_entry("philips_waves", MagicMock(), ["philips", "waves"])
+        ds_entry = _make_ds_entry("acme_waves", MagicMock(), ["acme", "waves"])
         mock_ds.AVAILABLE = [ds_entry]
         result = detect_datasource_from_folder(Path("/data/patient/unknown_folder"))
         assert result is None

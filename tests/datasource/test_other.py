@@ -1,12 +1,17 @@
 """
 Tests for other (generic) datasource — auto datetime detection, per-file grouping.
 
-The 'other' datasource only exists in Patient_difficult_format, not demo_patient.
 It has a custom main() that processes files individually rather than using _load().
 """
 
+import os
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 import pytest
 
+import clinical_scope.constants as cst
 from clinical_scope.database_options_parser import normalize_database_options
 
 
@@ -181,7 +186,7 @@ class TestGroupedFields:
         return global_db_opts
 
     def test_per_file_grouped_fields_injected_with_prefix(self, patient_difficult_path):
-        """grouped_fields from other::filename are injected with file_stem:: prefix."""
+        """Both the group name and its signal references are scoped to the file."""
 
         db_opts = {
             "other::waves_first_half_filtered": {
@@ -194,9 +199,10 @@ class TestGroupedFields:
         result = self._run_main_and_get_db_opts(patient_difficult_path, db_opts["other"])
 
         groups = result.get("grouped_fields", {})
-        assert "Vital signs" in groups
-        assert "waves_first_half_filtered::Solar8000/HR" in groups["Vital signs"]
-        assert "waves_first_half_filtered::Solar8000/PLETH_SPO2" in groups["Vital signs"]
+        group_name = "waves_first_half_filtered::Vital signs"
+        assert group_name in groups
+        assert "waves_first_half_filtered::Solar8000/HR" in groups[group_name]
+        assert "waves_first_half_filtered::Solar8000/PLETH_SPO2" in groups[group_name]
 
     def test_group_by_file_creates_auto_group(self, patient_difficult_path):
         """When group_by_file=True (default) and no custom groups, file stem is the group name."""
@@ -230,30 +236,223 @@ class TestGroupedFields:
         assert "grouped_fields" not in db_opts
 
 
+def _run_other_main(db_opts: dict, patient_path) -> list:
+    """Normalize *db_opts*, run the 'other' datasource over *patient_path*, return its signals."""
+    normalize_database_options(db_opts)
+    from clinical_scope.datasource.registry import DataSource
+
+    ds = DataSource.get_subclass_by_name("other")
+    return ds.MAIN_MODULE({**PATIENT_OPTIONS, "data_folder": str(patient_path)}, db_opts["other"])
+
+
+def _run_other_with(db_opts: dict, patient_path) -> dict:
+    """As :func:`_run_other_main`, but returning the ``other`` section the run populated."""
+    _run_other_main(db_opts, patient_path)
+    return db_opts["other"]
+
+
 class TestLoopConfig:
     """Per-file loop definitions from other::filename are injected into database_options."""
 
     def test_per_file_loop_injected_with_prefix(self, patient_difficult_path):
-        """Loop entries from other::filename are injected with file_stem:: prefix."""
+        """Both the loop name and its signal references are scoped to the file."""
 
-        db_opts = {
-            "other::waves_first_half_filtered": {
-                "loop": {"HR vs SpO2": ["Solar8000/HR", "Solar8000/PLETH_SPO2"]}
-            }
-        }
-        normalize_database_options(db_opts)
-        from clinical_scope.datasource.registry import DataSource
+        section = _run_other_with(
+            {
+                "other::waves_first_half_filtered": {
+                    "loop": {"HR vs SpO2": ["Solar8000/HR", "Solar8000/PLETH_SPO2"]}
+                }
+            },
+            patient_difficult_path,
+        )
 
-        ds = DataSource.get_subclass_by_name("other")
-        patient_options = {**PATIENT_OPTIONS, "data_folder": str(patient_difficult_path)}
-        ds.MAIN_MODULE(patient_options, db_opts["other"])
-
-        loop = db_opts["other"].get("loop", {})
-        assert "HR vs SpO2" in loop
-        assert loop["HR vs SpO2"] == [
+        loop = section.get("loop", {})
+        assert "waves_first_half_filtered::HR vs SpO2" in loop
+        assert loop["waves_first_half_filtered::HR vs SpO2"] == [
             "waves_first_half_filtered::Solar8000/HR",
             "waves_first_half_filtered::Solar8000/PLETH_SPO2",
         ]
+
+    def test_same_loop_name_in_two_files_does_not_collide(self, tmp_path):
+        """Two files may each declare a loop called 'PV' without one erasing the other."""
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("numerics", ".csv")])
+
+        section = _run_other_with(
+            {
+                "other::waves": {"loop": {"PV": ["art", "paw"]}},
+                "other::numerics": {"loop": {"PV": ["art", "paw"]}},
+            },
+            tmp_path,
+        )
+
+        assert section.get("loop", {}) == {
+            "waves::PV": ["waves::art", "waves::paw"],
+            "numerics::PV": ["numerics::art", "numerics::paw"],
+        }
+
+
+class TestSpectrogramConfig:
+    """Per-file spectrogram definitions from other::filename are injected into database_options."""
+
+    def test_per_file_spectrogram_injected_with_prefix(self, patient_difficult_path):
+        """The bare 'signal' name is prefixed with file_stem::, other keys pass through as-is."""
+
+        section = _run_other_with(
+            {
+                "other::waves_first_half_filtered": {
+                    "spectrogram": {
+                        "HR spectrogram": {"signal": "Solar8000/HR", "freq_range": [0.5, 30.0]}
+                    }
+                }
+            },
+            patient_difficult_path,
+        )
+
+        spectrogram = section.get("spectrogram", {})
+        assert spectrogram["waves_first_half_filtered::HR spectrogram"] == {
+            "signal": "waves_first_half_filtered::Solar8000/HR",
+            "freq_range": [0.5, 30.0],
+        }
+
+
+class TestPsdConfig:
+    """Per-file psd definitions from other::filename are injected into database_options."""
+
+    def test_per_file_psd_injected_with_prefix(self, patient_difficult_path):
+        """A psd entry's signals are scoped to the file, in both dict and shorthand form."""
+
+        section = _run_other_with(
+            {
+                "other::waves_first_half_filtered": {
+                    "psd": {
+                        "HR psd": {
+                            "signals": [
+                                "Solar8000/HR",
+                                {"signal": "Solar8000/PLETH_SPO2", "label": "SpO2"},
+                            ],
+                            "freq_range": [0.5, 30.0],
+                        }
+                    }
+                }
+            },
+            patient_difficult_path,
+        )
+
+        psd = section.get("psd", {})
+        assert psd["waves_first_half_filtered::HR psd"] == {
+            "signals": [
+                "waves_first_half_filtered::Solar8000/HR",
+                {"signal": "waves_first_half_filtered::Solar8000/PLETH_SPO2", "label": "SpO2"},
+            ],
+            "freq_range": [0.5, 30.0],
+        }
+
+    def test_psd_overlays_signals_from_two_different_files(self, tmp_path):
+        """One PSD subplot may compare channels living in separate files under other/."""
+        from clinical_scope.wrapper import _build_psd_signals
+
+        folder = tmp_path / "other"
+        folder.mkdir(parents=True)
+        index = pd.date_range("2004-09-15 08:00:00", periods=2560, freq="10ms")
+        seconds = (index - index[0]).total_seconds().to_numpy()
+        for stem, freq_hz in (("waves", 5.0), ("numerics", 12.0)):
+            pd.DataFrame(
+                {"signal": np.sin(2 * np.pi * freq_hz * seconds)},
+                index=pd.DatetimeIndex(index, name="datetime_index"),
+            ).to_parquet(folder / f"{stem}.parquet")
+
+        db_opts = {"other": {}}
+        signals = _run_other_main(db_opts, tmp_path)
+
+        psd_signals = _build_psd_signals(
+            signals,
+            "cross-file",
+            {"signals": ["waves::signal", "numerics::signal"], "freq_range": [1.0, 20.0]},
+        )
+
+        assert [signal.raw_name for signal in psd_signals] == [
+            "cross-file::waves::signal",
+            "cross-file::numerics::signal",
+        ]
+
+
+class TestPerFilePatientOptions:
+    """Standalone ``other::<stem>`` blocks in patient_options scope time_shift/group_by_file."""
+
+    # The two files in Patient_difficult_format/other/ that survive datetime detection.
+    PER_FILE = "waves_first_half_filtered"
+    SIBLING = "waves_naive_index_filtered"
+
+    def _run_main(self, patient_difficult_path, patient_options_extra, db_opts=None):
+        from clinical_scope.datasource.registry import DataSource
+
+        ds = DataSource.get_subclass_by_name("other")
+        patient_options = {
+            **PATIENT_OPTIONS,
+            "data_folder": str(patient_difficult_path),
+            **patient_options_extra,
+        }
+        db_opts = {} if db_opts is None else db_opts
+        return ds.MAIN_MODULE(patient_options, db_opts), db_opts
+
+    def _first_timestamp(self, signals, file_stem):
+        file_signals = [s for s in signals if s.raw_name.startswith(f"{file_stem}::")]
+        assert file_signals, f"no signals loaded for {file_stem}"
+        return file_signals[0].data.x[0]
+
+    def test_per_file_group_by_file_overrides_generic(self, patient_difficult_path):
+        """A per-file block wins over the generic 'other' one for the file it names."""
+        _, db_opts = self._run_main(
+            patient_difficult_path,
+            {
+                "other": {"group_by_file": True},
+                f"other::{self.PER_FILE}": {"group_by_file": False},
+            },
+        )
+        groups = db_opts.get("grouped_fields", {})
+        assert self.PER_FILE not in groups
+        assert self.SIBLING in groups
+
+    def test_undeclared_file_inherits_generic_block(self, patient_difficult_path):
+        """A file with no other::<stem> entry keeps using the shared 'other' options."""
+        _, db_opts = self._run_main(
+            patient_difficult_path,
+            {
+                "other": {"group_by_file": False},
+                f"other::{self.PER_FILE}": {"group_by_file": True},
+            },
+        )
+        groups = db_opts.get("grouped_fields", {})
+        assert self.PER_FILE in groups
+        assert self.SIBLING not in groups
+
+    def test_per_file_time_shift_leaves_sibling_untouched(self, patient_difficult_path):
+        """time_shift applies to the named file only — the whole point of per-file scoping."""
+        import pandas as pd
+
+        baseline, _ = self._run_main(patient_difficult_path, {})
+        shifted, _ = self._run_main(
+            patient_difficult_path, {f"other::{self.PER_FILE}": {"time_shift": 3600.0}}
+        )
+
+        delta = self._first_timestamp(shifted, self.PER_FILE) - self._first_timestamp(
+            baseline, self.PER_FILE
+        )
+        assert delta == pd.Timedelta(hours=1)
+        assert self._first_timestamp(shifted, self.SIBLING) == self._first_timestamp(
+            baseline, self.SIBLING
+        )
+
+    def test_partial_per_file_block_falls_back_per_field(self, patient_difficult_path):
+        """A per-file block naming only time_shift still inherits generic group_by_file."""
+        _, db_opts = self._run_main(
+            patient_difficult_path,
+            {
+                "other": {"group_by_file": False},
+                f"other::{self.PER_FILE}": {"time_shift": 60.0},
+            },
+        )
+        assert "grouped_fields" not in db_opts
 
 
 class TestNormalizeDatabaseOptions:
@@ -285,7 +484,7 @@ class TestNormalizeDatabaseOptions:
 
     def test_noop_when_no_per_file_keys(self):
 
-        db = {"other": {"signals": {}}, "philips_waves": {}}
+        db = {"other": {"signals": {}}, "servo_u": {}}
         original = dict(db)
         normalize_database_options(db)
         assert db == original
@@ -309,3 +508,104 @@ class TestTimezone:
         assert len(file_signals) > 0
         for sig in file_signals:
             assert str(sig.data.timezone) == "Europe/Paris"
+
+
+def _write_other_patient(root, stems_with_suffixes):
+    """Build a throwaway patient folder whose other/ holds one file per (stem, suffix)."""
+    folder = root / "other"
+    folder.mkdir(parents=True, exist_ok=True)
+    index = pd.date_range("2004-09-15 08:00:00", periods=10, freq="1s", name="datetime_index")
+    for stem, suffix in stems_with_suffixes:
+        df = pd.DataFrame({"art": range(10), "paw": range(10, 20)}, index=index)
+        if suffix == ".parquet":
+            df.to_parquet(folder / f"{stem}{suffix}")
+        else:
+            df.to_csv(folder / f"{stem}{suffix}")
+    return folder
+
+
+class TestStemDeduplication:
+    """A folder holding both extensions for one stem must not load the file twice."""
+
+    def test_parquet_shadows_csv_of_the_same_stem(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("waves", ".csv")])
+        found = other_cls._find(other_cls._find_folder(tmp_path))
+        assert [path.name for path in found] == ["waves.parquet"]
+
+    def test_distinct_stems_are_all_kept(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("numerics", ".csv")])
+        found = other_cls._find(other_cls._find_folder(tmp_path))
+        assert sorted(path.name for path in found) == ["numerics.csv", "waves.parquet"]
+
+    def test_signals_are_not_duplicated(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("waves", ".csv")])
+        signals = other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+        raw_names = [sig.raw_name for sig in signals]
+        assert sorted(raw_names) == ["waves::art", "waves::paw"]
+
+
+class TestPerFileTraceOptions:
+    """A trace_options block in an other::<stem> section overrides the datasource default."""
+
+    def _signals(self, tmp_path, other_cls, db_opts):
+        _write_other_patient(tmp_path, [("waves", ".parquet")])
+        return other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, db_opts)
+
+    def test_default_mode_without_config(self, tmp_path, other_cls):
+        signals = self._signals(tmp_path, other_cls, {})
+        assert all(sig.trace.mode == "lines" for sig in signals)
+
+    def test_per_file_mode_overrides_the_default(self, tmp_path, other_cls):
+        db_opts = {"files": {"waves": {"trace_options": {"mode": "lines+markers"}}}}
+        signals = self._signals(tmp_path, other_cls, db_opts)
+        assert signals
+        assert all(sig.trace.mode == "lines+markers" for sig in signals)
+
+    def test_unset_keys_keep_the_datasource_value(self, tmp_path, other_cls):
+        """Merging, not replacing: line_width survives an override that only sets mode."""
+        db_opts = {"files": {"waves": {"trace_options": {"mode": "lines+markers"}}}}
+        signals = self._signals(tmp_path, other_cls, db_opts)
+        assert all(sig.trace.line.width == 1.5 for sig in signals)
+
+    def test_a_files_options_do_not_leak_to_its_neighbours(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet"), ("numerics", ".parquet")])
+        db_opts = {"files": {"waves": {"trace_options": {"mode": "lines+markers"}}}}
+        signals = other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, db_opts)
+        modes = {sig.raw_name.split("::")[0]: sig.trace.mode for sig in signals}
+        assert modes["waves"] == "lines+markers"
+        assert modes["numerics"] == "lines"
+
+
+class TestSourceSymlink:
+    """'other' writes no parquet cache, so a symlink is the output folder's only provenance."""
+
+    def test_each_loaded_file_is_symlinked(self, tmp_path, other_cls):
+        source_folder = _write_other_patient(
+            tmp_path, [("waves", ".parquet"), ("numerics", ".csv")]
+        )
+        other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        symlink_folder = tmp_path / cst.FOLDER_NAME_OUTPUT / "other"
+        for name in ("waves.parquet", "numerics.csv"):
+            link = symlink_folder / name
+            assert link.is_symlink()
+            assert link.resolve() == (source_folder / name).resolve()
+
+    def test_symlink_is_relative_so_the_folder_stays_movable(self, tmp_path, other_cls):
+        _write_other_patient(tmp_path, [("waves", ".parquet")])
+        other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+        link = tmp_path / cst.FOLDER_NAME_OUTPUT / "other" / "waves.parquet"
+        assert not Path(os.readlink(link)).is_absolute()
+
+    def test_symlink_cannot_collide_with_another_datasource_cache(self, tmp_path, other_cls):
+        """An 'other' file named like a cache must not land on that cache's path."""
+        _write_other_patient(tmp_path, [("servo_u_loaded", ".parquet")])
+        output_folder = tmp_path / cst.FOLDER_NAME_OUTPUT
+        output_folder.mkdir(parents=True, exist_ok=True)
+        cache = output_folder / "servo_u_loaded.parquet"
+        cache.write_bytes(b"servo_u cache")
+
+        other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        assert cache.read_bytes() == b"servo_u cache"
+        assert (output_folder / "other" / "servo_u_loaded.parquet").is_symlink()

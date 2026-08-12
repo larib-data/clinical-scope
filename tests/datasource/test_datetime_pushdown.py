@@ -4,8 +4,8 @@ Equality tests for parquet datetime row-pushdown (issue #57).
 A windowed read must return exactly what a full read followed by the authoritative
 `_filter_by_datetime` would — pushdown only changes how many rows are read from disk,
 never which rows survive. Covers all three pushdown paths from the issue: the
-quick-load parquet cache (most standard datasources), `philips_waves` (no cache,
-parquet branch only), and `other`/parquet (stored-index + footer name-detection).
+quick-load parquet cache (most standard datasources) and `other`/parquet (no cache,
+stored-index + footer name-detection, read fresh every run).
 """
 
 from pathlib import Path
@@ -26,9 +26,9 @@ from clinical_scope.io.file_utils import (
 )
 
 OTHER_DIR = (
-    Path(__file__).resolve().parent.parent.parent
-    / "example"
-    / "example_patients"
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "patients"
     / "Patient_difficult_format"
     / "other"
 )
@@ -161,54 +161,54 @@ class TestReadParquetWithDatetimePushdownLowLevel:
 class TestPushdownBounds:
     """Unit tests for DataSourceBase._pushdown_bounds (buffer, time_shift, tz handling)."""
 
-    def test_no_window_returns_none(self, philips_waves_cls):
-        assert philips_waves_cls._pushdown_bounds({}, {}, index_tz=None) is None
+    def test_no_window_returns_none(self, other_cls):
+        assert other_cls._pushdown_bounds({}, {}, index_tz=None) is None
 
-    def test_naive_target_converts_from_display_tz_and_pads(self, philips_waves_cls, monkeypatch):
-        # philips_waves source tz is UTC; pin the display default to UTC too, isolating the
+    def test_naive_target_converts_from_display_tz_and_pads(self, other_cls, monkeypatch):
+        # 'other' source tz is UTC; pin the display default to UTC too, isolating the
         # ± buffer as the only transformation left to verify.
         monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
         }
-        start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz=None)
+        start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz=None)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
         assert start == pd.Timestamp("2004-09-15 08:20:00") - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00") + buffer
 
-    def test_time_shift_is_inverted(self, philips_waves_cls, monkeypatch):
+    def test_time_shift_is_inverted(self, other_cls, monkeypatch):
         monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
-            "philips_waves": {"time_shift": 30.0},
+            "other": {"time_shift": 30.0},
         }
-        start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz=None)
+        start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz=None)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
         assert start == pd.Timestamp("2004-09-15 08:20:00") - pd.Timedelta(seconds=30.0) - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00") - pd.Timedelta(seconds=30.0) + buffer
 
-    def test_negative_time_shift_is_inverted(self, philips_waves_cls, monkeypatch):
+    def test_negative_time_shift_is_inverted(self, other_cls, monkeypatch):
         monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
-            "philips_waves": {"time_shift": -30.0},
+            "other": {"time_shift": -30.0},
         }
-        start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz=None)
+        start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz=None)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
         assert start == pd.Timestamp("2004-09-15 08:20:00") + pd.Timedelta(seconds=30.0) - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00") + pd.Timedelta(seconds=30.0) + buffer
 
-    def test_one_sided_start_only(self, philips_waves_cls):
+    def test_one_sided_start_only(self, other_cls):
         patient_options = {"datetime_start": "2004-09-15 08:20:00"}
-        start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz=None)
+        start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz=None)
         assert start is not None
         assert end is None
 
     def test_naive_target_falls_back_to_database_options_timezone_override(
-        self, philips_waves_cls, monkeypatch
+        self, other_cls, monkeypatch
     ):
         """
         The exact configuration behind issue #57's bug: no materialized index tz, and a
@@ -221,11 +221,11 @@ class TestPushdownBounds:
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
         }
-        additional_info = philips_waves_cls.OPTIONS_MODULE.DatabaseOptionsAdditionalInformations
+        additional_info = other_cls.OPTIONS_MODULE.DatabaseOptionsAdditionalInformations
         database_options_specific = {
             cst.DatabaseOptions.ADDITIONAL_INFORMATIONS: {additional_info.TIMEZONE: "Europe/Paris"}
         }
-        start, end = philips_waves_cls._pushdown_bounds(
+        start, end = other_cls._pushdown_bounds(
             patient_options, database_options_specific, index_tz=None
         )
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
@@ -236,13 +236,13 @@ class TestPushdownBounds:
         assert start.tzinfo is None
         assert end.tzinfo is None
 
-    def test_aware_target_uses_index_tz_directly(self, philips_waves_cls, monkeypatch):
+    def test_aware_target_uses_index_tz_directly(self, other_cls, monkeypatch):
         monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
         }
-        start, end = philips_waves_cls._pushdown_bounds(patient_options, {}, index_tz="UTC")
+        start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz="UTC")
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
         assert start == pd.Timestamp("2004-09-15 08:20:00", tz="UTC") - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00", tz="UTC") + buffer
@@ -324,8 +324,8 @@ class TestNaiveAwareBoundEquivalence:
     @pytest.mark.parametrize(
         "datetime_start,datetime_end,display_timezone",
         [
-            ("2004-09-15 06:12:40", "2004-09-15 06:12:50", "UTC"),
-            ("2004-09-15 08:12:40", "2004-09-15 08:12:50", "Europe/Paris"),
+            ("2004-09-15 08:12:40", "2004-09-15 08:12:50", "UTC"),
+            ("2004-09-15 10:12:40", "2004-09-15 10:12:50", "Europe/Paris"),
         ],
     )
     def test_aware_bound_matches_naive_plus_display_timezone(
@@ -380,44 +380,6 @@ class TestInspectCosmeticDisplayTimezone:
         patient_options = {"data_folder": str(patient_full_path)}
         result = servo_u_cls.inspect(patient_options, {})
         assert result.filtered_date_range[0].endswith("JST")
-
-
-class TestPhilipsWavesPushdownEquality:
-    """Path 2 (issue #57): philips_waves — no cache, parquet branch only, every run."""
-
-    @pytest.mark.parametrize(
-        "datetime_start,datetime_end",
-        [
-            ("2004-09-15 08:12:40", "2004-09-15 08:13:00"),
-            ("2004-09-15 08:12:50", None),
-            (None, "2004-09-15 08:12:50"),
-            ("1990-01-01 00:00:00", "1990-01-02 00:00:00"),
-        ],
-    )
-    def test_pushdown_matches_disabled(
-        self, philips_waves_cls, patient_full_path, monkeypatch, datetime_start, datetime_end
-    ):
-        folder = philips_waves_cls._find_folder(patient_full_path)
-        file_path = philips_waves_cls._find(folder)
-        if file_path is None or file_path.suffix.lower() != ".parquet":
-            pytest.skip("philips_waves parquet fixture not found in demo_patient")
-
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
-        patient_options = {
-            "data_folder": str(patient_full_path),
-            "datetime_start": datetime_start,
-            "datetime_end": datetime_end,
-            "quick_load": False,
-        }
-        df_pushdown = philips_waves_cls.extract(patient_options, {})
-
-        original = _toggle_pushdown(philips_waves_cls, False)
-        try:
-            df_disabled = philips_waves_cls.extract(patient_options, {})
-        finally:
-            philips_waves_cls.ALLOW_DATETIME_PUSHDOWN = original
-
-        pd.testing.assert_frame_equal(df_pushdown, df_disabled)
 
 
 class TestOtherParquetPushdownEquality:
@@ -631,14 +593,14 @@ class TestInspectIgnoresPushdownWindow:
     the reported raw_date_range. By design, not incidental."""
 
     def test_narrow_window_does_not_shrink_raw_date_range(
-        self, philips_waves_cls, patient_full_path
+        self, servo_u_cls, patient_full_path
     ):
         base_options = {
             "data_folder": str(patient_full_path),
             "quick_load": False,
         }
-        full = philips_waves_cls.inspect(base_options, {})
-        narrow = philips_waves_cls.inspect(
+        full = servo_u_cls.inspect(base_options, {})
+        narrow = servo_u_cls.inspect(
             {
                 **base_options,
                 "datetime_start": "2004-09-15 08:12:40",

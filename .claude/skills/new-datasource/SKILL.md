@@ -5,7 +5,7 @@ description: Add a brand-new data source module to the ClinicalScope project. Us
 
 # New Datasource Skill
 
-Add a complete, production-ready datasource module by **mirroring the closest existing source**. The 11 existing datasources already encode every pattern this skill needs to cover — the skill's job is to route correctly and remind you of the cross-cutting concerns (registration, tests, snapshots, docs).
+Add a complete, production-ready datasource module by **mirroring the closest existing source**. The existing datasources already encode every pattern this skill needs to cover — the skill's job is to route correctly and remind you of the cross-cutting concerns (registration, tests, snapshots, docs).
 
 ## Step 0 — Gather materials and identity
 
@@ -57,7 +57,7 @@ Internal — **do not show this table to the user**. Use it to choose which exis
 
 | Raw format / complexity | Primary |
 |---|---|
-| Plain CSV/parquet, datetime column present, one signal per column | `philips_waves` |
+| Plain CSV/parquet, datetime column present, one signal per column | **Stop — write no module.** Tell the user to drop the file into `other/` and configure it under an `other::<stem>` key; a datasource is only justified by format-specific parsing. |
 | Long-format, needs pivot to wide | `mindray_respi_numerics` |
 | Custom text parser (header blocks, metadata sections) | `servo_u` |
 | Custom binary/XML/less-structured | `eit` |
@@ -97,9 +97,12 @@ Beyond the three new files in `src/clinical_scope/datasource/sources/<name>/`, e
 - **`tests/datasource/conftest.py`** — add a session-scoped `<datasource_name>_cls` fixture.
 - **`docs/user_guide/tutorial.md`** → *Patient Data & Supported Data Sources* canonical table — add a row.
 - **`CLAUDE.md`** → *Supported Data Sources* bullet list — add a bullet, list order aligned with `AVAILABLE`.
+- **`example/template_patient_data_structure/<EXPECTED_FOLDER_NAME>/.gitkeep`** — the empty scaffold that ships in the release bundle. `tests/unit/test_example_assets.py` fails until it exists.
+
+- **`example/demo_database/database_options.xlsx`** — add a section for the new source (a `*` sentinel row plus a curated handful of signals), then **regenerate `database_options.json` from it**. The demo must plot every source it ships: `tests/unit/test_example_assets.py` fails otherwise, and its parity test prints the regeneration one-liner.
 
 Conditional — update only if the file currently enumerates all datasources:
-- `README.md`, `example/option_files/*`.
+- `README.md`.
 
 ## Step 6 — Example data
 
@@ -158,10 +161,12 @@ Once everything is in place, mention the primary for transparency:
 - [ ] `src/clinical_scope/datasource/sources/<name>/find_load_format.py`
 - [ ] `src/clinical_scope/datasource/registry.py` (import, inner class, `AVAILABLE`)
 - [ ] `example/demo_database/demo_patient/<folder>/` — example data
+- [ ] `example/template_patient_data_structure/<folder>/.gitkeep` — guard test asserts this set matches the registry
 - [ ] `tests/datasource/conftest.py` — fixture added
 - [ ] `tests/datasource/test_<name>.py` — copied from primary and adapted
 - [ ] `tests/expected_results/<name>/` — snapshots generated
 - [ ] `docs/user_guide/tutorial.md` — table row added
 - [ ] `CLAUDE.md` — Supported Data Sources bullet updated
-- [ ] `README.md`, `example/option_files/*` — updated only if they enumerate sources
+- [ ] `example/demo_database/database_options.{xlsx,json}` — section added to the xlsx, json regenerated from it
+- [ ] `README.md` — updated only if it enumerates sources
 - [ ] All tests pass, `ruff check` clean, smoke test sees the new datasource

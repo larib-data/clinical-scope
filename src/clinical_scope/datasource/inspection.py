@@ -23,10 +23,12 @@ class ColumnInfo:
 
     raw_name: str
     is_configured: bool  # True if raw_name appears in database_options field_display
-    raw_point_count: int  # Non-null rows in the loaded (unfiltered) DataFrame
-    filtered_point_count: int  # Non-null rows after datetime filter
-    first_filtered_timestamp: str | None = None  # ISO timestamp of first valid filtered point
-    last_filtered_timestamp: str | None = None  # ISO timestamp of last valid filtered point
+    raw_point_count: int  # Non-null rows in the file as loaded
+    # The `filtered_*` names predate time-option handling: these describe the whole _format
+    # output — time shift, recording start / day, timezone, then the datetime window.
+    filtered_point_count: int  # Non-null rows kept once _format has run
+    first_filtered_timestamp: str | None = None  # First kept timestamp, on the formatted axis
+    last_filtered_timestamp: str | None = None  # Last kept timestamp, on the formatted axis
 
     # Display headers for the inspection table (header_text, alignment).
     # Shared between Dash modal and CLI script.
@@ -34,10 +36,10 @@ class ColumnInfo:
         ("Column", "left"),
         ("Configured", "center"),
         ("Raw pts", "right"),
-        ("Filtered pts", "right"),
+        ("Kept pts", "right"),
         ("% retained", "right"),
-        ("First (filtered)", "left"),
-        ("Last (filtered)", "left"),
+        ("First", "left"),
+        ("Last", "left"),
     ]
 
     def display_values(self) -> list[str]:
@@ -73,8 +75,9 @@ class DataSourceInspection:
     status: str  # "ok" | "file_not_found" | "load_error" | "format_error"
     error_message: str | None = None
     file_path: str | None = None
-    raw_date_range: tuple[str, str] | None = None  # (iso_start, iso_end) before filter
-    filtered_date_range: tuple[str, str] | None = None  # (iso_start, iso_end) after filter
+    raw_date_range: tuple[str, str] | None = None  # (iso_start, iso_end) as the file states them
+    # (iso_start, iso_end) after _format: time shift, recording start / day, timezone, window.
+    filtered_date_range: tuple[str, str] | None = None
     columns: list[ColumnInfo] = field(default_factory=list)
     # True when only the configured columns were read: the table is then a partial view of
     # the file, so an absent column means "not configured", not "not in the data".
@@ -158,12 +161,12 @@ def to_text_summary(results: list[DataSourceInspection]) -> str:
             lines.append(f"         File:  {result.file_path}")
         if result.raw_date_range:
             lines.append(
-                f"         Raw dates:      "
+                f"         Dates in file:      "
                 f"{result.raw_date_range[0]}  →  {result.raw_date_range[1]}"
             )
         if result.filtered_date_range:
             lines.append(
-                f"         Filtered dates: "
+                f"         After time options: "
                 f"{result.filtered_date_range[0]}  →  {result.filtered_date_range[1]}"
             )
         if result.columns_pruned:

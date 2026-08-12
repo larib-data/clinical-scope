@@ -67,6 +67,34 @@ def folder_has_real_content(folder_path: Path) -> bool:
 
 
 # ==================================================================================================
+def deduplicate_by_stem(files: list[Path], extensions: list[str]) -> list[Path]:
+    """
+    Keep one file per stem, preferring the extension earliest in *extensions*.
+
+    A device folder routinely holds both a source export and a parquet written from it;
+    loading both would duplicate every signal under colliding names.
+    """
+    suffix_rank = {extension.lower(): index for index, extension in enumerate(extensions)}
+    max_rank = len(extensions)
+
+    def rank(file: Path) -> int:
+        return suffix_rank.get(file.suffix.lower(), max_rank)
+
+    kept_by_stem: dict[str, Path] = {}
+    for file in files:
+        stem = file.stem.lower()
+        incumbent = kept_by_stem.get(stem)
+        if incumbent is None:
+            kept_by_stem[stem] = file
+            continue
+        winner, shadowed = (file, incumbent) if rank(file) < rank(incumbent) else (incumbent, file)
+        kept_by_stem[stem] = winner
+        logger.info(
+            "Ignoring '%s': '%s' already covers stem '%s'.", shadowed.name, winner.name, stem
+        )
+    return list(kept_by_stem.values())
+
+
 def find_files(
     folder_path: Path,
     extensions: list[str],
@@ -78,8 +106,8 @@ def find_files(
     """
     Find data files in *folder_path*.
 
-    When *multi* is ``True``, return **all** files matching *extensions*
-    (sorted alphabetically), or ``None`` if none found.
+    When *multi* is ``True``, return **all** files matching *extensions*, deduplicated by
+    stem and sorted alphabetically, or ``None`` if none found.
 
     When *multi* is ``False``, return a **single** file (tiered disambiguation):
 
@@ -96,14 +124,15 @@ def find_files(
     """
     if multi:
         ext_set = {extension.lower() for extension in extensions}
-        files = sorted(
+        files = [
             file
             for file in folder_path.iterdir()
             if file.is_file() and file.suffix.lower() in ext_set
-        )
+        ]
         if not files:
             logger.debug("Could not find any %s files in folder '%s'", datasource_name, folder_path)
             return None
+        files = sorted(deduplicate_by_stem(files, extensions))
         logger.debug("Found %s: %s in folder %s", datasource_name, files, folder_path)
         return files
 
@@ -129,19 +158,8 @@ def find_files(
         logger.info("Selected file for '%s': %s", datasource_name, matches[0])
         return matches[0]
 
-    # Deduplicate by stem: keep most preferred extension per stem
     if extensions:
-        suffix_rank = {extension.lower(): index for index, extension in enumerate(extensions)}
-        max_rank = len(extensions)
-        by_stem: dict[str, Path] = {}
-        for file in matches:
-            stem = file.stem.lower()
-            rank = suffix_rank.get(file.suffix.lower(), max_rank)
-            if stem not in by_stem or rank < suffix_rank.get(
-                by_stem[stem].suffix.lower(), max_rank
-            ):
-                by_stem[stem] = file
-        matches = list(by_stem.values())
+        matches = deduplicate_by_stem(matches, extensions)
 
     if len(matches) == 1:
         logger.info("Selected file for '%s': %s", datasource_name, matches[0])

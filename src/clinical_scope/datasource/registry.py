@@ -7,6 +7,7 @@ from typing import ClassVar
 
 import clinical_scope.constants as cst
 from clinical_scope.datasource.base import DataSourceBase
+from clinical_scope.datasource.sources.edf import find_load_format as _edf
 from clinical_scope.datasource.sources.eit import find_load_format as _eit
 from clinical_scope.datasource.sources.fluxmed_parameters import (
     find_load_format as _fluxmed_parameters,
@@ -24,14 +25,7 @@ from clinical_scope.datasource.sources.mindray_scope import (
     find_load_format as _mindray_scope,
 )
 from clinical_scope.datasource.sources.other import find_load_format as _other
-from clinical_scope.datasource.sources.philips_numerics import (
-    find_load_format as _philips_numerics,
-)
-from clinical_scope.datasource.sources.philips_waves import (
-    find_load_format as _philips_waves,
-)
 from clinical_scope.datasource.sources.servo_u import find_load_format as _servo_u
-from clinical_scope.datasource.sources.syringe import find_load_format as _syringe
 from clinical_scope.io.file_utils import (
     folder_has_real_content,
     folder_name_matches_keywords,
@@ -91,27 +85,6 @@ class DataSource:
         MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
-    @add_main_module(_philips_waves)
-    class PhilipsWaves:
-        NAME = "philips_waves"
-        DESCRIPTION = "Philips scope - waves"
-        MAIN_MODULE: ClassVar[MainModule]
-        OPTIONS: object
-
-    @add_main_module(_philips_numerics)
-    class PhilipsNumerics:
-        NAME = "philips_numerics"
-        DESCRIPTION = "Philips scope - numerics"
-        MAIN_MODULE: ClassVar[MainModule]
-        OPTIONS: object
-
-    @add_main_module(_syringe)
-    class Syringe:
-        NAME = "syringe"
-        DESCRIPTION = "Syringe"
-        MAIN_MODULE: ClassVar[MainModule]
-        OPTIONS: object
-
     @add_main_module(_fluxmed_parameters)
     class FluxmedParameters:
         NAME = "fluxmed_parameters"
@@ -154,6 +127,13 @@ class DataSource:
         MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
+    @add_main_module(_edf)
+    class Edf:
+        NAME = "edf"
+        DESCRIPTION = "EDF / EDF+"
+        MAIN_MODULE: ClassVar[MainModule]
+        OPTIONS: object
+
     @add_main_module(_other)
     class Other:
         NAME = "other"
@@ -163,16 +143,14 @@ class DataSource:
 
     # This order is the "default" order of plot, so try to choose it a bit carefully
     AVAILABLE = (
-        PhilipsWaves,
         EIT,
-        PhilipsNumerics,
-        Syringe,
         FluxmedParameters,
         FluxmedSignals,
         ServoU,
         MindRayRespiNumerics,
         MindRayRespiWaves,
         MindRayScope,
+        Edf,
         Other,
     )
 
@@ -215,6 +193,49 @@ def detect_datasource_from_folder(folder: str | Path) -> type | None:
     return best_match
 
 
+def is_retired_datasource_folder(folder: str | Path) -> bool:
+    """Return True if *folder* is named after a datasource that has since been removed."""
+    folder_name = Path(folder).name
+    return any(
+        folder_name_matches_keywords(folder_name, keywords)
+        for keywords in cst.RETIRED_DATASOURCE_FOLDERS.values()
+    )
+
+
+def format_retired_folders_warning(folder_names: list[str]) -> str:
+    """Render the 'this datasource no longer exists' guidance for *folder_names*."""
+    names = ", ".join(f"'{name}/'" for name in folder_names)
+    return (
+        f"Ignored {names}: these datasources were removed — plain CSV/parquet files are now "
+        "handled by 'other'. Move the files into an 'other/' subfolder and configure them "
+        "per file under an 'other::<filename>' section. Timestamps that used to be read as "
+        "Europe/Paris (syringe) now default to UTC unless the section sets "
+        "additional_informations.timezone."
+    )
+
+
+def warn_retired_datasource_folders(patient_folder: str | Path) -> None:
+    """
+    Log where to move data still sitting in a folder named after a removed datasource.
+
+    Called on every run, not only on a zero-result one: a patient with both an 'eit/' and a
+    'philips_waves/' folder still produces plots, so nothing else would flag the silently
+    dropped half.
+    """
+    try:
+        retired = sorted(
+            entry.name
+            for entry in Path(patient_folder).iterdir()
+            if entry.is_dir()
+            and is_retired_datasource_folder(entry)
+            and folder_has_real_content(entry)
+        )
+    except OSError:
+        return
+    if retired:
+        logger.warning(format_retired_folders_warning(retired))
+
+
 @dataclass
 class PatientFolderScan:
     """
@@ -230,6 +251,7 @@ class PatientFolderScan:
     found: list[type] = field(default_factory=list)  # device subfolders with real content
     empty: list[type] = field(default_factory=list)  # device subfolders recognized but empty
     other_subfolders: list[str] = field(default_factory=list)  # subfolders matching no datasource
+    retired: list[str] = field(default_factory=list)  # subfolders of removed datasources
     loose_files: dict[str, list[str]] | None = None  # deep=True only: location -> filenames
 
 
@@ -254,11 +276,14 @@ def scan_patient_folder(path: str | Path, *, deep: bool = False) -> PatientFolde
         found: list[type] = []
         empty: list[type] = []
         other_subfolders: list[str] = []
+        retired: list[str] = []
         for sub in sorted(path.iterdir()):
             if not sub.is_dir() or sub.name == cst.FOLDER_NAME_OUTPUT or sub.name.startswith("."):
                 continue
             matched = detect_datasource_from_folder(sub)
             if matched is None:
+                if is_retired_datasource_folder(sub):
+                    retired.append(sub.name)
                 other_subfolders.append(sub.name)
             elif folder_has_real_content(sub):
                 found.append(matched)
@@ -276,6 +301,7 @@ def scan_patient_folder(path: str | Path, *, deep: bool = False) -> PatientFolde
         found=found,
         empty=empty,
         other_subfolders=other_subfolders,
+        retired=retired,
     )
     if deep:
         scan.loose_files = _scan_loose_files(path, other_subfolders)
@@ -334,8 +360,11 @@ def format_zero_result_diagnostic(scan: PatientFolderScan) -> str:
         if scan.empty:
             names = ", ".join(ds.DESCRIPTION for ds in scan.empty)
             lines.append(f"Recognized device folder(s), but empty: {names}.")
-        if scan.other_subfolders:
-            names = ", ".join(scan.other_subfolders)
+        if scan.retired:
+            lines.append(format_retired_folders_warning(scan.retired))
+        remaining = [name for name in scan.other_subfolders if name not in scan.retired]
+        if remaining:
+            names = ", ".join(remaining)
             lines.append(f"Unrecognized subfolder(s): {names}.")
         if scan.loose_files:
             lines.append("Data file(s) found outside any recognized device folder:")

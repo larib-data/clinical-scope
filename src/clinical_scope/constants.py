@@ -17,6 +17,20 @@ JUNK_FILENAME_PATTERNS = frozenset(
 
 LIBRARY_TZ = "UTC"
 DISPLAY_TIMEZONE = "Europe/Paris"
+DATETIME_INDEX_NAME = "datetime_index"
+
+QUALIFIED_NAME_SEPARATOR = "::"
+OTHER_FILE_PREFIX = f"other{QUALIFIED_NAME_SEPARATOR}"
+
+# Datasources dropped once 'other' gained per-file configuration: they parsed plain CSV/parquet
+# and carried no format-specific logic. Their folders are still *detected* — only to tell the
+# user where the data should move now. Values are the retired FOLDER_KEYWORDS, so a folder
+# named "Philips Waves" is still recognized exactly as it used to be.
+RETIRED_DATASOURCE_FOLDERS = {
+    "philips_waves": ["philips", "waves"],
+    "philips_numerics": ["philips", "numerics"],
+    "syringe": ["syringe"],
+}
 
 # Safety pad added around parquet row-pushdown bounds (issue #57): bounds are deliberately
 # conservative-loose, since _filter_by_datetime remains the authoritative cut afterwards.
@@ -248,10 +262,15 @@ DEFAULT_COLORWAY = Colorway.OKABE_ITO
 DEFAULT_PLOT_TEMPLATE = PlotTemplate.LIGHT
 DEFAULT_HOVERMODE = HoverMode.X_UNIFIED
 DEFAULT_HOVER_TIME_FORMAT = HoverTimeFormat.TIME_ONLY
+# Fixed rather than auto-scaled: colour range must stay comparable across patients for a
+# trained eye reading it like a bedside monitor.
+DEFAULT_SPECTROGRAM_DB_MIN = 0.0
+DEFAULT_SPECTROGRAM_DB_MAX = 40.0
 
 # Bounds for the size settings, so a typo can't produce an unrenderable figure.
 SUBPLOT_HEIGHT_MIN, SUBPLOT_HEIGHT_MAX = 100, 2000
 LEGEND_ENTRY_WIDTH_MIN, LEGEND_ENTRY_WIDTH_MAX = 60, 600
+SPECTROGRAM_DB_BOUND_MIN, SPECTROGRAM_DB_BOUND_MAX = -100.0, 100.0
 
 LOOPS_PER_ROW_CHOICES = ((1, "1"), (2, "2"), (3, "3"))
 Y_SIGNIFICANT_DIGITS_CHOICES = ((2, "2"), (3, "3"), (4, "4"), (6, "6"))
@@ -399,6 +418,26 @@ class UserOptions:
         CHOICES = Y_SIGNIFICANT_DIGITS_CHOICES
         DESCRIPTION = "Hover: significant digits of the y value"
 
+    class SpectrogramDbMin:
+        ORDER = 11
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "spectrogram_db_min"
+        API_TYPE = ApiType.FLOAT
+        DEFAULT = DEFAULT_SPECTROGRAM_DB_MIN
+        MIN = SPECTROGRAM_DB_BOUND_MIN
+        MAX = SPECTROGRAM_DB_BOUND_MAX
+        DESCRIPTION = "Spectrogram colour range fallback — minimum (dB)"
+
+    class SpectrogramDbMax:
+        ORDER = 12
+        SECTION = UserOptionSection.PLOT_DEFAULTS
+        NAME = "spectrogram_db_max"
+        API_TYPE = ApiType.FLOAT
+        DEFAULT = DEFAULT_SPECTROGRAM_DB_MAX
+        MIN = SPECTROGRAM_DB_BOUND_MIN
+        MAX = SPECTROGRAM_DB_BOUND_MAX
+        DESCRIPTION = "Spectrogram colour range fallback — maximum (dB)"
+
 
 class DatabaseOptions:
     """
@@ -435,13 +474,29 @@ class DatabaseOptions:
     ADDITIONAL_INFORMATIONS = "additional_informations"
     GROUPED_FIELDS = "grouped_fields"
     LOOP = "loop"
+    SPECTROGRAM = "spectrogram"
+    PSD = "psd"
     FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
+    # Per-section trace styling (mode, line_width, ...), overriding the datasource's
+    # source_options. Only 'other' reads it: elsewhere the module's own options.py is the place.
+    TRACE_OPTIONS = "trace_options"
 
     # Trailing marker that turns a field_display entry into a prefix wildcard (e.g. "Local 1*").
     WILDCARD_SUFFIX = "*"
 
     KNOWN_SECTION_KEYS = frozenset(
-        {SIGNALS, FIELD_DISPLAY, NUMERICS, ADDITIONAL_INFORMATIONS, GROUPED_FIELDS, LOOP, FILES}
+        {
+            SIGNALS,
+            FIELD_DISPLAY,
+            NUMERICS,
+            ADDITIONAL_INFORMATIONS,
+            GROUPED_FIELDS,
+            LOOP,
+            SPECTROGRAM,
+            PSD,
+            FILES,
+            TRACE_OPTIONS,
+        }
     )
 
     # --- Per-signal configuration (inside "signals" → "<raw_name>" dict) ---
@@ -476,6 +531,55 @@ class DatabaseOptions:
             }
         )
 
+    # --- Per-spectrogram configuration (inside "spectrogram" → "<name>" dict) ---
+    class SpectrogramConfig:
+        SIGNAL = "signal"  # one raw name — no arithmetic, no pairs, no wildcards
+        FREQ_RANGE = "freq_range"  # [min_hz, max_hz], required — no workable global default
+        DB_RANGE = "db_range"  # [min_db, max_db], optional — falls back to a user option
+        WINDOW_S = "window_s"  # optional override; derived from freq_min by default
+        OVERLAP = "overlap"  # optional override; fixed at 50% by default
+
+        KNOWN_KEYS = frozenset({SIGNAL, FREQ_RANGE, DB_RANGE, WINDOW_S, OVERLAP})
+
+    # --- Per-PSD configuration (inside "psd" → "<name>" dict) ---
+    class PsdConfig:
+        # Plural where a spectrogram has a single SIGNAL: PSDs share a subplot, so one
+        # entry overlays several. Freq/db range are shared axis properties of the whole
+        # subplot, so they stay here; window_s/overlap/label are per-trace (see Entry)
+        # since two traces sharing one channel need their own processing/legend.
+        SIGNALS = "signals"
+        FREQ_RANGE = "freq_range"  # [min_hz, max_hz], required — no workable global default
+        DB_RANGE = "db_range"  # [min_db, max_db], optional — y-axis range; autoscales when unset
+
+        KNOWN_KEYS = frozenset({SIGNALS, FREQ_RANGE, DB_RANGE})
+
+        # --- One item of SIGNALS; a plain string is shorthand for {SIGNAL: <str>} ---
+        class Entry:
+            SIGNAL = "signal"
+            WINDOW_S = "window_s"  # optional override; derived from freq_min by default
+            OVERLAP = "overlap"  # optional override; fixed at 50% by default
+            LABEL = "label"  # optional trace label; needed to tell apart 2 entries sharing a signal
+            COLOR = "color"  # optional override; defaults to the source signal's own color
+            LINE_DASH = "line_dash"  # optional override; defaults to the source signal's own
+
+            KNOWN_KEYS = frozenset({SIGNAL, WINDOW_S, OVERLAP, LABEL, COLOR, LINE_DASH})
+
+    # --- Datasource-level trace styling (inside "trace_options" dict) ---
+    class TraceOptionsConfig:
+        MODE = "mode"
+        LINE_WIDTH = "line_width"
+        LINE_DASH = "line_dash"
+        OPACITY = "opacity"
+        MARKER_SYMBOL = "marker_symbol"
+        MARKER_SIZE = "marker_size"
+
+        # Every name here must be a TraceOptions field: that dataclass is what actually
+        # filters the block at read time, so a key absent there is silently dropped.
+        # Used to warn on typos, not to gate -- see test_trace_options_known_keys_are_real.
+        KNOWN_KEYS = frozenset(
+            {MODE, LINE_WIDTH, LINE_DASH, OPACITY, MARKER_SYMBOL, MARKER_SIZE}
+        )
+
     # --- Datasource-level numerics defaults ---
     class Numerics:
         PRIORITY = "priority"
@@ -485,25 +589,101 @@ class DatabaseOptions:
 
     # --- Additional informations (timezone, etc.) ---
     class AdditionalInformations:
-        # Per-datasource keys defined in each datasource's options.py
-        pass
+        # Per-datasource keys are defined in each datasource's options.py; only keys every
+        # datasource shares live here, for the writers that are datasource-agnostic.
+        TIMEZONE = "timezone"
 
 
 class SourceOptions:
     TRACE_OPTIONS = "trace_options"
 
 
+class Spectral:
+    """Defaults for spectral.py's STFT-based spectrogram computation."""
+
+    # Cycles of the lowest frequency of interest a window must span, for the STFT to
+    # resolve freq_min at all. 4-8 is the usual DSP range; 5 splits the difference.
+    WINDOW_CYCLES = 5
+
+    # Fixed by design, not user-configurable (see database_options spectrogram schema).
+    OVERLAP_FRACTION = 0.5
+
+    # Fraction of median Δt a step can deviate by and still count as "already uniform"
+    # (skip interpolation). Kept tight since the reference EEG recording measured
+    # jitter=0; revisit once validated against real hardware timestamp noise.
+    JITTER_TOLERANCE = 0.05
+
+    # Multiple of median Δt beyond which a step is a recording gap (masked as NaN in
+    # the STFT output) rather than jitter (interpolated across).
+    GAP_FACTOR = 3.0
+
+    # Perceptually uniform and colorblind-safe, like the Okabe-Ito trace palette above.
+    COLORSCALE = "Viridis"
+
+    # Narrower than Plotly's default so a colorbar stays clear of neighboring stacked rows.
+    COLORBAR_THICKNESS = 15
+
+    # Clamp under the dB log, so a silent bin yields a floor value instead of -inf.
+    POWER_FLOOR = 1e-20
+
+    # Hover formats: precision here is fixed by the axis unit, not by the signal's own
+    # y_significant_digits (that setting governs the source series, not Hz/dB).
+    HOVER_DB_FORMAT = ".1f"
+    # Spectrogram heatmap: Hz is the y-axis over a narrow zoomed range, one decimal reads well.
+    HOVER_HEATMAP_FREQ_FORMAT = ".1f"
+    # PSD: Hz spans the whole freq_range on the x-axis, so significant digits scale better.
+    HOVER_PSD_FREQ_FORMAT = ".3g"
+
+
 class PlotType:
     TIME_SERIES = "time_series"
+    SPECTROGRAM = "spectrogram"
+    PSD = "psd"
     LOOP = "loop"
 
     # Page order of the plot models (top to bottom); types not listed here go last.
     PAGE_ORDER = (
         TIME_SERIES,
+        SPECTROGRAM,
+        PSD,
         LOOP,
     )
 
+    # --- Capability sets ---
+    # Membership answers "does this plot type behave this way?", so a new plot type is a name
+    # added to the sets that fit rather than a new branch inside each rendering function.
 
-if PlotType.LOOP != DatabaseOptions.LOOP:
-    msg = "No idea if that would work. Error here to warn you"
-    raise NotImplementedError(msg)
+    # x-axis is time: shares a zoom range across subplots, localizes hovered x, and accepts
+    # time-based annotations. Loop's x is another signal's values and PSD's is frequency.
+    TIME_AXIS = (
+        TIME_SERIES,
+        SPECTROGRAM,
+    )
+
+    # Subplots pack side by side in a square grid instead of stacking one per row.
+    GRID_LAYOUT = (LOOP,)
+
+    # Traces carry a colorbar, which must be resized to sit against its own subplot row —
+    # left alone, one colorbar spans the whole figure.
+    HAS_COLORBAR = (SPECTROGRAM,)
+
+    # Reads the user's hovermode and hover time format. Everything else keeps Plotly's default
+    # ("closest"): a unified panel is meaningless with an independent x per point (loop, psd)
+    # or an independent cell per pixel (spectrogram).
+    UNIFIED_HOVER = (TIME_SERIES,)
+
+    # Wrapped in a FigureResampler for dynamic downsampling on zoom/pan, and so has Plotly's
+    # own zoom-in/out buttons disabled in favour of the resampler's range handling.
+    RESAMPLED = (TIME_SERIES,)
+
+
+# A plot type reaches its config through a database_options section of the same name, so the
+# two constants must not drift apart.
+for _plot_type, _section_key in (
+    (PlotType.LOOP, DatabaseOptions.LOOP),
+    (PlotType.SPECTROGRAM, DatabaseOptions.SPECTROGRAM),
+    (PlotType.PSD, DatabaseOptions.PSD),
+):
+    if _plot_type != _section_key:
+        msg = f"Plot type '{_plot_type}' must equal its database_options key '{_section_key}'."
+        raise NotImplementedError(msg)

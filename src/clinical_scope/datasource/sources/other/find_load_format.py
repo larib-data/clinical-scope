@@ -15,6 +15,7 @@ from clinical_scope.io.file_utils import (
     read_parquet_pruned,
     set_datetime_index,
 )
+from clinical_scope.io.paths import get_output_folder
 from clinical_scope.signal_container import (
     DisplayFallbacks,
     Signal,
@@ -58,6 +59,82 @@ def _load_single_file(
 
     msg = f"Unsupported file extension: {suffix}"
     raise ValueError(msg)
+
+
+def _patient_options_for_file(patient_options: dict, file_stem: str) -> dict:
+    """
+    Return a patient_options view whose ``other`` slot holds *file_stem*'s own options.
+
+    Per-file settings live under a standalone ``other::<stem>`` key — a peer of a datasource,
+    not a nested option. Rebinding the slot keeps the inherited ``_format`` /
+    ``_pushdown_bounds`` machinery resolving by ``DATASOURCE_NAME`` without a new argument.
+    Fields absent from the per-file block fall back to the generic ``other`` one.
+
+    Read-only: the result aliases *patient_options* when the file has no block of its own.
+    """
+    per_file = patient_options.get(cst.OTHER_FILE_PREFIX + file_stem)
+    if not per_file:
+        return patient_options
+    generic = patient_options.get(options_naming.DATASOURCE_NAME, {})
+    return {**patient_options, options_naming.DATASOURCE_NAME: {**generic, **per_file}}
+
+
+def _source_options_for_file(base_source_options: dict | None, file_config: dict) -> dict:
+    """
+    Return *base_source_options* with the file's own ``trace_options`` merged over it.
+
+    Trace styling (``mode``, ``line_width``, …) normally lives in a datasource's options.py,
+    which leaves no route for a single ``other`` file to look different from its neighbours —
+    a sparse infusion log needs markers where a waveform does not.
+    """
+    per_file = file_config.get(cst.DatabaseOptions.TRACE_OPTIONS)
+    if not per_file:
+        return base_source_options or {}
+    base = base_source_options or {}
+    base_trace = base.get(cst.SourceOptions.TRACE_OPTIONS, {})
+    return {**base, cst.SourceOptions.TRACE_OPTIONS: {**base_trace, **per_file}}
+
+
+def _qualify(file_stem: str, bare_name: str) -> str:
+    """Scope a bare per-file name to its file: ``waves`` + ``Pao`` -> ``waves::Pao``."""
+    return f"{file_stem}{cst.QUALIFIED_NAME_SEPARATOR}{bare_name}"
+
+
+def _qualify_loop(file_stem: str, bare_columns: list) -> list:
+    return [_qualify(file_stem, bare_column) for bare_column in bare_columns]
+
+
+def _qualify_spectrogram(file_stem: str, entry: dict) -> dict:
+    signal_key = cst.DatabaseOptions.SpectrogramConfig.SIGNAL
+    if signal_key not in entry:
+        return dict(entry)
+    return {**entry, signal_key: _qualify(file_stem, entry[signal_key])}
+
+
+def _qualify_psd(file_stem: str, entry: dict) -> dict:
+    config_cls = cst.DatabaseOptions.PsdConfig
+    signal_key = config_cls.Entry.SIGNAL
+    qualified = []
+    for item in entry.get(config_cls.SIGNALS) or []:
+        # A plain string is shorthand for an Entry naming just a signal, as in wrapper.py.
+        if isinstance(item, dict):
+            if signal_key in item:
+                qualified.append({**item, signal_key: _qualify(file_stem, item[signal_key])})
+            else:
+                qualified.append(dict(item))
+        else:
+            qualified.append(_qualify(file_stem, item))
+    return {**entry, config_cls.SIGNALS: qualified}
+
+
+# Derived-plot sections a per-file 'other::<stem>' block may declare, and how each one's bare
+# signal references get scoped to that file. Adding a fifth derived plot type means adding a
+# row here -- forgetting to is what made 'psd' validate cleanly yet never render.
+PER_FILE_DERIVED_SECTIONS = {
+    cst.DatabaseOptions.LOOP: _qualify_loop,
+    cst.DatabaseOptions.SPECTROGRAM: _qualify_spectrogram,
+    cst.DatabaseOptions.PSD: _qualify_psd,
+}
 
 
 def _resolve_columns(df: pd.DataFrame, file_config: dict) -> list[str]:
@@ -123,10 +200,15 @@ class OtherDataSource(DataSourceBase):
         signals by source file.
 
         Per-file configuration is read from ``database_options_specific["files"]``, which
-        is populated by ``wrapper._collect_other_per_file()`` from ``other::<stem>`` keys.
-        Each ``other::<stem>`` section supports the full set of database_options keys:
+        ``database_options_parser.normalize_database_options`` populates from ``other::<stem>``
+        keys. Each ``other::<stem>`` section supports the full set of database_options keys:
         ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
-        ``grouped_fields``, and ``loop``.
+        ``grouped_fields``, ``trace_options``, and every derived-plot section listed in
+        :data:`PER_FILE_DERIVED_SECTIONS` (``loop``, ``spectrogram``, ``psd``).
+
+        Per-file *patient* options (``time_shift``, ``group_by_file``) are read the same way,
+        from a standalone ``patient_options["other::<stem>"]`` block — see
+        :func:`_patient_options_for_file`.
         """
         database_options = (
             database_options_specific if database_options_specific is not None else {}
@@ -144,24 +226,24 @@ class OtherDataSource(DataSourceBase):
 
         per_file_options: dict = database_options.get(cst.DatabaseOptions.FILES, {})
 
-        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
-        group_by_file = patient_options_specific.get(
-            options_naming.PatientOptionsDataSourceRelative.GroupByFile.NAME,
-            options_naming.PatientOptionsDataSourceRelative.GroupByFile.DEFAULT,
-        )
-
         all_signals: list[Signal] = []
+        loaded_files: list[Path] = []
         grouped_fields: dict = {}
-        per_file_loops: dict = {}
+        derived_sections: dict[str, dict] = {key: {} for key in PER_FILE_DERIVED_SECTIONS}
 
         for file_path in file_paths:
             try:
                 file_stem = file_path.stem
                 file_config = per_file_options.get(file_stem, {})
+                file_patient_options = _patient_options_for_file(patient_options, file_stem)
+                group_by_file = file_patient_options.get(cls.DATASOURCE_NAME, {}).get(
+                    options_naming.PatientOptionsDataSourceRelative.GroupByFile.NAME,
+                    options_naming.PatientOptionsDataSourceRelative.GroupByFile.DEFAULT,
+                )
 
                 df = _load_single_file(
                     file_path,
-                    compute_bounds=cls._make_bounds_computer(patient_options, file_config),
+                    compute_bounds=cls._make_bounds_computer(file_patient_options, file_config),
                     select_columns=make_column_selector(file_config),
                 )
 
@@ -171,20 +253,22 @@ class OtherDataSource(DataSourceBase):
                     logger.warning("Skipping file '%s': %s", file_path.name, exc)
                     continue
 
+                loaded_files.append(file_path)
+
                 for column in df.columns:
                     df[column] = pd.to_numeric(df[column], errors="coerce")
 
                 df = deduplicate_then_sort_index(df)
 
                 # Apply formatting (timezone, time shift, datetime filter) with per-file opts
-                df = cls._format(df, patient_options, file_config)
+                df = cls._format(df, file_patient_options, file_config)
 
                 if df.empty:
                     logger.warning("No data after filtering in '%s', skipping file", file_path.name)
                     continue
 
                 # Drop all-NaN columns *after* the datetime filter so a column's presence is
-                # judged on the final window, not on whether row-pushdown narrowed the read (#57).
+                # judged on the final window, not on whether row-pushdown narrowed the read.
                 df = df.dropna(axis=1, how="all")
                 if df.empty or len(df.columns) == 0:
                     logger.warning("No numeric columns in '%s', skipping file", file_path.name)
@@ -195,14 +279,16 @@ class OtherDataSource(DataSourceBase):
                     logger.debug("No columns selected for '%s', skipping file", file_path.name)
                     continue
 
+                file_source_options = _source_options_for_file(cls.SOURCE_OPTIONS, file_config)
+
                 file_signal_raw_names: list[str] = []
                 for column_name in columns:
-                    raw_name = f"{file_stem}::{column_name}"
+                    raw_name = _qualify(file_stem, column_name)
                     try:
                         signal_obj = Signal.time_series_from_dataframe(
                             df=df,
                             raw_signal_name=column_name,
-                            source_options=cls.SOURCE_OPTIONS,
+                            source_options=file_source_options,
                             database_options_specific=file_config,
                             display_fallbacks=display_fallbacks,
                         )
@@ -222,31 +308,40 @@ class OtherDataSource(DataSourceBase):
                     file_grouped = file_config.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
                     if file_grouped:
                         for group_name, bare_columns in file_grouped.items():
-                            grouped_fields[group_name] = [
-                                f"{file_stem}::{bare_column}"
-                                for bare_column in bare_columns
-                                if f"{file_stem}::{bare_column}" in file_signal_raw_names
+                            qualified = [
+                                _qualify(file_stem, bare_column) for bare_column in bare_columns
+                            ]
+                            grouped_fields[_qualify(file_stem, group_name)] = [
+                                raw for raw in qualified if raw in file_signal_raw_names
                             ]
                     elif group_by_file:
                         grouped_fields[file_stem] = file_signal_raw_names
 
-                    # Loops: prefix bare column names with file_stem for global uniqueness
-                    for loop_name, bare_columns in file_config.get(
-                        cst.DatabaseOptions.LOOP, {}
-                    ).items():
-                        per_file_loops[loop_name] = [
-                            f"{file_stem}::{bare_column}" for bare_column in bare_columns
-                        ]
+                    # Both the entry name and the signal references it holds are scoped to the
+                    # file: two files may each declare a loop called "PV" without one erasing
+                    # the other, and each keeps pointing at its own columns.
+                    for section_key, qualify_entry in PER_FILE_DERIVED_SECTIONS.items():
+                        for entry_name, entry in file_config.get(section_key, {}).items():
+                            derived_sections[section_key][_qualify(file_stem, entry_name)] = (
+                                qualify_entry(file_stem, entry)
+                            )
 
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
                 continue
 
-        # Inject grouped_fields and loop into database_options for the wrapper to use
+        # 'other' never writes a parquet cache, so the symlink is the only trace the output
+        # folder keeps of which files a run actually read.
+        if loaded_files and cls.CREATE_SOURCE_SYMLINK:
+            output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
+            cls._create_source_symlink(loaded_files, get_output_folder(folder_path, output_root))
+
+        # Inject the collected sections into database_options for the wrapper to use
         if grouped_fields:
             database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
-        if per_file_loops:
-            database_options[cst.DatabaseOptions.LOOP] = per_file_loops
+        for section_key, entries in derived_sections.items():
+            if entries:
+                database_options[section_key] = entries
 
         return all_signals
 
@@ -294,8 +389,9 @@ class OtherDataSource(DataSourceBase):
         results: list[DataSourceInspection] = []
 
         for file_path in file_paths:
-            inspection_name = f"{cls.DATASOURCE_NAME}::{file_path.stem}"
+            inspection_name = f"{cls.DATASOURCE_NAME}{cst.QUALIFIED_NAME_SEPARATOR}{file_path.stem}"
             file_config = per_file_options.get(file_path.stem, {})
+            file_patient_options = _patient_options_for_file(patient_options, file_path.stem)
             # _load_single_file only honors select_columns on the parquet branch (no partial
             # scan for CSV) — mirror that here so the pruned-view marker below is structural,
             # not inferred from whether the loaded frame happens to match the configured set.
@@ -335,7 +431,7 @@ class OtherDataSource(DataSourceBase):
                 results.append(
                     cls._make_inspection(
                         df,
-                        patient_options,
+                        file_patient_options,
                         file_config,
                         inspection_name,
                         str(file_path),

@@ -3,13 +3,17 @@
     "datetime_start": null,
     "datetime_end": null,
     "quick_load": false,
-    "philips_waves": {
-        "time_shift": 20.0
-    },
-    "philips_numerics": {
+    "other::numerics": {
         "time_shift": 20.0
     },
     "eit": {
-        "day": "2004-10-08"
+        "day": "2004-09-15"
+    },
+    "edf": {
+        "recording_start": "2004-09-15 10:12:33"
+    },
+    "other::waves": {
+        "time_shift": 5.0,
+        "group_by_file": false
     }
 }

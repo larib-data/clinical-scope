@@ -24,17 +24,23 @@ class TestInspectPatientFull:
         assert all(isinstance(r, DataSourceInspection) for r in inspection_results)
 
     def test_all_datasources_present(self, inspection_results, default_database_options):
-        """Should have one result per datasource in database_options."""
+        """
+        Should have one result per datasource in database_options.
+
+        'other' is the exception: it reports one entry per file (``other::<stem>``), so its
+        single config key expands into as many results as demo_patient's other/ folder holds.
+        """
         result_names = {r.datasource_name for r in inspection_results}
-        expected_names = set(default_database_options.keys())
-        assert result_names == expected_names
+        expected_names = set(default_database_options.keys()) - {"other"}
+        other_names = {name for name in result_names if name.startswith("other::")}
+        assert other_names, "expected per-file 'other::<stem>' inspection entries"
+        assert result_names - other_names == expected_names
 
     def test_most_datasources_ok(self, inspection_results):
         """
-        demo_patient has 10 datasource folders — all should load successfully.
+        demo_patient has 9 datasource folders, three of which are files inside other/.
 
-        'other' is absent from demo_patient so it will not be 'ok'.
-        Threshold is 9 to tolerate one unexpected failure while still catching regressions.
+        Threshold tolerates one unexpected failure while still catching regressions.
         """
         ok_count = sum(1 for r in inspection_results if r.status == "ok")
         assert ok_count >= 9, f"Only {ok_count} datasources succeeded (expected >= 9)"
