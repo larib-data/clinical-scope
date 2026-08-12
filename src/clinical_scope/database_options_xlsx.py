@@ -358,7 +358,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             for group_name in _parse_groups(row.get("groups", "")):
                 group_membership.setdefault(group_name, {}).setdefault(ds, []).append(signal)
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning(
                 "Skipping signals row %s due to unexpected error.", row_idx, exc_info=True
             )
@@ -384,7 +384,9 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             global_grouped[group_name] = all_signals
         else:
             (only_ds, signals_list) = next(iter(signals_by_datasource.items()))
-            result[only_ds].setdefault(cst.DatabaseOptions.GROUPED_FIELDS, {})[group_name] = signals_list
+            result[only_ds].setdefault(cst.DatabaseOptions.GROUPED_FIELDS, {})[group_name] = (
+                signals_list
+            )
 
     if global_grouped:
         result[cst.DatabaseOptions.GLOBAL] = {cst.DatabaseOptions.GROUPED_FIELDS: global_grouped}
@@ -406,7 +408,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 result[ds] = {}
             result[ds].setdefault(cst.DatabaseOptions.LOOP, {})[loop_name] = [x_signal, y_signal]
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning("Skipping loops row %s due to unexpected error.", row_idx, exc_info=True)
 
     # ------------------------------------------------------------------
@@ -457,7 +459,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 spectrogram_options
             )
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning(
                 "Skipping spectrograms row %s due to unexpected error.", row_idx, exc_info=True
             )
@@ -508,7 +510,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             for group_name in groups_list:
                 psd_membership.setdefault((ds, group_name), []).append(contribution)
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning("Skipping psds row %s due to unexpected error.", row_idx, exc_info=True)
 
     for (ds, group_name), contributions in psd_membership.items():

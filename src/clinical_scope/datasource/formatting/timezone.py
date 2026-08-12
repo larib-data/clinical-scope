@@ -212,7 +212,7 @@ def to_naive_display_ts(ts_str: str, display_timezone: str | None = None, sep: s
     resolved_timezone = resolve_display_timezone(display_timezone)
     try:
         return timestamp.tz_convert(resolved_timezone).tz_localize(None).isoformat(sep=sep)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning(
             "Could not convert annotation timestamp %r to display timezone %r",
             ts_str,
@@ -239,7 +239,7 @@ def to_aware_display_ts(ts_str: str, display_timezone: str | None = None) -> str
     resolved_timezone = resolve_display_timezone(display_timezone)
     try:
         return timestamp.tz_localize(resolved_timezone).isoformat()
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning(
             "Could not localize timestamp %r to display timezone %r",
             ts_str,

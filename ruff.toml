@@ -21,6 +21,7 @@ target-version = "py312"
 select = ["ALL"]
 ignore = [
     "COM812", # Incompatible with ruff format
+    "CPY001", # Attribution lives in LICENSE, not in a header on every file
     "D203", # Incompatible with D211. D211 prefered by the formater
     "INP",
     "FIX", # Allows todo/fixme

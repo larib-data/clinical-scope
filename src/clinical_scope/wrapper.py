@@ -53,9 +53,7 @@ def _warn_if_also_a_raw_name(
     but silent, since both readings are legitimate. The log names the loser and the spelling
     that reaches it.
     """
-    shadowed = [
-        signal for signal in all_signals if signal.raw_name == ref and signal is not chosen
-    ]
+    shadowed = [signal for signal in all_signals if signal.raw_name == ref and signal is not chosen]
     if not shadowed:
         return
     logger.warning(

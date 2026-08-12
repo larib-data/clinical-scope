@@ -74,8 +74,10 @@ ACCEPTED_COPYLEFT: dict[str, str] = {}
 NATIVE_LICENSES: dict[str, tuple[str, str]] = {
     "libarrow": (
         "Apache Arrow C++",
-        "License: Apache License 2.0. The full Apache-2.0 text and Arrow's NOTICE\n"
-        'are reproduced above in the "pyarrow" section (same project).',
+        (
+            "License: Apache License 2.0. The full Apache-2.0 text and Arrow's NOTICE\n"
+            'are reproduced above in the "pyarrow" section (same project).'
+        ),
     ),
     "libparquet": (
         "Apache Parquet C++ (part of Apache Arrow)",
@@ -83,13 +85,17 @@ NATIVE_LICENSES: dict[str, tuple[str, str]] = {
     ),
     "libcrypto": (
         "OpenSSL",
-        "License: Apache License 2.0 (OpenSSL 3.x).\n"
-        "Copyright (c) The OpenSSL Project Authors. https://www.openssl.org",
+        (
+            "License: Apache License 2.0 (OpenSSL 3.x).\n"
+            "Copyright (c) The OpenSSL Project Authors. https://www.openssl.org"
+        ),
     ),
     "libssl": (
         "OpenSSL",
-        "License: Apache License 2.0 (OpenSSL 3.x).\n"
-        "Copyright (c) The OpenSSL Project Authors. https://www.openssl.org",
+        (
+            "License: Apache License 2.0 (OpenSSL 3.x).\n"
+            "Copyright (c) The OpenSSL Project Authors. https://www.openssl.org"
+        ),
     ),
     "libsqlite3": (
         "SQLite",
@@ -112,14 +118,18 @@ NATIVE_LICENSES: dict[str, tuple[str, str]] = {
     # OpenBLAS, vendored into NumPy/SciPy wheels (same file stem on every OS):
     "libscipy_openblas": (
         "OpenBLAS",
-        "License: BSD 3-Clause. Copyright (c) 2011-present, The OpenBLAS contributors.\n"
-        "https://github.com/OpenMathLib/OpenBLAS/blob/develop/LICENSE",
+        (
+            "License: BSD 3-Clause. Copyright (c) 2011-present, The OpenBLAS contributors.\n"
+            "https://github.com/OpenMathLib/OpenBLAS/blob/develop/LICENSE"
+        ),
     ),
     # Windows drops the `lib` prefix, so these mirror the lib* keys above.
     "arrow": (
         "Apache Arrow C++",
-        "License: Apache License 2.0. The full Apache-2.0 text and Arrow's NOTICE\n"
-        'are reproduced above in the "pyarrow" section (same project).',
+        (
+            "License: Apache License 2.0. The full Apache-2.0 text and Arrow's NOTICE\n"
+            'are reproduced above in the "pyarrow" section (same project).'
+        ),
     ),
     "parquet": (
         "Apache Parquet C++ (part of Apache Arrow)",
@@ -131,42 +141,56 @@ NATIVE_LICENSES: dict[str, tuple[str, str]] = {
     ),
     "pywintypes": (
         "pywin32 (pywintypes)",
-        "License: PSF License (BSD-style). Copyright (c) Mark Hammond and contributors.\n"
-        "https://github.com/mhammond/pywin32",
+        (
+            "License: PSF License (BSD-style). Copyright (c) Mark Hammond and contributors.\n"
+            "https://github.com/mhammond/pywin32"
+        ),
     ),
     # Linux GCC runtime libs; the GCC Runtime Library Exception permits non-GPL use.
     "libgcc": (
         "GCC runtime libraries",
-        "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
-        "Exception), which permits distribution with independent software.\n"
-        "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org",
+        (
+            "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
+            "Exception), which permits distribution with independent software.\n"
+            "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org"
+        ),
     ),
     "libstdc++": (
         "GCC runtime libraries",
-        "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
-        "Exception), which permits distribution with independent software.\n"
-        "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org",
+        (
+            "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
+            "Exception), which permits distribution with independent software.\n"
+            "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org"
+        ),
     ),
     "libgfortran": (
         "GCC runtime libraries",
-        "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
-        "Exception), which permits distribution with independent software.\n"
-        "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org",
+        (
+            "License: GPL-3.0-or-later WITH GCC-exception-3.1 (GCC Runtime Library\n"
+            "Exception), which permits distribution with independent software.\n"
+            "Copyright (c) Free Software Foundation, Inc. https://gcc.gnu.org"
+        ),
     ),
     "libquadmath": (
         "GCC libquadmath",
-        "License: LGPL-2.1-or-later. Copyright (c) Free Software Foundation, Inc.\n"
-        "https://gcc.gnu.org/onlinedocs/libquadmath/",
+        (
+            "License: LGPL-2.1-or-later. Copyright (c) Free Software Foundation, Inc.\n"
+            "https://gcc.gnu.org/onlinedocs/libquadmath/"
+        ),
     ),
     "libtinfo": (
         "ncurses (libtinfo)",
-        "License: MIT-style (ncurses license). Copyright (c) Free Software\n"
-        "Foundation, Inc. https://invisible-island.net/ncurses/",
+        (
+            "License: MIT-style (ncurses license). Copyright (c) Free Software\n"
+            "Foundation, Inc. https://invisible-island.net/ncurses/"
+        ),
     ),
     "libuuid": (
         "util-linux libuuid",
-        "License: BSD 3-Clause. Copyright (c) Theodore Ts'o.\n"
-        "https://github.com/util-linux/util-linux",
+        (
+            "License: BSD 3-Clause. Copyright (c) Theodore Ts'o.\n"
+            "https://github.com/util-linux/util-linux"
+        ),
     ),
     # GNU Readline is deliberately absent: GPL-3, excluded at build time (see the
     # spec's `readline` exclude). Its absence makes any re-bundling surface as an
@@ -174,23 +198,31 @@ NATIVE_LICENSES: dict[str, tuple[str, str]] = {
     # Windows Microsoft C/C++ runtimes, redistributable under the VS / SDK terms.
     "vcruntime": (
         "Microsoft Visual C++ Runtime",
-        "License: Microsoft Visual C++ Redistributable (distributable code).\n"
-        "Copyright (c) Microsoft Corporation. https://visualstudio.microsoft.com",
+        (
+            "License: Microsoft Visual C++ Redistributable (distributable code).\n"
+            "Copyright (c) Microsoft Corporation. https://visualstudio.microsoft.com"
+        ),
     ),
     "msvcp140": (
         "Microsoft Visual C++ Runtime",
-        "License: Microsoft Visual C++ Redistributable (distributable code).\n"
-        "Copyright (c) Microsoft Corporation. https://visualstudio.microsoft.com",
+        (
+            "License: Microsoft Visual C++ Redistributable (distributable code).\n"
+            "Copyright (c) Microsoft Corporation. https://visualstudio.microsoft.com"
+        ),
     ),
     "api-ms-win": (
         "Microsoft Universal C Runtime (UCRT)",
-        "License: Microsoft Windows SDK distributable code (Universal CRT).\n"
-        "Copyright (c) Microsoft Corporation. https://learn.microsoft.com",
+        (
+            "License: Microsoft Windows SDK distributable code (Universal CRT).\n"
+            "Copyright (c) Microsoft Corporation. https://learn.microsoft.com"
+        ),
     ),
     "ucrtbase": (
         "Microsoft Universal C Runtime (UCRT)",
-        "License: Microsoft Windows SDK distributable code (Universal CRT).\n"
-        "Copyright (c) Microsoft Corporation. https://learn.microsoft.com",
+        (
+            "License: Microsoft Windows SDK distributable code (Universal CRT).\n"
+            "Copyright (c) Microsoft Corporation. https://learn.microsoft.com"
+        ),
     ),
 }
 
@@ -395,8 +427,10 @@ def native_section(internal: Path) -> tuple[str, list[str]]:
     interp_files = f"  ({', '.join(sorted(set(interpreter_libs)))})" if interpreter_libs else ""
     lines += [
         "-" * 78,
-        f"CPython {sys.version_info.major}.{sys.version_info.minor} interpreter "
-        f"(Python, base_library.zip, interpreter shared library){interp_files}",
+        (
+            f"CPython {sys.version_info.major}.{sys.version_info.minor} interpreter "
+            f"(Python, base_library.zip, interpreter shared library){interp_files}"
+        ),
         "-" * 78,
         "License: Python Software Foundation License Version 2 (PSF-2.0).",
         "Copyright (c) 2001-present Python Software Foundation. All Rights Reserved.",

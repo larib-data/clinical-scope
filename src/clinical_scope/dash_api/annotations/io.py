@@ -71,7 +71,7 @@ def _load_annotations_from_path(path: Path) -> list[Annotation]:
     try:
         with path.open(encoding="utf-8") as file:
             raw = json.load(file)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning("Failed to load annotations from %s", path, exc_info=True)
         return []
 
@@ -97,7 +97,7 @@ def _load_annotations_from_path(path: Path) -> list[Annotation]:
     for index, annotation_dict in enumerate(annotation_dicts):
         try:
             annotations.append(Annotation.from_dict(annotation_dict))
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning(
                 "Skipping malformed annotation record #%d in %s", index, path, exc_info=True
             )

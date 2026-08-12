@@ -576,9 +576,7 @@ class DatabaseOptions:
         # Every name here must be a TraceOptions field: that dataclass is what actually
         # filters the block at read time, so a key absent there is silently dropped.
         # Used to warn on typos, not to gate -- see test_trace_options_known_keys_are_real.
-        KNOWN_KEYS = frozenset(
-            {MODE, LINE_WIDTH, LINE_DASH, OPACITY, MARKER_SYMBOL, MARKER_SIZE}
-        )
+        KNOWN_KEYS = frozenset({MODE, LINE_WIDTH, LINE_DASH, OPACITY, MARKER_SYMBOL, MARKER_SIZE})
 
     # --- Datasource-level numerics defaults ---
     class Numerics:

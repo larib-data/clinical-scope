@@ -95,7 +95,7 @@ def _localize_x_val(x_val: str, display_tz: str = cst.DISPLAY_TIMEZONE) -> str:
         if ts.tzinfo is None:
             ts = ts.tz_localize(display_tz)
         return ts.isoformat()
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning("Could not localize x value %r", x_val, exc_info=True)
         return x_val
 
@@ -1264,7 +1264,7 @@ def auto_load_annotations(folder: str) -> tuple[list, dict, list]:
 
     try:
         annotations = load_annotations(folder)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning("Unexpected error loading annotations from %s", folder, exc_info=True)
         annotations = []
 
