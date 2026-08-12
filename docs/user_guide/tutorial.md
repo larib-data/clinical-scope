@@ -231,6 +231,18 @@ file — exactly like any other datasource:
 }
 ```
 
+**Per-file plots.** A per-file block may also define `grouped_fields`, `loop`, `spectrogram` and `psd`, naming its own columns directly — no `other::<stem>::` prefix needed inside the block:
+
+```json
+"other::eeg": {
+    "spectrogram": {
+        "Fp1": { "signal": "Fp1", "freq_range": [0.5, 30.0] }
+    }
+}
+```
+
+The plot is titled with its file's name in front — the example above appears as `eeg::Fp1` — so two files can each define a `PV` loop or an `Fp1` spectrogram without one replacing the other.
+
 **Per-file timezone.** Each `other::<stem>` block may declare its own
 `additional_informations.timezone` — useful when the CSV you dropped in comes from a
 device in a different timezone than your default. Without it, timestamps that carry no
@@ -247,8 +259,9 @@ points than as a bare line:
 }
 ```
 
-`mode` accepts `lines`, `markers` or `lines+markers`; `line_width`, `line_dash` and
-`opacity` are also available. Keys you leave out keep their default. Per-signal `color`,
+`mode` accepts `lines`, `markers` or `lines+markers`; `line_width`, `line_dash`, `opacity`,
+`marker_symbol` and `marker_size` are also available. Keys you leave out keep their default,
+and a key you misspell is reported when the configuration is checked. Per-signal `color`,
 `line_dash` and `visible` still live in the `signals` block and win over `trace_options`.
 In Excel, set `trace_mode`, `line_width`, `opacity` and `marker_symbol` on the sentinel
 (`*`) row instead — see [`signals` sheet](#signals-sheet).
@@ -856,14 +869,23 @@ All datasources apply timezone according to the same rule:
 
 ### Signal Reference Resolution
 
-Signal references in `grouped_fields`, `loop` and `psd` — both global and per-source — are
-resolved by the following three-mode lookup chain:
+Signal references in `grouped_fields`, `loop` and `psd` are resolved by the following
+three-mode lookup chain — in `global.grouped_fields` and `global.loop`, and in the
+per-source blocks alike:
 
 1. **Qualified reference** `datasource::raw_name` — explicit and unambiguous. Recommended
    when the same column name exists in several datasources.
 2. **Display name** — the `label` from the signals block. Works when the label is unique
    across sources; a warning is logged if it matches several signals.
 3. **Raw name fallback** — the column name as it appears in the raw data file.
+
+A signal from a file inside `other/` can be written either way: `other::waves::art` is the
+fully qualified form, and `waves::art` is the raw-name form — both reach the same signal.
+
+One consequence: if a file inside `other/` is named after a data source — `other/servo_u.parquet`
+— then `servo_u::Paw` could mean either that file's `Paw` column or the real servo-u one. The
+data source always wins, and the log tells you so and gives you the fully qualified spelling
+(`other::servo_u::Paw`) that reaches the file's column instead.
 
 Multi-cycle loops are rendered with a **time-range slider** below the plot so you can scroll
 through cycles.

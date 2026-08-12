@@ -129,10 +129,13 @@ def _check_spectral_types(section: dict, path_prefix: str, issues: list[Validati
     spectrogram_config = cst.DatabaseOptions.SpectrogramConfig
     psd_config = cst.DatabaseOptions.PsdConfig
 
-    for section_key, entries in (
-        (cst.DatabaseOptions.SPECTROGRAM, section.get(cst.DatabaseOptions.SPECTROGRAM)),
-        (cst.DatabaseOptions.PSD, section.get(cst.DatabaseOptions.PSD)),
+    # Each row carries its own config class: the two schemas happen to share key *names* today,
+    # but reading one section's keys off the other's class would hide the day they diverge.
+    for section_key, config_cls in (
+        (cst.DatabaseOptions.SPECTROGRAM, spectrogram_config),
+        (cst.DatabaseOptions.PSD, psd_config),
     ):
+        entries = section.get(section_key)
         if entries is not None and not isinstance(entries, dict):
             issues.append(
                 ValidationIssue(
@@ -148,7 +151,7 @@ def _check_spectral_types(section: dict, path_prefix: str, issues: list[Validati
                 continue
             entry_path = f"{path_prefix}.{section_key}.{entry_name}"
 
-            if section_key == cst.DatabaseOptions.PSD:
+            if config_cls is psd_config:
                 names = entry_options.get(psd_config.SIGNALS)
                 if not (isinstance(names, list) and names):
                     issues.append(
@@ -171,7 +174,7 @@ def _check_spectral_types(section: dict, path_prefix: str, issues: list[Validati
                     )
                 )
 
-            freq_range = entry_options.get(spectrogram_config.FREQ_RANGE)
+            freq_range = entry_options.get(config_cls.FREQ_RANGE)
             if freq_range is None or not (
                 isinstance(freq_range, list)
                 and len(freq_range) == 2  # noqa: PLR2004
@@ -269,6 +272,20 @@ def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue])
                 message=f"Must be a dict, got {type(trace_options).__name__}",
             )
         )
+    elif isinstance(trace_options, dict):
+        known_trace_keys = cst.DatabaseOptions.TraceOptionsConfig.KNOWN_KEYS
+        unknown_trace = set(trace_options) - known_trace_keys
+        if unknown_trace:
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    path=f"{path_prefix}.trace_options",
+                    message=(
+                        f"Unknown keys: {sorted(unknown_trace)}. "
+                        f"Expected: {sorted(known_trace_keys)}"
+                    ),
+                )
+            )
 
     _check_spectral_types(section, path_prefix, issues)
 

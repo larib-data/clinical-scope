@@ -568,8 +568,17 @@ class DatabaseOptions:
     class TraceOptionsConfig:
         MODE = "mode"
         LINE_WIDTH = "line_width"
+        LINE_DASH = "line_dash"
         OPACITY = "opacity"
         MARKER_SYMBOL = "marker_symbol"
+        MARKER_SIZE = "marker_size"
+
+        # Every name here must be a TraceOptions field: that dataclass is what actually
+        # filters the block at read time, so a key absent there is silently dropped.
+        # Used to warn on typos, not to gate -- see test_trace_options_known_keys_are_real.
+        KNOWN_KEYS = frozenset(
+            {MODE, LINE_WIDTH, LINE_DASH, OPACITY, MARKER_SYMBOL, MARKER_SIZE}
+        )
 
     # --- Datasource-level numerics defaults ---
     class Numerics:
@@ -580,8 +589,9 @@ class DatabaseOptions:
 
     # --- Additional informations (timezone, etc.) ---
     class AdditionalInformations:
-        # Per-datasource keys defined in each datasource's options.py
-        pass
+        # Per-datasource keys are defined in each datasource's options.py; only keys every
+        # datasource shares live here, for the writers that are datasource-agnostic.
+        TIMEZONE = "timezone"
 
 
 class SourceOptions:
@@ -639,23 +649,41 @@ class PlotType:
         LOOP,
     )
 
-    # Plot types whose x-axis is time — they share a zoom range across subplots, localize
-    # hovered x, and accept time-based annotations. Loop's x is another signal's values and
-    # PSD's is frequency, so neither belongs here.
+    # --- Capability sets ---
+    # Membership answers "does this plot type behave this way?", so a new plot type is a name
+    # added to the sets that fit rather than a new branch inside each rendering function.
+
+    # x-axis is time: shares a zoom range across subplots, localizes hovered x, and accepts
+    # time-based annotations. Loop's x is another signal's values and PSD's is frequency.
     TIME_AXIS = (
         TIME_SERIES,
         SPECTROGRAM,
     )
 
+    # Subplots pack side by side in a square grid instead of stacking one per row.
+    GRID_LAYOUT = (LOOP,)
 
-if PlotType.LOOP != DatabaseOptions.LOOP:
-    msg = "No idea if that would work. Error here to warn you"
-    raise NotImplementedError(msg)
+    # Traces carry a colorbar, which must be resized to sit against its own subplot row —
+    # left alone, one colorbar spans the whole figure.
+    HAS_COLORBAR = (SPECTROGRAM,)
 
-if PlotType.SPECTROGRAM != DatabaseOptions.SPECTROGRAM:
-    msg = "No idea if that would work. Error here to warn you"
-    raise NotImplementedError(msg)
+    # Reads the user's hovermode and hover time format. Everything else keeps Plotly's default
+    # ("closest"): a unified panel is meaningless with an independent x per point (loop, psd)
+    # or an independent cell per pixel (spectrogram).
+    UNIFIED_HOVER = (TIME_SERIES,)
 
-if PlotType.PSD != DatabaseOptions.PSD:
-    msg = "No idea if that would work. Error here to warn you"
-    raise NotImplementedError(msg)
+    # Wrapped in a FigureResampler for dynamic downsampling on zoom/pan, and so has Plotly's
+    # own zoom-in/out buttons disabled in favour of the resampler's range handling.
+    RESAMPLED = (TIME_SERIES,)
+
+
+# A plot type reaches its config through a database_options section of the same name, so the
+# two constants must not drift apart.
+for _plot_type, _section_key in (
+    (PlotType.LOOP, DatabaseOptions.LOOP),
+    (PlotType.SPECTROGRAM, DatabaseOptions.SPECTROGRAM),
+    (PlotType.PSD, DatabaseOptions.PSD),
+):
+    if _plot_type != _section_key:
+        msg = f"Plot type '{_plot_type}' must equal its database_options key '{_section_key}'."
+        raise NotImplementedError(msg)

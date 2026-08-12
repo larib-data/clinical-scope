@@ -43,6 +43,31 @@ def _resolve_database_options(database_options_global: dict | None) -> dict:
 
 
 # ==================================================================================================
+def _warn_if_also_a_raw_name(
+    ref: str, chosen: Signal, all_signals: list[Signal], separator: str
+) -> None:
+    """
+    Log when *ref* reads as a qualified name *and* as some signal's bare raw_name.
+
+    Only an 'other' file named after a registered datasource can cause this, so it is rare --
+    but silent, since both readings are legitimate. The log names the loser and the spelling
+    that reaches it.
+    """
+    shadowed = [
+        signal for signal in all_signals if signal.raw_name == ref and signal is not chosen
+    ]
+    if not shadowed:
+        return
+    logger.warning(
+        "⚠️ Ambiguous signal reference '%s': read as datasource '%s', but it is also the raw "
+        "name of a signal in datasource '%s'. Using the former -- write '%s' for the latter.",
+        ref,
+        chosen.metadata.datasource_name,
+        shadowed[0].metadata.datasource_name,
+        f"{shadowed[0].metadata.datasource_name}{separator}{ref}",
+    )
+
+
 def _resolve_signal_references(field_list: list[str], all_signals: list[Signal]) -> list[Signal]:
     """
     Resolve signal references using a three-mode fallback chain.
@@ -50,25 +75,34 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
     1. Qualified name ``"datasource::raw_name"`` -- explicit, unambiguous.
     2. Display name -- matches ``signal.name``. Warns if ambiguous.
     3. Raw name -- current behaviour, backward compatible.
+
+    A ref containing the separator tries mode 1 first but still falls through when it finds
+    nothing: an 'other' file's raw_name is itself ``<stem>::<column>``, so ``waves::art`` is a
+    mode-3 hit while ``other::waves::art`` is the mode-1 one, and both must resolve.
+
+    Because of that double meaning a ref can match under both readings at once -- a file
+    ``other/servo_u.parquet`` makes ``servo_u::Paw`` name both the servo_u datasource's column
+    and that file's. Mode 1 wins (an explicit datasource beats a coincidence of file naming)
+    and the collision is logged, since the fully qualified form reaches the other one.
     """
     matched: list[Signal] = []
 
+    separator = cst.QUALIFIED_NAME_SEPARATOR
     for ref in field_list:
         # Mode 1: qualified "datasource::raw_name"
-        if "::" in ref:
+        if separator in ref:
             matched_signal = next(
                 (
                     signal
                     for signal in all_signals
-                    if f"{signal.metadata.datasource_name}::{signal.raw_name}" == ref
+                    if f"{signal.metadata.datasource_name}{separator}{signal.raw_name}" == ref
                 ),
                 None,
             )
             if matched_signal:
+                _warn_if_also_a_raw_name(ref, matched_signal, all_signals, separator)
                 matched.append(matched_signal)
-            else:
-                logger.warning("Qualified reference '%s' did not match any signal.", ref)
-            continue
+                continue
 
         # Mode 2: display name
         by_name = [signal for signal in all_signals if signal.name == ref]
@@ -84,7 +118,10 @@ def _resolve_signal_references(field_list: list[str], all_signals: list[Signal])
         else:
             # Mode 3: raw name fallback (no display name matched)
             by_raw = [signal for signal in all_signals if signal.raw_name == ref]
-            matched.extend(by_raw)
+            if by_raw:
+                matched.extend(by_raw)
+            elif separator in ref:
+                logger.warning("Qualified reference '%s' did not match any signal.", ref)
 
     return matched
 
@@ -269,6 +306,16 @@ def _build_psd_signals(list_signal: list[Signal], psd_name: str, psd_config: dic
     return psd_signals
 
 
+# Plots derived from already-loaded signals, in the order their sections are read. Each row is
+# (database_options section key, builder, exceptions treated as a deliberate refusal). Adding a
+# derived plot type is a row here plus its builder -- main() itself does not change.
+_DERIVED_PLOTS = (
+    (cst.DatabaseOptions.LOOP, _build_loop_signal, ()),
+    (cst.DatabaseOptions.SPECTROGRAM, _build_spectrogram_signal, (SpectralRefusalError,)),
+    (cst.DatabaseOptions.PSD, _build_psd_signals, (SpectralRefusalError,)),
+)
+
+
 def main(
     patient_options: dict,
     database_options_global: dict | None = None,
@@ -323,7 +370,10 @@ def main(
                     if name == datasource_list.DataSource.Other.NAME:
                         # "other" is a generic multi-file catch-all: which files actually
                         # matched is the useful signal, not a bare "found".
-                        file_stems = {sig.raw_name.split("::", 1)[0] for sig in list_signal}
+                        file_stems = {
+                            sig.raw_name.split(cst.QUALIFIED_NAME_SEPARATOR, 1)[0]
+                            for sig in list_signal
+                        }
                         found_datasources[name] = ", ".join(sorted(file_stems))
                     else:
                         found_datasources[name] = ""
@@ -331,12 +381,10 @@ def main(
                 logger.exception("❌ Failed to create signals for datasource '%s'. Skipping.", name)
                 continue
 
-            # Read grouped/loop fields after MAIN_MODULE (datasource may populate dynamically)
+            # Read grouped fields after MAIN_MODULE (datasource may populate dynamically)
             local_group = database_options.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
             for grouped_field_list in local_group.values():
                 already_used_in_group.extend(grouped_field_list)
-
-            local_loop_group = database_options.get(cst.DatabaseOptions.LOOP, {})
 
             # (2) Add default groups (one signal = one group)
             for signal in list_signal:
@@ -382,43 +430,17 @@ def main(
                         name,
                     )
 
-            # (4) Add loop signals
-            for loop_name, loop_field_list in local_loop_group.items():
-                _add_derived_plot_group(
-                    kind="loop",
-                    item_name=loop_name,
-                    datasource_name=name,
-                    build_signal=partial(
-                        _build_loop_signal, list_signal, loop_name, loop_field_list
-                    ),
-                    plot_group_list=plot_group_list,
-                )
-
-            # (5) Add spectrogram signals
-            local_spectrogram_group = database_options.get(cst.DatabaseOptions.SPECTROGRAM, {})
-            for spectrogram_name, spectrogram_config in local_spectrogram_group.items():
-                _add_derived_plot_group(
-                    kind="spectrogram",
-                    item_name=spectrogram_name,
-                    datasource_name=name,
-                    build_signal=partial(
-                        _build_spectrogram_signal, list_signal, spectrogram_name, spectrogram_config
-                    ),
-                    plot_group_list=plot_group_list,
-                    refusal_exceptions=(SpectralRefusalError,),
-                )
-
-            # (6) Add PSD signals
-            local_psd_group = database_options.get(cst.DatabaseOptions.PSD, {})
-            for psd_name, psd_config in local_psd_group.items():
-                _add_derived_plot_group(
-                    kind="psd",
-                    item_name=psd_name,
-                    datasource_name=name,
-                    build_signal=partial(_build_psd_signals, list_signal, psd_name, psd_config),
-                    plot_group_list=plot_group_list,
-                    refusal_exceptions=(SpectralRefusalError,),
-                )
+            # (4) Add derived plots: loops, spectrograms, PSDs
+            for section_key, builder, refusal_exceptions in _DERIVED_PLOTS:
+                for item_name, item_config in database_options.get(section_key, {}).items():
+                    _add_derived_plot_group(
+                        kind=section_key,
+                        item_name=item_name,
+                        datasource_name=name,
+                        build_signal=partial(builder, list_signal, item_name, item_config),
+                        plot_group_list=plot_group_list,
+                        refusal_exceptions=refusal_exceptions,
+                    )
 
         except Exception:
             logger.exception("❌ Error while treating datasource '%s'.", name)
@@ -605,7 +627,7 @@ def inspect(
     for result in results:
         if result.status != "ok":
             continue
-        base_name, sep, stem = result.datasource_name.partition("::")
+        base_name, sep, stem = result.datasource_name.partition(cst.QUALIFIED_NAME_SEPARATOR)
         if sep:
             found_stems.setdefault(base_name, set()).add(stem)
         else:

@@ -95,6 +95,48 @@ def _source_options_for_file(base_source_options: dict | None, file_config: dict
     return {**base, cst.SourceOptions.TRACE_OPTIONS: {**base_trace, **per_file}}
 
 
+def _qualify(file_stem: str, bare_name: str) -> str:
+    """Scope a bare per-file name to its file: ``waves`` + ``Pao`` -> ``waves::Pao``."""
+    return f"{file_stem}{cst.QUALIFIED_NAME_SEPARATOR}{bare_name}"
+
+
+def _qualify_loop(file_stem: str, bare_columns: list) -> list:
+    return [_qualify(file_stem, bare_column) for bare_column in bare_columns]
+
+
+def _qualify_spectrogram(file_stem: str, entry: dict) -> dict:
+    signal_key = cst.DatabaseOptions.SpectrogramConfig.SIGNAL
+    if signal_key not in entry:
+        return dict(entry)
+    return {**entry, signal_key: _qualify(file_stem, entry[signal_key])}
+
+
+def _qualify_psd(file_stem: str, entry: dict) -> dict:
+    config_cls = cst.DatabaseOptions.PsdConfig
+    signal_key = config_cls.Entry.SIGNAL
+    qualified = []
+    for item in entry.get(config_cls.SIGNALS) or []:
+        # A plain string is shorthand for an Entry naming just a signal, as in wrapper.py.
+        if isinstance(item, dict):
+            if signal_key in item:
+                qualified.append({**item, signal_key: _qualify(file_stem, item[signal_key])})
+            else:
+                qualified.append(dict(item))
+        else:
+            qualified.append(_qualify(file_stem, item))
+    return {**entry, config_cls.SIGNALS: qualified}
+
+
+# Derived-plot sections a per-file 'other::<stem>' block may declare, and how each one's bare
+# signal references get scoped to that file. Adding a fifth derived plot type means adding a
+# row here -- forgetting to is what made 'psd' validate cleanly yet never render.
+PER_FILE_DERIVED_SECTIONS = {
+    cst.DatabaseOptions.LOOP: _qualify_loop,
+    cst.DatabaseOptions.SPECTROGRAM: _qualify_spectrogram,
+    cst.DatabaseOptions.PSD: _qualify_psd,
+}
+
+
 def _resolve_columns(df: pd.DataFrame, file_config: dict) -> list[str]:
     """
     Determine which columns to expose as signals for a file.
@@ -161,7 +203,8 @@ class OtherDataSource(DataSourceBase):
         ``database_options_parser.normalize_database_options`` populates from ``other::<stem>``
         keys. Each ``other::<stem>`` section supports the full set of database_options keys:
         ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
-        ``grouped_fields``, ``loop``, ``spectrogram``, and ``trace_options``.
+        ``grouped_fields``, ``trace_options``, and every derived-plot section listed in
+        :data:`PER_FILE_DERIVED_SECTIONS` (``loop``, ``spectrogram``, ``psd``).
 
         Per-file *patient* options (``time_shift``, ``group_by_file``) are read the same way,
         from a standalone ``patient_options["other::<stem>"]`` block — see
@@ -186,8 +229,7 @@ class OtherDataSource(DataSourceBase):
         all_signals: list[Signal] = []
         loaded_files: list[Path] = []
         grouped_fields: dict = {}
-        per_file_loops: dict = {}
-        per_file_spectrograms: dict = {}
+        derived_sections: dict[str, dict] = {key: {} for key in PER_FILE_DERIVED_SECTIONS}
 
         for file_path in file_paths:
             try:
@@ -241,7 +283,7 @@ class OtherDataSource(DataSourceBase):
 
                 file_signal_raw_names: list[str] = []
                 for column_name in columns:
-                    raw_name = f"{file_stem}::{column_name}"
+                    raw_name = _qualify(file_stem, column_name)
                     try:
                         signal_obj = Signal.time_series_from_dataframe(
                             df=df,
@@ -266,32 +308,23 @@ class OtherDataSource(DataSourceBase):
                     file_grouped = file_config.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
                     if file_grouped:
                         for group_name, bare_columns in file_grouped.items():
-                            grouped_fields[group_name] = [
-                                f"{file_stem}::{bare_column}"
-                                for bare_column in bare_columns
-                                if f"{file_stem}::{bare_column}" in file_signal_raw_names
+                            qualified = [
+                                _qualify(file_stem, bare_column) for bare_column in bare_columns
+                            ]
+                            grouped_fields[_qualify(file_stem, group_name)] = [
+                                raw for raw in qualified if raw in file_signal_raw_names
                             ]
                     elif group_by_file:
                         grouped_fields[file_stem] = file_signal_raw_names
 
-                    # Loops: prefix bare column names with file_stem for global uniqueness
-                    for loop_name, bare_columns in file_config.get(
-                        cst.DatabaseOptions.LOOP, {}
-                    ).items():
-                        per_file_loops[loop_name] = [
-                            f"{file_stem}::{bare_column}" for bare_column in bare_columns
-                        ]
-
-                    # Spectrograms: prefix the bare 'signal' name with file_stem, same as loops
-                    signal_key = cst.DatabaseOptions.SpectrogramConfig.SIGNAL
-                    for spectrogram_name, spectrogram_entry in file_config.get(
-                        cst.DatabaseOptions.SPECTROGRAM, {}
-                    ).items():
-                        prefixed_entry = dict(spectrogram_entry)
-                        if signal_key in prefixed_entry:
-                            bare_signal = prefixed_entry[signal_key]
-                            prefixed_entry[signal_key] = f"{file_stem}::{bare_signal}"
-                        per_file_spectrograms[spectrogram_name] = prefixed_entry
+                    # Both the entry name and the signal references it holds are scoped to the
+                    # file: two files may each declare a loop called "PV" without one erasing
+                    # the other, and each keeps pointing at its own columns.
+                    for section_key, qualify_entry in PER_FILE_DERIVED_SECTIONS.items():
+                        for entry_name, entry in file_config.get(section_key, {}).items():
+                            derived_sections[section_key][_qualify(file_stem, entry_name)] = (
+                                qualify_entry(file_stem, entry)
+                            )
 
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
@@ -303,13 +336,12 @@ class OtherDataSource(DataSourceBase):
             output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
             cls._create_source_symlink(loaded_files, get_output_folder(folder_path, output_root))
 
-        # Inject grouped_fields, loop and spectrogram into database_options for the wrapper to use
+        # Inject the collected sections into database_options for the wrapper to use
         if grouped_fields:
             database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
-        if per_file_loops:
-            database_options[cst.DatabaseOptions.LOOP] = per_file_loops
-        if per_file_spectrograms:
-            database_options[cst.DatabaseOptions.SPECTROGRAM] = per_file_spectrograms
+        for section_key, entries in derived_sections.items():
+            if entries:
+                database_options[section_key] = entries
 
         return all_signals
 

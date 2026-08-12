@@ -1259,7 +1259,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         fig = plot_model.figure
 
         uid = None
-        if plot_model.name == "time_series":
+        if plot_model.name in cst.PlotType.RESAMPLED:
             uid = str(uuid4())
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig

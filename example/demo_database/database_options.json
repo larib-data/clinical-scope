@@ -714,6 +714,12 @@
                 "Esophageal Press. (cmH2O)",
                 "P4"
             ]
+        },
+        "loop": {
+            "PV loop cross-device (servo-u P, mindray V)": [
+                "servo_u::Airway Press. (cmH2O)",
+                "mindray_scope::Vol"
+            ]
         }
     }
 }

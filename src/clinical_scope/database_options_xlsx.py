@@ -246,11 +246,13 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 if priority is not None:
                     numerics["priority"] = priority
                 if numerics:
-                    result[ds].setdefault("numerics", {}).update(numerics)
+                    result[ds].setdefault(cst.DatabaseOptions.NUMERICS, {}).update(numerics)
 
                 timezone = str(row.get("timezone", "")).strip()
                 if timezone:
-                    result[ds].setdefault("additional_informations", {})["timezone"] = timezone
+                    result[ds].setdefault(cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {})[
+                        cst.DatabaseOptions.AdditionalInformations.TIMEZONE
+                    ] = timezone
 
                 trace_config = cst.DatabaseOptions.TraceOptionsConfig
                 trace_options = {}
@@ -274,7 +276,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 continue
 
             # ----------------------------------------------------------
-            # Per-signal metadata → _SIGNALS_SHEET_NAME sub-dict
+            # Per-signal metadata → the "signals" config section
             # ----------------------------------------------------------
             signal_options = {}
 
@@ -338,13 +340,15 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                         column_name,
                     )
 
-            result[ds].setdefault(_SIGNALS_SHEET_NAME, {})[signal] = signal_options
+            # The config section, not the sheet it was read from: the two share a name today,
+            # but renaming the sheet must not silently write a different section.
+            result[ds].setdefault(cst.DatabaseOptions.SIGNALS, {})[signal] = signal_options
 
             # ----------------------------------------------------------
             # display column → field_display list
             # ----------------------------------------------------------
             display_raw = str(row.get("display", "")).strip()
-            field_display = result[ds].setdefault("field_display", [])
+            field_display = result[ds].setdefault(cst.DatabaseOptions.FIELD_DISPLAY, [])
             if _is_truthy(display_raw) and signal not in field_display:
                 field_display.append(signal)
 
@@ -380,10 +384,10 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             global_grouped[group_name] = all_signals
         else:
             (only_ds, signals_list) = next(iter(signals_by_datasource.items()))
-            result[only_ds].setdefault("grouped_fields", {})[group_name] = signals_list
+            result[only_ds].setdefault(cst.DatabaseOptions.GROUPED_FIELDS, {})[group_name] = signals_list
 
     if global_grouped:
-        result[cst.DatabaseOptions.GLOBAL] = {"grouped_fields": global_grouped}
+        result[cst.DatabaseOptions.GLOBAL] = {cst.DatabaseOptions.GROUPED_FIELDS: global_grouped}
 
     # ------------------------------------------------------------------
     # Process loops sheet
@@ -400,7 +404,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
 
             if ds not in result:
                 result[ds] = {}
-            result[ds].setdefault("loop", {})[loop_name] = [x_signal, y_signal]
+            result[ds].setdefault(cst.DatabaseOptions.LOOP, {})[loop_name] = [x_signal, y_signal]
 
         except Exception:  # noqa: BLE001
             logger.warning("Skipping loops row %s due to unexpected error.", row_idx, exc_info=True)

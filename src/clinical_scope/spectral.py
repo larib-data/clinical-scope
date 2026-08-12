@@ -1,5 +1,7 @@
 """Pure-numpy spectral computation: grid validation, STFT, dB scaling."""
 
+from dataclasses import dataclass
+
 import numpy as np
 
 import clinical_scope.constants as cst
@@ -7,6 +9,25 @@ import clinical_scope.constants as cst
 
 class SpectralRefusalError(ValueError):
     """A Signal's grid or configuration can't be safely turned into a spectral plot."""
+
+
+@dataclass(frozen=True)
+class SpectralParams:
+    """
+    The DSP knobs shared by :func:`spectrogram` and :func:`psd`.
+
+    Bundled rather than passed one by one: they always travel together, they are all bare
+    floats (so a transposed pair would silently return a different spectrum, not an error),
+    and a new knob becomes one field here instead of an argument threaded through four
+    signatures. Defaults come from ``cst.Spectral``; ``window_s`` alone defaults to *None*,
+    meaning "derive it from ``freq_min``".
+    """
+
+    window_s: float | None = None
+    overlap: float = cst.Spectral.OVERLAP_FRACTION
+    window_cycles: float = cst.Spectral.WINDOW_CYCLES
+    jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE
+    gap_factor: float = cst.Spectral.GAP_FACTOR
 
 
 def build_uniform_grid(
@@ -101,11 +122,7 @@ def _framed_power(
     y: np.ndarray,
     freq_range: tuple[float, float],
     period_resampling: float | None,
-    window_s: float | None,
-    overlap: float,
-    window_cycles: float,
-    jitter_tolerance: float,
-    gap_factor: float,
+    params: SpectralParams,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Validate, grid, and frame one Signal, returning ``(x_uniform, frame_starts, freqs, power)``.
@@ -130,7 +147,7 @@ def _framed_power(
 
     valid = ~np.isnan(y)
     x_uniform, y_uniform, dt_seconds = build_uniform_grid(
-        x[valid], y[valid], jitter_tolerance, gap_factor
+        x[valid], y[valid], params.jitter_tolerance, params.gap_factor
     )
 
     nyquist = 0.5 / dt_seconds
@@ -138,10 +155,9 @@ def _framed_power(
         msg = f"freq_range max {freq_max} Hz exceeds Nyquist {nyquist:.2f} Hz for this Signal."
         raise SpectralRefusalError(msg)
 
-    if window_s is None:
-        window_s = window_cycles / freq_min
+    window_s = params.window_s if params.window_s is not None else params.window_cycles / freq_min
 
-    frame_starts, freqs, power = stft(y_uniform, dt_seconds, window_s, overlap)
+    frame_starts, freqs, power = stft(y_uniform, dt_seconds, window_s, params.overlap)
 
     freq_mask = (freqs >= freq_min) & (freqs <= freq_max)
     return x_uniform, frame_starts, freqs[freq_mask], power[:, freq_mask]
@@ -152,11 +168,7 @@ def spectrogram(
     y: np.ndarray,
     freq_range: tuple[float, float],
     period_resampling: float | None = 1.0,
-    window_s: float | None = None,
-    overlap: float = cst.Spectral.OVERLAP_FRACTION,
-    window_cycles: float = cst.Spectral.WINDOW_CYCLES,
-    jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE,
-    gap_factor: float = cst.Spectral.GAP_FACTOR,
+    params: SpectralParams | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute a dB-scaled spectrogram for one Signal's raw ``x``/``y`` arrays.
@@ -167,15 +179,7 @@ def spectrogram(
     too-short, or out-of-range Signal.
     """
     x_uniform, frame_starts, freqs, power = _framed_power(
-        x,
-        y,
-        freq_range,
-        period_resampling,
-        window_s,
-        overlap,
-        window_cycles,
-        jitter_tolerance,
-        gap_factor,
+        x, y, freq_range, period_resampling, params or SpectralParams()
     )
     power_db = 10 * np.log10(np.maximum(power, cst.Spectral.POWER_FLOOR))
     return x_uniform[frame_starts], freqs, power_db
@@ -186,11 +190,7 @@ def psd(
     y: np.ndarray,
     freq_range: tuple[float, float],
     period_resampling: float | None = 1.0,
-    window_s: float | None = None,
-    overlap: float = cst.Spectral.OVERLAP_FRACTION,
-    window_cycles: float = cst.Spectral.WINDOW_CYCLES,
-    jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE,
-    gap_factor: float = cst.Spectral.GAP_FACTOR,
+    params: SpectralParams | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute a dB-scaled power spectral density (Welch) for one Signal's ``x``/``y`` arrays.
@@ -200,15 +200,7 @@ def psd(
     ``(freqs, power_db)``, both 1-D.
     """
     _, _, freqs, power = _framed_power(
-        x,
-        y,
-        freq_range,
-        period_resampling,
-        window_s,
-        overlap,
-        window_cycles,
-        jitter_tolerance,
-        gap_factor,
+        x, y, freq_range, period_resampling, params or SpectralParams()
     )
 
     # A masked gap makes a whole frame NaN, so all-NaN means every window fell in a gap.

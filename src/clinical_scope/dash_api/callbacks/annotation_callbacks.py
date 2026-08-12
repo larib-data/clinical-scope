@@ -856,10 +856,8 @@ def render_annotations(
         # subplot-annotations store is still unpopulated, so leave them untouched instead.
         if all_annotations:
             patch.layout.annotations = all_annotations
-        # Matches PlotModel.to_figure: only time_series sets a hovermode. Loop and spectrogram
-        # keep Plotly's default ("closest") -- a unified panel is meaningless for either (an
-        # independent x per point for loop, an independent cell per pixel for a heatmap).
-        if subplots_data.get("plot_type") == cst.PlotType.TIME_SERIES:
+        # Same capability set PlotModel.to_figure reads, so the two stay in step.
+        if subplots_data.get("plot_type") in cst.PlotType.UNIFIED_HOVER:
             patch.layout.hovermode = "closest" if point_mode_active else "x unified"
         patches.append(patch)
 

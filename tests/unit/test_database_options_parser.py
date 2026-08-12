@@ -249,3 +249,46 @@ class TestRedundantEntries:
     def test_no_signals_key(self):
         db = {"servo_u": {"numerics": {}}}
         assert validate_database_options(db) == []
+
+
+# ---------------------------------------------------------------------------
+# trace_options
+# ---------------------------------------------------------------------------
+
+
+class TestTraceOptions:
+    def test_unknown_trace_option_key_warns(self):
+        db = {"servo_u": {"trace_options": {"line_widht": 2.0}}}
+        warnings = _issues("warning", db)
+        assert len(warnings) == 1
+        assert "line_widht" in warnings[0].message
+
+    def test_documented_trace_option_keys_pass(self):
+        db = {
+            "servo_u": {
+                "trace_options": {
+                    "mode": "lines+markers",
+                    "line_width": 2.0,
+                    "line_dash": "dot",
+                    "opacity": 0.8,
+                    "marker_symbol": "circle",
+                    "marker_size": 4.0,
+                }
+            }
+        }
+        assert _issues("warning", db) == []
+
+    def test_trace_options_known_keys_are_real(self):
+        """Every advertised key must be a TraceOptions field, else it is silently dropped."""
+        from dataclasses import fields
+
+        import clinical_scope.constants as cst
+        from clinical_scope.signal_container import TraceOptions
+
+        trace_option_fields = {field_obj.name for field_obj in fields(TraceOptions)}
+        assert cst.DatabaseOptions.TraceOptionsConfig.KNOWN_KEYS <= trace_option_fields
+
+    def test_trace_options_must_be_a_dict(self):
+        db = {"servo_u": {"trace_options": "lines"}}
+        errors = _issues("error", db)
+        assert len(errors) == 1

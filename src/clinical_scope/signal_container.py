@@ -174,6 +174,17 @@ class DisplayFallbacks:
         """Plotly hover format for one axis value, e.g. ``%{y:.4g}``."""
         return f"%{{{axis}:.{self.y_significant_digits}g}}"
 
+    def subplot_height_for(self, plot_type: str) -> int:
+        """
+        Subplot height fallback for *plot_type*.
+
+        Grid-laid-out types get their own setting because their subplots are square, so height
+        also sets width — one read site, so a new height fallback stays a one-line change.
+        """
+        if plot_type in cst.PlotType.GRID_LAYOUT:
+            return self.loop_subplot_height
+        return self.subplot_height
+
 
 @dataclass
 class Data:
@@ -631,13 +642,13 @@ class Signal:
             raise ValueError(msg)
 
     @staticmethod
-    def _spectral_overrides(window_s: float | None, overlap: float | None) -> dict:
-        overrides = {}
-        if window_s is not None:
-            overrides["window_s"] = window_s
-        if overlap is not None:
-            overrides["overlap"] = overlap
-        return overrides
+    def _spectral_params(window_s: float | None, overlap: float | None) -> spectral.SpectralParams:
+        """Build the DSP knobs, letting *None* mean "keep the SpectralParams default"."""
+        defaults = spectral.SpectralParams()
+        return spectral.SpectralParams(
+            window_s=window_s,
+            overlap=overlap if overlap is not None else defaults.overlap,
+        )
 
     @classmethod
     def spectrogram_from_signal(
@@ -657,14 +668,13 @@ class Signal:
         that is a warning or an error.
         """
         cls._require_time_series(signal)
-        spectral_overrides = cls._spectral_overrides(window_s, overlap)
 
         times, freqs, power_db = spectral.spectrogram(
             signal.data.x,
             signal.data.y,
             freq_range=freq_range,
             period_resampling=signal.metadata.period_resampling,
-            **spectral_overrides,
+            params=cls._spectral_params(window_s, overlap),
         )
 
         color_range = (
@@ -716,14 +726,13 @@ class Signal:
         do the same visually, since both otherwise default to the source signal's own.
         """
         cls._require_time_series(signal)
-        spectral_overrides = cls._spectral_overrides(window_s, overlap)
 
         freqs, power_db = spectral.psd(
             signal.data.x,
             signal.data.y,
             freq_range=freq_range,
             period_resampling=signal.metadata.period_resampling,
-            **spectral_overrides,
+            params=cls._spectral_params(window_s, overlap),
         )
 
         data = Data(x=freqs, y=power_db, timezone=None)
@@ -749,7 +758,7 @@ class Signal:
         return cls(
             # Qualified rather than the bare source raw_name: wrapper.main prunes single-signal
             # PlotGroups whose raw_name is in a global group, which would swallow the PSD too.
-            raw_name=f"{psd_name}::{label or signal.raw_name}",
+            raw_name=f"{psd_name}{cst.QUALIFIED_NAME_SEPARATOR}{label or signal.raw_name}",
             name=label or signal.name,
             data=data,
             trace_options=trace_options,
@@ -957,7 +966,7 @@ class PlotModel:
         Only loops pack side by side; everything else stacks in one column. The UI reads this
         to map a trace back to its subplot, so it must agree with what to_figure() builds.
         """
-        if self.plot_type == cst.PlotType.LOOP and len(self.groups) > 1:
+        if self.plot_type in cst.PlotType.GRID_LAYOUT and len(self.groups) > 1:
             return self.display_fallbacks.loops_per_row
         return 1
 
@@ -971,17 +980,14 @@ class PlotModel:
         """
         start = time.perf_counter()
         n_groups = len(self.groups)
-        is_loop = self.plot_type == cst.PlotType.LOOP
+        default_height = self.display_fallbacks.subplot_height_for(self.plot_type)
         n_cols = self.n_cols
 
-        # Loop plots with multiple subplots use a multi-column grid so square subplots
+        # Grid-laid-out plots with multiple subplots use a multi-column grid so square subplots
         # sit side-by-side instead of stacking vertically.
-        if is_loop and n_groups > 1:
+        if self.plot_type in cst.PlotType.GRID_LAYOUT and n_groups > 1:
             n_rows = int(np.ceil(n_groups / n_cols))
-            subplot_height = (
-                self.groups[0].plot_options.plot_height
-                or self.display_fallbacks.loop_subplot_height
-            )
+            subplot_height = self.groups[0].plot_options.plot_height or default_height
             total_fig_height = n_rows * subplot_height
             row_heights = [1.0] * n_rows
             specs = [
@@ -997,11 +1003,6 @@ class PlotModel:
             title_gap_px = 90.0
         else:
             n_rows = n_groups
-            default_height = (
-                self.display_fallbacks.loop_subplot_height
-                if is_loop
-                else self.display_fallbacks.subplot_height
-            )
             group_heights = [
                 group.plot_options.plot_height or default_height for group in self.groups
             ]
@@ -1041,7 +1042,7 @@ class PlotModel:
             traces_with_axes = group.assign_axes()
             for trace, secondary_y in traces_with_axes:
                 fig.add_trace(trace, row=plotly_row, col=plotly_col, secondary_y=secondary_y)
-                if self.plot_type == cst.PlotType.SPECTROGRAM:
+                if self.plot_type in cst.PlotType.HAS_COLORBAR:
                     # Scope this trace's colorbar to its own row, else it spans the whole figure.
                     added_trace = fig.data[-1]
                     axis_suffix = added_trace.yaxis[1:] if added_trace.yaxis else ""
@@ -1089,13 +1090,12 @@ class PlotModel:
                 else:
                     x_type_to_master_row[x_data_type] = plotly_row
 
-            if self.plot_type == cst.PlotType.TIME_SERIES:
+            if self.plot_type in cst.PlotType.RESAMPLED:
                 fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
-        # Time-series hover header format and panel style are user fallbacks: no database option
-        # speaks about either, so they apply unconditionally.  Loop figures keep Plotly's default
-        # ("closest"): each point is independent, so a unified panel would be meaningless.
-        if self.plot_type == cst.PlotType.TIME_SERIES:
+        # Hover header format and panel style are user fallbacks: no database option speaks
+        # about either, so they apply unconditionally to the types that want them.
+        if self.plot_type in cst.PlotType.UNIFIED_HOVER:
             fig.update_xaxes(hoverformat=self.display_fallbacks.hover_time_format)
             fig.update_layout(hovermode=self.display_fallbacks.hovermode)
 
@@ -1168,11 +1168,7 @@ class PlotModel:
             # ADR-0005: a height from the database configuration wins; None means it was silent,
             # so the user's per-plot-type fallback fills the gap.
             if plot_options.plot_height is None:
-                plot_options.plot_height = (
-                    fallbacks.loop_subplot_height
-                    if plot_options.plot_type == cst.PlotType.LOOP
-                    else fallbacks.subplot_height
-                )
+                plot_options.plot_height = fallbacks.subplot_height_for(plot_options.plot_type)
             groups.setdefault(plot_options.plot_type, []).append(plot_group)
         page_order = cst.PlotType.PAGE_ORDER
         ordered = sorted(

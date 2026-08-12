@@ -198,6 +198,12 @@ class TestUndatedRecording:
     def test_without_recording_start_the_sentinel_date_is_kept(self, undated_df, edf_cls):
         assert self._first(undated_df, edf_cls).date() == datetime.date(1985, 1, 1)
 
+    def test_an_already_parsed_date_still_keeps_the_files_time_of_day(self, undated_df, edf_cls):
+        """A Timestamp reads as date-only, like the equivalent string: 09:30 must survive."""
+        assert self._first(undated_df, edf_cls, pd.Timestamp("2024-05-04")) == pd.Timestamp(
+            "2024-05-04 09:30:00", tz="Europe/Paris"
+        )
+
     def test_epoch_start_is_treated_as_undated(self, tmp_path, edf_cls):
         path = _write_edf(tmp_path / "epoch.edf", datetime.datetime(1970, 1, 1, 0, 0))  # noqa: DTZ001
         df = edf_cls._load([path], None)

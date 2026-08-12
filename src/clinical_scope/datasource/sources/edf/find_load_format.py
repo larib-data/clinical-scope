@@ -141,11 +141,13 @@ class EDFDataSource(DataSourceBase):
 
         # A bare date is the "only the date was scrubbed" case: shift by whole days so the file's
         # own time of day survives. A value carrying a clock time places the first sample on it.
+        # Read off the parsed timestamp, not the raw text: the value may arrive already parsed,
+        # and str(Timestamp("2004-09-15")) carries a ":00:00" a text check would misread.
         recording_start = pd.Timestamp(raw_start)
-        if ":" in str(raw_start):
-            offset = recording_start - df.index[0]
-        else:
+        if recording_start == recording_start.normalize():
             offset = recording_start - sentinel
+        else:
+            offset = recording_start - df.index[0]
 
         df = df.copy(deep=False)
         df.index = df.index + offset

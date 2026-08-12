@@ -366,25 +366,39 @@ class DataSourceBase(ABC):
     @classmethod
     def _create_source_symlink(cls, file_path: Path | list[Path], output_folder: Path) -> None:
         """
-        Create a symlink in the output folder pointing to the source file(s).
+        Create a symlink under ``<output_folder>/<datasource>/`` pointing to the source file(s).
 
         Used by datasources that opt out of parquet caching (ALLOW_QUICK_LOAD=False) so the
         output folder still contains a traceable reference to the exact file that was used.
+
+        Symlinks live in a per-datasource subfolder because the output folder is flat and
+        shared: an 'other' file named ``servo_u_loaded.parquet`` would otherwise land on
+        servo_u's cache path and replace it.
         """
         files = file_path if isinstance(file_path, list) else [file_path]
+        symlink_folder = output_folder / cls.DATASOURCE_NAME
         try:
-            output_folder.mkdir(parents=True, exist_ok=True)
+            symlink_folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             logger.exception(
                 "[%s] Could not create output folder for symlink.", cls.DATASOURCE_NAME
             )
             return
         for source_file in files:
-            symlink_path = output_folder / source_file.name
-            if symlink_path.is_symlink() or symlink_path.exists():
+            symlink_path = symlink_folder / source_file.name
+            if symlink_path.is_symlink():
                 symlink_path.unlink()
+            elif symlink_path.exists():
+                # Never unlink a real file: the folder is ours, so this is something a user put
+                # here deliberately, and a traceability link isn't worth destroying it.
+                logger.warning(
+                    "[%s] '%s' exists and is not a symlink; leaving it untouched.",
+                    cls.DATASOURCE_NAME,
+                    symlink_path,
+                )
+                continue
             try:
-                rel_target = Path(os.path.relpath(source_file, output_folder))
+                rel_target = Path(os.path.relpath(source_file, symlink_folder))
                 symlink_path.symlink_to(rel_target)
                 logger.info(
                     "[%s] Symlinked source file: %s -> %s",

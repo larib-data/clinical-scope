@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from clinical_scope.spectral import (
+    SpectralParams,
     SpectralRefusalError,
     build_uniform_grid,
     psd,
@@ -139,7 +140,7 @@ def test_psd_averages_linear_power_not_decibels():
     x = _datetime_x(t_seconds)
 
     # A whole number of non-overlapping windows per half, so no frame straddles the step.
-    kwargs = {"freq_range": (1.0, 30.0), "window_s": 1.0, "overlap": 0.0}
+    kwargs = {"freq_range": (1.0, 30.0), "params": SpectralParams(window_s=1.0, overlap=0.0)}
     _, reference_db = psd(x, wave, **kwargs)
     _, mixed_db = psd(x, amplitude * wave, **kwargs)
 
@@ -164,4 +165,4 @@ def test_psd_refuses_when_every_window_falls_in_a_gap():
     y = np.sin(2 * np.pi * 10.0 * t_seconds)
 
     with pytest.raises(SpectralRefusalError, match="gap"):
-        psd(x, y, freq_range=(1.0, 30.0), window_s=5.0)
+        psd(x, y, freq_range=(1.0, 30.0), params=SpectralParams(window_s=5.0))
