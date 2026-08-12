@@ -3,11 +3,11 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "I have a patient data folder at example/example_patients/Patient_full/ — all the datasource subfolders are there. Can you do a dry-run audit and tell me which folders are correctly named for ClinicalScope and which are not? Don't move anything.",
-      "expected_output": "Correctly identifies standard folders (eit, fluxmed_signals, fluxmed_parameters, servo_u, mindray_scope, other) as already in place, and flags Mindray_resp_waves and Mindray_resp_numerics as non-standard (wrong case/spelling vs expected mindray_respi_waves and mindray_respi_numerics). No files moved.",
+      "prompt": "I have a patient data folder at example/demo_database/demo_patient/ — all the datasource subfolders are there. Can you do a dry-run audit and tell me which folders are correctly named for ClinicalScope and which are not? Don't move anything.",
+      "expected_output": "Correctly identifies standard folders (eit, edf, fluxmed_signals, fluxmed_parameters, servo_u, mindray_scope, other) as already in place, and flags Mindray_resp_waves and Mindray_resp_numerics as non-standard (wrong case/spelling vs expected mindray_respi_waves and mindray_respi_numerics). No files moved.",
       "files": [],
       "assertions": [
-        "Unique-extension files classified correctly: .asc→eit/, .sta→servo_u/",
+        "Unique-extension files classified correctly: .asc→eit/, .sta→servo_u/, .edf→edf/",
         "Keyword files: Signals.txt→fluxmed_signals/, Parameters.txt→fluxmed_parameters/, mndry_waveform*.parquet→mindray_respi_waves/, mndry_numerics*.parquet→mindray_respi_numerics/, syringe*.csv→other/",
         "Flags Mindray_resp_waves and Mindray_resp_numerics as non-standard folder names",
         "Standard folders reported as already in place",
@@ -17,26 +17,28 @@
     },
     {
       "id": 2,
-      "prompt": "I have a folder at example/example_patients/ with multiple patients. Check if all patient subfolders are correctly organized for ClinicalScope. Dry run only — no moves.",
-      "expected_output": "Detects batch mode across Patient_full, Patient_difficult_format, etc. For each patient, identifies correctly-named vs non-standard datasource subfolders. Mindray_resp_* flagged as non-standard in patients where they appear.",
+      "prompt": "I have a folder at example/demo_database/ holding patient subfolders. Check if every patient subfolder is correctly organized for ClinicalScope. Dry run only — no moves.",
+      "expected_output": "Detects batch mode and reports on each patient subfolder it finds under demo_database/ (demo_patient). For each, identifies correctly-named vs non-standard datasource subfolders, flagging Mindray_resp_*. Ignores loose files such as database_options.xlsx rather than treating them as patients.",
       "files": [],
       "assertions": [
-        "Batch mode detected: reports on multiple patient subfolders",
+        "Batch mode detected: iterates the patient subfolders found under the given root",
+        "Loose files at the root (database_options.xlsx) not mistaken for patient folders",
         "Flags Mindray_resp_numerics and Mindray_resp_waves as non-standard (expected: mindray_respi_*)",
-        "Standard folders (eit, fluxmed_*, servo_u, other, mindray_scope) reported as already correct",
+        "Standard folders (eit, edf, fluxmed_*, servo_u, other, mindray_scope) reported as already correct",
         "No files moved or copied",
         "Provides per-patient summary"
       ]
     },
     {
       "id": 3,
-      "prompt": "I have a folder at example/example_patients/Patient_full/ — can you organize it? The Mindray_resp_waves and Mindray_resp_numerics folders have wrong names. Copy the files into correctly named folders (mindray_respi_waves and mindray_respi_numerics). Leave everything else alone.",
-      "expected_output": "Correctly identifies that Mindray_resp_waves→mindray_respi_waves and Mindray_resp_numerics→mindray_respi_numerics need renaming. Creates correctly-named subfolders and copies the files. All other folders left untouched.",
+      "prompt": "Copy example/demo_database/demo_patient/ to a scratch directory outside the repo first, then organize the copy. The Mindray_resp_waves and Mindray_resp_numerics folders have wrong names — copy the files into correctly named folders (mindray_respi_waves and mindray_respi_numerics). Leave everything else alone, and don't touch the original under example/.",
+      "expected_output": "Copies the patient folder to a scratch location, then identifies that Mindray_resp_waves→mindray_respi_waves and Mindray_resp_numerics→mindray_respi_numerics need renaming. Creates correctly-named subfolders and copies the files inside the scratch copy. All other folders left untouched; the shipped demo under example/ is unmodified.",
       "files": [],
       "assertions": [
+        "Works on a scratch copy — example/demo_database/demo_patient/ is byte-identical afterwards",
         "Creates mindray_respi_waves/ and copies files from Mindray_resp_waves/",
         "Creates mindray_respi_numerics/ and copies files from Mindray_resp_numerics/",
-        "Other datasource folders (eit, servo_u, etc.) reported as already correct and not touched",
+        "Other datasource folders (eit, edf, servo_u, etc.) reported as already correct and not touched",
         "Original Mindray_resp_* folders preserved (copy not move)",
         "Skill uses library folder_keywords to verify expected folder names"
       ]

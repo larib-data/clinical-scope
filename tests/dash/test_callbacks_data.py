@@ -42,7 +42,7 @@ class TestParseDbOptionsFile:
             _parse_database_options_file(b"data", "test.txt")
 
     def test_parse_xlsx(self, project_root):
-        xlsx_path = project_root / "example" / "option_files" / "example_database_options.xlsx"
+        xlsx_path = project_root / "tests/data/option_files/example_database_options.xlsx"
         if not xlsx_path.exists():
             pytest.skip("No example xlsx file")
         content = xlsx_path.read_bytes()

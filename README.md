@@ -113,6 +113,8 @@ from clinical_scope import extract_datasource, extract_patient, batch_extract
 from clinical_scope.config.parsing import load_database_options_from_path
 
 db_options = load_database_options_from_path(Path("database_options.json"))
+# No config of your own yet? The shipped demo works as-is, no UI needed:
+#   load_database_options_from_path(Path("example/demo_database/database_options.json"))
 
 # 1. Single datasource subfolder (auto-detects type from folder name)
 df = extract_datasource(

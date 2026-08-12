@@ -260,8 +260,9 @@ an `other/` folder, the modal lists one row per file (`other::waves`, `other::nu
 each with its own date range and column list, so you can verify that every file was
 correctly discovered and parsed.
 
-See `example/option_files/example_database_options_other.json` in the source repository
-for a full reference configuration.
+See `example/demo_database/database_options.json` in the source repository for a full reference
+configuration — its `other::waves`, `other::numerics` and `other::syringe` sections configure the
+three files shipped in `demo_patient/other/`.
 
 \newpage
 
@@ -909,11 +910,11 @@ The **Scope** column below indicates where each field is meaningful:
 | `range_max` | No | Signal | Maximum Y-axis value. |
 | `priority` | No | Both | Plot priority (float). In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. |
 | `color` | No | Signal | CSS color string. |
-| `visible` | No | Signal | `yes` / `no` (default: `yes`). Accepts `yes`, `1`, `true`, `oui`, `vrai` (case-insensitive). |
+| `visible` | No | Signal | `yes` / `no` (default: `yes`). Set `no` to draw the signal but start it hidden — it stays in the legend, and one click brings it back. Accepts `yes`, `1`, `true`, `oui`, `vrai` (case-insensitive). |
 | `line_dash` | No | Signal | `solid`, `dash`, `dot`, `dashdot`. |
 | `period_resampling` | No | Both | Resampling period in seconds. In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. |
 | `hover_template` | No | Signal | Hover tooltip format. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is forwarded directly to Plotly as a `hovertemplate`. |
-| `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. |
+| `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. Set `no` to keep the row's label and unit on file while leaving the signal out of the plots entirely: unlike `visible`, it produces no trace and no legend entry. Useful for parking a signal you may want back later, or for describing a column that is not worth plotting (see `Comments(-)` under `fluxmed_parameters` in `example/demo_database/database_options.xlsx`). |
 | `groups` | No | Signal | Semicolon-separated group names (e.g., `Respiratory;Pressure`). Groups within one datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
 | `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. Works with `other::<stem>` datasource keys. See [`additional_informations` Block](#additional_informations-block) for which datasources support this. |
 | `trace_mode` | No | **Sentinel** | `lines`, `markers` or `lines+markers` for every trace in this datasource. Only valid in `*` rows. Works with `other::<stem>` datasource keys — e.g. a sparse infusion log reads better as `markers` than as connected `lines`. |
@@ -974,7 +975,7 @@ each. If the sheet is absent or malformed it is silently skipped.
 | `color` | No | Line colour for this row's line only. Leave unset to inherit the signal's own colour — two rows for the same signal then need this to tell their lines apart. |
 | `line_dash` | No | `solid`, `dash`, `dot`, `dashdot` for this row's line only. A second way (besides colour) to tell two lines from the same signal apart. |
 
-See `example/option_files/` in the source repository for complete example files in both formats.
+See `example/demo_database/` in the source repository for a complete example in both formats — `database_options.xlsx` (all four sheets) and `database_options.json`, its exact equivalent. Both configure the shipped `demo_patient/`, so you can load either one and press Process straight away.
 
 ![example excel database option file signal wide](images/ExcelDatabaseOptionsWide.png){ width=100% }
 ![example excel database option file with other source](images/ExcelDatabaseOptionsOther.png){ width=100% }

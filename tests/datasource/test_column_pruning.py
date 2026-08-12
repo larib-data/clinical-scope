@@ -34,9 +34,9 @@ from clinical_scope.io.file_utils import (
 )
 
 OTHER_DIR = (
-    Path(__file__).resolve().parent.parent.parent
-    / "example"
-    / "example_patients"
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "patients"
     / "Patient_difficult_format"
     / "other"
 )

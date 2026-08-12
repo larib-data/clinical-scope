@@ -1,7 +1,6 @@
 """Tests for database_options_xlsx converter."""
 
 import io
-from pathlib import Path
 
 import openpyxl
 import pytest
@@ -927,11 +926,11 @@ class TestErrorHandling:
 
 
 class TestExampleFileRoundTrip:
-    """Smoke test against the shipped example XLSX."""
+    """Smoke test against the example XLSX fixture."""
 
-    def test_example_xlsx_parses_without_error(self):
+    def test_example_xlsx_parses_without_error(self, project_root):
 
-        example = Path("example/option_files/example_database_options.xlsx")
+        example = project_root / "tests/data/option_files/example_database_options.xlsx"
         if not example.exists():
             pytest.skip("Example XLSX not found")
         data = example.read_bytes()
@@ -940,10 +939,10 @@ class TestExampleFileRoundTrip:
         assert "eit" in result
         assert "global" in result
 
-    def test_example_passes_validation(self):
+    def test_example_passes_validation(self, project_root):
         from clinical_scope.database_options_parser import validate_database_options
 
-        example = Path("example/option_files/example_database_options.xlsx")
+        example = project_root / "tests/data/option_files/example_database_options.xlsx"
         if not example.exists():
             pytest.skip("Example XLSX not found")
         result = xlsx_bytes_to_database_options(example.read_bytes())

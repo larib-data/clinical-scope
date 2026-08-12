@@ -56,11 +56,11 @@ Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical l
 ## Config files
 
 Field-by-field reference is in the [tutorial](docs/user_guide/tutorial.md). The two-file split:
-- **`database_options`** (`.json` or `.xlsx`) — per-source signal config: `field_display`, `data` (labels/units/colors), `grouped_fields`, `loop`; plus `global.grouped_fields`. Uploading one in the UI caches it to `~/.clinical_scope/last_database_options.json` (signal metadata only, no PHI).
+- **`database_options`** (`.json` or `.xlsx`) — per-source signal config: `field_display`, `signals` (labels/units/colors), `grouped_fields`, `loop`; plus `global.grouped_fields`. Uploading one in the UI caches it to `~/.clinical_scope/last_database_options.json` (signal metadata only, no PHI).
 - **`patient_options`** (`.json`) — per-run settings: `data_folder`, `datetime_start`/`datetime_end`, `quick_load`, and per-source options (`time_shift`, `day`, …).
 - **`user_options`** (`~/.clinical_scope/user_options.json`) — the third tier: per-person app behaviour + display fallbacks, edited only in the Settings modal. **Never overrides `database_options`** ([ADR-0005](docs/adr/0005-user-options-are-fallbacks.md)). A new display setting = a `UserOptions` schema class (with `SECTION`) + a field on `DisplayFallbacks` (`signal_container.py`) + one read site; the carrier is threaded from `wrapper.main` down to both `Signal` and `PlotModel` construction, so no signature grows.
 
-Reference configs in `example/option_files/`.
+Reference configs: `example/demo_database/database_options.{xlsx,json}` — the canonical example, in both formats, runnable against `demo_patient/` and covering **every** datasource it ships (enforced by `tests/unit/test_example_assets.py`). **The `.json` is generated from the `.xlsx`**; edit the spreadsheet and regenerate (`tests/unit/test_example_assets.py` holds the parity check and the one-liner). `example/option_files/patient_options_example.json` covers the other tier, for library users who never launch the app and so never get an app-written one.
 
 ## UI (Dash)
 
@@ -81,7 +81,7 @@ pytest tests/datasource/ --update-snapshots -m snapshot  # regenerate golden fil
 
 Full command reference in `tests/README.md`.
 
-- **Example data** — `example/demo_database/` is the shipped self-contained demo (xlsx config + `demo_patient/`, all sources, intentionally truncated); `example/example_patients/` holds edge-case patients used only by tests. **Don't replace these with full-size originals**; after changing example data, regenerate snapshots.
+- **Test data** — `example/` holds only user-facing material; test-only fixtures live in `tests/data/` (`patients/`, `option_files/`), alongside the goldens in `tests/expected_results/`. The one deliberate crossing: `example/demo_database/demo_patient/` is the shipped demo *and* the main fixture (`patient_full_path`), so the suite fails if the demo breaks. **Don't replace either with full-size originals**; after changing test or demo data, regenerate snapshots.
 - **Fixtures** — datasource tests share `formatted_df` at `scope="module"` and only read DataFrames (never mutate).
 - **CI** (`.github/workflows/ci.yml`) — runs on push to `main` and PRs to `main` (skipped on drafts); Python 3.11 & 3.13; steps `ruff format --check`, `ruff check`, `pytest`.
 
