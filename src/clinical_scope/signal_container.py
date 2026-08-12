@@ -741,7 +741,7 @@ class Signal:
             x_axis_title="Frequency (Hz)",
             x_unit_name="Hz",
             x_axis_range=list(freq_range),
-            y_axis_title="Power (dB)",
+            y_axis_title="Power spectral density (dB)",
             y_unit_name="dB",
             y_axis_range=list(db_range) if db_range else None,
             show_legend=False,

@@ -89,9 +89,13 @@ def stft(
     Short-time Fourier transform via a sliding Hann-windowed FFT.
 
     Returns ``(frame_start_indices, freqs, power)``, ``power`` shaped
-    ``(n_frames, len(freqs))``. A frame containing any NaN sample (a masked
-    recording gap) yields an all-NaN power row rather than being dropped, so the
-    frame cadence — and the caller's derived time axis — stays regular.
+    ``(n_frames, len(freqs))`` as a one-sided **density** in ``unit²/Hz``. A frame
+    containing any NaN sample (a masked recording gap) yields an all-NaN power row
+    rather than being dropped, so the frame cadence — and the caller's derived time
+    axis — stays regular.
+
+    Windowing, normalisation and detrending follow ``scipy.signal.welch``'s defaults,
+    so a reader can reproduce these numbers with the reference implementation.
     """
     n_window = max(round(window_s / dt_seconds), 2)
     n_step = max(round(n_window * (1 - overlap)), 1)
@@ -106,13 +110,26 @@ def stft(
     frame_starts = np.arange(n_frames) * n_step
     power = np.empty((n_frames, len(freqs)), dtype=np.float64)
 
+    # Density normalisation 1/(fs·Σw²). Without it the magnitude tracks window length —
+    # a noise floor rising 3 dB per doubling — so two windows of the same signal could not
+    # be compared, and an absolute db_range would slide out from under the data.
+    density_scale = dt_seconds / np.sum(window**2)
+    # One-sided: fold the negative frequencies back in. DC has no mirror partner, nor does
+    # Nyquist when the window length is even.
+    onesided_gain = np.full(len(freqs), 2.0)
+    onesided_gain[0] = 1.0
+    if n_window % 2 == 0:
+        onesided_gain[-1] = 1.0
+
     for i, start in enumerate(frame_starts):
         segment = y[start : start + n_window]
         if np.isnan(segment).any():
             power[i, :] = np.nan
             continue
-        spectrum = np.fft.rfft(segment * window)
-        power[i, :] = np.abs(spectrum) ** 2
+        # Demean per window: a DC offset otherwise leaks through the window's sidelobes
+        # into the lowest bins, which is where clinical bands of interest sit.
+        spectrum = np.fft.rfft((segment - segment.mean()) * window)
+        power[i, :] = onesided_gain * density_scale * np.abs(spectrum) ** 2
 
     return frame_starts, freqs, power
 

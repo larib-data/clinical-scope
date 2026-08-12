@@ -264,8 +264,8 @@ DEFAULT_HOVERMODE = HoverMode.X_UNIFIED
 DEFAULT_HOVER_TIME_FORMAT = HoverTimeFormat.TIME_ONLY
 # Fixed rather than auto-scaled: colour range must stay comparable across patients for a
 # trained eye reading it like a bedside monitor.
-DEFAULT_SPECTROGRAM_DB_MIN = -10.0
-DEFAULT_SPECTROGRAM_DB_MAX = 30.0
+DEFAULT_SPECTROGRAM_DB_MIN = 0.0
+DEFAULT_SPECTROGRAM_DB_MAX = 40.0
 
 # Bounds for the size settings, so a typo can't produce an unrenderable figure.
 SUBPLOT_HEIGHT_MIN, SUBPLOT_HEIGHT_MAX = 100, 2000

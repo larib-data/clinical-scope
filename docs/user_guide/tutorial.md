@@ -680,7 +680,7 @@ source key in this file is what activates that source; removing it disables it e
         "Fp1 spectrogram": {
             "signal": "Fp1",
             "freq_range": [0.5, 30.0],
-            "db_range": [-10, 30]
+            "db_range": [0, 40]
         }
     },
     "numerics": {
@@ -757,7 +757,7 @@ The `spectrogram` block defines time-vs-frequency-vs-power plots — one entry p
         "Fp1 spectrogram": {
             "signal": "Fp1",
             "freq_range": [0.5, 30.0],
-            "db_range": [-10, 30]
+            "db_range": [0, 40]
         }
     }
 }
@@ -772,6 +772,8 @@ The `spectrogram` block defines time-vs-frequency-vs-power plots — one entry p
 | `overlap` | float | `0.5` | Advanced: override the fraction of overlap between consecutive analysis windows. Leave unset unless you know you need it. |
 
 A signal whose `period_resampling` decimates it (see [Per-Signal Fields Reference](#per-signal-fields-reference-signalssignal_name)) cannot be turned into a spectrogram — decimation has no anti-aliasing filter, so the result would show rhythms that are not really there. Remove `period_resampling` for that signal to enable its spectrogram; the log explains which signal and why when this happens.
+
+Power is shown as a spectral density in decibels, so the level a signal reads at does not change with `window_s` or with how fast the signal was sampled. One `db_range` therefore stays meaningful across channels recorded at different rates, and two window lengths of the same channel can be compared directly. Window shape, detrending and averaging follow the defaults of the standard Welch method, so the same numbers come out of any reference implementation.
 
 ### `psd` Block {#psd-block}
 
@@ -797,7 +799,7 @@ The `psd` block defines power-vs-frequency plots — frequency on the x-axis, po
 
 To compute a PSD over part of a recording rather than all of it, narrow the run with the **Time start** / **Time end** filters — a PSD always covers exactly the time range that was loaded.
 
-Each line takes the colour of its signal, so it matches that signal's time-series trace. The `period_resampling` restriction described for spectrograms above applies here too, and refusing one signal refuses the whole plot: a comparison missing one of its channels invites a wrong reading more than an absent plot does.
+Each line takes the colour of its signal, so it matches that signal's time-series trace. The `period_resampling` restriction described for spectrograms above applies here too, and refusing one signal refuses the whole plot: a comparison missing one of its channels invites a wrong reading more than an absent plot does. The power axis is the same spectral density described for spectrograms above, which is what lets two lines with different `window_s` values sit on one plot.
 
 **Writing a `signals` entry.** Most of the time a plain name is enough — it is resolved exactly like `grouped_fields` (see [Signal Reference Resolution](#signal-reference-resolution)). Write an object instead when you want to compare the *same* signal analyzed two different ways on the same plot — e.g. a short vs. a long analysis window, to see whether a longer window is smearing two close frequency peaks together:
 
@@ -1060,3 +1062,5 @@ These may or may not be tackled in the future, depending on the needs of the use
 - No timeshift inside a datasource, e.g. if 2 timeseries from `servo_u` are not aligned, this currently can't be solved in the app. (Files inside `other/` are the exception — each gets its own `time_shift`.)
 - `output_root` keys each patient by its folder name only, so two different Databases that share a patient-folder name (e.g. `patient_01`) under the **same** `output_root` overwrite each other. Use one `output_root` per Database.
 - EIT recordings spanning more than one calendar day are unsupported: the device's own files carry no date, so the day is inferred from the **day** option (or, if unset, from **Time start filter**) and applied to the whole recording.
+- Spectrograms and PSDs expose only `freq_range`, `db_range`, `window_s` and `overlap`. Everything else about the analysis — window shape, detrending, how windows are averaged, how recording gaps and irregular timestamps are handled — is fixed at the standard Welch defaults and cannot be changed from the config.
+- A spectrogram or PSD figure does not state the settings it was drawn with, nor whether anything happened to the data on the way (timestamps regularised, gaps skipped). Keep the `database_options` file alongside the figure if you need that record — for instance to describe the analysis in a publication.
