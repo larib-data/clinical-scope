@@ -5,7 +5,7 @@
             "priority": 1.0
         },
         "additional_informations": {
-            "timezone": "Europe/Paris"
+            "timezone": "UTC"
         },
         "signals": {
             "art": {
@@ -56,9 +56,6 @@
         ]
     },
     "other::syringe": {
-        "additional_informations": {
-            "timezone": "Europe/Paris"
-        },
         "trace_options": {
             "mode": "lines+markers"
         },
@@ -78,7 +75,7 @@
             "priority": 2.5
         },
         "additional_informations": {
-            "timezone": "Europe/Paris"
+            "timezone": "Asia/Karachi"
         },
         "signals": {
             "Global": {
@@ -149,6 +146,9 @@
         "numerics": {
             "period_resampling": 0.02,
             "priority": 1.0
+        },
+        "additional_informations": {
+            "timezone": "UTC"
         },
         "signals": {
             "Airway Press. (cmH2O)": {

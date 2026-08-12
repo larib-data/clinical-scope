@@ -72,7 +72,7 @@ For the full developer setup (tests, linting, adding a datasource), see [CONTRIB
 1. **Download** — get the latest release from the [Releases page](https://github.com/larib-data/clinical-scope/releases/latest) and unzip it
 2. **Run** — launch the `ClinicalScope` executable; your browser opens at `http://127.0.0.1:8050`
 3. **Load config** — click **Default visualization (all sources)** to use built-in defaults, or upload a `database_options.json` / `.xlsx` config file
-4. **Set data folder** — enter the path to your patient folder (or point to the bundled `demo_database/demo_patient/` to try it immediately)
+4. **Set data folder** — enter the path to your patient folder (or point to the bundled `demo_database/demo_patient/` to try it immediately; for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` so every source lines up)
 5. **Process** — click **Process visualization**; interactive plots appear in the browser
 6. **Annotate** — draw time events, windows, or point annotations, then click **Save**
 

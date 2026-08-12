@@ -324,8 +324,8 @@ class TestNaiveAwareBoundEquivalence:
     @pytest.mark.parametrize(
         "datetime_start,datetime_end,display_timezone",
         [
-            ("2004-09-15 06:12:40", "2004-09-15 06:12:50", "UTC"),
-            ("2004-09-15 08:12:40", "2004-09-15 08:12:50", "Europe/Paris"),
+            ("2004-09-15 08:12:40", "2004-09-15 08:12:50", "UTC"),
+            ("2004-09-15 10:12:40", "2004-09-15 10:12:50", "Europe/Paris"),
         ],
     )
     def test_aware_bound_matches_naive_plus_display_timezone(
