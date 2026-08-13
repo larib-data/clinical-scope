@@ -56,9 +56,10 @@ def _coerce(name: str, value: Any) -> Any:
     if schema is None:
         return value
 
-    if schema.API_TYPE == cst.ApiType.INT:
+    if schema.API_TYPE in (cst.ApiType.INT, cst.ApiType.FLOAT):
+        cast = int if schema.API_TYPE == cst.ApiType.INT else float
         try:
-            return max(schema.MIN, min(schema.MAX, int(value)))
+            return max(schema.MIN, min(schema.MAX, cast(value)))
         except (TypeError, ValueError):
             return schema.DEFAULT
 

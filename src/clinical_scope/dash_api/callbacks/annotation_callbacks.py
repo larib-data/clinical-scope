@@ -40,6 +40,7 @@ from clinical_scope.dash_api.styles import (
     BUTTON_MODAL_CLOSE,
 )
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
+from clinical_scope.signal_container import DisplayFallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -803,6 +804,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
     State({"type": "graph", "name": ALL}, "id"),
     State({"type": "graph-subplots", "name": ALL}, "data"),
     State("display-timezone-store", "data"),
+    State("user-options-store", "data"),
     prevent_initial_call=True,
 )
 def render_annotations(
@@ -811,6 +813,7 @@ def render_annotations(
     graph_ids: list,
     subplots_list: list,
     display_timezone: str | None,
+    user_options: dict[str, Any] | None,
 ) -> list:
     """Rebuild layout.shapes and layout.annotations for every visible graph using Patch()."""
     if not graph_ids:
@@ -825,6 +828,7 @@ def render_annotations(
     pending_x0 = mode.get("pending_x0")
     pending_plot = mode.get("pending_plot_name")
     point_mode_active = mode.get("active") and mode.get("type") == AnnotationType.POINT.value
+    display_fallbacks = DisplayFallbacks.from_user_options(user_options or {})
 
     subplot_map = {
         graph_id["name"]: (subplots_list[idx] or {}) for idx, graph_id in enumerate(graph_ids)
@@ -856,9 +860,13 @@ def render_annotations(
         # subplot-annotations store is still unpopulated, so leave them untouched instead.
         if all_annotations:
             patch.layout.annotations = all_annotations
-        # Same capability set PlotModel.to_figure reads, so the two stay in step.
+        # Same capability set PlotModel.to_figure reads, so the two stay in step. Point mode
+        # forces the nearest point; otherwise restore the user's own panel style, since this
+        # patch runs after to_figure and would otherwise silently discard it.
         if subplots_data.get("plot_type") in cst.PlotType.UNIFIED_HOVER:
-            patch.layout.hovermode = "closest" if point_mode_active else "x unified"
+            patch.layout.hovermode = (
+                cst.HoverMode.CLOSEST if point_mode_active else display_fallbacks.hovermode
+            )
         patches.append(patch)
 
     return patches

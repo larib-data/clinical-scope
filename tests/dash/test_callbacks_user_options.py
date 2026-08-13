@@ -45,6 +45,11 @@ class TestValueCoercionOnSave:
         assert self._saved(name, 99999) == 2000
         assert self._saved(name, 1) == 100
 
+    def test_float_clamped_to_bounds(self, user_options_home):
+        name = cst.UserOptions.SpectrogramDbMax.NAME
+        assert self._saved(name, 99999.0) == 100.0
+        assert self._saved(name, -99999.0) == -100.0
+
     def test_cleared_int_input_falls_back_to_default(self, user_options_home):
         assert self._saved(cst.UserOptions.LegendEntryWidth.NAME, None) == 220
 

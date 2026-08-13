@@ -3,6 +3,7 @@
 import pytest
 
 import clinical_scope.constants as cst
+from clinical_scope.dash_api.annotations.model import AnnotationType
 from clinical_scope.dash_api.callbacks import annotation_callbacks
 from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     default_mode,
@@ -31,26 +32,55 @@ class TestRenderAnnotationsHovermode:
     def test_time_series_gets_hovermode(self):
         graph_ids = [{"name": "time_series"}]
         subplots_list = [_subplots_data(cst.PlotType.TIME_SERIES)]
-        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC")
+        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 1
 
     def test_loop_gets_no_hovermode(self):
         graph_ids = [{"name": "loop"}]
         subplots_list = [_subplots_data(cst.PlotType.LOOP)]
-        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC")
+        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
     def test_spectrogram_gets_no_hovermode(self):
         graph_ids = [{"name": "spectrogram"}]
         subplots_list = [_subplots_data(cst.PlotType.SPECTROGRAM)]
-        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC")
+        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
     def test_psd_gets_no_hovermode(self):
         graph_ids = [{"name": "psd"}]
         subplots_list = [_subplots_data(cst.PlotType.PSD)]
-        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC")
+        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
+
+    def test_user_hovermode_survives_an_annotation_redraw(self):
+        """This patch runs after to_figure, so a hardcoded value would silently discard it."""
+        graph_ids = [{"name": "time_series"}]
+        subplots_list = [_subplots_data(cst.PlotType.TIME_SERIES)]
+        patches = render_annotations(
+            [],
+            default_mode(),
+            graph_ids,
+            subplots_list,
+            "UTC",
+            {cst.UserOptions.HoverModeOption.NAME: "closest"},
+        )
+        assert _hovermode_ops(patches[0])[0]["params"]["value"] == "closest"
+
+    def test_point_mode_overrides_the_user_hovermode(self):
+        """Placing a point needs the nearest trace, whatever the panel style says."""
+        graph_ids = [{"name": "time_series"}]
+        subplots_list = [_subplots_data(cst.PlotType.TIME_SERIES)]
+        mode = {**default_mode(), "active": True, "type": AnnotationType.POINT.value}
+        patches = render_annotations(
+            [],
+            mode,
+            graph_ids,
+            subplots_list,
+            "UTC",
+            {cst.UserOptions.HoverModeOption.NAME: "x unified"},
+        )
+        assert _hovermode_ops(patches[0])[0]["params"]["value"] == "closest"
 
 
 class TestGraphClickTimeAxisGuard:

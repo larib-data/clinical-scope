@@ -97,6 +97,44 @@ class TestFromUserOptions:
         assert too_big.subplot_height == 2000
         assert too_small.subplot_height == 100
 
+    def test_valid_db_range_is_kept(self):
+        fallbacks = DisplayFallbacks.from_user_options(
+            {
+                cst.UserOptions.SpectrogramDbMin.NAME: -20.0,
+                cst.UserOptions.SpectrogramDbMax.NAME: 60.0,
+            }
+        )
+        assert fallbacks.spectrogram_db_range == (-20.0, 60.0)
+
+    def test_inverted_db_range_falls_back_to_defaults(self):
+        """Each bound is in range on its own, yet the pair is inverted."""
+        fallbacks = DisplayFallbacks.from_user_options(
+            {
+                cst.UserOptions.SpectrogramDbMin.NAME: 100.0,
+                cst.UserOptions.SpectrogramDbMax.NAME: 40.0,
+            }
+        )
+        assert fallbacks.spectrogram_db_range == (0.0, 40.0)
+
+    def test_equal_db_bounds_fall_back_to_defaults(self):
+        fallbacks = DisplayFallbacks.from_user_options(
+            {
+                cst.UserOptions.SpectrogramDbMin.NAME: 20.0,
+                cst.UserOptions.SpectrogramDbMax.NAME: 20.0,
+            }
+        )
+        assert fallbacks.spectrogram_db_range == (0.0, 40.0)
+
+    def test_out_of_range_db_bounds_are_clamped_then_ordered(self):
+        """Clamping each bound on its own still leaves the pair inverted."""
+        fallbacks = DisplayFallbacks.from_user_options(
+            {
+                cst.UserOptions.SpectrogramDbMin.NAME: 99999.0,
+                cst.UserOptions.SpectrogramDbMax.NAME: -99999.0,
+            }
+        )
+        assert fallbacks.spectrogram_db_range == (0.0, 40.0)
+
     def test_unparseable_int_falls_back_to_default(self):
         fallbacks = DisplayFallbacks.from_user_options(
             {cst.UserOptions.DefaultSubplotHeight.NAME: "tall"}

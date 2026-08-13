@@ -131,6 +131,24 @@ class DisplayFallbacks:
                 )
             return clamped
 
+        def ordered_bounds(min_schema: Any, max_schema: Any) -> tuple[float, float]:
+            # Each bound is in range on its own yet the pair can still be inverted, which
+            # reaches Plotly as zmin > zmax and renders an unreadable scale.
+            low = bounded_number(min_schema, cast=float)
+            high = bounded_number(max_schema, cast=float)
+            if low >= high:
+                logger.warning(
+                    "user_options['%s'] = %s is not below '%s' = %s; using [%s, %s]",
+                    min_schema.NAME,
+                    low,
+                    max_schema.NAME,
+                    high,
+                    min_schema.DEFAULT,
+                    max_schema.DEFAULT,
+                )
+                return (min_schema.DEFAULT, max_schema.DEFAULT)
+            return (low, high)
+
         def one_of(field_schema: Any) -> Any:
             if field_schema.NAME not in options:
                 return field_schema.DEFAULT
@@ -158,10 +176,7 @@ class DisplayFallbacks:
             hovermode=one_of(schema.HoverModeOption),
             hover_time_format=one_of(schema.HoverTimeFormatOption),
             display_timezone=resolve_display_timezone(options.get(schema.DisplayTimezone.NAME)),
-            spectrogram_db_range=(
-                bounded_number(schema.SpectrogramDbMin, cast=float),
-                bounded_number(schema.SpectrogramDbMax, cast=float),
-            ),
+            spectrogram_db_range=ordered_bounds(schema.SpectrogramDbMin, schema.SpectrogramDbMax),
         )
 
     @property
