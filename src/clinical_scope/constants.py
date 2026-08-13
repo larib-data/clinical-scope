@@ -32,8 +32,8 @@ RETIRED_DATASOURCE_FOLDERS = {
     "syringe": ["syringe"],
 }
 
-# Safety pad added around parquet row-pushdown bounds (issue #57): bounds are deliberately
-# conservative-loose, since _filter_by_datetime remains the authoritative cut afterwards.
+# Safety pad added around parquet row-pushdown bounds: they are deliberately conservative-loose,
+# since _filter_by_datetime remains the authoritative cut afterwards.
 DATETIME_PUSHDOWN_BUFFER_SECONDS = 1.0
 
 DEFAULT_NAME_VISUALIZATION = "visualization.html"
@@ -88,7 +88,6 @@ class DatetimeColumnDetection:
 
 
 class ApiType:
-    # To know how type should be interpreted in the API
     FLOAT = "float"
     INT = "int"
     BOOL = "bool"
@@ -148,11 +147,8 @@ class PatientOptions:
         MANDATORY = False
         DESCRIPTION = "Re-use data if already loaded once"
 
-    # class DataSourceRelative:
-    # See local file 'src/clinical_scope/xxx/options.py'
-    # Field 'PatientOptionsDataSourceRelative'
-    # For each datasource possible additional informations
-    # pass
+    # Per-datasource patient options are not listed here: each source declares its own in
+    # its options.py, as PatientOptionsDataSourceRelative.
 
 
 class TraceDefaults:

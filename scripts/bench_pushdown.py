@@ -1,5 +1,5 @@
 """
-Parquet read-pruning benchmark harness (issue #57 row pushdown, #58 column pruning).
+Parquet read-pruning benchmark harness: datetime row pushdown and column pruning.
 
 Measures wall-time and process memory of an ``other.main`` run on large synthetic
 parquet fixtures. Each ``(shape, scenario)`` case is one run: the datetime-window
@@ -68,7 +68,7 @@ SCENARIO_NO_WINDOW = "no_window"  # regression sentinel: pushdown can only add o
 SCENARIO_LARGE_WINDOW = "large_window"  # testing if detection is efficient
 SCENARIO_TIGHT = "tight"  # ~5% two-sided window: where pruning should pay off most
 SCENARIO_OUTSIDE = "outside_range"  # window before all data: everything prunes away
-SCENARIO_PARTIAL_COLS = "partial_cols"  # no-window column-pruning case (#58)
+SCENARIO_PARTIAL_COLS = "partial_cols"  # no-window column-pruning case
 SCENARIOS = (
     SCENARIO_PARTIAL_COLS,
     SCENARIO_NO_WINDOW,
@@ -199,8 +199,8 @@ def _database_options_for_scenario(scenario: str, num_columns: int) -> dict:
     Only ``partial_cols`` configures a ``field_display`` — ~1/``_COLUMN_KEEP_FRACTION`` of the
     value columns, by bare name (``col_0 … col_{N-1}``, both shapes), mirroring a real signal
     config. The datetime axis is never listed; the reader re-adds it, so the time column always
-    survives. A pre-#58 baseline ignores this key and reads every column — which is exactly what
-    makes the before/after a valid A/B for column pruning.
+    survives. A baseline predating column pruning ignores this key and reads every column —
+    which is exactly what makes the before/after a valid A/B for column pruning.
     """
     if scenario != SCENARIO_PARTIAL_COLS:
         return {}

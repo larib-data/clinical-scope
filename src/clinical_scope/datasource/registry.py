@@ -393,7 +393,7 @@ def emit_zero_result_diagnostic(patient_folder: str | Path) -> None:
     Log a diagnostic for a zero-result CLI run of *patient_folder*.
 
     CLI-only, bakes in the deep scan (``deep=True``) so callers don't have to know that
-    detail. Not called for batch runs, to avoid flooding a large run -- see issue #53.
+    detail. Not called for batch runs: one diagnostic per patient would flood the log.
     """
     diagnostic = format_zero_result_diagnostic(scan_patient_folder(patient_folder, deep=True))
     logger.warning(diagnostic)

@@ -67,7 +67,6 @@ class FluxmedSignalsDataSource(DataSourceBase):
                 f"{name}({unit})" for name, unit in zip(column_names, column_units, strict=False)
             ]
 
-            # Extract numeric rows only
             numeric_lines = [
                 line for line in lines[data_start_index:] if re.match(r"^[0-9]+[.,][0-9]", line)
             ]

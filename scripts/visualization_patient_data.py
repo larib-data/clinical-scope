@@ -67,7 +67,6 @@ def args_parser(args):
     args_namespace = parser.parse_args(args)
     options = vars(args_namespace)
 
-    # setup logger
     library_dir = logger_config.get_logs_path()
     script_name = Path(__file__).stem
     logs_path = library_dir / "scripts" / f"{script_name}.log"

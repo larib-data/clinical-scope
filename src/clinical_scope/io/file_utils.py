@@ -1,9 +1,4 @@
-"""
-File I/O utilities for reading, writing, and discovering data files.
-
-This module provides functions for saving DataFrames, finding files in folders,
-and loading CSV files with datetime indices.
-"""
+"""File I/O utilities for reading, writing, and discovering data files."""
 
 import logging
 import re

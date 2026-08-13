@@ -307,7 +307,6 @@ def build_patient_options_ui(
     components = []
     schema_lookup = {}
 
-    # Global options
     components.append(html.H3("Global Patient Options", style=SECTION_HEADER_STYLE))
     _reload_patient_btn = html.Button(
         "Reload patient options",
@@ -359,7 +358,6 @@ def build_patient_options_ui(
     )
     schema_lookup = schema_lookup | schema
 
-    # Per-datasource options
     components.append(html.H3("Specific Options", style=SECTION_HEADER_STYLE))
 
     datasource_cards = []
@@ -1316,9 +1314,8 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             }
 
         subplot_rows = []
-        # Build mapping from yaxis reference to subplot name.
-        # Traces are added to the figure in group order, so we can iterate
-        # through plot_model.figure.data and assign each trace's yaxis to its group's subplot.
+        # Traces are added to the figure in group order, so walking plot_model.figure.data in
+        # step with the groups maps each trace's yaxis onto its group's subplot.
         yaxis_to_subplot: dict[str, dict] = {}
         trace_idx = 0
         for group_idx, group in enumerate(plot_model.groups):

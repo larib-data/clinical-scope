@@ -64,8 +64,8 @@ class DataSourceBase(ABC):
     # output folder instead of a parquet cache. Use for large files with trivial loading cost.
     CREATE_SOURCE_SYMLINK: bool = False
     # Whether a set datetime_start/datetime_end window may be pushed down as a parquet row
-    # filter at read time (issue #57). Opt out when the source can't express its own filtering
-    # as a min/max range (e.g. EIT's time-of-day filter_date=False).
+    # filter at read time. Opt out when the source can't express its own filtering as a
+    # min/max range (e.g. EIT's time-of-day filter_date=False).
     ALLOW_DATETIME_PUSHDOWN: bool = True
 
     # Optional source_options for Signal creation
@@ -124,7 +124,7 @@ class DataSourceBase(ABC):
                          needed
 
         Returns:
-            pd.DataFrame: Loaded data with datetime index
+            Loaded data, indexed by datetime.
 
         """
 
@@ -144,7 +144,7 @@ class DataSourceBase(ABC):
         index_tz: str | None,
     ) -> tuple[pd.Timestamp | None, pd.Timestamp | None] | None:
         """
-        Compute conservative-loose datetime bounds for parquet row-pushdown (issue #57).
+        Compute conservative-loose datetime bounds for parquet row-pushdown.
 
         Returns ``None`` when no window is set (nothing to push down). Otherwise
         returns ``(start, end)`` — either side may be ``None`` for a one-sided window —
@@ -167,8 +167,8 @@ class DataSourceBase(ABC):
         )
         shift_td = pd.Timedelta(seconds=time_shift)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
-        # A tz-naive bound is interpreted in the library default (if breaking something it will easy
-        # to spot, and only one time error).
+        # A tz-naive bound is interpreted in the library default: a wrong guess is one constant
+        # offset on every bound, which is easy to spot.
         display_timezone = cst.DISPLAY_TIMEZONE
 
         def _to_aware(raw_value: str | None) -> pd.Timestamp | None:

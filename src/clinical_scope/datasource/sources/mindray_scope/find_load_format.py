@@ -148,7 +148,6 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
                         }
                     )
 
-    # Convert to DataFrames
     df_waveform = pd.DataFrame(waveform_data)
     df_patient = pd.DataFrame([patient])
 

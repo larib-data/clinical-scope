@@ -1,10 +1,8 @@
 """
 Timezone and time conversion utilities for clinical data processing.
 
-This module provides functions for converting time representations,
-shifting timestamps, and filtering data by time ranges.
-
-Also includes display formatting helpers that were previously in datasource_base.py.
+Covers conversion between time representations, timestamp shifting, time-range filtering,
+and the display formatting helpers built on them.
 """
 
 import contextlib

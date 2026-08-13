@@ -1,8 +1,7 @@
 """
 Configuration file parsing utilities.
 
-This module provides functions for loading JSON and XLSX configuration files,
-including database options and patient options.
+Covers database options (``.json`` / ``.xlsx``) and patient options (``.json``).
 """
 
 import json

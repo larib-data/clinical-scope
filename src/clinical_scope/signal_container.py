@@ -243,7 +243,7 @@ class PlotOptions:
         if self.y_unit_name is None:
             self.y_unit_name = (
                 cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
-            )  # authorizing None here produce terrible results later
+            )  # a None unit produces terrible results downstream
         if self.plot_type is None:
             logger.warning("PlotOptions.plot_type should not be initialized to None")
         if self.plot_priority is None:
@@ -405,7 +405,6 @@ class Signal:
     kwargs: dict = field(default_factory=dict)
     # Read by to_plotly_trace, which __post_init__ calls — so it has to be a constructor field.
     display_fallbacks: DisplayFallbacks = field(default_factory=DisplayFallbacks)
-    # Dictionary to store time spent in each step
     timing: dict = field(default_factory=dict, init=False)
 
     @staticmethod
@@ -456,7 +455,6 @@ class Signal:
             plot_type=plot_type,
             plot_priority=plot_priority,
             display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
-            # Any other field
             **additional_plot_options,
         )
         # line_dash from database_options takes precedence over source_options
@@ -468,7 +466,6 @@ class Signal:
             marker_color=color,
             visible=visible,
             hover_template=hover_template,
-            # Any other field
             **additional_trace_options,
         )
 
@@ -786,7 +783,6 @@ class Signal:
         start = time.perf_counter()
         if self.trace is not None:
             logger.warning("Trace of %s will be overwritten", self.name)
-        # Convert timezone-naive numpy datetime to the desired timezone
         display_tz = self.trace_options.plot_options.display_timezone
         if self.data.timezone is not None:
             self.data.x, self.data.timezone = change_ndarray_timezone(
@@ -817,7 +813,6 @@ class Signal:
             return trace
 
         x = self.data.x
-        # Prepare line dict only if mode includes lines
         line_dict = (
             {
                 "color": self.trace_options.line_color,
@@ -827,7 +822,6 @@ class Signal:
             if "lines" in self.trace_options.mode
             else None
         )
-        # Prepare marker dict only if mode includes markers
         marker_dict = (
             {
                 "color": self.trace_options.marker_color,
