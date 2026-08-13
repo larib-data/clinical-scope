@@ -785,7 +785,7 @@ The `psd` block defines power-vs-frequency plots — frequency on the x-axis, po
         "EEG PSD": {
             "signals": ["chan 1", "chan 2", "chan 3"],
             "freq_range": [0.5, 30.0],
-            "db_range": [40, 90]
+            "db_range": [0, 40]
         }
     }
 }

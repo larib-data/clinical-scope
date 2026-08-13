@@ -56,6 +56,8 @@ CI runs both checks — make sure they pass before opening a PR.
 
 ## Adding a New Data Source
 
+**First check that it needs a module at all.** A datasource module is justified only by format-specific parsing — a vendor header to decode, an XML schema, a binary layout, a channel table. Plain CSV or parquet with a datetime column belongs in `other/`, where each file is configured on its own under an `other::<stem>` key carrying its own `time_shift`, timezone, grouping and trace style. The test: strip the configuration away and see whether any parsing is left. Full reasoning in [ADR-0008](docs/adr/0008-datasource-modules-need-format-specific-parsing.md).
+
 Use the `/new-datasource` skill from within Claude Code — it walks through every step
 (module skeleton, options, loader, registration, example data, tests, snapshots, docs).
 For background reading, see the

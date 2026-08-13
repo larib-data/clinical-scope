@@ -29,7 +29,7 @@ _Nothing yet._
 - **`user_options`, a third configuration tier.** Per-person app behaviour and display fallbacks, edited in the Settings modal and stored at `~/.clinical_scope/user_options.json`. It only ever supplies values `database_options` left unset — it never overrides them ([ADR-0005](docs/adr/0005-user-options-are-fallbacks.md)).
 - **Per-file configuration for `other/`.** Each file gets its own `other::<stem>` section carrying its own `time_shift`, timezone, grouping and trace style, so unrelated CSVs in one folder stop sharing a single configuration.
 - **Output redirection.** `save_path` / `save_folder` write results outside the patient folder, so a read-only input directory no longer blocks a run ([ADR-0003](docs/adr/0003-output-root-redirection.md)).
-- Per-file `trace_options` in an `other::<stem>` section (`mode`, `line_width`, `line_dash`, `opacity`), so one file can be drawn with markers while its neighbours stay plain lines.
+- Per-file `trace_options` in an `other::<stem>` section (`mode`, `line_width`, `line_dash`, `opacity`, `marker_symbol`, `marker_size`), so one file can be drawn with markers while its neighbours stay plain lines.
 - Files read from `other/` are now symlinked into `clinical_scope_output/`, extending the traceability guarantee previously limited to `philips_waves`.
 
 ### Changed
@@ -55,8 +55,8 @@ _Nothing yet._
 - Parquet datetime-column detection reads metadata instead of the column body.
 
 ### Documentation
-- Four new ADRs: output-root redirection (0003), datetime-column validation (0004), user-options-as-fallbacks (0005), and the no-clinical-analysis scope boundary (0006).
-- `CONTRIBUTING.md` now states what belongs in the library: ClinicalScope derives for display, it does not interpret.
+- Seven new ADRs: output-root redirection (0003), datetime-column validation (0004), user-options-as-fallbacks (0005), the no-clinical-analysis scope boundary (0006), read-time pruning as an optimization rather than a filter (0007), the format-specific-parsing criterion for datasource modules (0008), and `other::<stem>` as a configuration scope (0009).
+- `CONTRIBUTING.md` now states what belongs in the library — ClinicalScope derives for display, it does not interpret — and when a new datasource needs a module of its own rather than a slot in `other/`.
 
 ---
 
