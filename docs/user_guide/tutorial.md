@@ -18,17 +18,12 @@ header-includes:
 
 # Introduction
 
-Clinical Scope is an interactive dashboard for visualizing clinical physiological
-signals. It allows clinicians and researchers to explore, compare, and annotate time-series data
-from multiple medical devices in a single unified interface.
+Clinical Scope is an interactive dashboard for exploring, comparing, and annotating clinical physiological signals from multiple medical devices in a single interface.
 
 ## Key Features
 
-- **Multi-source visualization**: Display signals from multiple clinical data sources
-  simultaneously (FluxMed, Mindray, EIT, Servo-U, EDF recorders, plus a generic
-  "Other" source for any CSV/parquet — monitors, syringe pumps, anything tabular).
-- **Generic "Other" data source**: Drop any CSV or Parquet file with a datetime column
-  into an `other/` folder — signals are auto-discovered and can be configured per file.
+- **Multi-source visualization**: Display signals from FluxMed, Mindray, EIT, Servo-U and EDF recorders simultaneously.
+- **Generic "Other" data source**: Drop any CSV or Parquet file with a datetime column into an `other/` folder — monitor exports, syringe pumps, anything tabular. Signals are auto-discovered and configured per file.
 - **Interactive plots**: Zoom, pan, and explore data at any time scale with automatic resampling.
 - **Data inspection**: Preview available columns, point counts, and time ranges for every source
   before running the full visualization — exportable to CSV.
@@ -64,11 +59,9 @@ default web browser will automatically open at:
 http://127.0.0.1:8050
 ```
 
-If the browser does not open automatically, manually navigate to the address above.
-
 ![Application launch screen](images/App_launch.png){ width=100% }
 
-The app also comes with the userguide (this document) and template folder to help organizing patient data for the app. Once runned for the first time, a `logs` folder will also appear, helping to debug if needed.
+The bundle also ships this user guide and a template folder for organizing patient data. A `logs` folder appears after the first run, to help with debugging.
 
 ## Application Overview
 
@@ -117,16 +110,7 @@ Patient1/
   mindray_scope/
   edf/
   other/
-  clinical_scope_output/               ← auto-created,
-```
-
-A minimal setup:
-
-```
-Patient1/
-  other/
-    waves.parquet
-  clinical_scope_output/
+  clinical_scope_output/               ← auto-created
 ```
 
 An **"Other"-heavy** setup — drop any CSV/Parquet file with a datetime column into
@@ -153,13 +137,9 @@ Folder names are **flexible** — they just need to contain the required keyword
 
 A few sources are also **identified by file extension** when the folder is ambiguous or
 generic (e.g., `.asc` files inside a folder are enough to classify it as EIT, `.sta` for
-Servo-U, `.xml` for Mindray Scope). See the canonical table below for exact keywords
-and accepted extensions per source.
+Servo-U, `.xml` for Mindray Scope).
 
 ## Canonical Data Source Table
-
-The table below is the single source of truth for supported data sources and is what all
-folder-discovery / skill logic refers to.
 
 | Source | Module name | Folder keywords | Accepted extensions (ordered by preference) | Discovery mode | Typical signals |
 |---|---|---|---|---|---|
@@ -198,16 +178,13 @@ Per-source configuration options (`field_display`, `signals`, `grouped_fields`, 
 ## Generic "Other" Data Source
 
 `other` is the **generic escape hatch** for any CSV or Parquet file that has a datetime
-column but does not fit any of the specialised sources. It is the most natural entry point
-for users who already have well formatted data.
+column but does not fit any of the specialised sources — the most natural entry point if
+your data is already well formatted.
 
 **How it works:**
 
-- Drop any number of `.csv` or `.parquet` files into an `other/` subfolder.
-- Every file is discovered automatically — no separate folder or config key per file.
-- Each file produces an **independent entry** keyed by its stem (filename without extension):
-  a file named `waves.parquet` becomes `other::waves`, `numerics.csv` becomes
-  `other::numerics`, and so on.
+- Drop any number of `.csv` or `.parquet` files into an `other/` subfolder; every one is discovered automatically.
+- Each file produces an **independent entry** keyed by its stem (filename without extension): `waves.parquet` becomes `other::waves`.
 - Columns within a file are exposed as `<stem>::<column_name>` so names stay globally
   unique (important for cross-datasource groups and loops).
 
@@ -226,8 +203,7 @@ file — exactly like any other datasource:
     "additional_informations": { "timezone": "Europe/Paris" }
 },
 "other::numerics": {
-    "field_display": ["FC", "SpO2"],
-    "additional_informations": { "timezone": "UTC" }
+    "field_display": ["FC", "SpO2"]
 }
 ```
 
@@ -243,10 +219,7 @@ file — exactly like any other datasource:
 
 The plot is titled with its file's name in front — the example above appears as `eeg::Fp1` — so two files can each define a `PV` loop or an `Fp1` spectrogram without one replacing the other.
 
-**Per-file timezone.** Each `other::<stem>` block may declare its own
-`additional_informations.timezone` — useful when the CSV you dropped in comes from a
-device in a different timezone than your default. Without it, timestamps that carry no
-timezone of their own are read as UTC.
+**Per-file timezone.** Each `other::<stem>` block may declare its own `additional_informations.timezone`, for a file exported by a device in another zone. Without it, timestamps that carry no timezone of their own are read as UTC.
 
 **Per-file trace style.** A `trace_options` block changes how that file's traces are drawn.
 Sparse, step-like data (infusion rates, hand-entered values) reads much better with visible
@@ -268,10 +241,7 @@ In Excel, set `trace_mode`, `line_width`, `opacity` and `marker_symbol` on the s
 
 **Per-file processing options.** Every file you declare with an `other::<stem>` key also gets its own box in the *Specific Options* panel, sitting alongside the device boxes rather than nested under a shared "Other" one. Each box carries that file's own `time_shift` and *Group signals by source file*, so a curated two-column export and a ninety-column raw dump can be corrected and laid out independently. Files present in the folder but not declared in `database_options` fall back to the shared "Other (generic)" box. See [patient_options.json](#patient_optionsjson).
 
-**Inspection shows one entry per file.** When you click *Inspect data* for a patient with
-an `other/` folder, the modal lists one row per file (`other::waves`, `other::numerics`, …),
-each with its own date range and column list, so you can verify that every file was
-correctly discovered and parsed.
+**Inspection shows one entry per file**, so you can verify that every file was correctly discovered and parsed — see [Inspect Data](#inspect-data-teal-button).
 
 See `example/demo_database/database_options.json` in the source repository for a full reference
 configuration — its `other::waves`, `other::numerics` and `other::syringe` sections configure the
@@ -282,10 +252,7 @@ three files shipped in `demo_patient/other/`.
 # Loading Database Options
 
 Database options define **which data sources to enable** and **how signals should be displayed**
-(labels, units, colors, grouping).
-
-There are three ways to get a database options config into the app, presented here in the
-order you are most likely to use them.
+(labels, units, colors, grouping). There are three ways to get one into the app.
 
 ## Option 1: Upload a Custom Configuration File
 
@@ -297,19 +264,14 @@ accepted:
 - **`.xlsx` extension** — an Excel spreadsheet following the column layout documented in
   the same reference. The spreadsheet is converted to the equivalent JSON structure on load.
 
-This gives you full control over which sources are enabled and how each signal is displayed.
-
 When the upload succeeds the file is **cached locally** at
-`~/.clinical_scope/last_database_options.json` — this is what powers Option 2 below.
-Such a database option file should only contains signal metadata (labels, colors, units, field mappings) and no patient data or PHI, to ensure no sensitive information is cached and so leaves the original patient folder.
+`~/.clinical_scope/last_database_options.json` — this is what powers Option 2 below. A database options file holds only signal metadata (labels, colors, units, field mappings), never patient data or PHI, so nothing sensitive leaves the patient folder.
 
 ## Option 2: Reload Last Config (Daily Workflow)
 
 If a custom configuration was previously uploaded, a grey **"Reload last config"** button appears
 automatically on startup. Click it to instantly restore the last used configuration without
 browsing for files — ideal when you re-open the app every day with the same setup.
-
-This button is **hidden** when no cached configuration exists.
 
 ## Option 3: Default Visualization (Quick Start)
 
@@ -324,8 +286,7 @@ any new data sources added to the library without requiring a config update. Not
 
 # Configuring Patient Options
 
-After loading database options, the **Patient Options** form appears. It is divided into two
-parts: global options and per-source options.
+After loading database options, the **Patient Options** form appears, generated dynamically from them.
 
 ## Global Options
 
@@ -344,14 +305,11 @@ The time filters are typed and shown in the **Display timezone**, set once in [S
 
 ## Per-Source Options
 
-Below the global options, each enabled data source may have additional settings displayed in
-individual cards arranged in a two-column grid. Common per-source options include:
+Each data source present in the loaded database options gets its own card below the global options. Common per-source options:
 
 - **Time shift** (seconds): Adjust the time alignment of a source relative to others. Useful
   when devices were not perfectly synchronized.
 - **Day**: Specify the recording date for sources that require it (e.g., EIT data).
-
-Only data sources present in the loaded database options will show their configuration cards.
 
 ![Per-source options](images/SpecificPatientOptions.png){ width=100% }
 
@@ -359,7 +317,7 @@ Only data sources present in the loaded database options will show their configu
 
 # Settings
 
-The **⚙ Settings** button at the top right opens your personal settings. They belong to you rather than to a patient or a database: they stay the same whichever data you open, and they are saved automatically as soon as you change them, so they are still in place the next time you launch the application.
+The **⚙ Settings** button at the top right opens your personal settings. They belong to you rather than to a patient or a database: they stay the same whichever data you open, and are saved as soon as you change them, so they survive a restart.
 
 **Your settings never overwrite a database options file.** They fill the gaps: if the configuration sets a color for a signal, that color is used; if it says nothing, your palette applies. Changes take effect on the next **Process visualization**.
 
@@ -376,11 +334,11 @@ The **⚙ Settings** button at the top right opens your personal settings. They 
 | Setting | What it does |
 |---|---|
 | Display timezone | The timezone every plot and the Patient Options time filters are shown in (IANA name, e.g. `Europe/Paris`). Changing it does not move your data — the time filters are rewritten to keep pointing at the same instant, just written in the new timezone's local time. |
-| Height of each time-series subplot | Vertical size, in pixels, of every time-series subplot. |
+| Height of each time-series subplot | In pixels. |
 | Height of each loop subplot | Same, for loop plots — which stay square, so this also sets their width. |
 | Loop subplots per row | How many loops sit side by side, 1 to 3. |
 | Maximum width of one legend entry | Caps how much horizontal room the legend can take from the plot. Longer signal names are truncated. |
-| Palette for signals with no color in the config | Colors used for signals the database options leave unstyled. Both colorblind-safe palettes are readable under the common color-vision deficiencies. |
+| Palette for signals with no color in the config | Both colorblind-safe palettes are readable under the common color-vision deficiencies. |
 | Plot theme | Light or dark background. |
 | Hover: x-axis time format | Whether the hover panel shows the time only, or the full date and time. |
 | Hover: panel style | *Unified* lists every trace at the hovered time in one panel; *closest point only* shows just the nearest trace. Unified is comfortable for a few signals and crowded on a subplot with many. |
@@ -395,10 +353,6 @@ Once patient options are configured, two actions are available from the action r
 run the same data pipeline** — find → load → format — and share the same per-datasource
 progress bar. What differs is only the outcome: the orange button builds interactive plots,
 the teal button produces a structured summary of what was found.
-
-> **Recommended workflow**: start with **Inspect data** (teal button). It completes faster
-> because no plots are built, and it immediately surfaces loading errors, missing folders, or
-> unexpected column names.
 
 ## Process Visualization (orange button)
 
@@ -427,13 +381,7 @@ silently skipped.
 
 ## Inspect Data (teal button)
 
-The teal **"Inspect data"** button runs the same `find → load → format` pipeline but
-**stops before signal extraction and plot building**. It is the **recommended first step**
-when opening a new patient folder: no figures are built so it is significantly lighter,
-and it immediately exposes any loading errors, missing folders, or unexpected column names
-— letting you catch problems before running the heavier visualization.
-
-The same progress bar is shown during inspection, colored teal.
+The teal **"Inspect data"** button stops before signal extraction and plot building. It is the **recommended first step** when opening a new patient folder: no figures are built, so it is faster, and it immediately exposes loading errors, missing folders, or unexpected column names — before you run the heavier visualization. The same progress bar is shown, colored teal.
 
 When inspection completes, a **full-screen inspection modal** opens, with one section per
 datasource containing:
@@ -508,20 +456,12 @@ Each plot provides a toolbar (top-right corner) with the following tools:
 | **Reset Axes** | Return to the original view |
 | **Download as PNG** | Save the current plot view as an image |
 
-## Zooming and Panning
-
-- **Scroll wheel**: Zoom in/out on the x-axis.
-- **Click and drag**: Select a region to zoom into.
-- **Double-click**: Reset the axes to show all data.
+Two shortcuts need no toolbar: the **scroll wheel** zooms the x-axis, and a **double-click** resets the axes to show all data.
 
 ## Dynamic Resampling (FigureResampler)
 
 For high-frequency signals (e.g., waveforms sampled at hundreds of Hz), the application uses
-**Plotly-Resampler** to dynamically load detail as you zoom in. When viewing a long time range,
-the plot shows a downsampled overview. As you zoom into a shorter time window, the full-resolution
-data is loaded automatically.
-
-This keeps the interface responsive even with millions of data points.
+**Plotly-Resampler** to dynamically load detail as you zoom in. A long time range shows a downsampled overview; zooming into a shorter window loads the full-resolution data automatically. This keeps the interface responsive with millions of data points.
 
 ![Interactive plot navigation](images/InteractivePlot.png){ width=100% }
 
@@ -560,15 +500,11 @@ Loop and PSD plots take Point annotations only, because their x-axis is a signal
 ## Groups
 
 Annotations can be organised into named groups. Click **New Group**, enter a name, and all
-subsequent annotations will belong to that group until you switch or create another. Groups are
-a runtime concept — they are not persisted in `annotations.json`; instead each annotation stores
-its `group_id` and `group_name` inline.
+subsequent annotations will belong to that group until you switch or create another. A group is not saved as an entity of its own — each annotation carries its group's name, so an empty group does not survive a save.
 
 ## Persistence
 
-Click **Save** to write annotations to `annotations.json` in the patient data folder (next to the
-datasource sub-folders). Annotations are reloaded automatically when you re-process the same
-patient.
+`annotations.json` sits in the patient data folder, next to the datasource sub-folders. Annotations are reloaded automatically when you re-process the same patient.
 
 ## Python API
 
@@ -627,7 +563,7 @@ subfolder each time you click "Process visualization".
 | `<source_name>` | object | — | Per-source options block (e.g., `time_shift`, `day`) |
 | `other::<stem>` | object | — | Options for a single file inside `other/`, taking precedence over the shared `other` block. See [Generic "Other" Data Source](#generic-other-data-source). |
 
-> **`output_root` (read-only data folders).** Set this when the patient folder lives on a read-only mount and ClinicalScope cannot write its `clinical_scope_output/` cache, annotations, or saved configs in place. Output is rehomed to `<output_root>/<patient_folder_name>/clinical_scope_output/` — the same layout, one level deeper. Because `output_root` then mirrors a Database (one subfolder per patient), point readers at it: `load_database_annotations("<output_root>")` and batch `save_folder` reads work unchanged. Use **one `output_root` per Database** — two different Databases sharing a patient-folder name (e.g. `patient_01`) under the same root would collide.
+> **`output_root` (read-only data folders).** Set this when the patient folder lives on a read-only mount and ClinicalScope cannot write its cache, annotations, or saved configs in place. The layout you already know is reproduced one level deeper, so the root ends up holding one subfolder per patient and `load_database_annotations("<output_root>")` and batch `save_folder` reads work unchanged. Use **one `output_root` per set of patients** — two patient folders sharing a name (e.g. `patient_01`) under the same root would collide.
 
 ## database_options.json {#database_optionsjson}
 
@@ -703,7 +639,7 @@ source key in this file is what activates that source; removing it disables it e
 | `loop` | object | `{}` | PV-loop definitions: `{"loop_name": ["x_signal", "y_signal"], ...}`. |
 | `spectrogram` | object | `{}` | Spectrogram definitions (see [`spectrogram`](#spectrogram-block) below). |
 | `psd` | object | `{}` | Power spectral density definitions (see [`psd`](#psd-block) below). |
-| `numerics` | object | `{}` | Datasource-level defaults for numeric parameters (see [`numerics`](#numerics-block-datasource-level-defaults) below). |
+| `numerics` | object | `{}` | Datasource-level defaults applied to every signal (see [`numerics`](#numerics-block-datasource-level-defaults) below). |
 | `additional_informations` | object | `{}` | Device-level metadata, including timezone override (see [`additional_informations`](#additional_informations-block) below). |
 
 ### Per-Signal Fields Reference (`signals.<signal_name>`) {#per-signal-fields-reference-signalssignal_name}
@@ -723,9 +659,7 @@ source key in this file is what activates that source; removing it disables it e
 
 ### `numerics` Block (Datasource-Level Defaults)
 
-The `numerics` block sets **default values** shared by all numeric parameter signals in a
-datasource — without listing each signal individually. Any per-signal entry inside `signals`
-takes precedence; signals without an explicit entry inherit from here.
+The `numerics` block sets **default values** for every signal of a datasource without listing each one — despite the name, it does not select only the numeric ones. Any per-signal entry inside `signals` takes precedence.
 
 ```json
 "other::numerics": {
@@ -738,11 +672,8 @@ takes precedence; signals without an explicit entry inherit from here.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `period_resampling` | float | source default | Resampling period in seconds for all numeric parameters in this datasource. |
+| `period_resampling` | float | source default | Resampling period in seconds, applied to every signal in this datasource. |
 | `priority` | float | source default | Default plot priority for numerics (lower = higher on page). Overridden per signal by `signals.<name>.priority`. |
-
-This block functions as a datasource-wide default container for resampling and priority.
-It does not filter which signals are affected — it simply provides fallback values.
 
 > In the Excel format, these values are set via the **sentinel row** (`signal = *`).
 > See [database_options.xlsx](#database_optionsxlsx).
@@ -903,8 +834,7 @@ requires no knowledge of JSON and can be edited in any spreadsheet application. 
 is automatically converted to the equivalent [JSON structure](#database_optionsjson), so every
 option available in JSON is also available in the spreadsheet.
 
-The file must contain a sheet named **`signals`** and optionally sheets named **`loops`**,
-**`spectrograms`** and **`psds`**.
+The file must contain a sheet named **`signals`**, and may add **`loops`**, **`spectrograms`** and **`psds`**. An optional sheet that is absent or malformed is silently skipped.
 
 ### `signals` sheet
 
@@ -949,8 +879,7 @@ The **Scope** column below indicates where each field is meaningful:
 ### `loops` sheet (optional)
 
 One row per PV-loop definition — equivalent to the `loop` key in the
-[JSON per-source block](#per-source-block-structure) or in `global`. If the sheet is absent
-or malformed it is silently skipped.
+[JSON per-source block](#per-source-block-structure) or in `global`.
 
 | Column | Required | Description |
 |---|---|---|
@@ -962,8 +891,7 @@ or malformed it is silently skipped.
 ### `spectrograms` sheet (optional)
 
 One row per spectrogram definition — equivalent to the `spectrogram` key in the
-[JSON per-source block](#spectrogram-block). If the sheet is absent or malformed it is silently
-skipped.
+[JSON per-source block](#spectrogram-block).
 
 | Column | Required | Description |
 |---|---|---|
@@ -982,7 +910,7 @@ skipped.
 One row per signal — equivalent to the `psd` key in the [JSON per-source block](#psd-block). A
 signal can belong to zero, one, or several PSD plots, just like the `groups` column on the
 [`signals` sheet](#signals-sheet). Signals sharing a group are overlaid on the same plot, one line
-each. If the sheet is absent or malformed it is silently skipped.
+each.
 
 | Column | Required | Description |
 |---|---|---|
@@ -1023,8 +951,8 @@ Ensure no other application is using port 8050 (typically a previous app launch 
 
 If the visualization is empty or a data source shows no signals:
 
-- Start by inspecting the data (teal button) rather than visualizing it, which providem uch more informations on what the app could gather from the data.
-- Try with default visualization database options, to ensure it's not your options that hides the data from being visualized
+- Start by inspecting the data (teal button) rather than visualizing it — it reports much more about what the app could gather from the data.
+- Try the default visualization database options, to rule out your own options hiding the data.
 - Verify that the **data folder path** is correct and accessible.
 - Check that subfolders follow the **naming conventions** (see Section 3).
 - Ensure the subfolder contains files with one of the **accepted extensions** for that data
@@ -1057,10 +985,10 @@ If signals from different sources appear misaligned in time:
 
 ## Known limitations
 
-These may or may not be tackled in the future, depending on the needs of the users. Feel free to ask for one of the below or any other feature demand/bug report on the [GitHub issues page](https://github.com/larib-data/clinical-scope/issues).
+These may be tackled in the future, depending on what users need — ask for any of them on the [issues page](https://github.com/larib-data/clinical-scope/issues).
 
 - No timeshift inside a datasource, e.g. if 2 timeseries from `servo_u` are not aligned, this currently can't be solved in the app. (Files inside `other/` are the exception — each gets its own `time_shift`.)
-- `output_root` keys each patient by its folder name only, so two different Databases that share a patient-folder name (e.g. `patient_01`) under the **same** `output_root` overwrite each other. Use one `output_root` per Database.
+- `output_root` keys each patient by its folder name only, so two patient folders with the same name under one `output_root` overwrite each other — see [patient_options.json](#patient_optionsjson).
 - EIT recordings spanning more than one calendar day are unsupported: the device's own files carry no date, so the day is inferred from the **day** option (or, if unset, from **Time start filter**) and applied to the whole recording.
 - Spectrograms and PSDs expose only `freq_range`, `db_range`, `window_s` and `overlap`. Everything else about the analysis — window shape, detrending, how windows are averaged, how recording gaps and irregular timestamps are handled — is fixed at the standard Welch defaults and cannot be changed from the config.
 - A spectrogram or PSD figure does not state the settings it was drawn with, nor whether anything happened to the data on the way (timestamps regularised, gaps skipped). Keep the `database_options` file alongside the figure if you need that record — for instance to describe the analysis in a publication.

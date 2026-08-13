@@ -69,37 +69,31 @@ For the full developer setup (tests, linting, adding a datasource), see [CONTRIB
 
 ## Quickstart
 
-1. **Download** — get the latest release from the [Releases page](https://github.com/larib-data/clinical-scope/releases/latest) and unzip it
-2. **Run** — launch the `ClinicalScope` executable; your browser opens at `http://127.0.0.1:8050`
-3. **Load config** — click **Default visualization (all sources)** to use built-in defaults, or upload a `database_options.json` / `.xlsx` config file
-4. **Set data folder** — enter the path to your patient folder (or point to the bundled `demo_database/demo_patient/` to try it immediately; for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` so every source lines up)
-5. **Process** — click **Process visualization**; interactive plots appear in the browser
-6. **Annotate** — draw time events, windows, or point annotations, then click **Save**
+1. **Install and run** — see [Installation](#installation) above; your browser opens at `http://127.0.0.1:8050`
+2. **Load config** — click **Default visualization (all sources)** to use built-in defaults, or upload a `database_options.json` / `.xlsx` config file
+3. **Set data folder** — enter the path to your patient folder (or point to the bundled `demo_database/demo_patient/` to try it immediately; for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` so every source lines up)
+4. **Process** — click **Process visualization**; interactive plots appear in the browser
+5. **Annotate** — draw time events, windows, or point annotations, then click **Save**
 
 ## Documentation
 
-The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for everything beyond the Quickstart.
-
-| Resource | Covers |
-|---|---|
-| [User guide](docs/user_guide/tutorial.md) | Data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, Python API |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, running tests, linting, adding a new datasource |
+The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for everything beyond the Quickstart: data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, and the Python API.
 
 ## Supported Data Sources
 
-| Data Source | Device / Format | Folder Keywords | File Types | Typical Signals |
-|---|---|---|---|---|
-| EIT | PulmoVista `.asc` | `eit` | `.asc` | Global/local impedance, impedance percentages |
-| FluxMed Signals | FluxMed waveforms | `fluxmed`, `signals` | `.parquet`, `.txt`, `.csv` | Respiratory waveforms |
-| FluxMed Parameters | FluxMed parameters | `fluxmed`, `parameters` | `.parquet`, `.txt`, `.csv` | Respiratory parameters |
-| Servo-U | Servo-U ventilator `.sta` | `servo` | `.sta` | Ventilator waveforms and settings |
-| Mindray Scope | Mindray monitor | `mindray` | `.xml`, `.csv` | ECG, SpO₂, pressure waveforms |
-| Mindray Respi Waves | Mindray respiratory | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | High-frequency respiratory waveforms |
-| Mindray Respi Numerics | Mindray respiratory | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Vt, RR, PEEP, and more |
-| EDF / EDF+ | Amplifiers and polygraphic recorders | `edf` | `.edf` | Any EDF-exported signal, typically EEG |
-| Other (Generic) | Any CSV / Parquet | `other` | `.parquet`, `.csv` | Any time-series with a datetime column — one independent entry per file |
+| Data Source | Device / Format | File Types | Typical Signals |
+|---|---|---|---|
+| EIT | PulmoVista `.asc` | `.asc` | Global/local impedance, impedance percentages |
+| FluxMed Signals | FluxMed waveforms | `.parquet`, `.txt`, `.csv` | Respiratory waveforms |
+| FluxMed Parameters | FluxMed parameters | `.parquet`, `.txt`, `.csv` | Respiratory parameters |
+| Servo-U | Servo-U ventilator `.sta` | `.sta` | Ventilator waveforms and settings |
+| Mindray Scope | Mindray monitor | `.xml`, `.csv` | ECG, SpO₂, pressure waveforms |
+| Mindray Respi Waves | Mindray respiratory | `.parquet`, `.csv` | High-frequency respiratory waveforms |
+| Mindray Respi Numerics | Mindray respiratory | `.parquet`, `.csv` | Vt, RR, PEEP, and more |
+| EDF / EDF+ | Amplifiers and polygraphic recorders | `.edf` | Any EDF-exported signal, typically EEG |
+| Other (Generic) | Any CSV / Parquet | `.parquet`, `.csv` | Any time-series with a datetime column — one independent entry per file |
 
-Each patient folder should contain one subfolder per data source. See the [user guide](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* for folder naming rules and configuration details.
+Each patient folder should contain one subfolder per data source. The [user guide](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* gives the folder keyword for each source, the naming rules, and the configuration details.
 
 ## Standalone Data Processing
 
@@ -171,7 +165,7 @@ Omit `--database-options` to use all available datasources with their defaults. 
 
 ## Contributing
 
-Contributions are welcome — bug reports, new data sources, and documentation improvements. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, running tests, linting, and the PR process.
+Contributions are welcome — bug reports, new data sources, and documentation improvements. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Citation
 

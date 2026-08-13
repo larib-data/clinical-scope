@@ -49,18 +49,18 @@ src/clinical_scope/
 
 Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical list plus folder/file-naming rules live in the [tutorial](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources*. A patient folder holds one subfolder per source.
 
-**A module is justified only by format-specific parsing.** Plain CSV/parquet with a datetime column belongs in `other/`, configured per file under an `other::<stem>` key — that scope carries its own `time_shift`, timezone, grouping and trace style, so a dedicated module would add machinery and no capability.
+**A module is justified only by format-specific parsing** ([ADR-0008](docs/adr/0008-datasource-modules-need-format-specific-parsing.md)). Plain CSV/parquet with a datetime column belongs in `other/`, configured per file under an `other::<stem>` key — that scope carries its own `time_shift`, timezone, grouping and trace style, so a module would add machinery and no capability.
 
 **Adding one**: use the `/new-datasource` skill — it is authoritative for the module layout, `options.py` constants, the loader, registration (Other stays last), example data, tests, snapshots, and the tutorial table.
 
 ## Config files
 
-Field-by-field reference is in the [tutorial](docs/user_guide/tutorial.md). The two-file split:
+Field-by-field reference is in the [tutorial](docs/user_guide/tutorial.md). The three tiers:
 - **`database_options`** (`.json` or `.xlsx`) — per-source signal config: `field_display`, `signals` (labels/units/colors), `grouped_fields`, `loop`; plus `global.grouped_fields`. Uploading one in the UI caches it to `~/.clinical_scope/last_database_options.json` (signal metadata only, no PHI).
 - **`patient_options`** (`.json`) — per-run settings: `data_folder`, `datetime_start`/`datetime_end`, `quick_load`, and per-source options (`time_shift`, `day`, …).
 - **`user_options`** (`~/.clinical_scope/user_options.json`) — the third tier: per-person app behaviour + display fallbacks, edited only in the Settings modal. **Never overrides `database_options`** ([ADR-0005](docs/adr/0005-user-options-are-fallbacks.md)). A new display setting = a `UserOptions` schema class (with `SECTION`) + a field on `DisplayFallbacks` (`signal_container.py`) + one read site; the carrier is threaded from `wrapper.main` down to both `Signal` and `PlotModel` construction, so no signature grows.
 
-Reference configs: `example/demo_database/database_options.{xlsx,json}` — the canonical example, in both formats, runnable against `demo_patient/` and covering **every** datasource it ships (enforced by `tests/unit/test_example_assets.py`). **The `.json` is generated from the `.xlsx`**; edit the spreadsheet and regenerate (`tests/unit/test_example_assets.py` holds the parity check and the one-liner). `example/option_files/patient_options_example.json` covers the other tier, for library users who never launch the app and so never get an app-written one.
+Reference configs: `example/demo_database/database_options.{xlsx,json}` — the canonical example, in both formats, runnable against `demo_patient/` and covering **every** datasource it ships. **The `.json` is generated from the `.xlsx`**; edit the spreadsheet and regenerate. `tests/unit/test_example_assets.py` enforces both the coverage and the parity, and prints the regeneration one-liner. `example/option_files/patient_options_example.json` covers the other tier, for library users who never launch the app and so never get an app-written one.
 
 ## UI (Dash)
 

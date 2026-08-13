@@ -25,7 +25,7 @@ Three options were considered:
 
 ## Decision
 
-2 **User options are fallbacks. Where database options speak, database options win.** A user option applies only where the Database configuration is silent about that property.
+2 **User options are fallbacks. Where database options speak, database options win.**
 
 Consequently `default_subplot_height` is changed to a fallback: a `PlotGroup` with an explicit `plot_height` from its Database configuration keeps it.
 

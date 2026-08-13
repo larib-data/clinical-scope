@@ -1,16 +1,16 @@
 # Contributing to Clinical Scope
 
-Thank you for your interest in contributing! This guide covers everything you need to go from zero to a merged PR.
+Thank you for your interest in contributing! This guide takes you from zero to a merged PR.
 
 ## Scope: what belongs in this library
 
 **ClinicalScope derives for display; it does not interpret.**
 
-A computation belongs here only when it is a deterministic function of signals already in the pipeline, *and* its output is something to look at rather than a conclusion to act on. The test to apply: **would this output need clinical validation before someone could trust it?** If yes, it belongs in your own analysis code, not in ClinicalScope. Even though ClinicalScope can help you through formating the data.
+A computation belongs here only when it is a deterministic function of signals already in the pipeline, *and* its output is something to look at rather than a conclusion to act on. The test to apply: **would this output need clinical validation before someone could trust it?** If yes, it belongs in your own analysis code — ClinicalScope can still format the data for it.
 
 Inside the line: loops, unit conversion, resampling, spectrograms — re-renderings of the same samples, from which a reader draws their own conclusions. Outside it: seizure or burst-suppression detection, arrhythmia classification, automated artefact rejection, depth-of-sedation or severity indices, and any alerting.
 
-Note that "how much maths" is not the criterion — an FFT is no more suspect than a subtraction. What matters is whether the output is a picture or a verdict.
+"How much maths" is not the criterion — an FFT is no more suspect than a subtraction; what matters is whether the output is a picture or a verdict.
 
 Full reasoning, including the alternatives considered, in [ADR-0006](docs/adr/0006-no-clinical-analysis.md).
 
@@ -56,12 +56,10 @@ CI runs both checks — make sure they pass before opening a PR.
 
 ## Adding a New Data Source
 
-**First check that it needs a module at all.** A datasource module is justified only by format-specific parsing — a vendor header to decode, an XML schema, a binary layout, a channel table. Plain CSV or parquet with a datetime column belongs in `other/`, where each file is configured on its own under an `other::<stem>` key carrying its own `time_shift`, timezone, grouping and trace style. The test: strip the configuration away and see whether any parsing is left. Full reasoning in [ADR-0008](docs/adr/0008-datasource-modules-need-format-specific-parsing.md).
+**First check that it needs a module at all.** The test: strip the configuration away — is any parsing left? A vendor header to decode, an XML schema, a binary layout, a channel table justifies a module. Plain CSV or parquet with a datetime column belongs in `other/`, where each file is configured under its own `other::<stem>` key carrying its own `time_shift`, timezone, grouping and trace style. Full reasoning in [ADR-0008](docs/adr/0008-datasource-modules-need-format-specific-parsing.md).
 
-Use the `/new-datasource` skill from within Claude Code — it walks through every step
-(module skeleton, options, loader, registration, example data, tests, snapshots, docs).
-For background reading, see the
-[tutorial](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources*.
+Then use the `/new-datasource` skill from within Claude Code — it walks through every step
+(module skeleton, options, loader, registration, example data, tests, snapshots, docs). The existing sources are catalogued in the [tutorial](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources*.
 
 ## PR Process
 

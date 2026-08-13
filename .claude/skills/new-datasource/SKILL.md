@@ -97,9 +97,10 @@ Beyond the three new files in `src/clinical_scope/datasource/sources/<name>/`, e
 - **`tests/datasource/conftest.py`** — add a session-scoped `<datasource_name>_cls` fixture.
 - **`docs/user_guide/tutorial.md`** → *Patient Data & Supported Data Sources* canonical table — add a row.
 - **`CLAUDE.md`** → *Supported Data Sources* bullet list — add a bullet, list order aligned with `AVAILABLE`.
-- **`example/template_patient_data_structure/<EXPECTED_FOLDER_NAME>/.gitkeep`** — the empty scaffold that ships in the release bundle. `tests/unit/test_example_assets.py` fails until it exists.
+- **`example/template_patient_data_structure/<EXPECTED_FOLDER_NAME>/.gitkeep`** — the empty scaffold that ships in the release bundle.
+- **`example/demo_database/database_options.xlsx`** — add a section for the new source (a `*` sentinel row plus a curated handful of signals), then **regenerate `database_options.json` from it**; the demo must plot every source it ships.
 
-- **`example/demo_database/database_options.xlsx`** — add a section for the new source (a `*` sentinel row plus a curated handful of signals), then **regenerate `database_options.json` from it**. The demo must plot every source it ships: `tests/unit/test_example_assets.py` fails otherwise, and its parity test prints the regeneration one-liner.
+`tests/unit/test_example_assets.py` guards both of those last two and prints the regeneration one-liner.
 
 Conditional — update only if the file currently enumerates all datasources:
 - `README.md`.

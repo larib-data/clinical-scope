@@ -33,11 +33,11 @@ A computation belongs in this library only when both hold:
 - it is a **deterministic function** of Signals already in the pipeline, and
 - its output is **something to look at**, not a conclusion to act on.
 
-The operational test for a contributor is: **would this output need clinical validation before someone could trust it?** If yes, it belongs in the user's own analysis code, not here. A spectrogram passes — it is a re-rendering of the same samples in a different basis, and a reader draws their own conclusions from it. A seizure detector, an arrhythmia classifier, an artefact-rejection heuristic, or any severity or depth-of-sedation score fails: each embeds a clinical judgement that would need validating, and each would make ClinicalScope a device rather than a viewer.
+The operational test for a contributor is: **would this output need clinical validation before someone could trust it?** If yes, it belongs in the user's own analysis code, not here. A spectrogram passes — it is a re-rendering of the same samples in a different basis, and a reader draws their own conclusions from it. A seizure detector or a depth-of-sedation score fails: each embeds a clinical judgement that would need validating, and each would make ClinicalScope a device rather than a viewer.
 
 Two properties made this the choice:
 
-- **It matches what already ships.** Options 1 would have required deleting or grandfathering existing features. The Loop, unit conversion, and resampling all pass the test as stated, so the rule describes the codebase rather than contradicting it.
+- **It matches what already ships.** Option 1 would have required deleting or grandfathering existing features. The Loop, unit conversion, and resampling all pass the test as stated, so the rule describes the codebase rather than contradicting it.
 - **It is decidable without a maintainer.** A contributor can apply the validation test to a new request unaided. Option 3 sounds accommodating but pushes every decision back to a conversation, which is how #71 got two different answers.
 
 The rule deliberately says nothing about *how much* computation is acceptable. An FFT is not more suspect than a subtraction; what matters is whether the output is a picture or a verdict.

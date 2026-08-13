@@ -4,38 +4,13 @@ Tests across unit, datasource, integration, and Dash callback layers.
 
 ## Common Commands
 
-```bash
-# Activate venv first (see CLAUDE.md for the venv path)
-source <venv_path>/bin/activate
-```
+Activate the venv (path in CLAUDE.md) and run from the repository root.
 
 ```bash
-# Set working directory
-cd ~/Codes/ClinicalScope
-```
-
-### Run everything
-```bash
-pytest
-```
-
-### Fast run (skip slow & snapshot tests)
-```bash
-pytest -m "not slow and not snapshot"
-```
-
-### Datasource tests only
-```bash
-pytest tests/datasource/
-```
-
-### Unit tests only
-```bash
-pytest tests/unit/
-```
-
-### With coverage
-```bash
+pytest                                              # everything
+pytest -m "not slow and not snapshot"               # fast run
+pytest tests/datasource/                            # datasource tests only
+pytest tests/unit/                                  # unit tests only
 pytest --cov=clinical_scope --cov-report=term-missing
 ```
 
@@ -72,5 +47,3 @@ pytest tests/datasource/ --update-snapshots -m snapshot
 |--------|---------|
 | `slow` | Long-running tests (full pipeline, batch extract) |
 | `snapshot` | Golden-file content regression tests |
-
-Deselect example: `pytest -m "not slow and not snapshot"`
