@@ -86,7 +86,7 @@ Critical contracts:
 - `_load` returns a `pd.DataFrame` with a sorted, deduplicated `DatetimeIndex` and numeric signal columns.
 - `_load` signature: `(cls, file_path: Path, path_output, **kwargs)` when `MULTI_FILE=False`, `(cls, file_path_list: list[Path], path_output, **kwargs)` when `MULTI_FILE=True`. The base class dispatches based on the option.
 - Empty data: return `pd.DataFrame(index=pd.DatetimeIndex([], tz=<tz>))` — never plain `pd.DataFrame()`.
-- A module-level `main(patient_options, database_options_specific)` is required — the registry calls it, not the class method.
+- No module-level `main()` is needed. The `@add_main_module(<module>)` decorator in `registry.py` finds the `DataSourceBase` subclass inside your module and binds its inherited `main` classmethod — your module only has to define the class.
 - Decorate `_load` with `@time_it` from `clinical_scope.datasource.timing`.
 
 ## Step 5 — Wire it in (other files to touch)
@@ -151,7 +151,6 @@ Once everything is in place, mention the primary for transparency:
 - **Missing from `AVAILABLE`** — datasource is invisible even though it imports cleanly.
 - **`DATASOURCE_NAME` ≠ registry `NAME`** — the decorator raises `ValueError` at import time.
 - **`Other` not last in `AVAILABLE`** — it's the catch-all and must remain final.
-- **No module-level `main()`** — the registry calls `module.main`, not the class method.
 - **Empty DataFrame without a `DatetimeIndex`** — always `pd.DataFrame(index=pd.DatetimeIndex([], tz=...))`.
 - **Oversized example data** — keep files ~500 rows; full datasets slow tests and bloat the repo.
 
