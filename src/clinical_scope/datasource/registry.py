@@ -139,7 +139,7 @@ class DataSource:
     class Icca:
         NAME = "icca"
         DESCRIPTION = "ICCA - anesthesia"
-        MAIN_MODULE: ClassVar[Callable[[dict, dict | None], list[Signal]]]
+        MAIN_MODULE: ClassVar[MainModule]
         OPTIONS: object
 
     @add_main_module(_other)
