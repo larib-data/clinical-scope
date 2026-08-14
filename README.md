@@ -115,7 +115,7 @@ df = extract_datasource(
     Path("/data/Patient01/servo_u"),
     database_options_specific=db_options.get("servo_u"),
     patient_options={"datetime_start": "2024-01-15 08:00:00"},
-    save_path="/output/servo_u.parquet",   # optional
+    save_path="/output/servo_u.parquet",  # optional
 )
 
 # 2. All datasources for one patient
@@ -123,16 +123,16 @@ results = extract_patient(
     Path("/data/Patient01"),
     db_options,
     patient_options={"datetime_start": "2024-01-15 08:00:00"},
-    save_folder="/output/Patient01",             # optional
+    save_folder="/output/Patient01",  # optional
 )
 # results = {"servo_u": DataFrame | None, "eit": DataFrame | None, ...}
 # Note: the generic "other" source is visualization-only — extraction returns None for it.
 
 # 3. Multiple patients — pass a root directory or an explicit list
 batch = batch_extract(
-    Path("/data"),                               # root whose subdirs are patients
+    Path("/data"),  # root whose subdirs are patients
     db_options,
-    save_folder="/output",                       # optional; each patient gets a subfolder
+    save_folder="/output",  # optional; each patient gets a subfolder
 )
 # batch = {"Patient01": {"servo_u": DataFrame, ...}, "Patient02": {...}, ...}
 
