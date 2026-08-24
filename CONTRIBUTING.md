@@ -48,11 +48,15 @@ See [`tests/README.md`](tests/README.md) for the full command reference.
 This project uses [Ruff](https://docs.astral.sh/ruff/) (line length 100, double quotes):
 
 ```bash
-ruff check src/     # lint
-ruff format src/    # format
+ruff check .     # lint
+ruff format .    # format
 ```
 
-CI runs both checks — make sure they pass before opening a PR.
+CI runs both checks — make sure they pass before opening a PR. (`ruff.toml` excludes `tests/`, so `.` means `src/` and `scripts/`.)
+
+Ruff is capped to the 0.16.x line by the dev extra — run it from the project venv, since a ruff outside that range disagrees with CI. Re-sync a stale one with `pip install -U -e .[dev]`.
+
+**Upgrading ruff** gets its own PR, one minor per commit: triage each new rule, adopting it or adding it to `ignore` with a reason.
 
 ## Adding a New Data Source
 
@@ -67,7 +71,7 @@ Then use the `/new-datasource` skill from within Claude Code — it walks throug
 
 **Before opening a PR:**
 - All tests pass (`pytest`)
-- Linting is clean (`ruff check src/` and `ruff format --check src/`)
+- Linting is clean (`ruff check .` and `ruff format --check .`)
 - New datasources include example data and snapshot tests
 
 **PR description should include:**

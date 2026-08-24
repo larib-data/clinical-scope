@@ -63,11 +63,6 @@ unfixable = []
     "ANN001",
     "ANN201",
     "S101", # Accept assert
-    "PT011", # pytest raise too broad, maybe should be removed
-]
-"example/*" = [
-    "ANN001",
-    "ANN201",
 ]
 "scripts/*" = [
     "ANN001",
@@ -76,11 +71,6 @@ unfixable = []
 ]
 "src/clinical_scope/build_info/*" = [
     "T201", # build CLI prints progress to the console
-]
-
-"API/app.ipynb" = [
-    "PLW0602",
-    "PLW0603",
 ]
 
 [format]
