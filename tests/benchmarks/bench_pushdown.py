@@ -7,10 +7,10 @@ scenarios exercise row pushdown, and the ``partial_cols`` scenario exercises col
 (no window, ~1/4 of the columns configured). Validate a change before vs. after by a manual
 ``git stash`` A/B:
 
-    python scripts/bench_pushdown.py --size-gb 2 --out before.json   # git-stash state (HEAD)
+    python tests/benchmarks/bench_pushdown.py --size-gb 2 --out before.json   # git-stash state (HEAD)
     git stash pop                                                    # bring pruning back
-    python scripts/bench_pushdown.py --size-gb 2 --out after.json
-    python scripts/bench_pushdown.py --diff before.json after.json
+    python tests/benchmarks/bench_pushdown.py --size-gb 2 --out after.json
+    python tests/benchmarks/bench_pushdown.py --diff before.json after.json
 
 The A/B — not a cold cache — is what makes the numbers trustworthy. Both runs execute the
 identical script and regenerate identical fixtures, so every ``(shape, scenario)`` cell sits
