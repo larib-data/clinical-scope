@@ -548,7 +548,7 @@ _INITIAL_INSPECT_PRUNING = bool(
 )
 
 _user_options_form, _ = ui_components.build_ui_and_schema_registry(
-    cst.UserOptions, "user_options", id_type="user-option", label_width="420px"
+    cst.UserOptions, cst.UserOptions.PREFIX, id_type="user-option", label_width="420px"
 )
 
 _settings_modal = html.Div(

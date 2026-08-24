@@ -142,7 +142,7 @@ class TestUserOptionsReachTheFigures:
         ts_models = [model for model in models if model.plot_type == "time_series"]
         if not ts_models:
             pytest.skip("No time_series models produced")
-        assert ts_models[0].computed_height == cst.DEFAULT_SUBPLOT_HEIGHT * len(ts_models[0].groups)
+        assert ts_models[0].computed_height == 300 * len(ts_models[0].groups)
 
 
 class TestMainGlobalLoops:

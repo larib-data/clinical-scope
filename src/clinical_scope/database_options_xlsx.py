@@ -241,10 +241,10 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 numerics = {}
                 period_resampling = _to_float(row.get("period_resampling", ""))
                 if period_resampling is not None:
-                    numerics["period_resampling"] = period_resampling
+                    numerics[cst.DatabaseOptions.Numerics.PERIOD_RESAMPLING] = period_resampling
                 priority = _to_float(row.get("priority", ""))
                 if priority is not None:
-                    numerics["priority"] = priority
+                    numerics[cst.DatabaseOptions.Numerics.PRIORITY] = priority
                 if numerics:
                     result[ds].setdefault(cst.DatabaseOptions.NUMERICS, {}).update(numerics)
 
@@ -278,48 +278,49 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             # ----------------------------------------------------------
             # Per-signal metadata → the "signals" config section
             # ----------------------------------------------------------
+            signal_config = cst.DatabaseOptions.SignalConfig
             signal_options = {}
 
             label = str(row.get("label", "")).strip()
             if label and label != signal:
-                signal_options["label"] = label
+                signal_options[signal_config.LABEL] = label
 
             unit = str(row.get("unit", "")).strip()
             if unit:
-                signal_options["unit"] = unit
+                signal_options[signal_config.UNIT] = unit
 
             unit_conversion = _to_float(row.get("unit_conversion", ""))
             if unit_conversion is not None:
-                signal_options["unit_conversion"] = unit_conversion
+                signal_options[signal_config.UNIT_CONVERSION] = unit_conversion
 
             range_min = _to_float(row.get("range_min", ""))
             range_max = _to_float(row.get("range_max", ""))
             if range_min is not None or range_max is not None:
-                signal_options["range"] = [range_min, range_max]
+                signal_options[signal_config.RANGE] = [range_min, range_max]
 
             priority = _to_float(row.get("priority", ""))
             if priority is not None:
-                signal_options["priority"] = priority
+                signal_options[signal_config.PRIORITY] = priority
 
             color = str(row.get("color", "")).strip()
             if color:
-                signal_options["color"] = color
+                signal_options[signal_config.COLOR] = color
 
             visible_raw = str(row.get("visible", "")).strip()
             if not _is_empty(visible_raw) and not _is_truthy(visible_raw):
-                signal_options["visible"] = False
+                signal_options[signal_config.VISIBLE] = False
 
             line_dash = str(row.get("line_dash", "")).strip()
             if line_dash:
-                signal_options["line_dash"] = line_dash
+                signal_options[signal_config.LINE_DASH] = line_dash
 
             period_resampling = _to_float(row.get("period_resampling", ""))
             if period_resampling is not None:
-                signal_options["period_resampling"] = period_resampling
+                signal_options[signal_config.PERIOD_RESAMPLING] = period_resampling
 
             hover_template = str(row.get("hover_template", "")).strip()
             if hover_template:
-                signal_options["hover_template"] = hover_template
+                signal_options[signal_config.HOVER_TEMPLATE] = hover_template
 
             # Warn about fields that are only meaningful in the sentinel (*) row
             sentinel_only_columns = (

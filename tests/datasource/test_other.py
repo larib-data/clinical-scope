@@ -4,6 +4,7 @@ Tests for other (generic) datasource — auto datetime detection, per-file group
 It has a custom main() that processes files individually rather than using _load().
 """
 
+import copy
 import os
 from pathlib import Path
 
@@ -12,7 +13,10 @@ import pandas as pd
 import pytest
 
 import clinical_scope.constants as cst
-from clinical_scope.database_options_parser import normalize_database_options
+from clinical_scope.database_options_parser import (
+    normalize_database_options,
+    validate_database_options,
+)
 
 
 class TestFind:
@@ -488,6 +492,28 @@ class TestNormalizeDatabaseOptions:
         original = dict(db)
         normalize_database_options(db)
         assert db == original
+
+    def test_source_keys_are_moved_not_copied(self):
+
+        db = {"other::my_file": {"signals": {}}}
+        normalize_database_options(db)
+        assert "other::my_file" not in db
+        assert "my_file" in db["other"]["files"]
+
+    def test_is_idempotent(self):
+
+        db = {"other::my_file": {"signals": {"col": {"label": "Col"}}}}
+        normalize_database_options(db)
+        once = copy.deepcopy(db)
+        normalize_database_options(db)
+        assert db == once
+
+    def test_each_per_file_issue_is_reported_once(self):
+        """Both spellings surviving normalization made every other:: issue log twice."""
+        db = {"other::my_file": {"not_a_real_key": {}}}
+        normalize_database_options(db)
+        paths = [issue.path for issue in validate_database_options(db)]
+        assert len(paths) == len(set(paths))
 
 
 class TestTimezone:

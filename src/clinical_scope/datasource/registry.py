@@ -246,7 +246,7 @@ class PatientFolderScan:
     """
 
     path: Path
-    status: str  # "ok" | "missing" | "is_file" | "unreadable"
+    status: str  # one of cst.PatientFolderScanStatus
     self_datasource: type | None = None  # set when `path` itself looks like a device subfolder
     found: list[type] = field(default_factory=list)  # device subfolders with real content
     empty: list[type] = field(default_factory=list)  # device subfolders recognized but empty
@@ -267,7 +267,11 @@ def scan_patient_folder(path: str | Path, *, deep: bool = False) -> PatientFolde
     """
     path = Path(path)
     if not path.is_dir():
-        status = "is_file" if path.is_file() else "missing"
+        status = (
+            cst.PatientFolderScanStatus.IS_FILE
+            if path.is_file()
+            else cst.PatientFolderScanStatus.MISSING
+        )
         return PatientFolderScan(path=path, status=status)
 
     try:
@@ -292,11 +296,11 @@ def scan_patient_folder(path: str | Path, *, deep: bool = False) -> PatientFolde
     except OSError:
         # e.g. a restricted network share that exists but can't be listed.
         logger.warning("Could not scan patient folder %r.", str(path))
-        return PatientFolderScan(path=path, status="unreadable")
+        return PatientFolderScan(path=path, status=cst.PatientFolderScanStatus.UNREADABLE)
 
     scan = PatientFolderScan(
         path=path,
-        status="ok",
+        status=cst.PatientFolderScanStatus.OK,
         self_datasource=self_datasource,
         found=found,
         empty=empty,
@@ -338,11 +342,11 @@ def format_zero_result_diagnostic(scan: PatientFolderScan) -> str:
     """Render *scan* (ideally ``deep=True``) as a plain-text diagnostic for a zero-result run."""
     lines = [f"No datasource produced any data from: {scan.path}"]
 
-    if scan.status == "missing":
+    if scan.status == cst.PatientFolderScanStatus.MISSING:
         lines.append("This folder doesn't exist.")
-    elif scan.status == "is_file":
+    elif scan.status == cst.PatientFolderScanStatus.IS_FILE:
         lines.append("That's a file, not a folder.")
-    elif scan.status == "unreadable":
+    elif scan.status == cst.PatientFolderScanStatus.UNREADABLE:
         lines.append("This folder couldn't be read (permission or path issue).")
     else:
         if scan.found:

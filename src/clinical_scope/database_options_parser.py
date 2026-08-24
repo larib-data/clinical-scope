@@ -23,14 +23,17 @@ def normalize_database_options(database_options: dict) -> None:
     receives per-file config without needing to scan the global dict itself.
     A bare ``"other": {}`` entry is created if only ``other::*`` keys exist,
     so the normal datasource-dispatch loop still triggers the datasource.
+
+    The source keys are removed, not copied: leaving both spellings in place made
+    :func:`validate_database_options` walk each per-file section twice and report every
+    issue twice. Idempotent -- a second call finds nothing left to move.
     """
-    per_file = {
-        key[len(cst.OTHER_FILE_PREFIX) :]: value
-        for key, value in database_options.items()
-        if key.startswith(cst.OTHER_FILE_PREFIX)
-    }
-    if not per_file:
+    source_keys = [key for key in database_options if key.startswith(cst.OTHER_FILE_PREFIX)]
+    if not source_keys:
         return
+    per_file = {
+        key[len(cst.OTHER_FILE_PREFIX) :]: database_options.pop(key) for key in source_keys
+    }
     if "other" not in database_options:
         database_options["other"] = {}
     database_options["other"].setdefault(cst.DatabaseOptions.FILES, {}).update(per_file)

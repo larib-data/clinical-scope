@@ -93,13 +93,13 @@ class TestResolveDisplayTimezone:
         assert resolve_display_timezone("Europe/Paris") == "Europe/Paris"
 
     def test_none_falls_back_to_default(self):
-        assert resolve_display_timezone(None) == cst.DISPLAY_TIMEZONE
+        assert resolve_display_timezone(None) == "Europe/Paris"
 
     def test_empty_string_falls_back_to_default(self):
-        assert resolve_display_timezone("") == cst.DISPLAY_TIMEZONE
+        assert resolve_display_timezone("") == "Europe/Paris"
 
     def test_invalid_name_falls_back_to_default_and_logs(self):
-        assert resolve_display_timezone("NotATimezone") == cst.DISPLAY_TIMEZONE
+        assert resolve_display_timezone("NotATimezone") == "Europe/Paris"
 
 
 class TestTimezoneValidation:

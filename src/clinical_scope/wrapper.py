@@ -590,7 +590,7 @@ def inspect(
             results.append(
                 DataSourceInspection(
                     datasource_name=name,
-                    status="load_error",
+                    status=cst.InspectionStatus.LOAD_ERROR,
                     error_message="DataSource class not found",
                 )
             )
@@ -607,7 +607,7 @@ def inspect(
             logger.exception("❌ Inspection failed for datasource '%s'.", name)
             inspection = DataSourceInspection(
                 datasource_name=name,
-                status="load_error",
+                status=cst.InspectionStatus.LOAD_ERROR,
                 error_message=str(exc),
             )
 
@@ -623,7 +623,7 @@ def inspect(
     found_stems: dict[str, set[str]] = {}
     found_plain: set[str] = set()
     for result in results:
-        if result.status != "ok":
+        if result.status != cst.InspectionStatus.OK:
             continue
         base_name, sep, stem = result.datasource_name.partition(cst.QUALIFIED_NAME_SEPARATOR)
         if sep:

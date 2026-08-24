@@ -19,7 +19,7 @@ DEFAULT_DATABASE_OPTIONS = {}
 
 
 class DatabaseOptionsAdditionalInformations:
-    TIMEZONE = "timezone"
+    TIMEZONE = cst.DatabaseOptions.AdditionalInformations.TIMEZONE
 
 
 class PatientOptionsDataSourceRelative:

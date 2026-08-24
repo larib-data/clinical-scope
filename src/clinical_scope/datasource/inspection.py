@@ -14,6 +14,7 @@ from typing import ClassVar
 
 import pandas as pd
 
+import clinical_scope.constants as cst
 from clinical_scope.datasource.formatting.timezone import fmt_ts
 
 
@@ -72,7 +73,7 @@ class DataSourceInspection:
     """Inspection result for one data source."""
 
     datasource_name: str
-    status: str  # "ok" | "file_not_found" | "load_error" | "format_error"
+    status: str  # one of cst.InspectionStatus
     error_message: str | None = None
     file_path: str | None = None
     raw_date_range: tuple[str, str] | None = None  # (iso_start, iso_end) as the file states them
@@ -153,7 +154,7 @@ def to_text_summary(results: list[DataSourceInspection]) -> str:
     column_headers = [header_text for header_text, _ in ColumnInfo.DISPLAY_HEADERS]
 
     for result in results:
-        status_marker = "OK  " if result.status == "ok" else "FAIL"
+        status_marker = "OK  " if result.status == cst.InspectionStatus.OK else "FAIL"
         lines.append(f"[{status_marker}]  {result.datasource_name}  ({result.status})")
         if result.error_message:
             lines.append(f"         Error: {result.error_message}")

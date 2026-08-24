@@ -15,7 +15,7 @@ DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
 
 
 class DatabaseOptionsAdditionalInformations:
-    TIMEZONE = "timezone"
+    TIMEZONE = cst.DatabaseOptions.AdditionalInformations.TIMEZONE
 
 
 source_options = {
