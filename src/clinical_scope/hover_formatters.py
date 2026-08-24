@@ -46,11 +46,11 @@ def _fraction_str(value: float) -> str:
         return "0"
     if value >= 1 or value < 0:
         return f"{value:.4g}"
-    inv = 1.0 / value
-    if not np.isfinite(inv):
+    inverse = 1.0 / value
+    if not np.isfinite(inverse):
         return f"{value:.4g}"
-    n = round(inv)
-    return f"1/{n}" if n > 0 else ""
+    denominator = round(inverse)
+    return f"1/{denominator}" if denominator > 0 else ""
 
 
 def _percentage_str(value: float) -> str:
@@ -79,23 +79,23 @@ def is_keyword(template: str | None) -> bool:
     return template is not None and template.strip().lower() in _FORMATTERS
 
 
-def compute_customdata(y: np.ndarray, keyword: str) -> np.ndarray:
+def compute_customdata(values: np.ndarray, keyword: str) -> np.ndarray:
     """
     Build a string array for use as Plotly ``customdata``.
 
     Parameters
     ----------
-    y:
+    values:
         Raw y values of the trace.
     keyword:
         One of the magic keyword constants (case-insensitive).
 
     Returns
     -------
-    np.ndarray of str, same length as *y*.
+    np.ndarray of str, same length as *values*.
 
     """
-    fmt = _FORMATTERS.get(keyword.strip().lower())
-    if fmt is None:
-        return np.full(len(y), "")
-    return np.array([fmt(v) for v in y])
+    formatter = _FORMATTERS.get(keyword.strip().lower())
+    if formatter is None:
+        return np.full(len(values), "")
+    return np.array([formatter(value) for value in values])

@@ -5,7 +5,7 @@ description: Add a brand-new data source module to the ClinicalScope project. Us
 
 # New Datasource Skill
 
-Add a complete, production-ready datasource module by **mirroring the closest existing source**. The 11 existing datasources already encode every pattern this skill needs to cover — the skill's job is to route correctly and remind you of the cross-cutting concerns (registration, tests, snapshots, docs).
+Add a complete, production-ready datasource module by **mirroring the closest existing source**. The existing datasources already encode every pattern this skill needs to cover — the skill's job is to route correctly and remind you of the cross-cutting concerns (registration, tests, snapshots, docs).
 
 ## Step 0 — Gather materials and identity
 
@@ -57,7 +57,7 @@ Internal — **do not show this table to the user**. Use it to choose which exis
 
 | Raw format / complexity | Primary |
 |---|---|
-| Plain CSV/parquet, datetime column present, one signal per column | `philips_waves` |
+| Plain CSV/parquet, datetime column present, one signal per column | **Stop — write no module.** Tell the user to drop the file into `other/` and configure it under an `other::<stem>` key; a datasource is only justified by format-specific parsing. |
 | Long-format, needs pivot to wide | `mindray_respi_numerics` |
 | Custom text parser (header blocks, metadata sections) | `servo_u` |
 | Custom binary/XML/less-structured | `eit` |
@@ -85,8 +85,8 @@ Create three files under `src/clinical_scope/datasource/sources/<datasource_name
 Critical contracts:
 - `_load` returns a `pd.DataFrame` with a sorted, deduplicated `DatetimeIndex` and numeric signal columns.
 - `_load` signature: `(cls, file_path: Path, path_output, **kwargs)` when `MULTI_FILE=False`, `(cls, file_path_list: list[Path], path_output, **kwargs)` when `MULTI_FILE=True`. The base class dispatches based on the option.
-- Empty data: return `pd.DataFrame(index=pd.DatetimeIndex([], tz=<tz>))` — never plain `pd.DataFrame()`.
-- A module-level `main(patient_options, database_options_specific)` is required — the registry calls it, not the class method.
+- Empty data: return `pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))` — never plain `pd.DataFrame()`, and never `tz=…`: `_load` output is the parquet cache, so it stays naive and `_format` localizes it ([ADR-0010](../../../docs/adr/0010-load-transcribes-format-interprets.md)).
+- No module-level `main()` is needed. The `@add_main_module(<module>)` decorator in `registry.py` finds the `DataSourceBase` subclass inside your module and binds its inherited `main` classmethod — your module only has to define the class.
 - Decorate `_load` with `@time_it` from `clinical_scope.datasource.timing`.
 
 ## Step 5 — Wire it in (other files to touch)
@@ -97,9 +97,13 @@ Beyond the three new files in `src/clinical_scope/datasource/sources/<name>/`, e
 - **`tests/datasource/conftest.py`** — add a session-scoped `<datasource_name>_cls` fixture.
 - **`docs/user_guide/tutorial.md`** → *Patient Data & Supported Data Sources* canonical table — add a row.
 - **`CLAUDE.md`** → *Supported Data Sources* bullet list — add a bullet, list order aligned with `AVAILABLE`.
+- **`example/template_patient_data_structure/<EXPECTED_FOLDER_NAME>/.gitkeep`** — the empty scaffold that ships in the release bundle.
+- **`example/demo_database/database_options.xlsx`** — add a section for the new source (a `*` sentinel row plus a curated handful of signals), then **regenerate `database_options.json` from it**; the demo must plot every source it ships.
+
+`tests/unit/test_example_assets.py` guards both of those last two and prints the regeneration one-liner.
 
 Conditional — update only if the file currently enumerates all datasources:
-- `README.md`, `example/option_files/*`.
+- `README.md`.
 
 ## Step 6 — Example data
 
@@ -147,8 +151,7 @@ Once everything is in place, mention the primary for transparency:
 - **Missing from `AVAILABLE`** — datasource is invisible even though it imports cleanly.
 - **`DATASOURCE_NAME` ≠ registry `NAME`** — the decorator raises `ValueError` at import time.
 - **`Other` not last in `AVAILABLE`** — it's the catch-all and must remain final.
-- **No module-level `main()`** — the registry calls `module.main`, not the class method.
-- **Empty DataFrame without a `DatetimeIndex`** — always `pd.DataFrame(index=pd.DatetimeIndex([], tz=...))`.
+- **Empty DataFrame without a `DatetimeIndex`** — always `pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))`, naive.
 - **Oversized example data** — keep files ~500 rows; full datasets slow tests and bloat the repo.
 
 ## Files changed checklist
@@ -158,10 +161,12 @@ Once everything is in place, mention the primary for transparency:
 - [ ] `src/clinical_scope/datasource/sources/<name>/find_load_format.py`
 - [ ] `src/clinical_scope/datasource/registry.py` (import, inner class, `AVAILABLE`)
 - [ ] `example/demo_database/demo_patient/<folder>/` — example data
+- [ ] `example/template_patient_data_structure/<folder>/.gitkeep` — guard test asserts this set matches the registry
 - [ ] `tests/datasource/conftest.py` — fixture added
 - [ ] `tests/datasource/test_<name>.py` — copied from primary and adapted
 - [ ] `tests/expected_results/<name>/` — snapshots generated
 - [ ] `docs/user_guide/tutorial.md` — table row added
 - [ ] `CLAUDE.md` — Supported Data Sources bullet updated
-- [ ] `README.md`, `example/option_files/*` — updated only if they enumerate sources
+- [ ] `example/demo_database/database_options.{xlsx,json}` — section added to the xlsx, json regenerated from it
+- [ ] `README.md` — updated only if it enumerates sources
 - [ ] All tests pass, `ruff check` clean, smoke test sees the new datasource

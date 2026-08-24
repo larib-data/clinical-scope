@@ -8,6 +8,8 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE_DIR = PROJECT_ROOT / "example"
+# Test-only fixture inputs; the goldens they are compared against live in expected_results/.
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 @pytest.fixture(scope="session")
@@ -17,27 +19,30 @@ def project_root():
 
 @pytest.fixture(scope="session")
 def patient_full_path():
-    """Path to demo_patient with all datasources."""
+    """Path to demo_patient with all datasources.
+
+    The shipped demo doubles as the main fixture, so the suite fails if the demo breaks.
+    """
     return EXAMPLE_DIR / "demo_database" / "demo_patient"
 
 
 @pytest.fixture(scope="session")
 def patient_difficult_path():
     """Path to Patient_difficult_format with varied file formats."""
-    return EXAMPLE_DIR / "example_patients" / "Patient_difficult_format"
+    return DATA_DIR / "patients" / "Patient_difficult_format"
 
 
 @pytest.fixture(scope="session")
 def example_database_options():
-    """Parsed example_database_options.json (covers philips_waves, philips_numerics, syringe, eit)."""
-    path = EXAMPLE_DIR / "option_files" / "example_database_options.json"
+    """Parsed example_database_options.json (covers the other::<stem> files, eit, servo_u, …)."""
+    path = DATA_DIR / "option_files" / "example_database_options.json"
     with open(path) as f:
         return json.load(f)
 
 
 @pytest.fixture(scope="session")
 def default_database_options():
-    """Default database options from generate_default_database_options() — all 11 datasources."""
+    """Default database options from generate_default_database_options() — every datasource."""
     from clinical_scope.datasource.registry import generate_default_database_options
 
     return generate_default_database_options()
@@ -45,13 +50,14 @@ def default_database_options():
 
 @pytest.fixture(scope="session")
 def patient_options_full(patient_full_path):
-    """Patient options pointing to Patient_full."""
+    """Patient options pointing to demo_patient."""
     return {
         "data_folder": str(patient_full_path),
         "datetime_start": None,
         "datetime_end": None,
         "quick_load": False,
         "eit": {"day": "2004-09-15"},
+        "edf": {"recording_start": "2004-09-15 08:12:33"},
     }
 
 

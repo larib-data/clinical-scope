@@ -1,28 +1,8 @@
 """
 Annotation callbacks for the Dash application.
 
-Implements the full annotation creation / rendering / persistence flow:
-
- 1. toggle_annotation_mode    — activate an annotation type or deactivate mode (toggle + deactivate
-                                share one @callback)
- 2. handle_graph_click        — interpret graph clicks in annotation mode
- 3. update_modal_ui           — populate the modal's dynamic fields (position, global checkbox)
- 4. toggle_global_checkbox_visibility — hide the global checkbox for POINT annotations
- 5. pick_color_swatch         — select a preset colour in either creation modal
-                               (annotation or group)
- 6. create_annotation         — confirm creation and append to the store
- 7. cancel_annotation         — cancel and discard any pending time-window first click
- 8. render_annotations        — Patch all graphs whenever the store or pending state changes
- 9. update_annotation_list    — rebuild the sidebar list of annotations (grouped, collapsible)
-10. toggle_group_store        — expand/collapse a group OR show/hide its labels in the list
-10c. delete_group             — remove all annotations for a group and clean up per-group stores
-11. save_annotations_cb       — write annotations.json / reset save-button on store change
-12. auto_load_annotations     — load annotations.json when a new folder is visualised
-13. delete_annotation         — remove one annotation by ID
-14. open_group_modal          — show the group creation modal
-15. activate_group            — create a new group OR re-activate an existing one (merged 16 + 17)
-16. cancel_group_modal        — close the group creation modal without creating a group
-17. toggle_annotation_label   — toggle label_hidden on a single annotation
+Implements the full annotation creation / rendering / persistence flow, from graph clicks
+through the creation modals to annotations.json. Section banners below mark each stage.
 """
 
 from __future__ import annotations
@@ -60,6 +40,7 @@ from clinical_scope.dash_api.styles import (
     BUTTON_MODAL_CLOSE,
 )
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
+from clinical_scope.signal_container import DisplayFallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +68,13 @@ _SMALL_BTN: dict = {
 
 
 def default_mode() -> dict:
+    """
+    Return a fresh annotation-mode-store value.
+
+    This dict is the annotation state machine: ``active`` gates click handling, the
+    ``pending_*`` pair holds a time-window's first click, and the ``group_*`` fields —
+    set only in group mode — make clicks bypass the creation modal.
+    """
     return {
         "active": False,
         "type": AnnotationType.TIME_EVENT.value,
@@ -108,7 +96,7 @@ def _localize_x_val(x_val: str, display_tz: str = cst.DISPLAY_TIMEZONE) -> str:
         if ts.tzinfo is None:
             ts = ts.tz_localize(display_tz)
         return ts.isoformat()
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning("Could not localize x value %r", x_val, exc_info=True)
         return x_val
 
@@ -127,14 +115,14 @@ def _fmt_ts(ts_str: str, display_tz: str | None) -> str:
 
 def _format_position(modal_data: dict) -> str:
     display_tz = modal_data.get("display_timezone")
-    ann_type = modal_data.get("type", "")
-    if ann_type == AnnotationType.TIME_EVENT.value:
+    annotation_type = modal_data.get("type", "")
+    if annotation_type == AnnotationType.TIME_EVENT.value:
         return f"At: {_fmt_ts(modal_data.get('x', ''), display_tz)}"
-    if ann_type == AnnotationType.TIME_WINDOW.value:
+    if annotation_type == AnnotationType.TIME_WINDOW.value:
         x0 = _fmt_ts(modal_data.get("x0", ""), display_tz)
         x1 = _fmt_ts(modal_data.get("x1", ""), display_tz)
         return f"From: {x0}  →  {x1}"
-    if ann_type == AnnotationType.POINT.value:
+    if annotation_type == AnnotationType.POINT.value:
         x = _fmt_ts(modal_data.get("x", ""), display_tz)
         y = modal_data.get("y")
         t = modal_data.get("t")
@@ -159,23 +147,23 @@ def _format_x_short(x_val: str | None, display_tz: str | None = None) -> str:
                 ts = ts.tz_convert(display_tz)
             return ts.strftime("%H:%M:%S")
     with contextlib.suppress(Exception):
-        f = float(x_val)
-        return f"{f:.4g}"
+        numeric_value = float(x_val)
+        return f"{numeric_value:.4g}"
     return str(x_val)
 
 
 def _build_swatch_styles(selected_color: str, swatch_ids: list[dict]) -> list[dict]:
     """Return a style list for colour swatches, highlighting the selected one."""
     styles = []
-    for sid in swatch_ids:
-        c = sid["color"]
-        border = "3px solid #333" if c == selected_color else "2px solid transparent"
+    for swatch_id in swatch_ids:
+        color = swatch_id["color"]
+        border = "3px solid #333" if color == selected_color else "2px solid transparent"
         styles.append(
             {
                 "width": "22px",
                 "height": "22px",
                 "borderRadius": "50%",
-                "backgroundColor": c,
+                "backgroundColor": color,
                 "cursor": "pointer",
                 "border": border,
                 "flexShrink": 0,
@@ -185,23 +173,23 @@ def _build_swatch_styles(selected_color: str, swatch_ids: list[dict]) -> list[di
 
 
 def _annotation_list_row(
-    ann: Annotation, group_name: str | None = None, display_tz: str | None = None
+    annotation: Annotation, group_name: str | None = None, display_tz: str | None = None
 ) -> html.Div:
-    type_label = _TYPE_LABELS.get(ann.type.value, ann.type.value)
-    icon = _TYPE_ICONS.get(ann.type.value, "?")
-    display_label = ann.label or (group_name or f"({type_label})")
+    type_label = _TYPE_LABELS.get(annotation.type.value, annotation.type.value)
+    icon = _TYPE_ICONS.get(annotation.type.value, "?")
+    display_label = annotation.label or (group_name or f"({type_label})")
 
-    x_val = ann.data.get("x") or ann.data.get("x0")
+    x_val = annotation.data.get("x") or annotation.data.get("x0")
     time_str = _format_x_short(x_val, display_tz)
-    trace_str = (ann.trace_metadata or {}).get("display_name", "")
-    scope_str = ann.subplot_name or "Global"
-    info_parts = [p for p in [time_str, trace_str, scope_str] if p]
+    trace_str = (annotation.trace_metadata or {}).get("display_name", "")
+    scope_str = annotation.subplot_name or "Global"
+    info_parts = [part for part in [time_str, trace_str, scope_str] if part]
     info_line = " · ".join(info_parts)
 
-    lbl_text = "L:off" if ann.label_hidden else "L:on"
-    lbl_style = {
+    label_text = "L:off" if annotation.label_hidden else "L:on"
+    label_style = {
         **_SMALL_BTN,
-        "backgroundColor": "#6c757d" if ann.label_hidden else "#adb5bd",
+        "backgroundColor": "#6c757d" if annotation.label_hidden else "#adb5bd",
         "padding": "1px 5px",
         "fontSize": "10px",
     }
@@ -211,7 +199,7 @@ def _annotation_list_row(
             html.Span(
                 icon,
                 style={
-                    "color": ann.color,
+                    "color": annotation.color,
                     "fontSize": "16px",
                     "fontWeight": "bold",
                     "minWidth": "16px",
@@ -234,14 +222,14 @@ def _annotation_list_row(
                 style={"display": "flex", "flexDirection": "column", "flex": 1, "minWidth": 0},
             ),
             html.Button(
-                lbl_text,
-                id={"type": "annotation-label-toggle-btn", "id": ann.id},
+                label_text,
+                id={"type": "annotation-label-toggle-btn", "id": annotation.id},
                 n_clicks=0,
-                style=lbl_style,
+                style=label_style,
             ),
             html.Button(
                 "×",  # noqa: RUF001
-                id={"type": "annotation-delete-btn", "id": ann.id},
+                id={"type": "annotation-delete-btn", "id": annotation.id},
                 n_clicks=0,
                 style={
                     **BUTTON_MODAL_CLOSE,
@@ -301,8 +289,10 @@ def toggle_annotation_mode(
             "annotation-type-btn-time_window": AnnotationType.TIME_WINDOW.value,
             "annotation-type-btn-point": AnnotationType.POINT.value,
         }
-        ann_type = btn_to_type.get(triggered, mode.get("type", AnnotationType.TIME_EVENT.value))
-        if mode.get("active") and mode.get("type") == ann_type and not mode.get("group_id"):
+        annotation_type = btn_to_type.get(
+            triggered, mode.get("type", AnnotationType.TIME_EVENT.value)
+        )
+        if mode.get("active") and mode.get("type") == annotation_type and not mode.get("group_id"):
             new_mode = {
                 **mode,
                 "active": False,
@@ -311,13 +301,13 @@ def toggle_annotation_mode(
                 "group_id": None,
             }
         else:
-            new_mode = {**mode, "active": True, "type": ann_type, "group_id": None}
+            new_mode = {**mode, "active": True, "type": annotation_type, "group_id": None}
 
     active = new_mode["active"]
     active_type = new_mode["type"]
 
-    def _btn_style(ann_type_value: str) -> dict:
-        if active and active_type == ann_type_value and not new_mode.get("group_id"):
+    def _btn_style(annotation_type_value: str) -> dict:
+        if active and active_type == annotation_type_value and not new_mode.get("group_id"):
             return BUTTON_ANNOTATION_ACTIVE
         return BUTTON_ANNOTATION_INACTIVE
 
@@ -396,11 +386,11 @@ def handle_graph_click(
         raise PreventUpdate
 
     plot_name = triggered_id["name"]
-    graph_names = [gid["name"] for gid in graph_ids]
+    graph_names = [graph_id["name"] for graph_id in graph_ids]
     try:
         graph_idx = graph_names.index(plot_name)
-    except ValueError as v:
-        raise PreventUpdate from v
+    except ValueError as exc:
+        raise PreventUpdate from exc
 
     click_data = click_data_list[graph_idx]
     if not click_data or not click_data.get("points"):
@@ -416,13 +406,13 @@ def handle_graph_click(
     xaxis_ref = trace_info.get("xaxis", "x")
     yaxis_ref = trace_info.get("yaxis", "y")
     trace_metadata = {
-        k: v
-        for k, v in {
+        key: value
+        for key, value in {
             "datasource_name": trace_info.get("datasource_name"),
             "raw_name": trace_info.get("raw_name"),
             "display_name": trace_info.get("display_name"),
         }.items()
-        if v
+        if value
     }
 
     subplots_data = subplots_list[graph_idx] or {}
@@ -430,50 +420,56 @@ def handle_graph_click(
     n_cols = subplots_data.get("n_cols", 1)
     subplot_rows = subplots_data.get("rows", [])
 
-    ann_type = mode.get("type", AnnotationType.TIME_EVENT.value)
+    annotation_type = mode.get("type", AnnotationType.TIME_EVENT.value)
     no_update_patches = [no_update] * len(graph_ids)
 
-    is_loop = subplots_data.get("plot_type") == cst.PlotType.LOOP
-    if is_loop and ann_type in TIME_BASED_ANNOTATION_TYPES:
+    plot_type = subplots_data.get("plot_type")
+    is_loop = plot_type == cst.PlotType.LOOP
+    has_time_axis = plot_type in cst.PlotType.TIME_AXIS
+    if not has_time_axis and annotation_type in TIME_BASED_ANNOTATION_TYPES:
         logger.warning(
-            "User attempted to create %s annotation on a loop plot. "
-            "Loop plots have non-time x-axes, so only Point annotations are valid.",
-            ann_type,
+            "User attempted to create %s annotation on a '%s' plot. Its x-axis is not time, "
+            "so only Point annotations are valid.",
+            annotation_type,
+            plot_type,
         )
         return (
             mode,
             no_update,
             ANNOTATION_MODAL_STYLE_HIDDEN,
             no_update_patches,
-            "⚠ Time-based annotations are not supported on loop plots — switch to Point.",
+            f"⚠ Time-based annotations are not supported on {plot_type} plots — switch to Point.",
             no_update,
         )
 
-    x_str = str(x_val) if is_loop else _localize_x_val(str(x_val), display_tz)
+    x_str = _localize_x_val(str(x_val), display_tz) if has_time_axis else str(x_val)
 
-    # Resolve the subplot name using the yaxis_to_subplot mapping.
-    # This mapping is built in data_callbacks.py and accounts for the actual
-    # subplot layout (including sparse grids and secondary y-axes).
-    # Note: We only use this for the subplot NAME, not for row/col placement.
+    # Built in data_callbacks.py, so it reflects the real layout (sparse grids, secondary
+    # y-axes). Used for the subplot NAME only — row/col still come from the grid formula.
     yaxis_to_subplot = subplots_data.get("yaxis_to_subplot", {})
     subplot_info = yaxis_to_subplot.get(yaxis_ref)
 
     subplot_name = subplot_info["name"] if subplot_info else None
 
-    # Calculate row/col for annotation placement using the original grid formula
     axis_idx = _parse_yaxis_idx(yaxis_ref)
     auto_subplot_row = (axis_idx - 1) // n_cols + 1
     auto_col = (axis_idx - 1) % n_cols + 1
 
-    # If we didn't get subplot_name from mapping, try to find it from subplot_rows
     if subplot_name is None:
         row_obj = next(
-            (r for r in subplot_rows if r["row"] == auto_subplot_row and r["col"] == auto_col),
+            (
+                row_entry
+                for row_entry in subplot_rows
+                if row_entry["row"] == auto_subplot_row and row_entry["col"] == auto_col
+            ),
             None,
         )
         # Fallback: row-only match covers secondary y-axes and single-column layouts
         if row_obj is None and subplot_rows:
-            row_obj = next((r for r in subplot_rows if r["row"] == auto_subplot_row), None)
+            row_obj = next(
+                (row_entry for row_entry in subplot_rows if row_entry["row"] == auto_subplot_row),
+                None,
+            )
         if row_obj is None and subplot_rows:
             logger.debug(
                 "subplot lookup: no match (axis_idx=%d n_cols=%d row=%d col=%d) available=%s",
@@ -481,7 +477,10 @@ def handle_graph_click(
                 n_cols,
                 auto_subplot_row,
                 auto_col,
-                [(r["row"], r["col"], r["name"]) for r in subplot_rows],
+                [
+                    (row_entry["row"], row_entry["col"], row_entry["name"])
+                    for row_entry in subplot_rows
+                ],
             )
         subplot_name = row_obj["name"] if row_obj else None
 
@@ -493,7 +492,7 @@ def handle_graph_click(
         group_is_global = mode.get("group_is_global", False)
         current_annotations = list(annotations_raw or [])
 
-        if ann_type == AnnotationType.TIME_WINDOW.value:
+        if annotation_type == AnnotationType.TIME_WINDOW.value:
             is_first, stored_x0, new_mode = _check_pending_x0(mode, x_str, plot_name)
             if is_first:
                 return (
@@ -506,8 +505,8 @@ def handle_graph_click(
                 )
 
             data: dict[str, Any] = {"x0": stored_x0, "x1": x_str, "xaxis": xaxis_ref}
-            ann = Annotation(
-                type=AnnotationType(ann_type),
+            annotation = Annotation(
+                type=AnnotationType(annotation_type),
                 plot_name=plot_name,
                 label=group_name,
                 color=group_color,
@@ -523,10 +522,10 @@ def handle_graph_click(
                 ANNOTATION_MODAL_STYLE_HIDDEN,
                 no_update_patches,
                 "",
-                [*current_annotations, ann.to_dict()],
+                [*current_annotations, annotation.to_dict()],
             )
 
-        if ann_type == AnnotationType.POINT.value:
+        if annotation_type == AnnotationType.POINT.value:
             data = {
                 "x": x_str,
                 "y": y_val,
@@ -543,8 +542,8 @@ def handle_graph_click(
             data = {"x": x_str, "xaxis": xaxis_ref}
             ann_subplot = None if group_is_global else subplot_name
 
-        ann = Annotation(
-            type=AnnotationType(ann_type),
+        annotation = Annotation(
+            type=AnnotationType(annotation_type),
             plot_name=plot_name,
             label=group_name,
             color=group_color,
@@ -553,7 +552,7 @@ def handle_graph_click(
             group_name=group_name,
             data=data,
             trace_metadata=trace_metadata or None,
-            label_hidden=ann_type == AnnotationType.POINT.value,
+            label_hidden=annotation_type == AnnotationType.POINT.value,
         )
         return (
             mode,
@@ -561,13 +560,13 @@ def handle_graph_click(
             ANNOTATION_MODAL_STYLE_HIDDEN,
             no_update_patches,
             "",
-            [*current_annotations, ann.to_dict()],
+            [*current_annotations, annotation.to_dict()],
         )
 
     # --- Normal mode ---
     suggested_color = trace_info.get("line_color") or ANNOTATION_COLORS[0]
 
-    if ann_type == AnnotationType.TIME_WINDOW.value:
+    if annotation_type == AnnotationType.TIME_WINDOW.value:
         is_first, stored_x0, new_mode = _check_pending_x0(mode, x_str, plot_name)
         if is_first:
             return (
@@ -580,7 +579,7 @@ def handle_graph_click(
             )
 
         modal_data: dict[str, Any] = {
-            "type": ann_type,
+            "type": annotation_type,
             "plot_name": plot_name,
             "x0": stored_x0,
             "x1": x_str,
@@ -602,7 +601,7 @@ def handle_graph_click(
         )
 
     modal_data = {
-        "type": ann_type,
+        "type": annotation_type,
         "plot_name": plot_name,
         "x": x_str,
         "xaxis": xaxis_ref,
@@ -611,7 +610,7 @@ def handle_graph_click(
         "suggested_color": suggested_color,
         "display_timezone": display_tz,
     }
-    if ann_type == AnnotationType.POINT.value:
+    if annotation_type == AnnotationType.POINT.value:
         modal_data["y"] = y_val
         modal_data["yaxis"] = yaxis_ref
         if is_loop:
@@ -661,17 +660,14 @@ def toggle_global_checkbox_visibility(modal_data: dict) -> dict:
     """Hide the global checkbox for POINT annotations (they're always subplot-specific)."""
     if not modal_data:
         raise PreventUpdate
-    ann_type = modal_data.get("type", "")
-    if ann_type == AnnotationType.POINT.value:
+    annotation_type = modal_data.get("type", "")
+    if annotation_type == AnnotationType.POINT.value:
         return {"marginBottom": "20px", "display": "none"}
     return {"marginBottom": "20px"}
 
 
 # ---------------------------------------------------------------------------
-# 5. Colour swatch picker — handles both the annotation modal and the group modal
-#    Component IDs:  {"type": "annotation-color-swatch", "color": <hex>}
-#                    {"type": "group-color-swatch",       "color": <hex>}
-#    Target inputs:  annotation-color-input  /  group-color-input
+# 5. Colour swatch pickers — one per creation modal (annotation, group)
 # ---------------------------------------------------------------------------
 
 
@@ -736,20 +732,20 @@ def create_annotation(
     if not modal_data:
         raise PreventUpdate
 
-    ann_type = AnnotationType(modal_data["type"])
+    annotation_type = AnnotationType(modal_data["type"])
     is_global = "global" in (global_checkbox or [])
     subplot_name = None if is_global else modal_data.get("subplot_name")
     color = color or ANNOTATION_COLORS[0]
 
-    if ann_type == AnnotationType.TIME_EVENT:
+    if annotation_type == AnnotationType.TIME_EVENT:
         data = {"x": modal_data["x"], "xaxis": modal_data.get("xaxis", "x")}
-    elif ann_type == AnnotationType.TIME_WINDOW:
+    elif annotation_type == AnnotationType.TIME_WINDOW:
         data = {
             "x0": modal_data["x0"],
             "x1": modal_data["x1"],
             "xaxis": modal_data.get("xaxis", "x"),
         }
-    elif ann_type == AnnotationType.POINT:
+    elif annotation_type == AnnotationType.POINT:
         data = {
             "x": modal_data["x"],
             "y": modal_data.get("y"),
@@ -761,18 +757,18 @@ def create_annotation(
     else:
         raise PreventUpdate
 
-    ann = Annotation(
-        type=ann_type,
+    annotation = Annotation(
+        type=annotation_type,
         plot_name=modal_data["plot_name"],
         label=label or "",
         color=color,
         subplot_name=subplot_name,
         data=data,
         trace_metadata=modal_data.get("trace_metadata"),
-        label_hidden=ann_type == AnnotationType.POINT,
+        label_hidden=annotation_type == AnnotationType.POINT,
     )
 
-    new_annotations = [*(annotations_raw or []), ann.to_dict()]
+    new_annotations = [*(annotations_raw or []), annotation.to_dict()]
     new_mode = {**(mode or default_mode()), "pending_x0": None, "pending_plot_name": None}
     return new_annotations, new_mode, ANNOTATION_MODAL_STYLE_HIDDEN
 
@@ -808,6 +804,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
     State({"type": "graph", "name": ALL}, "id"),
     State({"type": "graph-subplots", "name": ALL}, "data"),
     State("display-timezone-store", "data"),
+    State("user-options-store", "data"),
     prevent_initial_call=True,
 )
 def render_annotations(
@@ -816,6 +813,7 @@ def render_annotations(
     graph_ids: list,
     subplots_list: list,
     display_timezone: str | None,
+    user_options: dict[str, Any] | None,
 ) -> list:
     """Rebuild layout.shapes and layout.annotations for every visible graph using Patch()."""
     if not graph_ids:
@@ -823,22 +821,24 @@ def render_annotations(
 
     display_tz = display_timezone or cst.DISPLAY_TIMEZONE
     annotations = [
-        normalize_annotation_for_display(Annotation.from_dict(d), display_tz)
-        for d in (annotations_raw or [])
+        normalize_annotation_for_display(Annotation.from_dict(annotation_dict), display_tz)
+        for annotation_dict in (annotations_raw or [])
     ]
     mode = mode or default_mode()
     pending_x0 = mode.get("pending_x0")
     pending_plot = mode.get("pending_plot_name")
     point_mode_active = mode.get("active") and mode.get("type") == AnnotationType.POINT.value
+    display_fallbacks = DisplayFallbacks.from_user_options(user_options or {})
 
-    subplot_map = {gid["name"]: (subplots_list[i] or {}) for i, gid in enumerate(graph_ids)}
+    subplot_map = {
+        graph_id["name"]: (subplots_list[idx] or {}) for idx, graph_id in enumerate(graph_ids)
+    }
 
     patches = []
-    for gid in graph_ids:
-        plot_name = gid["name"]
+    for graph_id in graph_ids:
+        plot_name = graph_id["name"]
         subplots_data = subplot_map.get(plot_name, {})
         subplot_title_annotations = subplots_data.get("subplot_annotations", [])
-        is_loop = subplots_data.get("plot_type") == cst.PlotType.LOOP
 
         raw_pending_x0 = pending_x0 if pending_plot == plot_name else None
         graph_pending_x0 = (
@@ -854,16 +854,20 @@ def render_annotations(
             pending_x0=graph_pending_x0,
         )
 
-        p = Patch()
-        p.layout.shapes = shapes
-        # Only replace layout.annotations when we have content; otherwise leave
-        # the figure's existing annotations untouched (prevents wiping subplot
-        # titles when the subplot-annotations store is not yet populated).
+        patch = Patch()
+        patch.layout.shapes = shapes
+        # Replacing with an empty list would wipe the subplot titles while the
+        # subplot-annotations store is still unpopulated, so leave them untouched instead.
         if all_annotations:
-            p.layout.annotations = all_annotations
-        if not is_loop:
-            p.layout.hovermode = "closest" if point_mode_active else "x unified"
-        patches.append(p)
+            patch.layout.annotations = all_annotations
+        # Same capability set PlotModel.to_figure reads, so the two stay in step. Point mode
+        # forces the nearest point; otherwise restore the user's own panel style, since this
+        # patch runs after to_figure and would otherwise silently discard it.
+        if subplots_data.get("plot_type") in cst.PlotType.UNIFIED_HOVER:
+            patch.layout.hovermode = (
+                cst.HoverMode.CLOSEST if point_mode_active else display_fallbacks.hovermode
+            )
+        patches.append(patch)
 
     return patches
 
@@ -875,7 +879,7 @@ def render_annotations(
 
 def _group_header_row(
     group: dict,
-    ann_count: int,
+    annotation_count: int,
     is_expanded: bool,
     is_hidden: bool = False,
 ) -> html.Div:
@@ -942,7 +946,7 @@ def _group_header_row(
             ),
             *([scope_badge] if scope_badge else []),
             html.Span(
-                f"({ann_count})",
+                f"({annotation_count})",
                 style={"color": "#888", "fontSize": "12px", "flexShrink": 0},
             ),
             html.Button(
@@ -989,7 +993,9 @@ def update_annotation_list(
     display_timezone: str | None,
 ) -> tuple[list | html.Div, str]:
     """Rebuild the annotation list, always sorted by group with collapsible group sections."""
-    annotations = [Annotation.from_dict(d) for d in (annotations_raw or [])]
+    annotations = [
+        Annotation.from_dict(annotation_dict) for annotation_dict in (annotations_raw or [])
+    ]
     if not annotations:
         return [], ""
 
@@ -998,14 +1004,14 @@ def update_annotation_list(
     # Derive group metadata from the annotations themselves.
     # is_global is encoded as subplot_name is None on the first annotation in the group.
     groups_by_id: dict[str, dict] = {}
-    for ann in annotations:
-        if ann.group_id and ann.group_id not in groups_by_id:
-            groups_by_id[ann.group_id] = {
-                "id": ann.group_id,
-                "name": ann.group_name or "",
-                "color": ann.color,
-                "type": ann.type.value,
-                "is_global": ann.subplot_name is None,
+    for annotation in annotations:
+        if annotation.group_id and annotation.group_id not in groups_by_id:
+            groups_by_id[annotation.group_id] = {
+                "id": annotation.group_id,
+                "name": annotation.group_name or "",
+                "color": annotation.color,
+                "type": annotation.type.value,
+                "is_global": annotation.subplot_name is None,
             }
 
     # Bucket annotations: grouped (preserve creation order within group) + ungrouped
@@ -1013,32 +1019,35 @@ def update_annotation_list(
     ungrouped: list[Annotation] = []
     group_order: list[str] = []  # first-seen order of group IDs
 
-    for ann in annotations:
-        if ann.group_id and ann.group_id in groups_by_id:
-            if ann.group_id not in grouped:
-                grouped[ann.group_id] = []
-                group_order.append(ann.group_id)
-            grouped[ann.group_id].append(ann)
+    for annotation in annotations:
+        if annotation.group_id and annotation.group_id in groups_by_id:
+            if annotation.group_id not in grouped:
+                grouped[annotation.group_id] = []
+                group_order.append(annotation.group_id)
+            grouped[annotation.group_id].append(annotation)
         else:
-            ungrouped.append(ann)
+            ungrouped.append(annotation)
 
     rows: list = []
 
-    for gid in group_order:
-        group = groups_by_id[gid]
-        group_anns = grouped[gid]
-        is_expanded = gid in expanded_set
-        is_hidden = bool(group_anns) and all(a.label_hidden for a in group_anns)
+    for group_id in group_order:
+        group = groups_by_id[group_id]
+        group_annotations = grouped[group_id]
+        is_expanded = group_id in expanded_set
+        is_hidden = bool(group_annotations) and all(
+            annotation.label_hidden for annotation in group_annotations
+        )
 
-        rows.append(_group_header_row(group, len(group_anns), is_expanded, is_hidden))
+        rows.append(_group_header_row(group, len(group_annotations), is_expanded, is_hidden))
 
         if is_expanded:
             rows.extend(
-                _annotation_list_row(ann, group_name=group["name"], display_tz=display_timezone)
-                for ann in group_anns
+                _annotation_list_row(
+                    annotation, group_name=group["name"], display_tz=display_timezone
+                )
+                for annotation in group_annotations
             )
 
-    # Ungrouped annotations at the bottom
     if ungrouped:
         if group_order:
             rows.append(
@@ -1054,7 +1063,10 @@ def update_annotation_list(
                     },
                 )
             )
-        rows.extend(_annotation_list_row(ann, display_tz=display_timezone) for ann in ungrouped)
+        rows.extend(
+            _annotation_list_row(annotation, display_tz=display_timezone)
+            for annotation in ungrouped
+        )
 
     count_text = f"{len(annotations)} annotation{'s' if len(annotations) != 1 else ''}"
     panel = html.Div(
@@ -1087,8 +1099,6 @@ def update_annotation_list(
 
 # ---------------------------------------------------------------------------
 # 10. Toggle group expanded state OR label visibility
-#     Two separate stores are written, but the trigger pattern and toggle logic
-#     are identical, so a single parameterised callback handles both.
 # ---------------------------------------------------------------------------
 
 
@@ -1100,9 +1110,8 @@ def update_annotation_list(
 )
 def toggle_group_expand(_n_clicks_list: list, expanded_groups: list) -> list:
     """Add or remove a group ID from the expanded set when its header is clicked."""
-    # Guard: only react to actual click events (n_clicks > 0).
-    # When the list rebuilds, buttons are recreated with n_clicks=0, which
-    # would otherwise trigger a spurious toggle.
+    # Rebuilding the list recreates the buttons with n_clicks=0, which would fire a
+    # spurious toggle — so only react to a real click.
     if not ctx.triggered or ctx.triggered[0]["value"] <= 0:
         raise PreventUpdate
     triggered_id = ctx.triggered_id
@@ -1131,12 +1140,18 @@ def toggle_group_labels(_n: list, annotations_raw: list) -> list:
     if triggered_id is None:
         raise PreventUpdate
     group_id = triggered_id["id"]
-    annotations = [Annotation.from_dict(d) for d in (annotations_raw or [])]
-    group_anns = [a for a in annotations if a.group_id == group_id]
-    target_hidden = any(not a.label_hidden for a in group_anns)
+    annotations = [
+        Annotation.from_dict(annotation_dict) for annotation_dict in (annotations_raw or [])
+    ]
+    group_annotations = [
+        annotation for annotation in annotations if annotation.group_id == group_id
+    ]
+    target_hidden = any(not annotation.label_hidden for annotation in group_annotations)
     return [
-        {**d, "label_hidden": target_hidden} if d.get("group_id") == group_id else d
-        for d in (annotations_raw or [])
+        {**annotation_dict, "label_hidden": target_hidden}
+        if annotation_dict.get("group_id") == group_id
+        else annotation_dict
+        for annotation_dict in (annotations_raw or [])
     ]
 
 
@@ -1170,8 +1185,16 @@ def delete_group(
     if triggered_id is None:
         raise PreventUpdate
     group_id = triggered_id["id"]
-    new_annotations = [d for d in (annotations_raw or []) if d.get("group_id") != group_id]
-    new_expanded = [gid for gid in (expanded_groups or []) if gid != group_id]
+    new_annotations = [
+        annotation_dict
+        for annotation_dict in (annotations_raw or [])
+        if annotation_dict.get("group_id") != group_id
+    ]
+    new_expanded = [
+        expanded_group_id
+        for expanded_group_id in (expanded_groups or [])
+        if expanded_group_id != group_id
+    ]
 
     mode = mode or default_mode()
     if mode.get("group_id") == group_id:
@@ -1193,10 +1216,8 @@ def delete_group(
 
 
 # ---------------------------------------------------------------------------
-# 11. Save / reset save-button
-#     Previously two callbacks writing the same two outputs (requiring
-#     allow_duplicate on both).  A single callback dispatches on triggered_id:
-#     store changes reset the button; the save button performs the actual write.
+# 11. Save / reset save-button — one callback dispatching on triggered_id, so neither output
+# needs allow_duplicate: a store change resets the button, the button performs the write.
 # ---------------------------------------------------------------------------
 
 
@@ -1217,7 +1238,9 @@ def save_annotations_cb(_n: int, annotations_raw: list, folder: str) -> tuple[st
     if not folder:
         return "No patient folder loaded.", BUTTON_ANNOTATION_SAVE
     try:
-        annotations = [Annotation.from_dict(d) for d in (annotations_raw or [])]
+        annotations = [
+            Annotation.from_dict(annotation_dict) for annotation_dict in (annotations_raw or [])
+        ]
         save_annotations(annotations, folder)
         return f"Saved ({len(annotations)})", {
             **BUTTON_ANNOTATION_SAVE,
@@ -1249,12 +1272,12 @@ def auto_load_annotations(folder: str) -> tuple[list, dict, list]:
 
     try:
         annotations = load_annotations(folder)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning("Unexpected error loading annotations from %s", folder, exc_info=True)
         annotations = []
 
     # Reset expanded state so all groups start collapsed when a new patient is loaded
-    return [a.to_dict() for a in annotations], toolbar_shown, []
+    return [annotation.to_dict() for annotation in annotations], toolbar_shown, []
 
 
 # ---------------------------------------------------------------------------
@@ -1273,8 +1296,12 @@ def delete_annotation(n_clicks_list: list, annotations_raw: list) -> list:
     triggered_id = ctx.triggered_id
     if triggered_id is None or not any(n_clicks_list):
         raise PreventUpdate
-    ann_id = triggered_id["id"]
-    return [d for d in (annotations_raw or []) if d["id"] != ann_id]
+    annotation_id = triggered_id["id"]
+    return [
+        annotation_dict
+        for annotation_dict in (annotations_raw or [])
+        if annotation_dict["id"] != annotation_id
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1321,7 +1348,7 @@ def activate_group(
     _create: int,
     _continue_list: list,
     name: str,
-    ann_type_val: str,
+    annotation_type_value: str,
     color: str,
     scope_value: list,
     annotations_raw: list,
@@ -1337,12 +1364,14 @@ def activate_group(
         if not name:
             raise PreventUpdate
         color = color or ANNOTATION_COLORS[0]
-        ann_type = AnnotationType(ann_type_val or AnnotationType.TIME_EVENT.value)
-        is_global = "global" in (scope_value or []) and ann_type in TIME_BASED_ANNOTATION_TYPES
+        annotation_type = AnnotationType(annotation_type_value or AnnotationType.TIME_EVENT.value)
+        is_global = (
+            "global" in (scope_value or []) and annotation_type in TIME_BASED_ANNOTATION_TYPES
+        )
         new_mode = {
             **(mode or default_mode()),
             "active": True,
-            "type": ann_type.value,
+            "type": annotation_type.value,
             "group_id": str(uuid.uuid4()),
             "group_name": name,
             "group_color": color,
@@ -1364,13 +1393,20 @@ def activate_group(
     if not any(_continue_list):
         raise PreventUpdate
     group_id = triggered_id["id"]
-    ref_ann = next((d for d in (annotations_raw or []) if d.get("group_id") == group_id), None)
-    if not ref_ann:
+    reference_annotation = next(
+        (
+            annotation_dict
+            for annotation_dict in (annotations_raw or [])
+            if annotation_dict.get("group_id") == group_id
+        ),
+        None,
+    )
+    if not reference_annotation:
         raise PreventUpdate
-    group_name = ref_ann.get("group_name", "")
-    group_color = ref_ann.get("color", ANNOTATION_COLORS[0])
-    group_type = AnnotationType(ref_ann["type"])
-    group_is_global = ref_ann.get("subplot_name") is None
+    group_name = reference_annotation.get("group_name", "")
+    group_color = reference_annotation.get("color", ANNOTATION_COLORS[0])
+    group_type = AnnotationType(reference_annotation["type"])
+    group_is_global = reference_annotation.get("subplot_name") is None
     new_mode = {
         **(mode or default_mode()),
         "active": True,
@@ -1422,8 +1458,10 @@ def toggle_annotation_label(_n: list, annotations_raw: list) -> list:
     triggered_id = ctx.triggered_id
     if triggered_id is None:
         raise PreventUpdate
-    ann_id = triggered_id["id"]
+    annotation_id = triggered_id["id"]
     return [
-        {**d, "label_hidden": not d.get("label_hidden", False)} if d["id"] == ann_id else d
-        for d in (annotations_raw or [])
+        {**annotation_dict, "label_hidden": not annotation_dict.get("label_hidden", False)}
+        if annotation_dict["id"] == annotation_id
+        else annotation_dict
+        for annotation_dict in (annotations_raw or [])
     ]

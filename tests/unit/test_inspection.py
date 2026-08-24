@@ -65,7 +65,7 @@ class TestColumnInfo:
 class TestDataSourceInspection:
     def test_ok_status(self):
         insp = DataSourceInspection(
-            datasource_name="philips_waves",
+            datasource_name="servo_u",
             status="ok",
             file_path="/data/waves.parquet",
             raw_date_range=("24-01-01 08:00:00", "24-01-01 09:00:00"),
@@ -79,9 +79,13 @@ class TestDataSourceInspection:
         assert insp.error_message is None
 
     def test_file_not_found(self):
-        insp = DataSourceInspection(datasource_name="syringe", status="file_not_found")
+        insp = DataSourceInspection(datasource_name="edf", status="file_not_found")
         assert insp.columns == []
         assert insp.raw_date_range is None
+
+    def test_full_view_by_default(self):
+        insp = DataSourceInspection(datasource_name="servo_u", status="ok")
+        assert insp.columns_pruned is False
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +97,7 @@ class TestSerialization:
     def _make_results(self):
         return [
             DataSourceInspection(
-                datasource_name="philips_waves",
+                datasource_name="servo_u",
                 status="ok",
                 file_path="/data/waves.parquet",
                 raw_date_range=("24-01-01 08:00:00", "24-01-01 09:00:00"),
@@ -104,7 +108,7 @@ class TestSerialization:
                 ],
             ),
             DataSourceInspection(
-                datasource_name="syringe",
+                datasource_name="edf",
                 status="file_not_found",
             ),
         ]
@@ -170,6 +174,19 @@ class TestToCsvString:
         lines = csv_str.strip().split("\n")
         assert len(lines) == 1  # header only
 
+    def test_pruned_view_is_recorded(self):
+        results = [
+            DataSourceInspection(
+                datasource_name="test_ds",
+                status="ok",
+                columns=[ColumnInfo("col1", True, 100, 50)],
+                columns_pruned=True,
+            )
+        ]
+        header, row = to_csv_string(results).strip().split("\n")[:2]
+        assert "columns_pruned" in header
+        assert "True" in row
+
 
 # ---------------------------------------------------------------------------
 # to_text_summary
@@ -180,13 +197,13 @@ class TestToTextSummary:
     def test_contains_datasource_name(self):
         results = [
             DataSourceInspection(
-                datasource_name="philips_waves",
+                datasource_name="servo_u",
                 status="ok",
                 columns=[ColumnInfo("ART", True, 100, 50)],
             )
         ]
         text = to_text_summary(results)
-        assert "philips_waves" in text
+        assert "servo_u" in text
         assert "OK" in text
 
     def test_empty_results(self):
@@ -204,3 +221,13 @@ class TestToTextSummary:
         text = to_text_summary(results)
         assert "FAIL" in text
         assert "file corrupt" in text
+
+    def test_pruned_view_is_announced(self):
+        # A shorter table must never read as missing data — the summary has to say why.
+        columns = [ColumnInfo("ART", True, 100, 50)]
+        pruned = to_text_summary(
+            [DataSourceInspection("servo_u", "ok", columns=columns, columns_pruned=True)]
+        )
+        full = to_text_summary([DataSourceInspection("servo_u", "ok", columns=columns)])
+        assert "Pruned view" in pruned
+        assert "Pruned view" not in full

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clinical-scope"
-version = "1.0.0"
+version = "1.1.0"
 description = "Interactive visualization dashboard for clinical physiological signals"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,22 +28,26 @@ dependencies = [
   "dash_daq",
   "pandas",
   "numpy",
-  "plotly>=5.24",
+  "plotly>=6.3",
   "plotly-resampler",
   "pyarrow",
   "openpyxl",
   "defusedxml",
   "pytz",
+  "pyedflib",
 ]
 
 [project.scripts]
 clinical-scope = "clinical_scope.dash_api.core_api:main"
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "psutil"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"clinical_scope.dash_api" = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

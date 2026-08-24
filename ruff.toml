@@ -21,6 +21,7 @@ target-version = "py312"
 select = ["ALL"]
 ignore = [
     "COM812", # Incompatible with ruff format
+    "CPY001", # Attribution lives in LICENSE, not in a header on every file
     "D203", # Incompatible with D211. D211 prefered by the formater
     "INP",
     "FIX", # Allows todo/fixme
@@ -71,6 +72,7 @@ unfixable = []
 "scripts/*" = [
     "ANN001",
     "ANN201",
+    "T201", # CLI scripts print to the console by design
 ]
 "src/clinical_scope/build_info/*" = [
     "T201", # build CLI prints progress to the console

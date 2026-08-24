@@ -87,7 +87,6 @@ class TestAutoDetection:
             ) as mock:
                 load_annotations(patient_path)
 
-                # Should resolve to Patient01/clinical_scope_output/annotations.json
                 mock.assert_called_once_with(
                     patient_path / "clinical_scope_output" / "annotations.json"
                 )

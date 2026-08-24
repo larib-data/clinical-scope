@@ -69,6 +69,12 @@ class Annotation:
         lookup: if the subplot is later removed the annotation is silently skipped.
     group_id
         ID of the annotation group this annotation belongs to, or ``None``.
+    group_name
+        Display name of that group, denormalised onto every member so groups can be
+        rebuilt from the annotations alone (group metadata is never persisted separately).
+    trace_metadata
+        ``{"datasource_name", "raw_name", "display_name"}`` of the clicked trace, or
+        ``None``.  Records which signal the annotation was placed on.
     patient
         Patient identifier string set when loading annotations via
         :func:`~clinical_scope.load_database_annotations`.  ``None`` for
@@ -124,20 +130,20 @@ class Annotation:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> Annotation:
+    def from_dict(cls, annotation_dict: dict) -> Annotation:
         """Deserialise from a dict produced by :meth:`to_dict`."""
         return cls(
-            id=d.get("id") or str(uuid.uuid4()),
-            type=AnnotationType(d["type"]),
-            label=d.get("label", ""),
-            color=d.get("color", "#e74c3c"),
-            plot_name=d.get("plot_name", ""),
-            subplot_name=d.get("subplot_name"),
-            group_id=d.get("group_id"),
-            group_name=d.get("group_name"),
-            patient=d.get("patient"),
-            data=d.get("data", {}),
-            trace_metadata=d.get("trace_metadata"),
-            label_hidden=d.get("label_hidden", False),
-            created_at=d.get("created_at", _now_iso()),
+            id=annotation_dict.get("id") or str(uuid.uuid4()),
+            type=AnnotationType(annotation_dict["type"]),
+            label=annotation_dict.get("label", ""),
+            color=annotation_dict.get("color", "#e74c3c"),
+            plot_name=annotation_dict.get("plot_name", ""),
+            subplot_name=annotation_dict.get("subplot_name"),
+            group_id=annotation_dict.get("group_id"),
+            group_name=annotation_dict.get("group_name"),
+            patient=annotation_dict.get("patient"),
+            data=annotation_dict.get("data", {}),
+            trace_metadata=annotation_dict.get("trace_metadata"),
+            label_hidden=annotation_dict.get("label_hidden", False),
+            created_at=annotation_dict.get("created_at", _now_iso()),
         )

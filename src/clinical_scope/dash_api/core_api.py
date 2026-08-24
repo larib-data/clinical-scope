@@ -7,18 +7,23 @@ from pathlib import Path
 import dash_bootstrap_components as dbc
 from dash import Dash, dcc, html
 
+from clinical_scope import constants as cst
 from clinical_scope import logger_config
 
 # Import callbacks to register them with the app
-from clinical_scope.dash_api import callbacks  # noqa: F401
+from clinical_scope.dash_api import (
+    callbacks,  # noqa: F401
+    ui_components,
+)
 from clinical_scope.dash_api.annotations.model import (
     ANNOTATION_COLORS,
     AnnotationType,
 )
 from clinical_scope.dash_api.callbacks import default_mode
-from clinical_scope.dash_api.helper_api import get_cached_db_options_path
+from clinical_scope.dash_api.helper_api import get_cached_database_options_path, load_user_options
 from clinical_scope.dash_api.styles import (
-    ACTION_BUTTONS_ROW,
+    ACTION_CARD,
+    ACTION_PANEL_ROW,
     ANNOTATION_MODAL_PANEL,
     ANNOTATION_MODAL_STYLE_HIDDEN,
     ANNOTATION_TOOLBAR_STYLE,
@@ -26,6 +31,7 @@ from clinical_scope.dash_api.styles import (
     BUTTON_ANNOTATION_SAVE,
     BUTTON_DEFAULT_VIZ,
     BUTTON_DOWNLOAD_CSV,
+    BUTTON_GEAR,
     BUTTON_INSPECT,
     BUTTON_MODAL_CLOSE,
     BUTTON_PROCESS,
@@ -37,8 +43,10 @@ from clinical_scope.dash_api.styles import (
     INSPECTION_MODAL_SCROLLABLE_BODY,
     INSPECTION_MODAL_STYLE_HIDDEN,
     ROOT_CONTAINER,
+    SETTINGS_MODAL_PANEL,
     VERSION_BADGE,
 )
+from clinical_scope.datasource.formatting.timezone import resolve_display_timezone
 
 # === API Version === #
 try:
@@ -46,7 +54,7 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0-dev (not installed)"
 
-# === Configure the logger and add new app run message === #
+# === Logger === #
 logs_path_root = logger_config.get_logs_path()
 logs_path = logs_path_root / "app/dash_api.log"
 logger = logger_config.setup_logging(logs_path, debug=True)
@@ -63,7 +71,7 @@ else:
 # Show "Reload last config" button only when a cached config exists at layout render time.
 _reload_btn_style = {
     **BUTTON_RELOAD,
-    "display": "inline-block" if get_cached_db_options_path().exists() else "none",
+    "display": "inline-block" if get_cached_database_options_path().exists() else "none",
 }
 
 app = Dash(
@@ -74,9 +82,9 @@ app = Dash(
 )
 
 # ---------------------------------------------------------------------------
-# Annotation toolbar — color swatches built from the preset palette
+# Annotation toolbar
 # ---------------------------------------------------------------------------
-_COLOR_TYPE_LABELS = {
+_ANNOTATION_TYPE_LABELS = {
     AnnotationType.TIME_EVENT: "Time Event",
     AnnotationType.TIME_WINDOW: "Time Window",
     AnnotationType.POINT: "Point",
@@ -85,11 +93,11 @@ _COLOR_TYPE_LABELS = {
 _annotation_type_buttons = [
     html.Button(
         label,
-        id=f"annotation-type-btn-{ann_type.value}",
+        id=f"annotation-type-btn-{annotation_type.value}",
         n_clicks=0,
         style=BUTTON_ANNOTATION_INACTIVE,
     )
-    for ann_type, label in _COLOR_TYPE_LABELS.items()
+    for annotation_type, label in _ANNOTATION_TYPE_LABELS.items()
 ]
 
 _annotation_toolbar = html.Div(
@@ -99,9 +107,9 @@ _annotation_toolbar = html.Div(
         "display": "none",
         "justifyContent": "space-between",
         "alignItems": "center",
-        "width": "100%",  # Force full width
-        "boxSizing": "border-box",  # Include padding in width
-        "padding": "8px 0",  # Optional: Add vertical padding
+        "width": "100%",
+        "boxSizing": "border-box",
+        "padding": "8px 0",
     },
     children=[
         # Left group: Annotate label + buttons
@@ -110,8 +118,8 @@ _annotation_toolbar = html.Div(
                 "display": "flex",
                 "alignItems": "center",
                 "gap": "8px",
-                "flex": "1",  # Allow this group to grow
-                "minWidth": "0",  # Prevent overflow
+                "flex": "1",
+                "minWidth": "0",  # Flex children need this to shrink instead of overflowing
             },
             children=[
                 html.Span(
@@ -142,9 +150,9 @@ _annotation_toolbar = html.Div(
                 "display": "flex",
                 "alignItems": "center",
                 "gap": "8px",
-                "flex": "1",  # Allow this group to grow
-                "justifyContent": "flex-end",  # Push to the right
-                "minWidth": "0",  # Prevent overflow
+                "flex": "1",
+                "justifyContent": "flex-end",
+                "minWidth": "0",  # Flex children need this to shrink instead of overflowing
             },
             children=[
                 html.Button(
@@ -194,19 +202,19 @@ _annotation_toolbar = html.Div(
 _color_swatches = html.Div(
     [
         html.Div(
-            id={"type": "annotation-color-swatch", "color": c},
+            id={"type": "annotation-color-swatch", "color": color},
             n_clicks=0,
             style={
                 "width": "22px",
                 "height": "22px",
                 "borderRadius": "50%",
-                "backgroundColor": c,
+                "backgroundColor": color,
                 "cursor": "pointer",
                 "border": "2px solid transparent",
                 "flexShrink": 0,
             },
         )
-        for c in ANNOTATION_COLORS
+        for color in ANNOTATION_COLORS
     ],
     style={"display": "flex", "gap": "6px", "alignItems": "center"},
 )
@@ -247,7 +255,6 @@ _annotation_modal = html.Div(
                     id="annotation-modal-position-display",
                     style={"fontSize": "12px", "color": "#666", "marginBottom": "12px"},
                 ),
-                # Label input
                 html.Div(
                     [
                         html.Label(
@@ -271,7 +278,6 @@ _annotation_modal = html.Div(
                     ],
                     style={"marginBottom": "12px"},
                 ),
-                # Color picker
                 html.Div(
                     [
                         html.Label(
@@ -350,19 +356,19 @@ _annotation_modal = html.Div(
 _group_color_swatches = html.Div(
     [
         html.Div(
-            id={"type": "group-color-swatch", "color": c},
+            id={"type": "group-color-swatch", "color": color},
             n_clicks=0,
             style={
                 "width": "22px",
                 "height": "22px",
                 "borderRadius": "50%",
-                "backgroundColor": c,
+                "backgroundColor": color,
                 "cursor": "pointer",
                 "border": "2px solid transparent",
                 "flexShrink": 0,
             },
         )
-        for c in ANNOTATION_COLORS
+        for color in ANNOTATION_COLORS
     ],
     style={"display": "flex", "gap": "6px", "alignItems": "center"},
 )
@@ -398,7 +404,6 @@ _annotation_group_modal = html.Div(
                         "paddingBottom": "12px",
                     },
                 ),
-                # Name input
                 html.Div(
                     [
                         html.Label(
@@ -422,7 +427,6 @@ _annotation_group_modal = html.Div(
                     ],
                     style={"marginBottom": "12px"},
                 ),
-                # Type dropdown
                 html.Div(
                     [
                         html.Label(
@@ -446,7 +450,6 @@ _annotation_group_modal = html.Div(
                     ],
                     style={"marginBottom": "12px"},
                 ),
-                # Color picker
                 html.Div(
                     [
                         html.Label(
@@ -476,7 +479,6 @@ _annotation_group_modal = html.Div(
                     ],
                     style={"marginBottom": "12px"},
                 ),
-                # Scope (time-based types only)
                 html.Div(
                     [
                         html.Label(
@@ -535,10 +537,64 @@ _annotation_list_panel = html.Div(
     children=[],
 )
 
+# ---------------------------------------------------------------------------
+# Settings modal — the only editing surface for the global user options
+# ---------------------------------------------------------------------------
+# Loaded once at layout build; the reflect callback re-syncs widgets to the store on startup.
+_INITIAL_USER_OPTIONS = load_user_options()
+_INITIAL_SAVE_HTML = bool(_INITIAL_USER_OPTIONS.get(cst.UserOptions.SaveHtmlOnProcess.NAME))
+_INITIAL_INSPECT_PRUNING = bool(
+    _INITIAL_USER_OPTIONS.get(cst.UserOptions.InspectConfiguredColumnsOnly.NAME)
+)
+
+_user_options_form, _ = ui_components.build_ui_and_schema_registry(
+    cst.UserOptions, "user_options", id_type="user-option", label_width="420px"
+)
+
+_settings_modal = html.Div(
+    id="settings-modal",
+    style=ANNOTATION_MODAL_STYLE_HIDDEN,
+    children=[
+        html.Div(
+            [
+                html.Div(
+                    [
+                        html.H4("Settings", style={"margin": 0, "fontSize": "16px"}),
+                        html.Button(
+                            "×",  # noqa: RUF001
+                            id="settings-close-btn",
+                            n_clicks=0,
+                            style={
+                                **BUTTON_MODAL_CLOSE,
+                                "fontSize": "18px",
+                                "padding": "2px 10px",
+                                "lineHeight": "1",
+                            },
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "center",
+                        "marginBottom": "16px",
+                        "borderBottom": "1px solid #dee2e6",
+                        "paddingBottom": "12px",
+                    },
+                ),
+                _user_options_form,
+            ],
+            style=SETTINGS_MODAL_PANEL,
+        )
+    ],
+)
+
 app.layout = html.Div(
     [
-        # Version display in top right corner
         html.Div(f"API Version: {__version__}", style=VERSION_BADGE),
+        html.Button("⚙ Settings", id="settings-open-btn", n_clicks=0, style=BUTTON_GEAR),
+        _settings_modal,
+        # Global user options store (source of truth for the settings surfaces).
+        dcc.Store(id="user-options-store", data=_INITIAL_USER_OPTIONS),
         # Global annotation stores
         dcc.Store(id="annotation-store", data=[]),
         dcc.Store(id="annotation-mode-store", data=default_mode()),
@@ -546,6 +602,14 @@ app.layout = html.Div(
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),
         dcc.Store(id="display-timezone-store", data=None),
+        # Tracks the display_timezone last applied to the datetime fields, so the
+        # re-render callback knows what tz to convert *from*. Seeded from disk at layout build.
+        dcc.Store(
+            id="form-display-timezone-store",
+            data=resolve_display_timezone(
+                _INITIAL_USER_OPTIONS.get(cst.UserOptions.DisplayTimezone.NAME)
+            ),
+        ),
         dcc.Store(id="schema-registry", data={}),
         html.H2("Database Options"),
         html.Div(
@@ -575,22 +639,44 @@ app.layout = html.Div(
         html.H2("Patient Options"),
         html.Div(id="patient-options-ui"),
         html.Div(
-            id="patient-options-reload-status", style={"fontSize": "12px", "marginBottom": "8px"}
-        ),
-        html.Div(
             [
-                html.Button(
-                    "Process visualization",
-                    id="process-button",
-                    style=BUTTON_PROCESS,
+                html.Div(
+                    [
+                        html.Button(
+                            "Process visualization",
+                            id="process-button",
+                            style=BUTTON_PROCESS,
+                        ),
+                        # One-way mirror of save_html_on_process; edited in the settings modal.
+                        html.Span(
+                            id="save-html-indicator",
+                            children=ui_components.save_html_indicator_text(_INITIAL_SAVE_HTML),
+                            style={"fontSize": "13px", "color": "#666"},
+                        ),
+                    ],
+                    style=ACTION_CARD,
                 ),
-                html.Button(
-                    "Inspect data",
-                    id="inspect-button",
-                    style=BUTTON_INSPECT,
+                html.Div(
+                    [
+                        html.Button(
+                            "Inspect data",
+                            id="inspect-button",
+                            style=BUTTON_INSPECT,
+                        ),
+                        # One-way mirror of inspect_configured_columns_only; edited in the
+                        # settings modal — so a pruned inspection is never mistaken for a full one.
+                        html.Span(
+                            id="inspect-pruning-indicator",
+                            children=ui_components.inspect_pruning_indicator_text(
+                                _INITIAL_INSPECT_PRUNING
+                            ),
+                            style={"fontSize": "13px", "color": "#666"},
+                        ),
+                    ],
+                    style=ACTION_CARD,
                 ),
             ],
-            style=ACTION_BUTTONS_ROW,
+            style=ACTION_PANEL_ROW,
         ),
         html.Div(id="validation-errors"),
         dcc.Loading(

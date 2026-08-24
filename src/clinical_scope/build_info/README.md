@@ -108,7 +108,7 @@ Non-code assets are collected from:
 If the app crashes with import errors, add the missing module to `hiddenimports` in the spec file:
 
 ```python
-hiddenimports += ['missing_module']
+hiddenimports += ["missing_module"]
 ```
 
 ### App too large
@@ -116,7 +116,7 @@ hiddenimports += ['missing_module']
 To reduce size, add unused packages to `excludes`:
 
 ```python
-excludes=['matplotlib', 'scipy', ...]
+excludes = ["matplotlib", "scipy", ...]
 ```
 
 ### Slow startup

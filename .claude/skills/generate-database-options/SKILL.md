@@ -85,6 +85,7 @@ Incorporate answers into the dict before writing.
 ```python
 import json
 from pathlib import Path
+
 Path(output_path).write_text(json.dumps(db_options, indent=4, ensure_ascii=False), encoding="utf-8")
 ```
 

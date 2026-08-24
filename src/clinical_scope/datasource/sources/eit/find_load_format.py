@@ -9,7 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.eit.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import get_column_name_from_pattern
+from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -48,38 +48,26 @@ def _add_index_timestamp_to_eit_dataframe(
     return df[~df.index.duplicated(keep="first")]
 
 
-def _parse_asc_selected_columns(
-    lines: list[str], selected_cols: list[str] | None = None
-) -> pd.DataFrame:
-    """Parses only selected columns from a large ASC dataframe (line-by-line)."""
+def _parse_asc_table(lines: list[str]) -> pd.DataFrame:
+    """Parses a large tab-separated ASC table (line-by-line)."""
     header_line = lines[0].strip()
-    all_columns = [x.replace("+", "").replace(",", ".").strip() for x in header_line.split("\t")]
-
-    if selected_cols is None:
-        col_indices = list(range(len(all_columns)))
-        selected_cols = all_columns[:]
-    else:
-        resolved_cols = []
-        for pattern in selected_cols:
-            col = get_column_name_from_pattern(all_columns, pattern)
-            if col is not None:
-                resolved_cols.append(col)
-
-        index_map = {col: i for i, col in enumerate(all_columns)}
-        selected_cols = [c for c in resolved_cols if c in index_map]
-        col_indices = [index_map[c] for c in selected_cols]
+    all_columns = [
+        token.replace("+", "").replace(",", ".").strip() for token in header_line.split("\t")
+    ]
 
     rows = []
     for raw_line in lines[1:]:
         stripped_line = raw_line.strip()
         if not stripped_line:
             continue
-        values = [x.replace("+", "").replace(",", ".").strip() for x in stripped_line.split("\t")]
+        values = [
+            token.replace("+", "").replace(",", ".").strip() for token in stripped_line.split("\t")
+        ]
         if len(values) < len(all_columns):
             values += [None] * (len(all_columns) - len(values))
-        rows.append([values[i] for i in col_indices])
+        rows.append(values[: len(all_columns)])
 
-    df = pd.DataFrame(rows, columns=selected_cols)
+    df = pd.DataFrame(rows, columns=all_columns)
     df[df.columns] = df[df.columns].apply(pd.to_numeric, errors="coerce")
     df = df.set_index(options_naming.Time_column_label)
     df["time_hours"] = pd.to_timedelta(df.index, unit="D")
@@ -102,20 +90,20 @@ def _parse_metadata_lines(lines: list[str]) -> dict:
         else:
             notes.append(stripped_line)
 
-    for i, note in enumerate(notes, 1):
-        metadata[f"Note_{i}"] = note
+    for note_index, note in enumerate(notes, 1):
+        metadata[f"Note_{note_index}"] = note
 
     return metadata
 
 
 def _parse_matrix(lines: list[str]) -> np.ndarray:
     """Parse matrix from lines."""
-    new_lines = [[float(x.replace(",", ".")) for x in line.split()] for line in lines]
+    new_lines = [[float(token.replace(",", ".")) for token in line.split()] for line in lines]
     return np.array(new_lines)
 
 
 def _parse_eit_asc_file(
-    path: str | Path, columns_to_extract: list[str] | None
+    path: str | Path,
 ) -> tuple[dict, np.ndarray, np.ndarray, pd.DataFrame, pd.DataFrame]:
     """Parse a single EIT ASC file."""
     lines_metadata = []
@@ -128,8 +116,8 @@ def _parse_eit_asc_file(
     tidal_variations_full = False
     lines_tidal_variation_full_df = []
 
-    with Path.open(Path(path), "r", encoding="latin-1") as f:
-        for _i, raw_line in enumerate(f):
+    with Path.open(Path(path), "r", encoding="latin-1") as file:
+        for _i, raw_line in enumerate(file):
             stripped_line = raw_line.strip()
 
             if "Dynamic Image" in stripped_line:
@@ -168,20 +156,8 @@ def _parse_eit_asc_file(
             else:
                 lines_metadata.append(stripped_line)
 
-    df_tidal_variation_summary_df = _parse_asc_selected_columns(lines_tidal_variation_summary_df)
-
-    if columns_to_extract:
-        selected_cols_tidal_variation_full_df = [
-            options_naming.Time_column_label,
-            *columns_to_extract,
-        ]
-    else:
-        selected_cols_tidal_variation_full_df = None
-
-    df_tidal_variation_full_df = _parse_asc_selected_columns(
-        lines_tidal_variation_full_df,
-        selected_cols_tidal_variation_full_df,
-    )
+    df_tidal_variation_summary_df = _parse_asc_table(lines_tidal_variation_summary_df)
+    df_tidal_variation_full_df = _parse_asc_table(lines_tidal_variation_full_df)
 
     metadata = _parse_metadata_lines(lines_metadata)
     dynamic_image_matrix = _parse_matrix(lines_dynamic_image_matrix)
@@ -198,7 +174,7 @@ def _parse_eit_asc_file(
 
 @time_it
 def _parse_eit_asc_file_list(
-    asc_files: list[Path], columns_to_extract: list[str] | None
+    asc_files: list[Path],
 ) -> tuple[
     list[dict],
     list[np.ndarray],
@@ -214,15 +190,13 @@ def _parse_eit_asc_file_list(
     all_tidal_variation_full_dfs = []
 
     for file_path in asc_files:
-        metadata, dynamic_img, tidal_img, df_summary, df_full = _parse_eit_asc_file(
-            file_path, columns_to_extract
-        )
+        metadata, dynamic_image, tidal_image, df_summary, df_full = _parse_eit_asc_file(file_path)
         df_summary["source_file"] = file_path.name
         df_full["source_file"] = file_path.name
 
         all_metadata.append(metadata)
-        all_dynamic_images.append(dynamic_img)
-        all_tidal_images.append(tidal_img)
+        all_dynamic_images.append(dynamic_image)
+        all_tidal_images.append(tidal_image)
         all_tidal_variation_summary_dfs.append(df_summary)
         all_tidal_variation_full_dfs.append(df_full)
 
@@ -241,55 +215,56 @@ def _parse_eit_asc_file_list(
     )
 
 
-def _add_columns_percentage(df: pd.DataFrame, reference_column: str) -> pd.DataFrame:
-    """Add percentage columns relative to a reference column."""
-    for column in df.columns:
-        if column != reference_column and is_numeric_dtype(df[column]):
-            df[f"%{column}"] = df[column] / df[reference_column]
-    return df
-
-
 def _add_columns_percentage_for_eit(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add percentage columns for EIT local* columns relative to global column.
 
-    This is a hardcoded implementation specific to EIT data processing.
-    Looks for columns starting with 'local' (case-insensitive) and creates
-    percentage columns relative to 'global' column (case-insensitive).
+    A ratio of two parsed columns resolves no option, so deriving it belongs to the
+    transcription: ``_load`` calls this so the ratios reach the parquet cache, where
+    ``field_display`` can select them. Returns *df* unchanged when there is no global
+    column to divide by.
     """
+    global_label = options_naming.Global_column_label.lower()
+    local_prefix = options_naming.prefix_local.lower()
     try:
-        # Check if we have a global column (case-insensitive)
-        global_col = next((col for col in df.columns if col.lower() == "global"), None)
-        if global_col is None:
-            logger.debug("No 'global' column found in EIT data - skipping percentage calculation")
+        global_column = next(
+            (column for column in df.columns if column.lower() == global_label), None
+        )
+        if global_column is None:
+            logger.debug(
+                "No '%s' column found in EIT data - skipping percentage calculation",
+                options_naming.Global_column_label,
+            )
             return df
 
-        # Find all columns that start with 'local' (case-insensitive)
-        local_columns = [col for col in df.columns if col.lower().startswith("local")]
+        local_columns = [column for column in df.columns if column.lower().startswith(local_prefix)]
 
         if not local_columns:
-            logger.debug("No columns starting with 'local' found in EIT data")
+            logger.debug(
+                "No columns starting with '%s' found in EIT data", options_naming.prefix_local
+            )
             return df
 
-        # Create percentage columns for each local column
-        for local_col in local_columns:
-            if is_numeric_dtype(df[local_col]):
-                percentage_col = f"%{local_col}"
-                if percentage_col not in df.columns:
+        for local_column in local_columns:
+            if is_numeric_dtype(df[local_column]):
+                percentage_column = f"{options_naming.prefix_percentage}{local_column}"
+                if percentage_column not in df.columns:
                     try:
-                        df[percentage_col] = df[local_col] / df[global_col]
+                        df[percentage_column] = df[local_column] / df[global_column]
                         logger.debug(
                             "Created percentage column %s = %s / %s",
-                            percentage_col,
-                            local_col,
-                            global_col,
+                            percentage_column,
+                            local_column,
+                            global_column,
                         )
                     except Exception:
-                        logger.exception("Failed to create percentage column %s", percentage_col)
+                        logger.exception("Failed to create percentage column %s", percentage_column)
                 else:
-                    logger.debug("Percentage column %s already exists, skipping", percentage_col)
+                    logger.debug("Percentage column %s already exists, skipping", percentage_column)
             else:
-                logger.debug("Column %s is not numeric, skipping percentage calculation", local_col)
+                logger.debug(
+                    "Column %s is not numeric, skipping percentage calculation", local_column
+                )
 
     except Exception:
         logger.exception("Error in EIT percentage calculation")
@@ -304,20 +279,17 @@ class EITDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:
-        database_options_specific = kwargs.get("database_options_specific", {})
+    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         (
             _list_metadata,
             _list_dynamic_images,
             _list_tidal_images,
             _df_tidal_variation_summary,
             df,
-        ) = _parse_eit_asc_file_list(
-            file_path_list, database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
-        )
+        ) = _parse_eit_asc_file_list(file_path_list)
 
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep="first")]
+        df = deduplicate_then_sort_index(df)
+        df = _add_columns_percentage_for_eit(df)
         if path_output is not None:
             cls._save_dataframe(df, path_output)
         return df
@@ -329,7 +301,6 @@ class EITDataSource(DataSourceBase):
     ) -> pd.DataFrame:
         patient_options_eit = patient_options.get(cls.DATASOURCE_NAME, {})
 
-        # Create datetime index with the right timezone
         timezone = database_options_specific.get(
             cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {}
         ).get(
@@ -342,14 +313,10 @@ class EITDataSource(DataSourceBase):
             day_str = patient_options.get(cst.PatientOptions.DatetimeStart.NAME)
             if day_str:
                 logger.info("EIT day not provided, inferring from datetime_start: %s", day_str)
-        day = pd.Timestamp(day_str) if day_str else None
+        # datetime_start may be tz-aware; strip the offset so "day" stays the typed calendar
+        # day, which the branch below localizes into the device's own timezone.
+        day = pd.Timestamp(day_str).tz_localize(None) if day_str else None
         df = _add_index_timestamp_to_eit_dataframe(df, day=day, timezone=timezone)
 
-        # Apply time-shift
         df = cls._apply_time_shift(df, patient_options)
-
-        # Filter by datetime (filter_date=False for EIT)
-        df = cls._filter_by_datetime(df, patient_options, filter_date=False)
-
-        # Add percentage columns for local* columns relative to global (hardcoded for EIT)
-        return _add_columns_percentage_for_eit(df)
+        return cls._filter_by_datetime(df, patient_options, filter_date=False)

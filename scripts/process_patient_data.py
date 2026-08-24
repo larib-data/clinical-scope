@@ -34,6 +34,7 @@ from clinical_scope.config.parsing import (
     build_patient_options,
     load_database_options_from_path,
 )
+from clinical_scope.datasource import registry as datasource_registry
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +44,15 @@ _TABLE_WIDTH = 58
 # ==================================================================================================
 def _print_results(results: dict) -> None:
     """Print a name / status / rows summary table to stdout."""
-    print(f"\n{'Datasource':<30s}  {'Status':<12s}  {'Rows':>8s}")  # noqa: T201
-    print("-" * _TABLE_WIDTH)  # noqa: T201
+    print(f"\n{'Datasource':<30s}  {'Status':<12s}  {'Rows':>8s}")
+    print("-" * _TABLE_WIDTH)
     for name, df in results.items():
         status = "ok" if df is not None else "not found"
         rows = str(len(df)) if df is not None else "-"
-        print(f"{name:<30s}  {status:<12s}  {rows:>8s}")  # noqa: T201
-    print()  # noqa: T201
+        print(f"{name:<30s}  {status:<12s}  {rows:>8s}")
+    print()
     success = sum(1 for v in results.values() if v is not None)
-    print(f"{success}/{len(results)} datasource(s) succeeded.")  # noqa: T201
+    print(f"{success}/{len(results)} datasource(s) succeeded.")
 
 
 # ==================================================================================================
@@ -74,10 +75,13 @@ def cmd_patient(options: dict) -> None:
         save_folder=options.get("output_folder"),
     )
 
+    if not any(value is not None for value in results.values()):
+        datasource_registry.emit_zero_result_diagnostic(options["patient_folder"])
+
     if options["verbose"]:
         _print_results(results)
         if options.get("output_folder"):
-            print(f"Outputs written to: {options['output_folder']}")  # noqa: T201
+            print(f"Outputs written to: {options['output_folder']}")
 
     logger.info("Patient extraction finished.")
 
@@ -95,16 +99,14 @@ def cmd_batch(options: dict) -> None:
 
     if options["verbose"]:
         for patient_name, results in batch_results.items():
-            print(f"\n── {patient_name}")  # noqa: T201
+            print(f"\n── {patient_name}")
             _print_results(results)
 
         total = len(batch_results)
         with_data = sum(1 for r in batch_results.values() if any(v is not None for v in r.values()))
-        print(  # noqa: T201
-            f"\n{with_data}/{total} patient folder(s) had at least one successful datasource."
-        )
+        print(f"\n{with_data}/{total} patient folder(s) had at least one successful datasource.")
         if options.get("output_folder"):
-            print(f"Outputs written to: {options['output_folder']}")  # noqa: T201
+            print(f"Outputs written to: {options['output_folder']}")
 
     logger.info("Batch extraction finished.")
 

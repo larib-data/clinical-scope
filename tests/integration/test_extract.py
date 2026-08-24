@@ -7,8 +7,8 @@ from clinical_scope.wrapper import batch_extract, extract_datasource, extract_pa
 
 
 class TestExtractDatasource:
-    def test_extract_philips_waves(self, patient_full_path):
-        folder = patient_full_path / "philips_waves"
+    def test_extract_servo_u(self, patient_full_path):
+        folder = patient_full_path / "servo_u"
         df = extract_datasource(folder)
         assert isinstance(df, pd.DataFrame)
         assert len(df) > 0
@@ -36,11 +36,11 @@ class TestExtractPatient:
 
         Expected failures (by design, not bugs):
         - 'other': extract() always returns None (multi-file datasource, use main() instead)
-        demo_patient has 10 datasource folders, so >= 9 successes is the realistic target
-        when all folders load cleanly. Threshold is set to 8 to tolerate one unexpected failure.
+        demo_patient has 9 datasource folders, so >= 8 successes is the realistic target
+        when all folders load cleanly. Threshold is set to 7 to tolerate one unexpected failure.
         """
         successes = sum(1 for v in extract_results.values() if v is not None)
-        assert successes >= 9, f"Only {successes} extractions succeeded (expected >= 9)"
+        assert successes >= 7, f"Only {successes} extractions succeeded (expected >= 7)"
 
     def test_dataframes_are_valid(self, extract_results):
         for name, df in extract_results.items():

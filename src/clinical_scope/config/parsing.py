@@ -1,8 +1,7 @@
 """
 Configuration file parsing utilities.
 
-This module provides functions for loading JSON and XLSX configuration files,
-including database options and patient options.
+Covers database options (``.json`` / ``.xlsx``) and patient options (``.json``).
 """
 
 import json
@@ -35,9 +34,9 @@ def build_patient_options(
     ``data_folder`` is always set from *patient_folder*.
     Any other keys present in the JSON file are preserved.
     """
-    opts = load_options(Path(path_patient_options)) if path_patient_options else {}
-    opts["data_folder"] = str(patient_folder)
-    return opts
+    patient_options = load_options(Path(path_patient_options)) if path_patient_options else {}
+    patient_options["data_folder"] = str(patient_folder)
+    return patient_options
 
 
 # ==================================================================================================
@@ -66,14 +65,14 @@ def load_database_options_from_path(path: Path) -> dict:
 
     suffix = path.suffix.lower()
     if suffix == ".json":
-        db_options = load_options(path)
+        database_options = load_options(path)
     elif suffix == ".xlsx":
-        db_options = xlsx_to_database_options(path)
+        database_options = xlsx_to_database_options(path)
     else:
         msg = f"Unsupported file extension '{suffix}'. Expected .json or .xlsx."
         raise ValueError(msg)
 
-    for issue in validate_database_options(db_options):
+    for issue in validate_database_options(database_options):
         if issue.severity == "error":
             logger.error("database_options [%s]: %s", issue.path, issue.message)
         elif issue.severity == "warning":
@@ -81,4 +80,4 @@ def load_database_options_from_path(path: Path) -> dict:
         else:
             logger.info("database_options [%s]: %s", issue.path, issue.message)
 
-    return db_options
+    return database_options

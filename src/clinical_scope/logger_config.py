@@ -14,7 +14,7 @@ def get_handler(path_logs: str | Path) -> BaseRotatingHandler:
         interval=1,
         backupCount=7,
         atTime=datetime.time.fromisoformat("04:00:00"),
-        encoding="utf-8",  # Ensure file handler uses UTF-8
+        encoding="utf-8",
     )
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
@@ -36,7 +36,7 @@ def get_handlers(path_logs: str | Path) -> tuple[BaseRotatingHandler, logging.St
         interval=1,
         backupCount=7,
         atTime=datetime.time.fromisoformat("04:00:00"),
-        encoding="utf-8",  # Ensure file handler uses UTF-8
+        encoding="utf-8",
     )
     file_formatter = logging.Formatter(
         "%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s",
@@ -64,7 +64,7 @@ def get_handlers(path_logs: str | Path) -> tuple[BaseRotatingHandler, logging.St
             )
             return f"{color}{log_msg}{self.RESET}"
 
-    console_handler = logging.StreamHandler(sys.stdout)  # Use sys.stdout explicitly
+    console_handler = logging.StreamHandler(sys.stdout)
     console_formatter = ColoredFormatter()
     console_handler.setFormatter(console_formatter)
 

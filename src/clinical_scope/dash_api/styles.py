@@ -3,14 +3,6 @@ Shared style constants for the Dash application.
 
 Centralises style dicts used across layout (core_api.py) and callbacks
 (data_callbacks.py) so there is a single source of truth.
-
-Sections
---------
-1. Color palette
-2. Button styles
-3. Card & section header styles
-4. Modal styles
-5. Layout styles
 """
 
 # ---------------------------------------------------------------------------
@@ -175,17 +167,48 @@ VERSION_BADGE: dict = {
     "border": "1px solid #ddd",
 }
 
+# Settings pill — stacked directly under the version badge (top-right); badge-matching styling.
+BUTTON_GEAR: dict = {
+    "position": "absolute",
+    "top": "40px",
+    "right": "10px",
+    "cursor": "pointer",
+    "fontSize": "12px",
+    "fontFamily": "monospace",
+    "padding": "4px 10px",
+    "borderRadius": "4px",
+    "border": "1px solid #ddd",
+    "backgroundColor": "#f0f0f0",
+    "color": "#666",
+}
+
 ROOT_CONTAINER: dict = {
     "padding": "20px 32px",
     "maxWidth": "1400px",
     "margin": "0 auto",
 }
 
-ACTION_BUTTONS_ROW: dict = {
+# Action panel: peer "cards" (one per action) sit side-by-side so they read as a choice.
+# flex-start (not stretch) so each card takes only the height its own content needs.
+ACTION_PANEL_ROW: dict = {
     "display": "flex",
-    "alignItems": "center",
+    "gap": "16px",
+    "alignItems": "flex-start",
     "marginTop": "16px",
     "marginBottom": "8px",
+    "flexWrap": "wrap",
+}
+
+# One action + its options, boxed with a border only (transparent background).
+ACTION_CARD: dict = {
+    "display": "flex",
+    "flexDirection": "column",
+    "alignItems": "flex-start",
+    "gap": "8px",
+    "padding": "12px",
+    "border": "1px solid #dee2e6",
+    "borderRadius": "8px",
+    "backgroundColor": "transparent",
 }
 
 # ---------------------------------------------------------------------------
@@ -255,6 +278,27 @@ ANNOTATION_MODAL_PANEL: dict = {
     "width": "420px",
     "maxWidth": "95vw",
     "boxShadow": "0 8px 32px rgba(0,0,0,0.25)",
+}
+
+SETTINGS_MODAL_PANEL: dict = {
+    **ANNOTATION_MODAL_PANEL,
+    "width": "800px",
+    # The settings list grows with every new user option; scroll rather than overflow the viewport.
+    "maxHeight": "85vh",
+    "overflowY": "auto",
+}
+
+# Header above each group of option widgets (SECTION on the schema classes).
+OPTION_SECTION_HEADER: dict = {
+    "fontSize": "12px",
+    "fontWeight": "bold",
+    "textTransform": "uppercase",
+    "letterSpacing": "0.5px",
+    "color": COLOR_GREY,
+    "borderBottom": "1px solid #e9ecef",
+    "paddingBottom": "4px",
+    "marginTop": "16px",
+    "marginBottom": "10px",
 }
 
 ANNOTATION_LIST_ROW: dict = {

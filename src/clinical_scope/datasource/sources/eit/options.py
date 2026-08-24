@@ -10,8 +10,19 @@ FILE_NAME_DATAFRAME_LOADED = "eit.parquet"
 
 DATA_SOURCE_DEFAULT_TIMEZONE = "Europe/Paris"
 
-# Many names here should be moved in example_eit_options.json file
+# EIT filters by time-of-day (filter_date=False), which a min/max datetime range predicate
+# can't express — opt out of parquet row-pushdown; it still uses the quick-load cache path
+# (ALLOW_QUICK_LOAD unset, defaults True), just without the row filter.
+ALLOW_DATETIME_PUSHDOWN = False
+
 Time_column_label = "Time"
+
+# Column naming as it appears in the .asc header: one Global reference channel, one column per
+# Local region, and a leading "%" on each ratio derived from them. Matched case-insensitively,
+# so these are the canonical spellings rather than the exact bytes on disk.
+Global_column_label = "Global"
+prefix_local = "Local"
+prefix_percentage = "%"
 
 prefix_compliance = "Compliance_"
 prefix_smoothed_compliance = "Smoothed_compliance_"

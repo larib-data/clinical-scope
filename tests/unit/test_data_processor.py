@@ -82,14 +82,14 @@ class TestSaveDf:
 class TestDetectDatasourceFromFolder:
     @patch("clinical_scope.datasource.registry.DataSource")
     def test_matches_by_keywords(self, mock_ds):
-        ds_entry = _make_ds_entry("philips_waves", MagicMock(), ["philips", "waves"])
+        ds_entry = _make_ds_entry("acme_waves", MagicMock(), ["acme", "waves"])
         mock_ds.AVAILABLE = [ds_entry]
-        result = detect_datasource_from_folder(Path("/data/patient/philips_waves"))
+        result = detect_datasource_from_folder(Path("/data/patient/acme_waves"))
         assert result is ds_entry
 
     @patch("clinical_scope.datasource.registry.DataSource")
     def test_no_match_returns_none(self, mock_ds):
-        ds_entry = _make_ds_entry("philips_waves", MagicMock(), ["philips", "waves"])
+        ds_entry = _make_ds_entry("acme_waves", MagicMock(), ["acme", "waves"])
         mock_ds.AVAILABLE = [ds_entry]
         result = detect_datasource_from_folder(Path("/data/patient/unknown_folder"))
         assert result is None
@@ -113,7 +113,6 @@ class TestDataSourceBaseExtract:
     def _make_cls(self, name="ds_a"):
         from clinical_scope.datasource.base import DataSourceBase
 
-        # Build a minimal concrete subclass on-the-fly
         cls = MagicMock(spec=DataSourceBase)
         cls.DATASOURCE_NAME = name
         return cls
@@ -123,7 +122,7 @@ class TestDataSourceBaseExtract:
 
         cls = _make_datasource_cls()
         df = _make_df()
-        cls._load_raw_dataframe.return_value = (df, "/file")
+        cls._load_raw_dataframe.return_value = (df, "/file", False)
         cls._format.return_value = df
 
         # Call the real extract() bound to our mock class
@@ -136,7 +135,7 @@ class TestDataSourceBaseExtract:
         from clinical_scope.datasource.base import DataSourceBase
 
         cls = _make_datasource_cls()
-        cls._load_raw_dataframe.return_value = (None, None)
+        cls._load_raw_dataframe.return_value = (None, None, False)
 
         result = DataSourceBase.extract.__func__(cls, {"data_folder": "/p"}, {})
         assert result is None
@@ -147,7 +146,7 @@ class TestDataSourceBaseExtract:
 
         cls = _make_datasource_cls()
         df = _make_df()
-        cls._load_raw_dataframe.return_value = (df, "/file")
+        cls._load_raw_dataframe.return_value = (df, "/file", False)
         cls._format.return_value = df
 
         save_path = tmp_path / "out.parquet"

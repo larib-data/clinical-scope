@@ -22,16 +22,6 @@ def _get_datasource_class(name):
 
 
 @pytest.fixture(scope="session")
-def philips_waves_cls():
-    return _get_datasource_class("philips_waves")
-
-
-@pytest.fixture(scope="session")
-def philips_numerics_cls():
-    return _get_datasource_class("philips_numerics")
-
-
-@pytest.fixture(scope="session")
 def mindray_scope_cls():
     return _get_datasource_class("mindray_scope")
 
@@ -52,11 +42,6 @@ def servo_u_cls():
 
 
 @pytest.fixture(scope="session")
-def syringe_cls():
-    return _get_datasource_class("syringe")
-
-
-@pytest.fixture(scope="session")
 def eit_cls():
     return _get_datasource_class("eit")
 
@@ -69,6 +54,11 @@ def fluxmed_signals_cls():
 @pytest.fixture(scope="session")
 def fluxmed_parameters_cls():
     return _get_datasource_class("fluxmed_parameters")
+
+
+@pytest.fixture(scope="session")
+def edf_cls():
+    return _get_datasource_class("edf")
 
 
 @pytest.fixture(scope="session")

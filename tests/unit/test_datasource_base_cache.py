@@ -130,7 +130,7 @@ def test_quick_load_truth_table(
         cache_seed.to_parquet(cache_path)
 
     source = _make_fake_source(fresh_data)
-    df, _ = source._load_raw_dataframe(
+    df, _, _ = source._load_raw_dataframe(
         _patient_options(patient_folder, quick_load=quick_load), database_options={}
     )
 
@@ -151,7 +151,7 @@ def test_allow_quick_load_false_never_writes_cache(patient_folder: Path) -> None
     source = _make_fake_source(_df_v1(), allow_quick_load=False)
     cache_path = patient_folder / cst.FOLDER_NAME_OUTPUT / "fake_source.parquet"
 
-    df, _ = source._load_raw_dataframe(
+    df, _, _ = source._load_raw_dataframe(
         _patient_options(patient_folder, quick_load=True), database_options={}
     )
 
@@ -180,9 +180,53 @@ def test_create_source_symlink_creates_symlink(tmp_path: Path) -> None:
     )
     source._load_raw_dataframe(_patient_options(tmp_path, quick_load=False), database_options={})
 
-    symlink_path = output_folder / source_file.name
+    symlink_path = output_folder / "fake_source" / source_file.name
     assert symlink_path.is_symlink(), "output folder must contain a symlink to the source file"
     assert symlink_path.resolve() == source_file.resolve(), "symlink must resolve to source file"
+
+
+def test_symlink_never_replaces_a_file_it_did_not_create(tmp_path: Path) -> None:
+    """A real file at the symlink path is left alone: provenance is not worth destroying data."""
+    source_file = tmp_path / "raw_data.parquet"
+    _df_v1().to_parquet(source_file)
+
+    output_folder = tmp_path / cst.FOLDER_NAME_OUTPUT
+    occupied = output_folder / "fake_source" / "raw_data.parquet"
+    occupied.parent.mkdir(parents=True)
+    occupied.write_bytes(b"precious")
+
+    source = _make_fake_source(
+        _df_v1(),
+        allow_quick_load=False,
+        create_source_symlink=True,
+        source_file=source_file,
+    )
+    source._load_raw_dataframe(_patient_options(tmp_path, quick_load=False), database_options={})
+
+    assert occupied.read_bytes() == b"precious", "an existing real file must survive untouched"
+    assert not occupied.is_symlink()
+
+
+def test_symlinks_are_namespaced_per_datasource(tmp_path: Path) -> None:
+    """A source file sharing a name with another datasource's cache must not reach the root."""
+    source_file = tmp_path / "servo_u_loaded.parquet"
+    _df_v1().to_parquet(source_file)
+
+    output_folder = tmp_path / cst.FOLDER_NAME_OUTPUT
+    output_folder.mkdir()
+    other_cache = output_folder / "servo_u_loaded.parquet"
+    other_cache.write_bytes(b"servo_u cache")
+
+    source = _make_fake_source(
+        _df_v1(),
+        allow_quick_load=False,
+        create_source_symlink=True,
+        source_file=source_file,
+    )
+    source._load_raw_dataframe(_patient_options(tmp_path, quick_load=False), database_options={})
+
+    assert other_cache.read_bytes() == b"servo_u cache", "another datasource's cache must survive"
+    assert (output_folder / "fake_source" / "servo_u_loaded.parquet").is_symlink()
 
 
 def test_create_source_symlink_false_leaves_no_symlink(tmp_path: Path) -> None:

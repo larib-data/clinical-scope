@@ -1,8 +1,8 @@
 """
 Data-related callbacks for Dash API visualization.
 
-Contains callbacks for loading database options, building patient options UI,
-and processing visualizations.
+Covers loading database options, building the patient-options form from them, and the
+two actions that form drives: Process (build figures) and Inspect (report columns).
 """
 
 import base64
@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 from dash import ALL, MATCH, Input, Output, State, callback, ctx, dcc, html, no_update
@@ -38,7 +38,13 @@ from clinical_scope.database_options_parser import (
     validate_database_options,
 )
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
+from clinical_scope.datasource.formatting.timezone import (
+    resolve_display_timezone,
+    to_aware_display_ts,
+    to_naive_display_ts,
+)
 from clinical_scope.datasource.inspection import (
+    PRUNED_VIEW_NOTICE,
     ColumnInfo,
     results_from_json,
     results_to_json,
@@ -46,18 +52,16 @@ from clinical_scope.datasource.inspection import (
 )
 from clinical_scope.io.paths import (
     get_database_options_path,
+    get_output_base,
     get_patient_options_path,
 )
 from clinical_scope.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
 
-# Server-side caches keyed by UUID — suitable for single-user desktop app.
-# Both caches grow during a session and are cleared on each process_visualization call.
-# Not bounded by size — acceptable for a single-user desktop app.
-# NOTE: these are distinct from the on-disk parquet cache
-# (clinical_scope_output/ inside the patient folder)
-# which persists across sessions for quick_load. These are ephemeral, in-memory only.
+# Server-side caches keyed by UUID. Unbounded — they grow through a session and are cleared
+# on each process_visualization call, which is acceptable for a single-user desktop app.
+# Distinct from the on-disk parquet cache (clinical_scope_output/), which persists for quick_load.
 FIGURE_RESAMPLER_CACHE = {}  # FigureResampler objects for time-series zoom/pan
 LOOP_DATA_CACHE = {}  # Loop trace data (x, y, time arrays) for slider filtering
 
@@ -87,14 +91,14 @@ def _parse_database_options_file(
 ) -> tuple[dict[str, Any], list[ValidationIssue]]:
     """Parse database options from decoded file bytes and run full validation."""
     if filename.lower().endswith(".json"):
-        db_options = json.loads(decoded_content.decode("utf-8"))
+        database_options = json.loads(decoded_content.decode("utf-8"))
     elif filename.lower().endswith(".xlsx"):
-        db_options = xlsx_bytes_to_database_options(decoded_content)
+        database_options = xlsx_bytes_to_database_options(decoded_content)
     else:
         msg = f"Unsupported file type '{Path(filename).suffix}'. Expected .json or .xlsx."
         raise ValueError(msg)
 
-    issues = validate_database_options(db_options)
+    issues = validate_database_options(database_options)
     for issue in issues:
         if issue.severity == "error":
             logger.error("database_options [%s]: %s", issue.path, issue.message)
@@ -103,20 +107,20 @@ def _parse_database_options_file(
         else:
             logger.info("database_options [%s]: %s", issue.path, issue.message)
 
-    return db_options, issues
+    return database_options, issues
 
 
 def _build_load_status(filename: str, issues: list[ValidationIssue]) -> html.Div:
-    errors = [i for i in issues if i.severity == "error"]
-    warnings = [i for i in issues if i.severity == "warning"]
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
     if not errors and not warnings:
         return html.Div(
             f"Successfully loaded {filename}", style={"color": "green", "fontWeight": "bold"}
         )
-    _severity_color = {"error": "#dc3545", "warning": "#fd7e14"}
+    severity_color = {"error": "#dc3545", "warning": "#fd7e14"}
     items = [
-        html.Li(f"[{i.path}] {i.message}", style={"color": _severity_color[i.severity]})
-        for i in errors + warnings
+        html.Li(f"[{issue.path}] {issue.message}", style={"color": severity_color[issue.severity]})
+        for issue in errors + warnings
     ]
     counts = []
     if errors:
@@ -147,7 +151,7 @@ def _build_load_status(filename: str, issues: list[ValidationIssue]) -> html.Div
     State("db-options-upload", "filename"),
     prevent_initial_call=True,
 )
-def load_db_options(
+def load_database_options(
     contents: str | None,
     n_clicks: int | None,  # noqa: ARG001
     n_clicks_reload: int | None,  # noqa: ARG001
@@ -157,14 +161,14 @@ def load_db_options(
 
     triggered = ctx.triggered_id
     logger.info(
-        "load_db_options fired | triggered=%r | filename=%r | contents_present=%s",
+        "load_database_options fired | triggered=%r | filename=%r | contents_present=%s",
         triggered,
         filename,
         contents is not None,
     )
 
     if triggered == "default-viz-button":
-        logger.info("load_db_options: generating default database options")
+        logger.info("load_database_options: generating default database options")
         return (
             datasource.generate_default_database_options(),
             html.Div(
@@ -174,15 +178,15 @@ def load_db_options(
         )
 
     if triggered == "reload-cached-db-button":
-        logger.info("load_db_options: reloading cached db options")
-        cached = ui_helper.load_cached_db_options()
+        logger.info("load_database_options: reloading cached db options")
+        cached = ui_helper.load_cached_database_options()
         if cached is None:
-            logger.warning("load_db_options: no cached config found")
+            logger.warning("load_database_options: no cached config found")
             return (
                 None,
                 html.Div("No cached config found.", style={"color": "red", "fontWeight": "bold"}),
             )
-        logger.info("load_db_options: cached config reloaded successfully")
+        logger.info("load_database_options: cached config reloaded successfully")
         return (
             cached,
             html.Div("Reloaded last config", style={"color": "green", "fontWeight": "bold"}),
@@ -194,32 +198,97 @@ def load_db_options(
         # was initialised without a file). If this fires right after the user
         # selected a file, it indicates a Dash upload bug — check the browser console.
         logger.warning(
-            "load_db_options: triggered=%r but contents is None/empty "
+            "load_database_options: triggered=%r but contents is None/empty "
             "(user may have cancelled the file picker, or a Dash upload issue occurred)",
             triggered,
         )
         return None, None
 
     try:
-        logger.info("load_db_options: parsing file %r (%d bytes encoded)", filename, len(contents))
+        logger.info(
+            "load_database_options: parsing file %r (%d bytes encoded)", filename, len(contents)
+        )
         _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
         database_options_dict, issues = _parse_database_options_file(decoded, filename)
         logger.info(
-            "load_db_options: parsed successfully, keys=%s",
+            "load_database_options: parsed successfully, keys=%s",
             list(database_options_dict.keys()),
         )
 
-        ui_helper.save_cached_db_options(database_options_dict)
+        ui_helper.save_cached_database_options(database_options_dict)
 
         return database_options_dict, _build_load_status(filename, issues)
 
-    except Exception as e:
-        logger.exception("load_db_options: failed to parse %r", filename)
+    except Exception as exc:
+        logger.exception("load_database_options: failed to parse %r", filename)
         return (
             None,
-            html.Div(f"Error loading file: {e!s}", style={"color": "red", "fontWeight": "bold"}),
+            html.Div(f"Error loading file: {exc!s}", style={"color": "red", "fontWeight": "bold"}),
         )
+
+
+def _options_card(schema_class: Any, prefix: str, title: str) -> tuple[html.Div, dict]:
+    """Build one patient-options card, and the schema lookup for the widgets inside it."""
+    component, schema = ui_components.build_ui_and_schema_registry(schema_class, prefix=prefix)
+    return html.Div([html.H5(title), component], style=DATASOURCE_CARD_STYLE), schema
+
+
+def _other_file_stems(database_options: dict[str, Any]) -> list[str]:
+    """
+    List the file stems declared for the 'other' datasource, from config alone.
+
+    Reads both dict shapes: the raw ``other::<stem>`` top-level keys the store holds, and the
+    ``other.files`` form :func:`normalize_database_options` produces. Never scans the patient
+    folder — widgets follow the config, like every other card here.
+    """
+    section = database_options.get(datasource.DataSource.Other.NAME) or {}
+    return sorted(
+        {
+            key[len(cst.OTHER_FILE_PREFIX) :]
+            for key in database_options
+            if key.startswith(cst.OTHER_FILE_PREFIX)
+        }
+        | set(section.get(cst.DatabaseOptions.FILES, {}))
+    )
+
+
+def _other_cards(
+    other_source: Any, database_options: dict[str, Any], file_stems: list[str]
+) -> list[tuple[html.Div, dict]]:
+    """
+    Build the 'other' cards: one per declared file, plus the generic one when it still earns a spot.
+
+    Each file is a peer of a datasource here, titled by its own ``other::<stem>`` token, so a
+    curated 3-column export and a 90-column raw dump no longer share one time_shift.
+
+    The generic card covers files present on disk but absent from database_options. It is
+    dropped only when per-file cards exist *and* the ``other`` section holds nothing but them —
+    a fully-itemized config gets no leftover card, while a config with generic content (or none
+    at all, as after Default visualization) keeps the safety net.
+    """
+    schema_class = other_source.OPTIONS.PatientOptionsDataSourceRelative
+    section = database_options.get(other_source.NAME)
+    if section is None and not file_stems:
+        return []
+
+    cards = []
+    generic_content = set(section or {}) - {cst.DatabaseOptions.FILES}
+    if generic_content or not file_stems:
+        cards.append(
+            _options_card(
+                schema_class, prefix=f"specific.{other_source.NAME}", title=other_source.DESCRIPTION
+            )
+        )
+
+    token_prefix = other_source.NAME + cst.QUALIFIED_NAME_SEPARATOR
+    cards.extend(
+        _options_card(
+            schema_class, prefix=f"specific.{token_prefix}{stem}", title=f"{token_prefix}{stem}"
+        )
+        for stem in file_stems
+    )
+    return cards
 
 
 @callback(
@@ -238,18 +307,47 @@ def build_patient_options_ui(
     components = []
     schema_lookup = {}
 
-    # Global options
     components.append(html.H3("Global Patient Options", style=SECTION_HEADER_STYLE))
     _reload_patient_btn = html.Button(
         "Reload patient options",
         id="reload-patient-options-btn",
         n_clicks=0,
-        style={**BUTTON_RELOAD, "marginLeft": "8px", "marginRight": "0", "whiteSpace": "nowrap"},
+        style={
+            **BUTTON_RELOAD,
+            "marginLeft": "8px",
+            "marginRight": "0",
+        },
     )
+    _reload_status = html.Div(
+        id="patient-options-reload-status",
+        style={
+            "fontSize": "12px",
+            "marginLeft": "8px",
+            "width": "320px",
+            "display": "flex",
+            "flexDirection": "column",
+        },
+    )
+    _datetime_tz_label_style = {"fontSize": "12px", "color": "#666"}
+    _datetime_tz_label_start = html.Span(
+        id="datetime-tz-label-start", style=_datetime_tz_label_style
+    )
+    _datetime_tz_label_end = html.Span(id="datetime-tz-label-end", style=_datetime_tz_label_style)
     component, schema = ui_components.build_ui_and_schema_registry(
         cst.PatientOptions,
-        prefix="global",
-        extra_per_field={"global.data_folder": [_reload_patient_btn]},
+        prefix=cst.PatientOptions.GLOBAL,
+        extra_per_field={
+            f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.PathDataFolder.NAME}": [
+                _reload_patient_btn,
+                _reload_status,
+            ],
+            f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.DatetimeStart.NAME}": [
+                _datetime_tz_label_start
+            ],
+            f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.DatetimeEnd.NAME}": [
+                _datetime_tz_label_end
+            ],
+        },
     )
     components.append(html.Div(component, style=CARD_STYLE))
     components.append(
@@ -260,25 +358,29 @@ def build_patient_options_ui(
     )
     schema_lookup = schema_lookup | schema
 
-    # Per-datasource options
     components.append(html.H3("Specific Options", style=SECTION_HEADER_STYLE))
 
     datasource_cards = []
     requested_data_sources = database_options.keys()
+    other_name = datasource.DataSource.Other.NAME
+    other_file_stems = _other_file_stems(database_options)
+
     for data_source in datasource.DataSource.AVAILABLE:
+        if other_name == data_source.NAME:
+            for card, schema in _other_cards(data_source, database_options, other_file_stems):
+                datasource_cards.append(card)
+                schema_lookup = schema_lookup | schema
+            continue
+
         if data_source.NAME not in requested_data_sources:
             continue
 
-        component, schema = ui_components.build_ui_and_schema_registry(
+        card, schema = _options_card(
             data_source.OPTIONS.PatientOptionsDataSourceRelative,
             prefix=f"specific.{data_source.NAME}",
+            title=data_source.DESCRIPTION,
         )
-        datasource_cards.append(
-            html.Div(
-                [html.H5(data_source.DESCRIPTION), component],
-                style=DATASOURCE_CARD_STYLE,
-            )
-        )
+        datasource_cards.append(card)
         schema_lookup = schema_lookup | schema
 
     components.append(
@@ -292,9 +394,33 @@ def build_patient_options_ui(
         )
     )
 
-    schema_data = {k: v.__name__ for k, v in schema_lookup.items()}
+    schema_data = {key: value.__name__ for key, value in schema_lookup.items()}
 
     return components, schema_data
+
+
+@callback(
+    Output("datetime-tz-label-start", "children"),
+    Output("datetime-tz-label-end", "children"),
+    Input({"type": "user-option", "name": "user_options.display_timezone"}, "value"),
+)
+def update_datetime_tz_label(display_timezone: str | None) -> tuple[str, str]:
+    """
+    Show which timezone the datetime-window fields are typed in.
+
+    Resolves through :func:`resolve_display_timezone` instead of echoing the raw widget
+    value, so a mid-typed or invalid name is never shown as if it were in effect.
+    """
+    label = f"interpreted in {resolve_display_timezone(display_timezone)}"
+    return label, label
+
+
+# The only patient-option fields whose stored form (tz-aware instant) differs from the
+# widget's naive wall-clock display.
+_DATETIME_FIELD_NAMES = (
+    f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.DatetimeStart.NAME}",
+    f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.DatetimeEnd.NAME}",
+)
 
 
 @callback(
@@ -303,48 +429,131 @@ def build_patient_options_ui(
     Input("reload-patient-options-btn", "n_clicks"),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
+    State("schema-registry", "data"),
+    State("user-options-store", "data"),
     prevent_initial_call=True,
 )
 def reload_patient_options(
     n_clicks: int,
     current_values: list[Any],
     ids: list[dict[str, str]],
+    schema_data: dict[str, str],
+    user_options: dict[str, Any] | None,
 ) -> tuple[list[Any], Any]:
     """Reload patient options from the saved JSON in the current patient folder."""
     if not n_clicks:
         raise PreventUpdate
 
     values_by_id = {id_["name"]: val for id_, val in zip(ids, current_values, strict=False)}
-    data_folder = values_by_id.get("global.data_folder")
+    data_folder = values_by_id.get(
+        f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.PathDataFolder.NAME}"
+    )
+    output_root = (
+        values_by_id.get(f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.OutputRoot.NAME}")
+        or None
+    )
 
     if not data_folder:
-        return current_values, html.Span("No patient folder specified.", style={"color": "#e67e00"})
+        return (
+            current_values,
+            html.Span("No patient folder specified.", style={"color": "#e67e00"}),
+        )
 
     try:
-        saved = io.load_patient_options(data_folder)
-    except (ValueError, TypeError) as e:
-        logger.warning("Failed to reload patient options: %s", e)
-        return current_values, html.Span(str(e), style={"color": "#dc3545"})
-    if saved is None:
-        return current_values, html.Span(
-            "No saved patient options found.", style={"color": "#e67e00"}
+        saved = io.load_patient_options(data_folder, output_root)
+    except (ValueError, TypeError) as exc:
+        logger.warning("Failed to reload patient options: %s", exc)
+        return (
+            current_values,
+            html.Span(str(exc), style={"color": "#dc3545", "wordBreak": "break-all"}),
         )
+    if saved is None:
+        looked_in = get_patient_options_path(data_folder, output_root).parent
+        return (
+            current_values,
+            [
+                html.Span("No saved patient options found in:", style={"color": "#e67e00"}),
+                html.Span(str(looked_in), style={"color": "#e67e00", "wordBreak": "break-all"}),
+            ],
+        )
+
+    schema_class_lookup = _rehydrate_schema_classes(schema_data or {})
+    # Render the saved bound (may be tz-aware) as naive text in the current Settings
+    # timezone; naive saved files pass through to_naive_display_ts unchanged.
+    current_display_timezone = resolve_display_timezone(
+        (user_options or {}).get(cst.UserOptions.DisplayTimezone.NAME)
+    )
 
     new_values = []
     for id_, current_val in zip(ids, current_values, strict=False):
         field_id = id_["name"]
         parts = field_id.split(".")
+        schema_class = schema_class_lookup.get(field_id)
+        api_type = getattr(schema_class, "API_TYPE", None)
+        raw_default = getattr(schema_class, "DEFAULT", None)
 
-        if field_id == "global.data_folder":
-            new_values.append(current_val)  # keep the path the user typed
-        elif parts[0] == "global":
-            new_values.append(saved.get(parts[1], current_val))
+        if field_id in (
+            f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.PathDataFolder.NAME}",
+            f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.OutputRoot.NAME}",
+        ):
+            new_values.append(current_val)  # keep the paths used to locate the saved file
+            continue
+        if parts[0] == cst.PatientOptions.GLOBAL:
+            raw = saved.get(parts[1], raw_default)
         elif parts[0] == "specific" and len(parts) == 3:  # noqa: PLR2004
-            new_values.append(saved.get(parts[1], {}).get(parts[2], current_val))
+            raw = saved.get(parts[1], {}).get(parts[2], raw_default)
         else:
-            new_values.append(current_val)
+            raw = raw_default
+
+        if field_id in _DATETIME_FIELD_NAMES and raw:
+            raw = to_naive_display_ts(raw, current_display_timezone, sep=" ")
+
+        # Saved JSON holds Python values; re-encode into each widget's expected shape.
+        new_values.append(ui_components.to_widget_value(api_type, raw))
 
     return new_values, ""
+
+
+@callback(
+    Output({"type": "patient-option", "name": ALL}, "value", allow_duplicate=True),
+    Output("form-display-timezone-store", "data", allow_duplicate=True),
+    Input({"type": "user-option", "name": "user_options.display_timezone"}, "value"),
+    State({"type": "patient-option", "name": ALL}, "value"),
+    State({"type": "patient-option", "name": ALL}, "id"),
+    State("form-display-timezone-store", "data"),
+    prevent_initial_call=True,
+)
+def rerender_datetime_on_timezone_change(
+    new_timezone: str | None,
+    current_values: list[Any],
+    ids: list[dict[str, str]],
+    previous_timezone: str | None,
+) -> tuple[list[Any], str]:
+    """
+    Rewrite datetime_start/end so editing display_timezone changes the label, not the instant.
+
+    Otherwise the naive fields keep the same digits but get interpreted in a different
+    timezone at Submit, silently shifting the stored window. No-op on empty or unparseable
+    timezone input, so half-typed IANA names leave the fields untouched.
+    """
+    previous_timezone = resolve_display_timezone(previous_timezone)
+    no_op = [no_update] * len(ids)
+
+    if not new_timezone or new_timezone == previous_timezone:
+        return no_op, previous_timezone
+    try:
+        ZoneInfo(new_timezone)
+    except (ZoneInfoNotFoundError, KeyError):
+        return no_op, previous_timezone
+
+    new_values = []
+    for id_, current_val in zip(ids, current_values, strict=False):
+        if id_["name"] in _DATETIME_FIELD_NAMES and current_val:
+            aware = to_aware_display_ts(current_val, previous_timezone)
+            new_values.append(to_naive_display_ts(aware, new_timezone, sep=" "))
+        else:
+            new_values.append(no_update)
+    return new_values, new_timezone
 
 
 _PREVIEW_OK = {"color": "#28a745"}
@@ -365,12 +574,9 @@ def _build_data_folder_preview(value: str | None) -> Any:
     """
     Reflect back what the typed patient-folder path actually contains.
 
-    Teaches the folder-vs-file distinction live: instead of silently accepting a wrong
-    path until Process fails, it names the device subfolders found (or explains why none
-    were), so the user learns to point at the patient folder, not a data file.
-
-    Advisory only — any filesystem error degrades to a soft hint, never an exception, and
-    a slow share is capped by a timeout, since real validation still runs on Process.
+    Names the device subfolders found (or why none were), so a wrong path surfaces here
+    rather than at Process. Advisory only: filesystem errors degrade to a soft hint and a
+    slow share is capped by a timeout, since real validation still runs on Process.
     """
     if not value or not str(value).strip():
         return ""
@@ -397,59 +603,60 @@ def _build_data_folder_preview(value: str | None) -> Any:
 
 def _inspect_patient_folder(path: Path) -> Any:
     """Scan *path* and return the preview Span. Runs in a worker thread (see caller)."""
-    try:
-        if path.is_file():
-            return html.Span(
-                "⚠ That's a file, not a folder. Pick the patient folder (maybe its parent? "
-                f"{path.parent.parent} ?)",
-                style=_PREVIEW_ERROR,
-            )
-        # A suffix but no such directory: almost certainly a data file, not the folder.
-        if path.suffix and not path.is_dir():
-            return html.Span(
-                f"⚠ '{path.name}' looks like a file, not a folder. Pick the patient folder, not a "
-                "data file.",
-                style=_PREVIEW_ERROR,
-            )
-        if not path.is_dir():
-            return html.Span("⚠ This folder doesn't exist.", style=_PREVIEW_WARN)
+    scan = datasource.scan_patient_folder(path)
 
-        # If the path itself is named like a device folder, the user went one level too deep.
-        ds_self = datasource.detect_datasource_from_folder(path)
-
-        found = []
-        other_subfolders = []
-        for sub in sorted(path.iterdir()):
-            if not sub.is_dir() or sub.name == cst.FOLDER_NAME_OUTPUT:
-                continue
-            ds = datasource.detect_datasource_from_folder(sub)
-            if ds is not None:
-                found.append(ds.DESCRIPTION)
-            else:
-                other_subfolders.append(sub.name)
-    except OSError as exc:
-        # e.g. a restricted network share that exists but can't be listed.
-        logger.warning("Could not inspect patient folder %r: %s", str(path), exc)
+    if scan.status == "is_file":
+        return html.Span(
+            "⚠ That's a file, not a folder. Pick the patient folder (maybe its parent? "
+            f"{path.parent.parent} ?)",
+            style=_PREVIEW_ERROR,
+        )
+    # A suffix but no such directory: almost certainly a data file, not the folder.
+    if scan.status == "missing" and path.suffix:
+        return html.Span(
+            f"⚠ '{path.name}' looks like a file, not a folder. Pick the patient folder, not a "
+            "data file.",
+            style=_PREVIEW_ERROR,
+        )
+    if scan.status == "missing":
+        return html.Span("⚠ This folder doesn't exist.", style=_PREVIEW_WARN)
+    if scan.status == "unreadable":
         return html.Span(
             "⚠ Couldn't read this folder (permission or path issue).", style=_PREVIEW_WARN
         )
 
-    if found:
+    found = [ds.DESCRIPTION for ds in scan.found]
+    empty = [ds.DESCRIPTION for ds in scan.empty]
+    # Retired folders sit alongside recognized ones, so they must be called out on the success
+    # path too — otherwise a patient with eit/ + philips_waves/ reads as a clean "✓ Found".
+    retired_note = (
+        f" ⚠ Ignoring {', '.join(scan.retired)}: removed datasource(s) — move these files "
+        "into 'other/'."
+        if scan.retired
+        else ""
+    )
+
+    if found or empty:
+        msg = ""
+        if found:
+            msg += f"✓ Found {len(found)} device folder(s): {', '.join(found)}."
+        if empty:
+            msg += f" ({len(empty)} recognized but empty: {', '.join(empty)})"
+        msg += retired_note
+        style = _PREVIEW_WARN if (scan.retired or not found) else _PREVIEW_OK
+        return html.Span(msg.strip(), style=style)
+    # If the path itself is named like a device folder, the user went one level too deep.
+    if scan.self_datasource is not None:
         return html.Span(
-            f"✓ Found {len(found)} device folder(s): {', '.join(found)}.",
-            style=_PREVIEW_OK,
-        )
-    if ds_self is not None:
-        return html.Span(
-            f"⚠ This looks like a '{ds_self.DESCRIPTION}' device folder, not a patient folder. "
-            f"Pick the patient folder (maybe its parent? {path.parent} ?)",
+            f"⚠ This looks like a '{scan.self_datasource.DESCRIPTION}' device folder, not a "
+            f"patient folder. Pick the patient folder (maybe its parent? {path.parent} ?)",
             style=_PREVIEW_WARN,
         )
-    if other_subfolders:
-        names = ", ".join(other_subfolders)
+    if scan.other_subfolders:
+        names = ", ".join(scan.other_subfolders)
         return html.Span(
             f"⚠ This doesn't look like a patient folder — its subfolders ({names}) don't match "
-            f"any known device. A patient folder holds one subfolder per device.",
+            f"any known device. A patient folder holds one subfolder per device.{retired_note}",
             style=_PREVIEW_WARN,
         )
     return html.Span(
@@ -461,7 +668,13 @@ def _inspect_patient_folder(path: Path) -> Any:
 
 @callback(
     Output("data-folder-preview", "children"),
-    Input({"type": "patient-option", "name": "global.data_folder"}, "value"),
+    Input(
+        {
+            "type": "patient-option",
+            "name": f"{cst.PatientOptions.GLOBAL}.{cst.PatientOptions.PathDataFolder.NAME}",
+        },
+        "value",
+    ),
     prevent_initial_call=True,
 )
 def preview_data_folder(value: str | None) -> Any:
@@ -470,20 +683,26 @@ def preview_data_folder(value: str | None) -> Any:
 
 
 def _rehydrate_schema_classes(schema_data: dict) -> dict[str, type]:
-    """Rehydrate schema classes from schema_data dictionary."""
+    """
+    Map component ids back to their schema classes.
+
+    A dcc.Store can only hold JSON, so the registry stores class *names*; this resolves
+    each one against PatientOptions or the datasource's own options class.
+
+    A scope segment may be a standalone per-file token (``other::waves``); the file part only
+    selects which options *block* the widget writes to, so the schema comes from ``other``.
+    """
     schema_class_lookup = {}
-    for k, v in schema_data.items():
-        if k.startswith("global"):
-            schema_class_lookup[k] = getattr(cst.PatientOptions, v)
-        elif k.startswith("specific"):
-            parts = k.split(".")
-            datasource_name = parts[1] if len(parts) > 1 else None
+    for field_id, class_name in schema_data.items():
+        if field_id.startswith(cst.PatientOptions.GLOBAL):
+            schema_class_lookup[field_id] = getattr(cst.PatientOptions, class_name)
+        elif field_id.startswith("specific"):
+            parts = field_id.split(".")
+            scope = parts[1] if len(parts) > 1 else ""
+            datasource_name = scope.split(cst.QUALIFIED_NAME_SEPARATOR, 1)[0]
             datasource_class = datasource.DataSource.get_subclass_by_name(datasource_name)
-            logger.debug("parts: %s", parts)
-            logger.debug("datasource_name: %s", datasource_name)
-            logger.debug("datasource_class: %s", datasource_class)
-            schema_class_lookup[k] = getattr(
-                datasource_class.OPTIONS.PatientOptionsDataSourceRelative, v
+            schema_class_lookup[field_id] = getattr(
+                datasource_class.OPTIONS.PatientOptionsDataSourceRelative, class_name
             )
     return schema_class_lookup
 
@@ -531,18 +750,20 @@ def resample_on_zoom(relayout: dict[str, Any], resampler_uid: str | None) -> Any
     State("schema-registry", "data"),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
+    State("user-options-store", "data"),
     prevent_initial_call=True,
 )
 def process_visualization(
     n_clicks: int,  # noqa: ARG001
-    db_options: dict[str, Any] | None,
+    database_options: dict[str, Any] | None,
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
+    user_options: dict[str, Any] | None,
 ) -> tuple[Any, Any, Any, str | None, str | None, bool, str]:
     """Process visualization request with validated patient options."""
     interval_off, progress_clear = True, ""
-    if not db_options:
+    if not database_options:
         return (
             None,
             "Database options not loaded",
@@ -555,12 +776,10 @@ def process_visualization(
 
     schema_class_lookup = _rehydrate_schema_classes(schema_data)
 
-    # Map IDs to values
     logger.debug("ids: %s", ids)
     logger.debug("values: %s", values)
-    values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
+    values_by_id = {widget_id["name"]: value for widget_id, value in zip(ids, values, strict=False)}
 
-    # Validate
     validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
     logger.debug("errors: %s", errors)
     logger.debug("validated_dict: %s", validated_dict)
@@ -568,7 +787,7 @@ def process_visualization(
     if errors:
         return (
             None,
-            html.Ul([html.Li(e) for e in errors]),
+            html.Ul([html.Li(error) for error in errors]),
             None,
             None,
             no_update,
@@ -576,13 +795,25 @@ def process_visualization(
             progress_clear,
         )
 
-    # Save JSON exactly as before
     data_folder = validated_dict["data_folder"]
-    patient_options_path = get_patient_options_path(data_folder)
-    name_folder_visu = str(data_folder)
+    output_root = validated_dict.get(cst.PatientOptions.OutputRoot.NAME) or None
+    patient_options_path = get_patient_options_path(data_folder, output_root)
+    folder_visu_path = str(get_output_base(data_folder, output_root))
+
+    # The form only holds naive wall-clock text; bake in the current Settings
+    # display_timezone so the saved file stores an instant.
+    display_timezone = resolve_display_timezone(
+        (user_options or {}).get(cst.UserOptions.DisplayTimezone.NAME)
+    )
+    datetime_fields = (cst.PatientOptions.DatetimeStart.NAME, cst.PatientOptions.DatetimeEnd.NAME)
+    for datetime_field in datetime_fields:
+        raw_value = validated_dict.get(datetime_field)
+        if raw_value:
+            validated_dict[datetime_field] = to_aware_display_ts(raw_value, display_timezone)
+
     ui_helper.save_json(validated_dict, patient_options_path)
-    db_options_path = get_database_options_path(data_folder)
-    ui_helper.save_json(db_options, db_options_path)
+    database_options_path = get_database_options_path(data_folder, output_root)
+    ui_helper.save_json(database_options, database_options_path)
 
     clear_visualization_caches()
     PROCESS_PROGRESS.update(
@@ -593,18 +824,25 @@ def process_visualization(
         PROCESS_PROGRESS.update({"current": current, "total": total, "current_datasource": name})
 
     logger.info("Processing visualization request for: %s", validated_dict.get("data_folder", "?"))
-    display_timezone = validated_dict.get(
-        cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
-    )
     try:
         model = wrapper.main(
             patient_options=validated_dict,
-            database_options_global=db_options,
+            database_options_global=database_options,
             progress_callback=_on_progress,
+            user_options=user_options,
         )
-        PlotModel.to_html(model, validated_dict)
+        # HTML export is opt-in (user_options.save_html_on_process, default off) — off avoids
+        # the full-resolution serialization spike and writes no file.
+        if (user_options or {}).get(cst.UserOptions.SaveHtmlOnProcess.NAME):
+            PlotModel.to_html(
+                model,
+                validated_dict,
+                self_contained=bool(
+                    (user_options or {}).get(cst.UserOptions.SelfContainedHtml.NAME)
+                ),
+            )
         graphs = _build_graphs(model, display_timezone=display_timezone)
-    except Exception as e:
+    except Exception as exc:
         logger.exception("Could not make the plot: ")
         return (
             None,
@@ -612,7 +850,7 @@ def process_visualization(
             html.Div(
                 [
                     html.Span("Visualization failed: ", style={"fontWeight": "bold"}),
-                    html.Span(str(e)),
+                    html.Span(str(exc)),
                     html.Div(
                         "See application logs for details.",
                         style={"color": "#999", "fontSize": "12px", "marginTop": "4px"},
@@ -636,7 +874,7 @@ def process_visualization(
             f"Visualization succeeded — {len(model)} plot(s) generated.",
             style={"color": "green"},
         ),
-        name_folder_visu,
+        folder_visu_path,
         display_timezone,
         interval_off,
         progress_clear,
@@ -666,16 +904,16 @@ def _status_badge(status: str) -> html.Span:
 
 
 # Per-column Dash styles, indexed to match ColumnInfo.DISPLAY_HEADERS order.
-# Adding a new ColumnInfo field: update ColumnInfo, _column_infos (datasource_base),
-# ColumnInfo.DISPLAY_HEADERS + column_display_values (inspection), and this list.
+# Adding a new ColumnInfo field: update ColumnInfo, _column_infos,
+# ColumnInfo.DISPLAY_HEADERS and ColumnInfo.display_values (all in inspection.py), and this list.
 _COL_CELL_STYLES: list[dict | None] = [
     {"fontFamily": "monospace", "fontSize": "13px"},  # Column
     None,  # Configured — style computed dynamically below
     {"textAlign": "right"},  # Raw pts
-    {"textAlign": "right"},  # Filtered pts
+    {"textAlign": "right"},  # Kept pts
     {"textAlign": "right"},  # % retained
-    {"textAlign": "left", "fontSize": "11px"},  # First (filtered)
-    {"textAlign": "left", "fontSize": "11px"},  # Last (filtered)
+    {"textAlign": "left", "fontSize": "11px"},  # First
+    {"textAlign": "left", "fontSize": "11px"},  # Last
 ]
 
 
@@ -683,7 +921,7 @@ def _col_cell(col: ColumnInfo) -> list[html.Td]:
     """
     Return <td> cells for one ColumnInfo row.
 
-    Text content comes from ``column_display_values`` (shared with CLI);
+    Text content comes from ``ColumnInfo.display_values`` (shared with the CLI);
     Dash-specific styling is applied per-column via ``_COL_CELL_STYLES``.
     """
     values = col.display_values()
@@ -709,36 +947,44 @@ def _col_cell(col: ColumnInfo) -> list[html.Td]:
 def _build_inspection_content(results: list) -> list:
     """Build modal content from a list of DataSourceInspection objects."""
     sections = []
-    for r in results:
+    for result in results:
         meta_parts = []
-        if r.file_path:
+        if result.file_path:
             meta_parts.append(
-                html.Div(f"File: {r.file_path}", style={"fontSize": "12px", "color": "#666"})
+                html.Div(f"File: {result.file_path}", style={"fontSize": "12px", "color": "#666"})
             )
-        if r.raw_date_range:
+        if result.raw_date_range:
             meta_parts.append(
                 html.Div(
-                    f"Date range in file: {r.raw_date_range[0]}  →  {r.raw_date_range[1]}",
+                    f"Date range in file: {result.raw_date_range[0]}  →  "
+                    f"{result.raw_date_range[1]}",
                     style={"fontSize": "12px", "color": "#666"},
                 )
             )
-        if r.filtered_date_range:
+        if result.filtered_date_range:
             meta_parts.append(
                 html.Div(
-                    f"After filter:        "
-                    f"{r.filtered_date_range[0]}  →  {r.filtered_date_range[1]}",
+                    f"After time options:  "
+                    f"{result.filtered_date_range[0]}  →  {result.filtered_date_range[1]}",
                     style={"fontSize": "12px", "color": "#666"},
                 )
             )
-        if r.error_message:
+        if result.error_message:
             meta_parts.append(
                 html.Div(
-                    f"Error: {r.error_message}",
+                    f"Error: {result.error_message}",
                     style={"fontSize": "12px", "color": "#dc3545"},
                 )
             )
+        if result.columns_pruned:
+            meta_parts.append(
+                html.Div(
+                    PRUNED_VIEW_NOTICE,
+                    style={"fontSize": "12px", "color": "#856404", "fontStyle": "italic"},
+                )
+            )
 
-        table_rows = [html.Tr(_col_cell(col)) for col in r.columns]
+        table_rows = [html.Tr(_col_cell(col)) for col in result.columns]
 
         table = (
             html.Table(
@@ -766,7 +1012,7 @@ def _build_inspection_content(results: list) -> list:
             html.Div(
                 [
                     html.H4(
-                        [r.datasource_name, _status_badge(r.status)],
+                        [result.datasource_name, _status_badge(result.status)],
                         style={"marginBottom": "6px"},
                     ),
                     *meta_parts,
@@ -794,19 +1040,21 @@ def _build_inspection_content(results: list) -> list:
     State("schema-registry", "data"),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
+    State("user-options-store", "data"),
     prevent_initial_call=True,
 )
 def inspect_data(
     n_clicks: int,  # noqa: ARG001
-    db_options: dict[str, Any] | None,
+    database_options: dict[str, Any] | None,
     schema_data: dict[str, str],
     values: list[Any],
     ids: list[dict[str, str]],
+    user_options: dict[str, Any] | None,
 ) -> tuple[dict, Any, list | None, None, bool, str]:
     """Run data inspection for all enabled datasources and display results in modal."""
     interval_off, progress_clear = True, ""
 
-    if not db_options:
+    if not database_options:
         return (
             INSPECTION_MODAL_STYLE_SHOWN,
             html.Div("Database options not loaded.", style={"color": "red"}),
@@ -817,13 +1065,13 @@ def inspect_data(
         )
 
     schema_class_lookup = _rehydrate_schema_classes(schema_data)
-    values_by_id = {i["name"]: v for i, v in zip(ids, values, strict=False)}
+    values_by_id = {widget_id["name"]: value for widget_id, value in zip(ids, values, strict=False)}
     validated_dict, errors = validation.validate_and_collect(values_by_id, schema_class_lookup)
 
     if errors:
         return (
             INSPECTION_MODAL_STYLE_SHOWN,
-            html.Ul([html.Li(e) for e in errors]),
+            html.Ul([html.Li(error) for error in errors]),
             None,
             None,
             interval_off,
@@ -841,14 +1089,18 @@ def inspect_data(
     try:
         results = wrapper.inspect(
             patient_options=validated_dict,
-            database_options_global=db_options,
+            database_options_global=database_options,
             progress_callback=_on_progress,
+            user_options=user_options,
+            configured_columns_only=bool(
+                (user_options or {}).get(cst.UserOptions.InspectConfiguredColumnsOnly.NAME)
+            ),
         )
-    except Exception as e:
+    except Exception as exc:
         logger.exception("Inspection failed: ")
         return (
             INSPECTION_MODAL_STYLE_SHOWN,
-            html.Div(f"Inspection failed: {e}", style={"color": "red"}),
+            html.Div(f"Inspection failed: {exc}", style={"color": "red"}),
             None,
             None,
             interval_off,
@@ -955,7 +1207,7 @@ _ONE_DAY_SECONDS = 86400
 
 
 def _build_slider_marks(
-    t_min: float,
+    time_min: float,
     duration: float,
     n_marks: int = 5,
     display_timezone: str | None = None,
@@ -963,27 +1215,29 @@ def _build_slider_marks(
     """
     Build evenly-spaced marks for a RangeSlider using relative-second keys.
 
-    Keys are seconds offset from t_min (0 … duration).
+    Keys are seconds offset from time_min (0 … duration).
     Labels are absolute clock times in the configured display timezone so the
     user sees human-readable timestamps, not raw numbers.
     """
     display_tz = ZoneInfo(display_timezone or cst.DISPLAY_TIMEZONE)
     fmt = "%m/%d %H:%M" if duration > _ONE_DAY_SECONDS else "%H:%M:%S"
     marks = {}
-    for i in range(n_marks + 1):
-        offset = duration * i / n_marks
-        dt = datetime.fromtimestamp(t_min + offset, tz=UTC).astimezone(display_tz)
-        marks[float(offset)] = dt.strftime(fmt)
+    for mark_index in range(n_marks + 1):
+        offset = duration * mark_index / n_marks
+        mark_datetime = datetime.fromtimestamp(time_min + offset, tz=UTC).astimezone(display_tz)
+        marks[float(offset)] = mark_datetime.strftime(fmt)
     return marks
 
 
-def format_time_range(t_start: float, t_end: float, display_timezone: str | None = None) -> str:
+def format_time_range(
+    time_start: float, time_end: float, display_timezone: str | None = None
+) -> str:
     """Format a time range as a human-readable string in the configured display timezone."""
     display_tz = ZoneInfo(display_timezone or cst.DISPLAY_TIMEZONE)
-    dt_start = datetime.fromtimestamp(t_start, tz=UTC).astimezone(display_tz)
-    dt_end = datetime.fromtimestamp(t_end, tz=UTC).astimezone(display_tz)
+    datetime_start = datetime.fromtimestamp(time_start, tz=UTC).astimezone(display_tz)
+    datetime_end = datetime.fromtimestamp(time_end, tz=UTC).astimezone(display_tz)
     fmt = "%Y-%m-%d %H:%M:%S"
-    return f"{dt_start.strftime(fmt)}  —  {dt_end.strftime(fmt)}"
+    return f"{datetime_start.strftime(fmt)}  —  {datetime_end.strftime(fmt)}"
 
 
 def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.Div]:
@@ -999,12 +1253,11 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
     display_timezone = display_timezone or cst.DISPLAY_TIMEZONE
     graphs = []
 
-    for mod in model:
-        fig = mod.figure
+    for plot_model in model:
+        fig = plot_model.figure
 
-        # Wrap time_series with FigureResampler for dynamic downsampling
         uid = None
-        if mod.name == "time_series":
+        if plot_model.name in cst.PlotType.RESAMPLED:
             uid = str(uuid4())
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig
@@ -1016,31 +1269,29 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             # dash or plotly-resampler restores layout-preserving partial updates.
             fig.update_layout(uirevision=uid)
 
-        # Set explicit CSS height so the container matches the figure's intended
-        # height.  Without this, Plotly's default autosize=True sizes the figure
-        # to its container, and an unsized container collapses to a default that
-        # can hide the plot (especially for time-series with few subplots).
-        graph_height = int(mod.computed_height) if mod.computed_height else None
+        # Plotly's autosize=True sizes the figure to its container, so an unsized container
+        # collapses to a default that can hide the plot (time-series with few subplots
+        # especially) — set the CSS height explicitly to match the figure's intended height.
+        graph_height = int(plot_model.computed_height) if plot_model.computed_height else None
         graph_style = {"marginBottom": "40px"}
         if graph_height:
             graph_style["height"] = f"{graph_height}px"
 
         # --- Build annotation metadata stores from the PlotModel ---
         # These are read by annotation_callbacks to know subplot names and axis refs.
-        # Must be built from mod.figure (original go.Figure) before FigureResampler wraps it.
-        is_loop = mod.plot_type == cst.PlotType.LOOP
-        n_cols_layout = 2 if (is_loop and len(mod.groups) > 1) else 1
+        # Must be built from plot_model.figure (original go.Figure) before FigureResampler wraps it.
+        n_cols_layout = plot_model.n_cols
 
         signal_meta_lookup: dict[str, dict] = {
-            sig.name: {
-                "raw_name": sig.raw_name,
-                "datasource_name": sig.metadata.datasource_name or "",
+            signal_obj.name: {
+                "raw_name": signal_obj.raw_name,
+                "datasource_name": signal_obj.metadata.datasource_name or "",
             }
-            for group in mod.groups
-            for sig in group.signals
+            for group in plot_model.groups
+            for signal_obj in group.signals
         }
         trace_map: dict[str, dict] = {}
-        for trace_idx, trace in enumerate(mod.figure.data):
+        for trace_idx, trace in enumerate(plot_model.figure.data):
             trace_name = getattr(trace, "name", "") or ""
             meta = signal_meta_lookup.get(trace_name, {})
             trace_color: str | None = None
@@ -1063,19 +1314,18 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             }
 
         subplot_rows = []
-        # Build mapping from yaxis reference to subplot name.
-        # Traces are added to the figure in group order, so we can iterate
-        # through mod.figure.data and assign each trace's yaxis to its group's subplot.
+        # Traces are added to the figure in group order, so walking plot_model.figure.data in
+        # step with the groups maps each trace's yaxis onto its group's subplot.
         yaxis_to_subplot: dict[str, dict] = {}
         trace_idx = 0
-        for group_idx, group in enumerate(mod.groups):
+        for group_idx, group in enumerate(plot_model.groups):
             plotly_row = group_idx // n_cols_layout + 1
             plotly_col = group_idx % n_cols_layout + 1
 
-            # Get the primary y-axis for this subplot (first trace's yaxis)
+            # The subplot's primary y-axis is the one carried by its first trace.
             primary_yaxis = "y"
-            if trace_idx < len(mod.figure.data):
-                primary_yaxis = getattr(mod.figure.data[trace_idx], "yaxis", None) or "y"
+            if trace_idx < len(plot_model.figure.data):
+                primary_yaxis = getattr(plot_model.figure.data[trace_idx], "yaxis", None) or "y"
 
             subplot_rows.append(
                 {
@@ -1086,11 +1336,10 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
                 }
             )
 
-            # Add all traces from this group to the mapping
             n_traces_in_group = len(group.signals)
             for _ in range(n_traces_in_group):
-                if trace_idx < len(mod.figure.data):
-                    trace = mod.figure.data[trace_idx]
+                if trace_idx < len(plot_model.figure.data):
+                    trace = plot_model.figure.data[trace_idx]
                     yaxis_ref = getattr(trace, "yaxis", None) or "y"
                     yaxis_to_subplot[yaxis_ref] = {
                         "row": plotly_row,
@@ -1102,54 +1351,55 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         # Capture subplot title annotations injected by make_subplots so the
         # annotation renderer can restore them when it replaces layout.annotations.
         subplot_title_annotations: list[dict] = []
-        if mod.figure.layout.annotations:
+        if plot_model.figure.layout.annotations:
             subplot_title_annotations = [
-                ann.to_plotly_json() for ann in mod.figure.layout.annotations
+                ann.to_plotly_json() for ann in plot_model.figure.layout.annotations
             ]
 
         graph_subplots_data = {
             "rows": subplot_rows,
             "yaxis_to_subplot": yaxis_to_subplot,
             "subplot_annotations": subplot_title_annotations,
-            "plot_type": mod.plot_type,
+            "plot_type": plot_model.plot_type,
             "n_cols": n_cols_layout,
         }
 
         children = [
             dcc.Graph(
-                id={"type": "graph", "name": mod.name},
+                id={"type": "graph", "name": plot_model.name},
                 figure=fig,
                 config={"displayModeBar": True},
                 style=graph_style,
             ),
-            dcc.Store(id={"type": "resampler-store", "name": mod.name}, data=uid),
-            dcc.Store(id={"type": "graph-subplots", "name": mod.name}, data=graph_subplots_data),
-            dcc.Store(id={"type": "graph-trace-map", "name": mod.name}, data=trace_map),
+            dcc.Store(id={"type": "resampler-store", "name": plot_model.name}, data=uid),
+            dcc.Store(
+                id={"type": "graph-subplots", "name": plot_model.name}, data=graph_subplots_data
+            ),
+            dcc.Store(id={"type": "graph-trace-map", "name": plot_model.name}, data=trace_map),
         ]
 
         # --- Loop time-range slider ---
-        if mod.plot_type == cst.PlotType.LOOP:
+        if plot_model.plot_type == cst.PlotType.LOOP:
             loop_uid = str(uuid4())
 
-            # Cache full data arrays for each trace.
-            # Skip traces with missing data to keep cache indices aligned
-            # with the Plotly figure traces that are actually filterable.
+            # Traces with no data get a null placeholder rather than being dropped, so cache
+            # indices stay aligned with the Plotly figure's trace indices.
             trace_data = []
-            t_min_global = np.inf
-            t_max_global = -np.inf
-            for group in mod.groups:
-                for sig in group.signals:
-                    time_array = sig.data.loop_time_axis
-                    if time_array is None or sig.data.x is None or sig.data.y is None:
+            time_min_global = np.inf
+            time_max_global = -np.inf
+            for group in plot_model.groups:
+                for signal_obj in group.signals:
+                    time_array = signal_obj.data.loop_time_axis
+                    if time_array is None or signal_obj.data.x is None or signal_obj.data.y is None:
                         trace_data.append({"x": None, "y": None, "time_axis": None})
                         continue
                     if len(time_array) > 0:
-                        t_min_global = min(t_min_global, time_array[0])
-                        t_max_global = max(t_max_global, time_array[-1])
+                        time_min_global = min(time_min_global, time_array[0])
+                        time_max_global = max(time_max_global, time_array[-1])
                     trace_data.append(
                         {
-                            "x": sig.data.x,
-                            "y": sig.data.y,
+                            "x": signal_obj.data.x,
+                            "y": signal_obj.data.y,
                             "time_axis": time_array,
                         }
                     )
@@ -1157,18 +1407,22 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             # Store t_min alongside traces so callbacks can convert relative
             # offsets back to absolute epoch seconds for display/masking.
             # Convert to native Python float for orjson serialization safety.
-            t_min_f = float(t_min_global) if np.isfinite(t_min_global) else 0.0
+            time_min_float = float(time_min_global) if np.isfinite(time_min_global) else 0.0
             LOOP_DATA_CACHE[loop_uid] = {
                 "traces": trace_data,
-                "t_min": t_min_f,
+                "t_min": time_min_float,
                 "display_timezone": display_timezone,
             }
-            children.append(dcc.Store(id={"type": "loop-store", "name": mod.name}, data=loop_uid))
+            children.append(
+                dcc.Store(id={"type": "loop-store", "name": plot_model.name}, data=loop_uid)
+            )
 
-            if np.isfinite(t_min_global) and t_min_global < t_max_global:
-                duration = float(t_max_global) - t_min_f
+            if np.isfinite(time_min_global) and time_min_global < time_max_global:
+                duration = float(time_max_global) - time_min_float
                 step = 1
-                marks = _build_slider_marks(t_min_f, duration, display_timezone=display_timezone)
+                marks = _build_slider_marks(
+                    time_min_float, duration, display_timezone=display_timezone
+                )
 
                 children.append(
                     html.Div(
@@ -1182,7 +1436,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
                                 },
                             ),
                             dcc.RangeSlider(
-                                id={"type": "loop-time-slider", "name": mod.name},
+                                id={"type": "loop-time-slider", "name": plot_model.name},
                                 min=0.0,
                                 max=duration,
                                 value=[0.0, duration],
@@ -1194,11 +1448,11 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
                             ),
                             html.Div(
                                 format_time_range(
-                                    t_min_f,
-                                    t_min_f + duration,
+                                    time_min_float,
+                                    time_min_float + duration,
                                     display_timezone=display_timezone,
                                 ),
-                                id={"type": "loop-time-display", "name": mod.name},
+                                id={"type": "loop-time-display", "name": plot_model.name},
                                 style={
                                     "textAlign": "center",
                                     "color": "#555",

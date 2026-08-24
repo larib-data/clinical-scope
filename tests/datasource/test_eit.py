@@ -45,6 +45,10 @@ class TestLoad:
     def test_load_has_columns(self, loaded_df):
         assert len(loaded_df.columns) >= 1
 
+    def test_load_percentage_columns(self, loaded_df):
+        """%Local = Local / Global resolves no option, so _load derives it into the cache."""
+        assert [column for column in loaded_df.columns if column.startswith("%Local")]
+
 
 @pytest.fixture(scope="module")
 def formatted_df(loaded_df, patient_options_full, eit_cls, example_database_options):
@@ -61,10 +65,42 @@ class TestFormat:
     def test_format_has_timezone(self, formatted_df):
         assert formatted_df.index.tz is not None
 
-    def test_format_percentage_columns(self, formatted_df):
-        """_format() should create %Local columns from Local columns."""
-        pct_cols = [c for c in formatted_df.columns if c.startswith("%")]
+    def test_format_keeps_percentage_columns(self, formatted_df):
+        """They arrive from _load; _format must carry them through, not drop them."""
+        pct_cols = [c for c in formatted_df.columns if c.startswith("%Local")]
         assert len(pct_cols) > 0, "Expected percentage columns (e.g. %Local 1*)"
+
+
+@pytest.fixture(scope="module")
+def cache_path(loaded_df, eit_cls, tmp_path_factory):
+    """The parquet cache exactly as _load writes it — the file quick-load reads back."""
+    path = tmp_path_factory.mktemp("eit_cache") / "eit.parquet"
+    eit_cls._save_dataframe(loaded_df, path)
+    return path
+
+
+class TestQuickLoadColumnPruning:
+    """The cache's float64 index must not cost EIT its column pruning."""
+
+    def test_reads_only_configured_columns(self, eit_cls, cache_path, example_database_options):
+        eit_db_opts = example_database_options.get("eit", {})
+        field_display = eit_db_opts["field_display"]
+        full = pd.read_parquet(cache_path)
+        expected = {
+            column
+            for column in full.columns
+            for pattern in field_display
+            if (column.startswith(pattern[:-1]) if pattern.endswith("*") else column == pattern)
+        }
+
+        out = eit_cls._quick_load(
+            cache_path, patient_options=None, database_options_specific=eit_db_opts
+        )
+
+        assert set(out.columns) == expected
+        assert len(out.columns) < len(full.columns)
+        assert out.index.name == "Time"  # the axis survives without being selected
+        pd.testing.assert_frame_equal(out, full[list(out.columns)])
 
 
 @pytest.mark.snapshot

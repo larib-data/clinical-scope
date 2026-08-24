@@ -1,5 +1,5 @@
 """
-Convert Annotation objects into Plotly ``layout.shapes`` and ``layout.annotations`` dicts ready to be assigned to a figure.
+Convert Annotation objects into Plotly ``layout.shapes`` / ``layout.annotations`` dicts.
 
 Design notes
 ------------
@@ -17,7 +17,7 @@ Design notes
 * Subplot title annotations created by ``make_subplots`` live in
   ``layout.annotations`` alongside ours.  Callers must merge them; this module
   only produces the *annotation* portion.
-"""  # noqa: E501
+"""
 
 from __future__ import annotations
 
@@ -33,14 +33,10 @@ from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
 
 def _yref_paper_or_domain(subplot_yaxis: str | None) -> str:
     """
-    Return the right `yref` for a shape that should span either the full figure or a single subplot.
+    Return the `yref` spanning either the full figure or one subplot.
 
-    Args:
-    ----
-    subplot_yaxis
-        The yaxis reference string for the subplot's primary y-axis (e.g., "y", "y3", "y7").
-        If None, returns "paper" for global annotations.
-
+    ``None`` (a global annotation) gives ``"paper"``; a subplot's primary yaxis ref
+    ("y", "y3", …) gives that axis's domain.
     """
     if subplot_yaxis is None:
         return "paper"
@@ -51,7 +47,7 @@ def _yref_paper_or_domain(subplot_yaxis: str | None) -> str:
 _SUBPLOT_REMOVED = "-1"
 
 
-def _resolve_subplot_yaxis(ann: Annotation, subplot_rows: list[dict]) -> str | None:
+def _resolve_subplot_yaxis(annotation: Annotation, subplot_rows: list[dict]) -> str | None:
     """
     Return the primary yaxis reference for an annotation's subplot.
 
@@ -65,23 +61,23 @@ def _resolve_subplot_yaxis(ann: Annotation, subplot_rows: list[dict]) -> str | N
         Subplot was removed — caller should skip this annotation.
 
     """
-    if ann.subplot_name is None:
-        return None  # global
-    match = next((r for r in subplot_rows if r["name"] == ann.subplot_name), None)
+    if annotation.subplot_name is None:
+        return None
+    match = next((row for row in subplot_rows if row["name"] == annotation.subplot_name), None)
     if match is None:
         return _SUBPLOT_REMOVED
     return match.get("yaxis", None)
 
 
-def _xref_for_annotation(ann: Annotation) -> str:
+def _xref_for_annotation(annotation: Annotation) -> str:
     """Return the x-axis reference string for this annotation."""
     # Points store their xaxis explicitly; others default to the primary time axis.
-    return ann.data.get("xaxis", "x")
+    return annotation.data.get("xaxis", "x")
 
 
-def _yref_for_point(ann: Annotation) -> str:
+def _yref_for_point(annotation: Annotation) -> str:
     """Return the y-axis reference for a point annotation."""
-    return ann.data.get("yaxis", "y")
+    return annotation.data.get("yaxis", "y")
 
 
 # ---------------------------------------------------------------------------
@@ -89,32 +85,32 @@ def _yref_for_point(ann: Annotation) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _time_event_shape(ann: Annotation, subplot_yaxis: str | None) -> dict:
-    x = ann.data["x"]
+def _time_event_shape(annotation: Annotation, subplot_yaxis: str | None) -> dict:
+    x = annotation.data["x"]
     return {
         "type": "line",
         "x0": x,
         "x1": x,
         "y0": 0,
         "y1": 1,
-        "xref": _xref_for_annotation(ann),
+        "xref": _xref_for_annotation(annotation),
         "yref": _yref_paper_or_domain(subplot_yaxis),
-        "line": {"color": ann.color, "width": 2, "dash": "dash"},
+        "line": {"color": annotation.color, "width": 2, "dash": "dash"},
     }
 
 
-def _time_window_shape(ann: Annotation, subplot_yaxis: str | None) -> dict:
+def _time_window_shape(annotation: Annotation, subplot_yaxis: str | None) -> dict:
     return {
         "type": "rect",
-        "x0": ann.data["x0"],
-        "x1": ann.data["x1"],
+        "x0": annotation.data["x0"],
+        "x1": annotation.data["x1"],
         "y0": 0,
         "y1": 1,
-        "xref": _xref_for_annotation(ann),
+        "xref": _xref_for_annotation(annotation),
         "yref": _yref_paper_or_domain(subplot_yaxis),
-        "fillcolor": ann.color,
+        "fillcolor": annotation.color,
         "opacity": 0.15,
-        "line": {"width": 1, "color": ann.color},
+        "line": {"width": 1, "color": annotation.color},
     }
 
 
@@ -123,78 +119,77 @@ def _time_window_shape(ann: Annotation, subplot_yaxis: str | None) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _time_event_label(ann: Annotation, subplot_yaxis: str | None) -> dict | None:
-    if not ann.label:
+def _time_event_label(annotation: Annotation, subplot_yaxis: str | None) -> dict | None:
+    if not annotation.label:
         return None
-    x = ann.data["x"]
+    x = annotation.data["x"]
     yref = _yref_paper_or_domain(subplot_yaxis)
-    # For paper yref the y coordinate is in [0, 1]; for domain refs also [0, 1].
+    # y is in [0, 1] for both paper and domain refs, so 0.99 pins the label to the top.
     return {
         "x": x,
         "y": 0.99,
-        "xref": _xref_for_annotation(ann),
+        "xref": _xref_for_annotation(annotation),
         "yref": yref,
-        "text": ann.label,
+        "text": annotation.label,
         "showarrow": False,
         "xanchor": "left",
         "yanchor": "top",
-        "bgcolor": ann.color,
+        "bgcolor": annotation.color,
         "font": {"color": "white", "size": 11},
         "opacity": 0.9,
     }
 
 
-def _time_window_label(ann: Annotation, subplot_yaxis: str | None) -> dict | None:
-    if not ann.label:
+def _time_window_label(annotation: Annotation, subplot_yaxis: str | None) -> dict | None:
+    if not annotation.label:
         return None
-    # Place label at the left edge of the window near the top.
-    x = ann.data["x0"]
+    x = annotation.data["x0"]
     yref = _yref_paper_or_domain(subplot_yaxis)
     return {
         "x": x,
         "y": 0.99,
-        "xref": _xref_for_annotation(ann),
+        "xref": _xref_for_annotation(annotation),
         "yref": yref,
-        "text": ann.label,
+        "text": annotation.label,
         "showarrow": False,
         "xanchor": "left",
         "yanchor": "top",
-        "bgcolor": ann.color,
+        "bgcolor": annotation.color,
         "font": {"color": "white", "size": 11},
         "opacity": 0.9,
     }
 
 
-def _point_dot(ann: Annotation) -> dict:
+def _point_dot(annotation: Annotation) -> dict:
     """Minimal dot marker shown for a point when its label/arrow is hidden."""
     return {
-        "x": ann.data["x"],
-        "y": ann.data["y"],
-        "xref": _xref_for_annotation(ann),
-        "yref": _yref_for_point(ann),
+        "x": annotation.data["x"],
+        "y": annotation.data["y"],
+        "xref": _xref_for_annotation(annotation),
+        "yref": _yref_for_point(annotation),
         "text": "●",
         "showarrow": False,
-        "font": {"color": ann.color, "size": 12},
+        "font": {"color": annotation.color, "size": 12},
     }
 
 
-def _point_label(ann: Annotation) -> dict:
+def _point_label(annotation: Annotation) -> dict:
     return {
-        "x": ann.data["x"],
-        "y": ann.data["y"],
-        "xref": _xref_for_annotation(ann),
-        "yref": _yref_for_point(ann),
-        "text": ann.label or "•",
+        "x": annotation.data["x"],
+        "y": annotation.data["y"],
+        "xref": _xref_for_annotation(annotation),
+        "yref": _yref_for_point(annotation),
+        "text": annotation.label or "•",
         "showarrow": True,
         "arrowhead": 2,
         "arrowsize": 1,
         "arrowwidth": 2,
-        "arrowcolor": ann.color,
+        "arrowcolor": annotation.color,
         "ax": 0,
         "ay": -40,
-        "font": {"color": ann.color, "size": 12},
+        "font": {"color": annotation.color, "size": 12},
         "bgcolor": "rgba(255,255,255,0.85)",
-        "bordercolor": ann.color,
+        "bordercolor": annotation.color,
         "borderwidth": 1,
         "borderpad": 3,
     }
@@ -205,27 +200,27 @@ def _point_label(ann: Annotation) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def normalize_annotation_for_display(ann: Annotation, display_tz: str) -> Annotation:
+def normalize_annotation_for_display(annotation: Annotation, display_tz: str) -> Annotation:
     """
-    Return a copy of *ann* with x values converted to naive display-TZ wall-clock strings.
+    Return a copy of *annotation* with x values converted to naive display-TZ wall-clock strings.
 
     Trace x-data uses timezone-naive datetime64 (wall-clock in display TZ).  Annotation x
     values are stored as tz-aware ISO strings.  Converting here keeps rendering correct
     regardless of the UTC offset and is idempotent for already-naive values.
     """
-    data = dict(ann.data)
-    if ann.type == AnnotationType.TIME_EVENT:
+    data = dict(annotation.data)
+    if annotation.type == AnnotationType.TIME_EVENT:
         if "x" in data:
             data["x"] = to_naive_display_ts(data["x"], display_tz)
-    elif ann.type == AnnotationType.TIME_WINDOW:
+    elif annotation.type == AnnotationType.TIME_WINDOW:
         if "x0" in data:
             data["x0"] = to_naive_display_ts(data["x0"], display_tz)
         if "x1" in data:
             data["x1"] = to_naive_display_ts(data["x1"], display_tz)
-    elif ann.type == AnnotationType.POINT and "x" in data:
+    elif annotation.type == AnnotationType.POINT and "x" in data:
         # time-series POINT: x is a timestamp; loop POINT: x is numeric (unchanged by to_naive)
         data["x"] = to_naive_display_ts(data["x"], display_tz)
-    return dataclasses.replace(ann, data=data)
+    return dataclasses.replace(annotation, data=data)
 
 
 # ---------------------------------------------------------------------------
@@ -252,33 +247,33 @@ def make_preview_shape(x: str, xref: str = "x") -> dict:
 # ---------------------------------------------------------------------------
 
 
-def annotation_to_shapes(ann: Annotation, subplot_yaxis: str | None) -> list[dict]:
+def annotation_to_shapes(annotation: Annotation, subplot_yaxis: str | None) -> list[dict]:
     """
-    Convert an custom class `Annotation` to zero or more Plotly shape dicts.
+    Convert an `Annotation` to zero or more Plotly shape dicts.
 
-    Points are rendered purely as Plotly annotations (arrows), so they
-    produce no shapes.
+    Points are rendered purely as Plotly annotations (arrows), so they produce no shapes.
     """
-    if ann.type == AnnotationType.TIME_EVENT:
-        return [_time_event_shape(ann, subplot_yaxis)]
-    if ann.type == AnnotationType.TIME_WINDOW:
-        return [_time_window_shape(ann, subplot_yaxis)]
-    # POINT — no shape needed, handled by annotation arrow
+    if annotation.type == AnnotationType.TIME_EVENT:
+        return [_time_event_shape(annotation, subplot_yaxis)]
+    if annotation.type == AnnotationType.TIME_WINDOW:
+        return [_time_window_shape(annotation, subplot_yaxis)]
     return []
 
 
-def annotation_to_plotly_annotation(ann: Annotation, subplot_yaxis: str | None) -> dict | None:
+def annotation_to_plotly_annotation(
+    annotation: Annotation, subplot_yaxis: str | None
+) -> dict | None:
     """
-    Convert an custom class `Annotation` to a single Plotly annotation dict (textlabel / arrow).
+    Convert an `Annotation` to a single Plotly annotation dict (text label / arrow).
 
     Returns ``None`` when there is nothing to show.
     """
-    if ann.type == AnnotationType.TIME_EVENT:
-        return _time_event_label(ann, subplot_yaxis)
-    if ann.type == AnnotationType.TIME_WINDOW:
-        return _time_window_label(ann, subplot_yaxis)
-    if ann.type == AnnotationType.POINT:
-        return _point_label(ann)
+    if annotation.type == AnnotationType.TIME_EVENT:
+        return _time_event_label(annotation, subplot_yaxis)
+    if annotation.type == AnnotationType.TIME_WINDOW:
+        return _time_window_label(annotation, subplot_yaxis)
+    if annotation.type == AnnotationType.POINT:
+        return _point_label(annotation)
     return None
 
 
@@ -291,27 +286,22 @@ def build_figure_overlays(
     pending_xref: str = "x",
 ) -> tuple[list[dict], list[dict]]:
     """
-    Build figure overlay from the annotations and plot name.
-
-    Build the complete ``layout.shapes`` and ``layout.annotations`` lists for one plot, merging
-    subplot title annotations with user annotations.
+    Build the complete ``layout.shapes`` and ``layout.annotations`` lists for one plot.
 
     Parameters
     ----------
     annotations
-        All annotations (will be filtered to this ``plot_name``).  Callers are
-        responsible for pre-normalising annotation timestamps to naive display-TZ
-        wall-clock strings (via :func:`normalize_annotations_for_display`) before
-        passing them here.
+        All annotations (filtered here to this ``plot_name``).  Callers must pre-normalise
+        their timestamps to naive display-TZ wall-clock strings via
+        :func:`normalize_annotation_for_display`.
     plot_name
         Name of the target PlotModel.
     subplot_annotations
         The original ``layout.annotations`` produced by ``make_subplots``
         (subplot titles).  These are prepended so they are never lost.
     subplot_rows
-        List of ``{"row": int, "col": int, "name": str}`` dicts from the
-        graph-subplots store.  Used to resolve ``ann.subplot_name`` to a row
-        index.  Annotations whose subplot no longer exists are silently skipped.
+        Dicts from the graph-subplots store, used to resolve ``annotation.subplot_name`` to the
+        subplot's yaxis ref.  Annotations whose subplot no longer exists are silently skipped.
     pending_x0
         If set, a grey preview line is added at this x position.  Must already
         be a naive display-TZ string if it represents a datetime.
@@ -324,26 +314,26 @@ def build_figure_overlays(
         Two lists ready to assign to ``figure.layout``.
 
     """
-    relevant = [a for a in annotations if a.plot_name == plot_name]
+    relevant = [candidate for candidate in annotations if candidate.plot_name == plot_name]
 
     shapes: list[dict] = []
     our_annotations: list[dict] = []
 
-    for ann in relevant:
-        yaxis = _resolve_subplot_yaxis(ann, subplot_rows)
+    for annotation in relevant:
+        yaxis = _resolve_subplot_yaxis(annotation, subplot_rows)
         if yaxis == _SUBPLOT_REMOVED:
-            continue  # subplot was removed — skip silently
-        shapes.extend(annotation_to_shapes(ann, yaxis))
+            continue
+        shapes.extend(annotation_to_shapes(annotation, yaxis))
 
-        ann_label_hidden = ann.label_hidden
+        label_hidden = annotation.label_hidden
 
-        if ann.type == AnnotationType.POINT:
+        if annotation.type == AnnotationType.POINT:
             # Dot marker always visible (mirrors time-event bar always appearing).
-            our_annotations.append(_point_dot(ann))
-            if not ann_label_hidden:
-                our_annotations.append(_point_label(ann))
-        elif not ann_label_hidden:
-            label = annotation_to_plotly_annotation(ann, yaxis)
+            our_annotations.append(_point_dot(annotation))
+            if not label_hidden:
+                our_annotations.append(_point_label(annotation))
+        elif not label_hidden:
+            label = annotation_to_plotly_annotation(annotation, yaxis)
             if label is not None:
                 our_annotations.append(label)
 

@@ -4,10 +4,11 @@ from typing import Any
 
 import pandas as pd
 
+import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.mindray_respi_numerics.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
-from clinical_scope.datasource.formatting.timezone import apply_timezone_to_dataframe
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs: Any) -> pd.DataFrame:
+    def _load(cls, file_path: Path, path_output: Path | None, **kwargs: Any) -> pd.DataFrame:  # noqa: ARG003
         """
         Load and parse MindRay Respi Numerics data.
 
@@ -28,9 +29,6 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         2. Pivot the data to have one column per unique measurement
         3. Set "event_timestamp" as the index
         """
-        database_options_specific = kwargs.get("database_options_specific", {})
-
-        # Load the data
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() == ".csv":
@@ -41,17 +39,11 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
 
         if df.empty:
             logger.warning("[%s] Empty data file: %s", cls.DATASOURCE_NAME, file_path)
-            return pd.DataFrame(
-                index=pd.DatetimeIndex([], tz=options_naming.DATA_SOURCE_DEFAULT_TIMEZONE)
-            )
+            return pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))
 
-        # Create composite column for label+unit
         df["full_label_name"] = df["measurement_label"] + "-" + df["measurement_unit"]
-
-        # Remove legacy columns
         df = df.drop(columns=["measurement_label", "measurement_unit"])
 
-        # Pivot the data: one column per measurement type
         df_pivoted = df.pivot_table(
             index="event_timestamp",
             columns="full_label_name",
@@ -62,22 +54,8 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         # Flatten multi-index columns - keep the full label name
         df_pivoted.columns = df_pivoted.columns.get_level_values(0)
 
-        # Convert index to datetime
         df_pivoted.index = pd.to_datetime(df_pivoted.index)
-
-        # Sort by timestamp
-        df_pivoted = df_pivoted.sort_index()
-
-        # Remove duplicate timestamps (keep first)
-        df_pivoted = df_pivoted[~df_pivoted.index.duplicated(keep="first")]
-
-        # Apply timezone if needed
-        df_pivoted = apply_timezone_to_dataframe(
-            df_pivoted,
-            database_options_specific,
-            options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,
-            options_naming,
-        )
+        df_pivoted = deduplicate_then_sort_index(df_pivoted)
 
         if path_output is not None:
             cls._save_dataframe(df_pivoted, path_output)

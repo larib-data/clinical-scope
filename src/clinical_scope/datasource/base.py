@@ -8,6 +8,7 @@ reducing duplication across find_load_format.py files.
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -15,9 +16,11 @@ import pandas as pd
 import clinical_scope.constants as cst
 from clinical_scope.datasource.formatting.timezone import (
     _date_range,
+    _resolve_effective_tz,
     _to_display_tz,
     apply_timezone_to_dataframe,
     filter_data_by_timestamps,
+    resolve_display_timezone,
     shift_data_by_seconds,
 )
 from clinical_scope.datasource.inspection import (
@@ -28,10 +31,12 @@ from clinical_scope.datasource.timing import time_it
 from clinical_scope.io.file_utils import (
     find_files,
     folder_name_matches_keywords,
+    make_column_selector,
+    read_parquet_pruned,
     save_df,
 )
 from clinical_scope.io.paths import get_datasource_cache_path
-from clinical_scope.signal_container import Signal
+from clinical_scope.signal_container import DisplayFallbacks, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -51,34 +56,43 @@ class DataSourceBase(ABC):
     """
 
     # Subclass configuration - must be set by concrete implementations
-    DATASOURCE_NAME: str = None  # e.g., "philips_waves"
-    FILE_NAME_DATAFRAME_LOADED: str = None  # e.g., "philips_waves_loaded.parquet"
-    OPTIONS_MODULE = None  # The options module for this datasource
-    ALLOW_QUICK_LOAD: bool = True  # Whether to allow quick loading
+    DATASOURCE_NAME: str = None  # e.g., "servo_u"
+    FILE_NAME_DATAFRAME_LOADED: str = None  # e.g., "servo_u_loaded.parquet"
+    OPTIONS_MODULE = None
+    ALLOW_QUICK_LOAD: bool = True
     # When True and ALLOW_QUICK_LOAD is False, a symlink to the source file is created in the
     # output folder instead of a parquet cache. Use for large files with trivial loading cost.
     CREATE_SOURCE_SYMLINK: bool = False
+    # Whether a set datetime_start/datetime_end window may be pushed down as a parquet row
+    # filter at read time. Opt out when the source can't express its own filtering as a
+    # min/max range (e.g. EIT's time-of-day filter_date=False).
+    ALLOW_DATETIME_PUSHDOWN: bool = True
 
     # Optional source_options for Signal creation
     SOURCE_OPTIONS: dict = None
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        opts = cls.OPTIONS_MODULE
-        if opts is None:
+        options_module = cls.OPTIONS_MODULE
+        if options_module is None:
             return
         if cls.DATASOURCE_NAME is None:
-            cls.DATASOURCE_NAME = getattr(opts, "DATASOURCE_NAME", None)
+            cls.DATASOURCE_NAME = getattr(options_module, "DATASOURCE_NAME", None)
         if cls.FILE_NAME_DATAFRAME_LOADED is None:
-            cls.FILE_NAME_DATAFRAME_LOADED = getattr(opts, "FILE_NAME_DATAFRAME_LOADED", None)
+            cls.FILE_NAME_DATAFRAME_LOADED = getattr(
+                options_module, "FILE_NAME_DATAFRAME_LOADED", None
+            )
         if cls.SOURCE_OPTIONS is None:
-            cls.SOURCE_OPTIONS = getattr(opts, "source_options", None)
-        allow = getattr(opts, "ALLOW_QUICK_LOAD", None)
-        if allow is not None:
-            cls.ALLOW_QUICK_LOAD = allow
-        symlink = getattr(opts, "CREATE_SOURCE_SYMLINK", None)
-        if symlink is not None:
-            cls.CREATE_SOURCE_SYMLINK = symlink
+            cls.SOURCE_OPTIONS = getattr(options_module, "source_options", None)
+        allow_quick_load = getattr(options_module, "ALLOW_QUICK_LOAD", None)
+        if allow_quick_load is not None:
+            cls.ALLOW_QUICK_LOAD = allow_quick_load
+        create_source_symlink = getattr(options_module, "CREATE_SOURCE_SYMLINK", None)
+        if create_source_symlink is not None:
+            cls.CREATE_SOURCE_SYMLINK = create_source_symlink
+        allow_pushdown = getattr(options_module, "ALLOW_DATETIME_PUSHDOWN", None)
+        if allow_pushdown is not None:
+            cls.ALLOW_DATETIME_PUSHDOWN = allow_pushdown
 
     @classmethod
     def _find(cls, folder_path: Path) -> list[Path] | Path | None:
@@ -87,21 +101,14 @@ class DataSourceBase(ABC):
 
         Uses the OPTIONS_MODULE constants (FILE_KEYWORDS, FILE_EXTENSIONS, MULTI_FILE)
         for default file discovery. Override in subclasses that need custom logic.
-
-        Args:
-            folder_path: Path to search for data files
-
-        Returns:
-            Path or list[Path] or None: Found file(s), or None if not found
-
         """
-        opts = cls.OPTIONS_MODULE
+        options_module = cls.OPTIONS_MODULE
         return find_files(
             folder_path,
-            extensions=getattr(opts, "FILE_EXTENSIONS", []),
+            extensions=getattr(options_module, "FILE_EXTENSIONS", []),
             datasource_name=cls.DATASOURCE_NAME,
-            multi=getattr(opts, "MULTI_FILE", False),
-            keywords=getattr(opts, "FILE_KEYWORDS", None),
+            multi=getattr(options_module, "MULTI_FILE", False),
+            keywords=getattr(options_module, "FILE_KEYWORDS", None),
         )
 
     @classmethod
@@ -113,58 +120,232 @@ class DataSourceBase(ABC):
         Load and parse raw data file(s) into a DataFrame.
 
         Args:
-            file_path: Path or list of paths to data files
             path_output: Path to save loaded DataFrame for quick loading, or none if no saving
                          needed
 
         Returns:
-            pd.DataFrame: Loaded data with datetime index
+            Loaded data, indexed by datetime.
 
         """
 
+    @staticmethod
+    def _has_datetime_window(patient_options: dict) -> bool:
+        """Whether a datetime window is set — the precondition for any row-pushdown."""
+        return bool(
+            patient_options.get(cst.PatientOptions.DatetimeStart.NAME)
+            or patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
+        )
+
     @classmethod
-    def _quick_load(cls, path_dataframe: Path) -> pd.DataFrame:
-        """Load previously saved DataFrame from parquet file."""
-        return pd.read_parquet(path_dataframe)
+    def _pushdown_bounds(
+        cls,
+        patient_options: dict,
+        database_options_specific: dict,
+        index_tz: str | None,
+    ) -> tuple[pd.Timestamp | None, pd.Timestamp | None] | None:
+        """
+        Compute conservative-loose datetime bounds for parquet row-pushdown.
+
+        Returns ``None`` when no window is set (nothing to push down). Otherwise
+        returns ``(start, end)`` — either side may be ``None`` for a one-sided window —
+        expressed in *index_tz* if given, or tz-naive source-local time (via
+        ``OPTIONS_MODULE.DATA_SOURCE_DEFAULT_TIMEZONE``, honoring a database_options
+        override) when *index_tz* is ``None``.
+
+        Bounds are intentionally loose (± buffer, time_shift inverted): ``_filter_by_datetime``
+        remains the authoritative cut downstream, so under-pruning only costs a few
+        extra rows while over-pruning (silent data loss) is impossible by construction.
+        """
+        datetime_start = patient_options.get(cst.PatientOptions.DatetimeStart.NAME)
+        datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
+        if not datetime_start and not datetime_end:
+            return None
+
+        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
+        time_shift = patient_options_specific.get(
+            cls.OPTIONS_MODULE.PatientOptionsDataSourceRelative.TimeShift.NAME, 0.0
+        )
+        shift_td = pd.Timedelta(seconds=time_shift)
+        buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
+        # A tz-naive bound is interpreted in the library default: a wrong guess is one constant
+        # offset on every bound, which is easy to spot.
+        display_timezone = cst.DISPLAY_TIMEZONE
+
+        def _to_aware(raw_value: str | None) -> pd.Timestamp | None:
+            if not raw_value:
+                return None
+            timestamp = pd.Timestamp(raw_value)
+            if timestamp.tzinfo is not None:
+                return timestamp
+            return timestamp.tz_localize(display_timezone)
+
+        start_aware = _to_aware(datetime_start)
+        end_aware = _to_aware(datetime_end)
+
+        if index_tz is None:
+            if not hasattr(cls.OPTIONS_MODULE, "DATA_SOURCE_DEFAULT_TIMEZONE"):
+                return None
+            index_tz = _resolve_effective_tz(
+                database_options_specific,
+                cls.OPTIONS_MODULE,
+                cls.OPTIONS_MODULE.DATA_SOURCE_DEFAULT_TIMEZONE,
+            )
+            pre_start = (
+                None
+                if start_aware is None
+                else (start_aware - shift_td).tz_convert(index_tz).tz_localize(None) - buffer
+            )
+            pre_end = (
+                None
+                if end_aware is None
+                else (end_aware - shift_td).tz_convert(index_tz).tz_localize(None) + buffer
+            )
+        else:
+            pre_start = (
+                None
+                if start_aware is None
+                else (start_aware - shift_td).tz_convert(index_tz) - buffer
+            )
+            pre_end = (
+                None if end_aware is None else (end_aware - shift_td).tz_convert(index_tz) + buffer
+            )
+
+        return pre_start, pre_end
+
+    @classmethod
+    def _make_bounds_computer(
+        cls,
+        patient_options: dict | None,
+        database_options_specific: dict,
+    ) -> Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None] | None:
+        """
+        Build the row-pushdown *compute_bounds* callable, or ``None`` when pushdown doesn't apply.
+
+        Centralizes the pushdown gate shared by every parquet call site: returns ``None`` (no row
+        filter) unless this source allows pushdown *and* a datetime window is set. Passing
+        ``patient_options=None`` (``inspect()``) yields ``None`` — inspect never prunes rows.
+        """
+        if (
+            patient_options is None
+            or not cls.ALLOW_DATETIME_PUSHDOWN
+            or not cls._has_datetime_window(patient_options)
+        ):
+            return None
+
+        def compute_bounds(index_tz):  # noqa: ANN001, ANN202
+            return cls._pushdown_bounds(patient_options, database_options_specific, index_tz)
+
+        return compute_bounds
+
+    @classmethod
+    def _quick_load(
+        cls,
+        path_dataframe: Path,
+        patient_options: dict | None = None,
+        database_options_specific: dict | None = None,
+    ) -> pd.DataFrame:
+        """
+        Load a previously saved DataFrame from parquet, pruning rows and columns.
+
+        Column pruning always applies: each cached frame is one column per signal, so
+        ``field_display`` selects exactly the columns read off disk. Row pushdown is
+        orthogonal and additionally gated on ``ALLOW_DATETIME_PUSHDOWN`` plus a set window.
+
+        ``patient_options=None`` (``inspect()``) skips row pushdown; inspect also strips
+        ``field_display`` upstream, so every column is then read.
+        """
+        database_options_specific = database_options_specific or {}
+
+        return read_parquet_pruned(
+            path_dataframe,
+            compute_bounds=cls._make_bounds_computer(patient_options, database_options_specific),
+            select_columns=make_column_selector(database_options_specific),
+            # A cache is a file we wrote, so its index is the time axis by construction whatever
+            # its dtype (EIT's is float64 fractional days). No other caller may claim that.
+            index_is_time_axis=True,
+        )
 
     @classmethod
     def _load_raw_dataframe(
         cls,
         patient_options: dict,
         database_options: dict,
-    ) -> tuple[pd.DataFrame | None, str | None]:
+        apply_datetime_pushdown: bool = True,
+        configured_field_display: list[str] | None = None,
+    ) -> tuple[pd.DataFrame | None, str | None, bool]:
         """
         Find, locate, and load the raw DataFrame for this datasource.
 
+        *apply_datetime_pushdown* set to ``False`` bypasses parquet row-pushdown
+        (used by ``inspect()``, which needs the full raw file for date-range stats).
+
+        *configured_field_display* restores ``field_display`` into *database_options* for
+        reading — but only on branches where doing so is provably safe (a cache read, or a
+        fresh load this datasource never caches). It exists for
+        ``inspect(configured_columns_only=True)``: a narrowed ``field_display`` in front of a
+        fresh, cache-writing ``_load()`` must never reach it, since the cache it writes is
+        read back by every later run. ADR-0010 now forbids any ``_load()`` from resolving
+        ``field_display`` at all, so this is defence in depth rather than the only guard.
+
         Returns:
-            (df, file_path_str) on success, (None, None) if file not found.
+            (df, file_path_str, columns_pruned) on success, (None, None, False) if the file
+            was not found. ``columns_pruned`` reflects whether ``field_display`` actually
+            reached the read that ran — never inferred from the resulting frame's columns,
+            which can't tell "restricted at read time" apart from "the file only ever had
+            these columns" (a data-dependent coincidence, not pruning).
             Raises exceptions for actual load errors.
 
         """
         folder_path = Path(patient_options[cst.PatientOptions.PathDataFolder.NAME])
-        dataframe_path = get_datasource_cache_path(folder_path, cls.FILE_NAME_DATAFRAME_LOADED)
+        output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
+        dataframe_path = get_datasource_cache_path(
+            folder_path, cls.FILE_NAME_DATAFRAME_LOADED, output_root
+        )
         quick_load_enabled = patient_options.get(cst.PatientOptions.QuickLoad.NAME, False)
         reuse_cache = cls.ALLOW_QUICK_LOAD and quick_load_enabled
         write_cache = cls.ALLOW_QUICK_LOAD
 
         if reuse_cache and dataframe_path.is_file():
             logger.info("[%s] Quick loading from cache.", cls.DATASOURCE_NAME)
-            return cls._quick_load(dataframe_path), str(dataframe_path)
+            column_options = database_options
+            if configured_field_display is not None:
+                column_options = {
+                    **database_options,
+                    cst.DatabaseOptions.FIELD_DISPLAY: configured_field_display,
+                }
+            df = cls._quick_load(
+                dataframe_path,
+                patient_options=patient_options if apply_datetime_pushdown else None,
+                database_options_specific=column_options,
+            )
+            columns_pruned = bool(column_options.get(cst.DatabaseOptions.FIELD_DISPLAY))
+            return df, str(dataframe_path), columns_pruned
 
         search_folder = cls._find_folder(folder_path)
         if search_folder is None:
-            return None, None
+            return None, None, False
 
         file_path = cls._find(search_folder)
         if file_path is None:
-            return None, None
+            return None, None, False
 
         file_path_str = str(file_path[0]) if isinstance(file_path, list) else str(file_path)
         logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
+        # write_cache=False means this _load() output is never cached, so honoring
+        # field_display here can't narrow a future full read.
+        # Sources that opt out of caching (ALLOW_QUICK_LOAD=False, e.g. other) are
+        # otherwise always on this branch and could never benefit from configured_columns_only.
+        load_column_options = database_options
+        if configured_field_display is not None and not write_cache:
+            load_column_options = {
+                **database_options,
+                cst.DatabaseOptions.FIELD_DISPLAY: configured_field_display,
+            }
         df = cls._load(
             file_path,
             dataframe_path if write_cache else None,
-            database_options_specific=database_options,
+            database_options_specific=load_column_options,
+            patient_options=patient_options if apply_datetime_pushdown else None,
         )
         logger.info(
             "📥 [%s] Loaded: %d rows x %d columns.",
@@ -174,7 +355,8 @@ class DataSourceBase(ABC):
         )
         if not write_cache and cls.CREATE_SOURCE_SYMLINK:
             cls._create_source_symlink(file_path, dataframe_path.parent)
-        return df, file_path_str
+        columns_pruned = bool(load_column_options.get(cst.DatabaseOptions.FIELD_DISPLAY))
+        return df, file_path_str, columns_pruned
 
     @classmethod
     def _save_dataframe(cls, df: pd.DataFrame, path_output: Path) -> None:
@@ -188,31 +370,50 @@ class DataSourceBase(ABC):
     @classmethod
     def _create_source_symlink(cls, file_path: Path | list[Path], output_folder: Path) -> None:
         """
-        Create a symlink in the output folder pointing to the source file(s).
+        Create a symlink under ``<output_folder>/<datasource>/`` pointing to the source file(s).
 
         Used by datasources that opt out of parquet caching (ALLOW_QUICK_LOAD=False) so the
         output folder still contains a traceable reference to the exact file that was used.
+
+        Symlinks live in a per-datasource subfolder because the output folder is flat and
+        shared: an 'other' file named ``servo_u_loaded.parquet`` would otherwise land on
+        servo_u's cache path and replace it.
         """
         files = file_path if isinstance(file_path, list) else [file_path]
+        symlink_folder = output_folder / cls.DATASOURCE_NAME
         try:
-            output_folder.mkdir(parents=True, exist_ok=True)
+            symlink_folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             logger.exception(
                 "[%s] Could not create output folder for symlink.", cls.DATASOURCE_NAME
             )
             return
-        for f in files:
-            symlink_path = output_folder / f.name
-            if symlink_path.is_symlink() or symlink_path.exists():
+        for source_file in files:
+            symlink_path = symlink_folder / source_file.name
+            if symlink_path.is_symlink():
                 symlink_path.unlink()
+            elif symlink_path.exists():
+                # Never unlink a real file: the folder is ours, so this is something a user put
+                # here deliberately, and a traceability link isn't worth destroying it.
+                logger.warning(
+                    "[%s] '%s' exists and is not a symlink; leaving it untouched.",
+                    cls.DATASOURCE_NAME,
+                    symlink_path,
+                )
+                continue
             try:
-                rel_target = Path(os.path.relpath(f, output_folder))
+                rel_target = Path(os.path.relpath(source_file, symlink_folder))
                 symlink_path.symlink_to(rel_target)
                 logger.info(
-                    "[%s] Symlinked source file: %s -> %s", cls.DATASOURCE_NAME, symlink_path, f
+                    "[%s] Symlinked source file: %s -> %s",
+                    cls.DATASOURCE_NAME,
+                    symlink_path,
+                    source_file,
                 )
             except Exception:
-                logger.exception("[%s] Could not create symlink for '%s'.", cls.DATASOURCE_NAME, f)
+                logger.exception(
+                    "[%s] Could not create symlink for '%s'.", cls.DATASOURCE_NAME, source_file
+                )
 
     @classmethod
     def _apply_timezone(
@@ -242,9 +443,8 @@ class DataSourceBase(ABC):
         datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
         datetime_start = pd.Timestamp(datetime_start) if datetime_start else None
         datetime_end = pd.Timestamp(datetime_end) if datetime_end else None
-        display_timezone = patient_options.get(
-            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
-        )
+        # See _pushdown_bounds: a tz-naive bound is interpreted in the library default.
+        display_timezone = cst.DISPLAY_TIMEZONE
         return filter_data_by_timestamps(
             df,
             time_start=datetime_start,
@@ -263,24 +463,25 @@ class DataSourceBase(ABC):
 
         Override this method for datasource-specific formatting needs.
         """
-        df = df.copy()
+        # Shallow copy since below only rebinds df.index or row-filters, never mutates columns.
+        df = df.copy(deep=False)
 
-        # Apply timezone if needed (most datasources need this)
         if hasattr(cls.OPTIONS_MODULE, "DATA_SOURCE_DEFAULT_TIMEZONE"):
             df = cls._apply_timezone(
                 df, database_options_specific, cls.OPTIONS_MODULE.DATA_SOURCE_DEFAULT_TIMEZONE
             )
 
-        # Apply time shift
         df = cls._apply_time_shift(df, patient_options)
 
-        # Filter by datetime
         return cls._filter_by_datetime(df, patient_options)
 
     @classmethod
     @time_it
     def _extract_signals(
-        cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
+        cls,
+        df: pd.DataFrame,
+        database_options_specific: dict,
+        display_fallbacks: DisplayFallbacks | None = None,
     ) -> list[Signal]:
         """
         Extract Signal objects from DataFrame.
@@ -297,14 +498,14 @@ class DataSourceBase(ABC):
                 kwargs = {
                     "df": df,
                     "raw_signal_name": signal,
-                    "patient_options": patient_options,
                     "database_options_specific": database_options_specific,
+                    "display_fallbacks": display_fallbacks,
                 }
                 if cls.SOURCE_OPTIONS is not None:
                     kwargs["source_options"] = cls.SOURCE_OPTIONS
-                sig = Signal.time_series_from_dataframe(**kwargs)
-                sig.metadata.datasource_name = cls.DATASOURCE_NAME
-                list_signal_container.append(sig)
+                signal_obj = Signal.time_series_from_dataframe(**kwargs)
+                signal_obj.metadata.datasource_name = cls.DATASOURCE_NAME
+                list_signal_container.append(signal_obj)
             except Exception:
                 logger.exception("Could not process the signal '%s' as Signal object", signal)
 
@@ -327,7 +528,6 @@ class DataSourceBase(ABC):
             Path to folder, or None if not found
 
         """
-        # Get folder keywords
         folder_keywords = getattr(cls.OPTIONS_MODULE, "FOLDER_KEYWORDS", None)
 
         if folder_keywords is None or len(folder_keywords) == 0:
@@ -341,7 +541,6 @@ class DataSourceBase(ABC):
             if expected_path.is_dir():
                 return expected_path
 
-        # Flexible keyword matching: find folder containing all keywords
         if not folder_path.is_dir():
             logger.warning("Patient folder '%s' does not exist", folder_path)
             return None
@@ -361,7 +560,7 @@ class DataSourceBase(ABC):
                     )
                 return subfolder
 
-        logger.warning(
+        logger.debug(
             "No folder found in '%s' containing all keywords %s for datasource '%s'",
             folder_path,
             folder_keywords,
@@ -375,44 +574,23 @@ class DataSourceBase(ABC):
         cls,
         patient_options: dict,
         database_options_specific: dict | None,
+        display_fallbacks: DisplayFallbacks | None = None,
     ) -> list[Signal]:
-        """
-        Main entry point for datasource processing.
-
-        Args:
-            patient_options: Patient-specific options
-            database_options_specific: Database options for this datasource
-
-        Returns:
-            list[Signal]: Extracted signals
-
-        """
+        """Main entry point for datasource processing."""
         database_options = (
             database_options_specific if database_options_specific is not None else {}
         )
-        patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
 
-        df, _ = cls._load_raw_dataframe(patient_options, database_options)
+        df, _, _ = cls._load_raw_dataframe(patient_options, database_options)
         if df is None:
             return []
 
-        # Format data
         df = cls._format(df, patient_options, database_options)
 
-        # Inject global display_timezone into the per-datasource sub-dict so
-        # _extract_signals (and Signal.time_series_from_dataframe) can read it.
-        patient_options_for_signals = {
-            **patient_options_specific,
-            cst.PatientOptions.DisplayTimezone.NAME: patient_options.get(
-                cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
-            ),
-        }
-
-        # Extract signals
         signals = cls._extract_signals(
             df,
-            patient_options=patient_options_for_signals,
             database_options_specific=database_options,
+            display_fallbacks=display_fallbacks,
         )
         logger.info("🔬 [%s] Extracted %d signal(s).", cls.DATASOURCE_NAME, len(signals))
         return signals
@@ -436,7 +614,6 @@ class DataSourceBase(ABC):
 
         Args:
             patient_options: Patient-specific options (same as :meth:`main`).
-            database_options_specific: Database options for this datasource.
             save_path: If given, save the formatted DataFrame to this path using
                 :func:`io.file_utils.save_df` (supports ``.csv`` and ``.parquet``).
 
@@ -450,13 +627,13 @@ class DataSourceBase(ABC):
         )
 
         try:
-            df, _ = cls._load_raw_dataframe(patient_options, database_options)
+            df, _, _ = cls._load_raw_dataframe(patient_options, database_options)
         except Exception:
             logger.exception("[%s] extract: load failed.", cls.DATASOURCE_NAME)
             return None
 
         if df is None:
-            logger.info("[%s] No data file found.", cls.DATASOURCE_NAME)
+            logger.debug("[%s] No data file found.", cls.DATASOURCE_NAME)
             return None
 
         df_raw = df
@@ -486,6 +663,8 @@ class DataSourceBase(ABC):
         database_options_specific: dict,
         datasource_name: str,
         file_path: str | None = None,
+        display_timezone: str | None = None,
+        columns_pruned: bool = False,
     ) -> DataSourceInspection:
         """
         Build a DataSourceInspection from an already-loaded raw DataFrame.
@@ -499,6 +678,13 @@ class DataSourceBase(ABC):
             database_options_specific: Options for this datasource or per-file config.
             datasource_name: Name written into the returned DataSourceInspection.
             file_path: Path string to include in the result, or None.
+            display_timezone: Timezone the reported date ranges are shown in — cosmetic
+                only, never affects filtering. Resolved by the caller (``wrapper.inspect``);
+                falls back to ``cst.DISPLAY_TIMEZONE`` when omitted.
+            columns_pruned: Whether the caller's read was structurally restricted to configured
+                columns — decided by the caller from which branch actually ran, not re-derived
+                here from *df_raw*'s columns (a file that happens to hold only configured
+                columns was not necessarily pruned to get there).
 
         Returns:
             DataSourceInspection with status ``"ok"`` or ``"format_error"``.
@@ -508,9 +694,7 @@ class DataSourceBase(ABC):
         configured_fields = set(
             database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY, list(signals.keys()))
         )
-        display_timezone = patient_options.get(
-            cst.PatientOptions.DisplayTimezone.NAME, cst.DISPLAY_TIMEZONE
-        )
+        display_timezone = resolve_display_timezone(display_timezone)
 
         df_raw_display = _to_display_tz(df_raw, display_timezone=display_timezone)
         raw_date_range = _date_range(df_raw_display)
@@ -526,6 +710,7 @@ class DataSourceBase(ABC):
                 file_path=file_path,
                 raw_date_range=raw_date_range,
                 columns=_column_infos(df_raw_display, df_raw_display, configured_fields),
+                columns_pruned=columns_pruned,
             )
 
         df_filtered_display = _to_display_tz(df_filtered, display_timezone=display_timezone)
@@ -536,6 +721,7 @@ class DataSourceBase(ABC):
             raw_date_range=raw_date_range,
             filtered_date_range=_date_range(df_filtered_display),
             columns=_column_infos(df_raw_display, df_filtered_display, configured_fields),
+            columns_pruned=columns_pruned,
         )
 
     @classmethod
@@ -543,6 +729,8 @@ class DataSourceBase(ABC):
         cls,
         patient_options: dict,
         database_options_specific: dict | None,
+        display_timezone: str | None = None,
+        configured_columns_only: bool = False,
     ) -> DataSourceInspection | list[DataSourceInspection]:
         """
         Run find → load → format for this datasource and return inspection metadata.
@@ -552,7 +740,14 @@ class DataSourceBase(ABC):
 
         Args:
             patient_options: Patient-specific options (same as main())
-            database_options_specific: Database options for this datasource
+            display_timezone: Forwarded to :meth:`_make_inspection` — see its docstring.
+            configured_columns_only: Read only the ``field_display`` columns, trading the
+                unconfigured-column rows for the memory. Only ever narrows a **parquet** read
+                (a CSV or XML first load ignores it); for most sources that means the
+                ``clinical_scope_output/`` cache from a previous run, so it speeds up
+                re-inspection rather than first contact. Row/time pushdown stays disabled
+                either way — inspect's ``% retained`` and ``raw_date_range`` are comparisons
+                against the *unwindowed* file.
 
         Returns:
             DataSourceInspection with status, file info, date ranges, and column stats
@@ -562,14 +757,25 @@ class DataSourceBase(ABC):
             database_options_specific if database_options_specific is not None else {}
         )
 
-        # Remove field_display so _load() returns ALL columns (handles EIT pre-filtering)
-        db_opts_for_load = {
-            k: v for k, v in database_options.items() if k != cst.DatabaseOptions.FIELD_DISPLAY
+        # Remove field_display so _load() returns ALL columns.
+        database_options_for_load = {
+            key: value
+            for key, value in database_options.items()
+            if key != cst.DatabaseOptions.FIELD_DISPLAY
         }
 
         file_path_str = None
         try:
-            df_raw, file_path_str = cls._load_raw_dataframe(patient_options, db_opts_for_load)
+            df_raw, file_path_str, columns_pruned = cls._load_raw_dataframe(
+                patient_options,
+                database_options_for_load,
+                apply_datetime_pushdown=False,
+                configured_field_display=(
+                    database_options.get(cst.DatabaseOptions.FIELD_DISPLAY)
+                    if configured_columns_only
+                    else None
+                ),
+            )
         except Exception as exc:
             logger.exception("[%s] inspect: load failed.", cls.DATASOURCE_NAME)
             return DataSourceInspection(
@@ -590,4 +796,6 @@ class DataSourceBase(ABC):
             database_options,
             datasource_name=cls.DATASOURCE_NAME,
             file_path=file_path_str,
+            display_timezone=display_timezone,
+            columns_pruned=columns_pruned,
         )

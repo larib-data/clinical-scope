@@ -1,8 +1,4 @@
-"""
-Callbacks module for Dash API visualization.
-
-This module contains all callback functions organized by functionality.
-"""
+"""Re-exports every Dash callback so importing this package registers them with the app."""
 
 from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     activate_group,
@@ -33,7 +29,7 @@ from clinical_scope.dash_api.callbacks.data_callbacks import (
     download_inspection_csv,
     enable_progress_interval,
     inspect_data,
-    load_db_options,
+    load_database_options,
     poll_process_progress,
     process_visualization,
     resample_on_zoom,
@@ -41,6 +37,11 @@ from clinical_scope.dash_api.callbacks.data_callbacks import (
 from clinical_scope.dash_api.callbacks.loop_callbacks import (
     filter_loop_by_time,
     update_time_display,
+)
+from clinical_scope.dash_api.callbacks.user_options_callbacks import (
+    persist_user_options,
+    reflect_user_options,
+    toggle_settings_modal,
 )
 
 __all__ = [
@@ -59,12 +60,14 @@ __all__ = [
     "filter_loop_by_time",
     "handle_graph_click",
     "inspect_data",
-    "load_db_options",
+    "load_database_options",
     "open_group_modal",
+    "persist_user_options",
     "pick_annotation_color_swatch",
     "pick_group_color_swatch",
     "poll_process_progress",
     "process_visualization",
+    "reflect_user_options",
     "render_annotations",
     "resample_on_zoom",
     "save_annotations_cb",
@@ -73,6 +76,7 @@ __all__ = [
     "toggle_global_checkbox_visibility",
     "toggle_group_expand",
     "toggle_group_labels",
+    "toggle_settings_modal",
     "update_annotation_list",
     "update_modal_ui",
     "update_time_display",

@@ -49,33 +49,33 @@ _TREE_IGNORE = shutil.ignore_patterns("clinical_scope_output")
 def copy_assets(bundle_root: Path) -> list[str]:
     """Copy each asset into ``bundle_root``; return the ones that were missing."""
     missing: list[str] = []
-    for rel, kind in ASSETS:
-        src = PROJECT_ROOT / rel
-        if not src.exists():
-            print(f"  WARNING: asset not found, skipped: {rel}")
-            missing.append(rel)
+    for rel_path, kind in ASSETS:
+        src_path = PROJECT_ROOT / rel_path
+        if not src_path.exists():
+            print(f"  WARNING: asset not found, skipped: {rel_path}")
+            missing.append(rel_path)
             continue
-        dest = bundle_root / src.name
+        dest_path = bundle_root / src_path.name
         if kind == "tree":
-            shutil.copytree(src, dest, ignore=_TREE_IGNORE, dirs_exist_ok=True)
+            shutil.copytree(src_path, dest_path, ignore=_TREE_IGNORE, dirs_exist_ok=True)
         else:
-            shutil.copy(src, dest)
-        print(f"  copied {rel}")
+            shutil.copy(src_path, dest_path)
+        print(f"  copied {rel_path}")
     return missing
 
 
 def main(argv: list[str] | None = None) -> int:
     """Copy assets and write license notices into the bundle; return an exit code."""
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument(
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
         "--bundle-root",
         required=True,
         type=Path,
         help="Built bundle directory (contains the executable and _internal/).",
     )
-    args = ap.parse_args(argv)
+    args = parser.parse_args(argv)
     if not args.bundle_root.is_dir():
-        ap.error(f"bundle root does not exist: {args.bundle_root}")
+        parser.error(f"bundle root does not exist: {args.bundle_root}")
 
     print("Copying bundle assets...")
     missing = copy_assets(args.bundle_root)
@@ -83,9 +83,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  MISSING ASSETS: {', '.join(missing)}")
 
     print("Generating third-party license notices...")
-    lic_rc = licenses.main(["--bundle-root", str(args.bundle_root)])
+    license_exit_code = licenses.main(["--bundle-root", str(args.bundle_root)])
 
-    return 1 if (missing or lic_rc) else 0
+    return 1 if (missing or license_exit_code) else 0
 
 
 if __name__ == "__main__":

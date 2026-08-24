@@ -24,17 +24,23 @@ class TestInspectPatientFull:
         assert all(isinstance(r, DataSourceInspection) for r in inspection_results)
 
     def test_all_datasources_present(self, inspection_results, default_database_options):
-        """Should have one result per datasource in database_options."""
+        """
+        Should have one result per datasource in database_options.
+
+        'other' is the exception: it reports one entry per file (``other::<stem>``), so its
+        single config key expands into as many results as demo_patient's other/ folder holds.
+        """
         result_names = {r.datasource_name for r in inspection_results}
-        expected_names = set(default_database_options.keys())
-        assert result_names == expected_names
+        expected_names = set(default_database_options.keys()) - {"other"}
+        other_names = {name for name in result_names if name.startswith("other::")}
+        assert other_names, "expected per-file 'other::<stem>' inspection entries"
+        assert result_names - other_names == expected_names
 
     def test_most_datasources_ok(self, inspection_results):
         """
-        demo_patient has 10 datasource folders — all should load successfully.
+        demo_patient has 9 datasource folders, three of which are files inside other/.
 
-        'other' is absent from demo_patient so it will not be 'ok'.
-        Threshold is 9 to tolerate one unexpected failure while still catching regressions.
+        Threshold tolerates one unexpected failure while still catching regressions.
         """
         ok_count = sum(1 for r in inspection_results if r.status == "ok")
         assert ok_count >= 9, f"Only {ok_count} datasources succeeded (expected >= 9)"
@@ -69,7 +75,6 @@ class TestInspectSerialization:
     def test_text_summary(self, inspection_results):
         text = to_text_summary(inspection_results)
         assert len(text) > 0
-        # Should contain at least one "OK" entry
         assert "OK" in text
 
     def test_json_roundtrip(self, inspection_results):
@@ -80,6 +85,75 @@ class TestInspectSerialization:
             assert orig.datasource_name == rest.datasource_name
             assert orig.status == rest.status
             assert len(orig.columns) == len(rest.columns)
+
+
+class TestInspectDisplayTimezone:
+    """display_timezone is a user option now — cosmetic only, resolved by wrapper.inspect()."""
+
+    def test_user_options_shift_the_reported_date_range(
+        self, patient_options_full, default_database_options
+    ):
+        paris = inspect(
+            patient_options_full,
+            default_database_options,
+            user_options={"display_timezone": "Europe/Paris"},
+        )
+        tokyo = inspect(
+            patient_options_full,
+            default_database_options,
+            user_options={"display_timezone": "Asia/Tokyo"},
+        )
+        paris_ranges = {r.datasource_name: r.raw_date_range for r in paris if r.status == "ok"}
+        tokyo_ranges = {r.datasource_name: r.raw_date_range for r in tokyo if r.status == "ok"}
+        assert paris_ranges  # sanity: at least one datasource actually compared
+        assert paris_ranges != tokyo_ranges
+
+    def test_missing_user_options_defaults_like_before(
+        self, patient_options_full, default_database_options
+    ):
+        """No user_options at all (e.g. a bare library call) behaves like the documented default."""
+        default = inspect(patient_options_full, default_database_options)
+        explicit_default = inspect(
+            patient_options_full,
+            default_database_options,
+            user_options={"display_timezone": "Europe/Paris"},
+        )
+        default_ranges = [r.raw_date_range for r in default if r.status == "ok"]
+        explicit_ranges = [r.raw_date_range for r in explicit_default if r.status == "ok"]
+        assert default_ranges == explicit_ranges
+
+
+class TestInspectConfiguredColumnsOnlyReachesDatasources:
+    """
+    wrapper.inspect(configured_columns_only=...) must actually reach DataSourceBase.inspect() —
+    every real caller (Python API, CLI script, Dash callback) goes through this one function,
+    so a seam that silently dropped the flag here would make the feature inert everywhere.
+    """
+
+    STEM = "waves_first_half_filtered"
+    SELECTED = ["Solar8000/HR", "BIS/BIS"]
+
+    def _database_options(self):
+        return {"other": {"files": {self.STEM: {"field_display": self.SELECTED}}}}
+
+    def _entry(self, results):
+        return next(r for r in results if r.datasource_name == f"other::{self.STEM}")
+
+    def test_default_does_not_prune(self, patient_options_difficult):
+        entry = self._entry(inspect(patient_options_difficult, self._database_options()))
+        assert entry.columns_pruned is False
+        assert {c.raw_name for c in entry.columns} > set(self.SELECTED)
+
+    def test_flag_reaches_the_datasource_and_prunes(self, patient_options_difficult):
+        entry = self._entry(
+            inspect(
+                patient_options_difficult,
+                self._database_options(),
+                configured_columns_only=True,
+            )
+        )
+        assert entry.columns_pruned is True
+        assert {c.raw_name for c in entry.columns} == set(self.SELECTED)
 
 
 class TestInspectWithDatetimeFilter:

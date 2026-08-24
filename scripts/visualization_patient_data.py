@@ -8,6 +8,7 @@ from clinical_scope.config.parsing import (
     build_patient_options,
     load_database_options_from_path,
 )
+from clinical_scope.datasource import registry as datasource_registry
 from clinical_scope.signal_container import (
     PlotModel,
 )
@@ -27,6 +28,9 @@ def main(option_dict):
         patient_options=patient_options,
         database_options_global=database_options,
     )
+
+    if not model:
+        datasource_registry.emit_zero_result_diagnostic(option_dict["patient_folder"])
 
     PlotModel.to_html(model, patient_options)
 
@@ -63,7 +67,6 @@ def args_parser(args):
     args_namespace = parser.parse_args(args)
     options = vars(args_namespace)
 
-    # setup logger
     library_dir = logger_config.get_logs_path()
     script_name = Path(__file__).stem
     logs_path = library_dir / "scripts" / f"{script_name}.log"
