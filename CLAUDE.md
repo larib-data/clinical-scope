@@ -85,11 +85,11 @@ Full command reference in `tests/README.md`.
 
 - **Test data** — `example/` holds only user-facing material; test-only fixtures live in `tests/data/` (`patients/`, `option_files/`), alongside the goldens in `tests/expected_results/`. The one deliberate crossing: `example/demo_database/demo_patient/` is the shipped demo *and* the main fixture (`patient_full_path`), so the suite fails if the demo breaks. **Don't replace either with full-size originals**; after changing test or demo data, regenerate snapshots.
 - **Fixtures** — datasource tests share `formatted_df` at `scope="module"` and only read DataFrames (never mutate).
-- **CI** (`.github/workflows/ci.yml`) — runs on push to `main` and PRs to `main` (skipped on drafts); Python 3.11 & 3.13; steps `ruff format --check`, `ruff check`, `pytest`.
+- **CI** (`.github/workflows/ci.yml`) — runs on push to `main` and PRs to `main` (skipped on drafts). Two jobs so lint cannot gate tests: `lint` (ruff, once) and `test` (pytest on Python 3.11 & 3.13).
 
 ## Code style
 
-Ruff (`ruff check src/`, `ruff format src/`). Line length 100 (Python only — Markdown prose is not column-wrapped), double quotes, target Python 3.12 (3.9+ compatible), D213 docstrings (summary on second line).
+Ruff (`ruff check .`, `ruff format .`), capped to the 0.16.x line by the `dev` extra — upgrade procedure in [CONTRIBUTING.md](CONTRIBUTING.md). Line length 100 (Python only — Markdown prose is not column-wrapped), double quotes, target Python 3.12 (3.9+ compatible), D213 docstrings (summary on second line).
 
 Keep inline comments concise — one line where possible; explain the non-obvious *why*, **not** the *what*. Reserve longer prose for docstrings.
 
