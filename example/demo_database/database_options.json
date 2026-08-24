@@ -690,6 +690,73 @@
             ]
         }
     },
+    "icca": {
+        "signals": {
+            "2423": {
+                "label": "HR (ICCA 2423)",
+                "unit": "bpm",
+                "color": "crimson"
+            },
+            "2630": {
+                "label": "SpO2 (ICCA 2630)",
+                "unit": "%",
+                "color": "steelblue"
+            },
+            "19602": {
+                "label": "ABP mean (ICCA 19602)",
+                "unit": "mmHg"
+            },
+            "6041": {
+                "label": "NIBP systolic (ICCA 6041)",
+                "unit": "mmHg"
+            },
+            "6043": {
+                "label": "NIBP diastolic (ICCA 6043)",
+                "unit": "mmHg"
+            },
+            "6048": {
+                "label": "NIBP mean (ICCA 6048)",
+                "unit": "mmHg"
+            },
+            "4347": {
+                "label": "PEEP (ICCA 4347)",
+                "unit": "cmH2O",
+                "color": "seagreen"
+            },
+            "17324": {
+                "label": "Peak Pressure (ICCA 17324)",
+                "unit": "cmH2O"
+            },
+            "17728": {
+                "label": "Plateau Pressure (ICCA 17728)",
+                "unit": "cmH2O"
+            }
+        },
+        "field_display": [
+            "2423",
+            "2630",
+            "19602",
+            "6041",
+            "6043",
+            "6048",
+            "4347",
+            "17324",
+            "17728"
+        ],
+        "grouped_fields": {
+            "ICCA blood pressures": [
+                "19602",
+                "6041",
+                "6043",
+                "6048"
+            ],
+            "ICCA airway pressures": [
+                "4347",
+                "17324",
+                "17728"
+            ]
+        }
+    },
     "global": {
         "grouped_fields": {
             "Arterial Pressure": [
