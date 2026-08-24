@@ -10,9 +10,11 @@ _Nothing yet._
 
 ---
 
-## [1.1.0] — 2026-08-12
+## [1.1.0] — 2026-08-24
 
 > **Note:** The first release since v1.0.0 went public. It carries one breaking change (three datasources removed, with a migration path below), two new plot types, a new per-person settings tier, and a substantial reduction in load time and memory for large recordings.
+
+> **Upgrading:** this release changes what the `clinical_scope_output/` parquet cache contains, and nothing detects a cache written by an older version. After updating, un-tick **"Re-use data if already loaded once"** (`quick_load`) for one run per patient so the cache is rewritten; leaving a stale cache in place gives EIT recordings without their `%Local` columns, and timestamps carrying whatever timezone the old run stamped in.
 
 ### Removed — **breaking**
 - Drop the `philips_waves`, `philips_numerics` and `syringe` datasources. They performed no format-specific parsing — a plain `read_csv` / `read_parquet` — so they were the generic `other` source with extra machinery. Now that each file inside `other/` carries its own configuration and its own `time_shift`, they no longer earn a module.
@@ -36,6 +38,8 @@ _Nothing yet._
 - **`datetime_start` / `datetime_end` are stored as timezone-aware instants** rather than wall-clock text, so a window means the same moment regardless of the machine reading it.
 - **Display timezone moved into `user_options`.** It is now a per-person setting in the Settings modal, and the patient-options datetime fields re-render in the chosen zone as soon as it changes.
 - **Datetime columns are auto-detected by both name and content.** A column is only accepted as the time axis once its values parse as timestamps, so a `date`-ish name over unparseable data no longer hijacks the axis ([ADR-0004](docs/adr/0004-validate-datetime-column-candidates.md)).
+- **Loading transcribes, formatting interprets.** No loader resolves configuration any more, so the parquet cache is reproducible from the source file alone and can never freeze a setting from the run that wrote it ([ADR-0010](docs/adr/0010-load-transcribes-format-interprets.md)). Timestamps land in the cache naive and are localized afterwards; the resulting instants are unchanged.
+- **A `mindray_scope` folder mixing `.csv` and `.xml` now fails with both file names** instead of being silently rescued by a default timezone. The two carry incompatible time information — naive wall-clock in one, an explicit offset in the other — so the old rescue could shift a recording by an hour without saying so.
 - Plot types are ordered with time series first, so the familiar view leads.
 - Reloading patient options now falls back to the default for any entry the saved file omits, instead of leaving it blank.
 - A patient folder that yields nothing now says which folders were searched and why each was skipped.
@@ -51,11 +55,13 @@ _Nothing yet._
 
 ### Performance
 - **Columns are selected and pruned before loading.** Only the columns a run actually needs are read from disk, cutting load time and peak memory on wide recordings; `inspect` prunes at read too. Redundant deep copies were removed and the deduplicate-then-sort step unified across every path that used both.
+- **EIT percentage columns are now selectable.** `%Local N` ratios are derived at load time, so a `field_display` naming them matches real columns: a configured EIT read goes from all 71 columns to 9 of 75.
+- Column pruning now applies to any cache this library wrote, not only those whose stored index is a timestamp — a non-temporal index previously fell back to reading every column.
 - A second read of the same file is skipped when no time window narrows it.
 - Parquet datetime-column detection reads metadata instead of the column body.
 
 ### Documentation
-- Seven new ADRs: output-root redirection (0003), datetime-column validation (0004), user-options-as-fallbacks (0005), the no-clinical-analysis scope boundary (0006), read-time pruning as an optimization rather than a filter (0007), the format-specific-parsing criterion for datasource modules (0008), and `other::<stem>` as a configuration scope (0009).
+- Eight new ADRs: output-root redirection (0003), datetime-column validation (0004), user-options-as-fallbacks (0005), the no-clinical-analysis scope boundary (0006), read-time pruning as an optimization rather than a filter (0007), the format-specific-parsing criterion for datasource modules (0008), `other::<stem>` as a configuration scope (0009), and the load-transcribes / format-interprets split (0010).
 - `CONTRIBUTING.md` now states what belongs in the library — ClinicalScope derives for display, it does not interpret — and when a new datasource needs a module of its own rather than a slot in `other/`.
 
 ---
