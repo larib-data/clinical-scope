@@ -31,9 +31,7 @@ def normalize_database_options(database_options: dict) -> None:
     source_keys = [key for key in database_options if key.startswith(cst.OTHER_FILE_PREFIX)]
     if not source_keys:
         return
-    per_file = {
-        key[len(cst.OTHER_FILE_PREFIX) :]: database_options.pop(key) for key in source_keys
-    }
+    per_file = {key[len(cst.OTHER_FILE_PREFIX) :]: database_options.pop(key) for key in source_keys}
     if "other" not in database_options:
         database_options["other"] = {}
     database_options["other"].setdefault(cst.DatabaseOptions.FILES, {}).update(per_file)
