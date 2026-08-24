@@ -215,19 +215,13 @@ def _parse_eit_asc_file_list(
     )
 
 
-def _add_columns_percentage(df: pd.DataFrame, reference_column: str) -> pd.DataFrame:
-    """Add percentage columns relative to a reference column."""
-    for column in df.columns:
-        if column != reference_column and is_numeric_dtype(df[column]):
-            df[f"%{column}"] = df[column] / df[reference_column]
-    return df
-
-
 def _add_columns_percentage_for_eit(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add percentage columns for EIT local* columns relative to global column.
 
-    This is a hardcoded implementation specific to EIT data processing.
+    Hardcoded for EIT. Called from ``_load`` so the ratios reach the parquet cache, where
+    ``field_display`` can select them; returns *df* unchanged when there is no ``global``
+    column to divide by.
     """
     try:
         global_column = next((column for column in df.columns if column.lower() == "global"), None)
@@ -285,6 +279,9 @@ class EITDataSource(DataSourceBase):
         ) = _parse_eit_asc_file_list(file_path_list)
 
         df = deduplicate_then_sort_index(df)
+        # A ratio of two parsed columns resolves no option, so it belongs to the transcription:
+        # computing it here puts the % columns in the cache, where pruning can select them.
+        df = _add_columns_percentage_for_eit(df)
         if path_output is not None:
             cls._save_dataframe(df, path_output)
         return df
@@ -314,6 +311,4 @@ class EITDataSource(DataSourceBase):
         df = _add_index_timestamp_to_eit_dataframe(df, day=day, timezone=timezone)
 
         df = cls._apply_time_shift(df, patient_options)
-        df = cls._filter_by_datetime(df, patient_options, filter_date=False)
-
-        return _add_columns_percentage_for_eit(df)
+        return cls._filter_by_datetime(df, patient_options, filter_date=False)

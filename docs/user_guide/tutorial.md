@@ -297,7 +297,7 @@ These apply to all data sources:
 | **Path to data (folder)** | Full path to the patient's root data folder |
 | **Time start filter** | Start of the time window to display (format: `YYYY-MM-DD HH:MM:SS`). Leave empty to use all available data. |
 | **Time end filter** | End of the time window to display. Leave empty to use all available data. |
-| **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `clinical_scope_output/` folder, significantly speeding up subsequent loads. **Un-tick** if raw patient data has been modified |
+| **Re-use data if already loaded once** | When checked, reuses previously cached `.parquet` files from the `clinical_scope_output/` folder, significantly speeding up subsequent loads. **Un-tick** if raw patient data has been modified, or once after updating ClinicalScope |
 
 The time filters are typed and shown in the **Display timezone**, set once in [Settings](#settings) — a label next to the fields names it.
 
