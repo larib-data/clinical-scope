@@ -17,6 +17,13 @@ ALLOW_DATETIME_PUSHDOWN = False
 
 Time_column_label = "Time"
 
+# Column naming as it appears in the .asc header: one Global reference channel, one column per
+# Local region, and a leading "%" on each ratio derived from them. Matched case-insensitively,
+# so these are the canonical spellings rather than the exact bytes on disk.
+Global_column_label = "Global"
+prefix_local = "Local"
+prefix_percentage = "%"
+
 prefix_compliance = "Compliance_"
 prefix_smoothed_compliance = "Smoothed_compliance_"
 prefix_compliance_loss = "Compliance_loss_%_"

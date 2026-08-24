@@ -219,25 +219,35 @@ def _add_columns_percentage_for_eit(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add percentage columns for EIT local* columns relative to global column.
 
-    Hardcoded for EIT. Called from ``_load`` so the ratios reach the parquet cache, where
-    ``field_display`` can select them; returns *df* unchanged when there is no ``global``
+    A ratio of two parsed columns resolves no option, so deriving it belongs to the
+    transcription: ``_load`` calls this so the ratios reach the parquet cache, where
+    ``field_display`` can select them. Returns *df* unchanged when there is no global
     column to divide by.
     """
+    global_label = options_naming.Global_column_label.lower()
+    local_prefix = options_naming.prefix_local.lower()
     try:
-        global_column = next((column for column in df.columns if column.lower() == "global"), None)
+        global_column = next(
+            (column for column in df.columns if column.lower() == global_label), None
+        )
         if global_column is None:
-            logger.debug("No 'global' column found in EIT data - skipping percentage calculation")
+            logger.debug(
+                "No '%s' column found in EIT data - skipping percentage calculation",
+                options_naming.Global_column_label,
+            )
             return df
 
-        local_columns = [column for column in df.columns if column.lower().startswith("local")]
+        local_columns = [column for column in df.columns if column.lower().startswith(local_prefix)]
 
         if not local_columns:
-            logger.debug("No columns starting with 'local' found in EIT data")
+            logger.debug(
+                "No columns starting with '%s' found in EIT data", options_naming.prefix_local
+            )
             return df
 
         for local_column in local_columns:
             if is_numeric_dtype(df[local_column]):
-                percentage_column = f"%{local_column}"
+                percentage_column = f"{options_naming.prefix_percentage}{local_column}"
                 if percentage_column not in df.columns:
                     try:
                         df[percentage_column] = df[local_column] / df[global_column]
@@ -279,8 +289,6 @@ class EITDataSource(DataSourceBase):
         ) = _parse_eit_asc_file_list(file_path_list)
 
         df = deduplicate_then_sort_index(df)
-        # A ratio of two parsed columns resolves no option, so it belongs to the transcription:
-        # computing it here puts the % columns in the cache, where pruning can select them.
         df = _add_columns_percentage_for_eit(df)
         if path_output is not None:
             cls._save_dataframe(df, path_output)
