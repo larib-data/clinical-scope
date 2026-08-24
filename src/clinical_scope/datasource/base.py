@@ -279,9 +279,10 @@ class DataSourceBase(ABC):
         *configured_field_display* restores ``field_display`` into *database_options* for
         reading — but only on branches where doing so is provably safe (a cache read, or a
         fresh load this datasource never caches). It exists for
-        ``inspect(configured_columns_only=True)``: putting ``field_display`` back in front of
-        a fresh, cache-writing ``_load()`` would narrow the cache that load writes (EIT
-        pre-filters its parser on it), corrupting every future read of that patient.
+        ``inspect(configured_columns_only=True)``: a narrowed ``field_display`` in front of a
+        fresh, cache-writing ``_load()`` must never reach it, since the cache it writes is
+        read back by every later run. ADR-0010 now forbids any ``_load()`` from resolving
+        ``field_display`` at all, so this is defence in depth rather than the only guard.
 
         Returns:
             (df, file_path_str, columns_pruned) on success, (None, None, False) if the file
@@ -327,8 +328,8 @@ class DataSourceBase(ABC):
 
         file_path_str = str(file_path[0]) if isinstance(file_path, list) else str(file_path)
         logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
-        # write_cache=False means this _load() output is never cached, so — unlike the EIT
-        # pre-filter hazard above — honoring field_display here can't narrow a future full read.
+        # write_cache=False means this _load() output is never cached, so honoring
+        # field_display here can't narrow a future full read.
         # Sources that opt out of caching (ALLOW_QUICK_LOAD=False, e.g. other) are
         # otherwise always on this branch and could never benefit from configured_columns_only.
         load_column_options = database_options

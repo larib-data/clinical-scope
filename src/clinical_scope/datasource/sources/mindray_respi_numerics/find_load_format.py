@@ -4,9 +4,9 @@ from typing import Any
 
 import pandas as pd
 
+import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.mindray_respi_numerics.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
-from clinical_scope.datasource.formatting.timezone import apply_timezone_to_dataframe
 from clinical_scope.datasource.timing import time_it
 from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
@@ -20,7 +20,7 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs: Any) -> pd.DataFrame:
+    def _load(cls, file_path: Path, path_output: Path | None, **kwargs: Any) -> pd.DataFrame:  # noqa: ARG003
         """
         Load and parse MindRay Respi Numerics data.
 
@@ -29,8 +29,6 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         2. Pivot the data to have one column per unique measurement
         3. Set "event_timestamp" as the index
         """
-        database_options_specific = kwargs.get("database_options_specific", {})
-
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
         elif file_path.suffix.lower() == ".csv":
@@ -41,9 +39,7 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
 
         if df.empty:
             logger.warning("[%s] Empty data file: %s", cls.DATASOURCE_NAME, file_path)
-            return pd.DataFrame(
-                index=pd.DatetimeIndex([], tz=options_naming.DATA_SOURCE_DEFAULT_TIMEZONE)
-            )
+            return pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))
 
         df["full_label_name"] = df["measurement_label"] + "-" + df["measurement_unit"]
         df = df.drop(columns=["measurement_label", "measurement_unit"])
@@ -60,13 +56,6 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
 
         df_pivoted.index = pd.to_datetime(df_pivoted.index)
         df_pivoted = deduplicate_then_sort_index(df_pivoted)
-
-        df_pivoted = apply_timezone_to_dataframe(
-            df_pivoted,
-            database_options_specific,
-            options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,
-            options_naming,
-        )
 
         if path_output is not None:
             cls._save_dataframe(df_pivoted, path_output)

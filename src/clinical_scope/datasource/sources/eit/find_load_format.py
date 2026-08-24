@@ -9,7 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.eit.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import deduplicate_then_sort_index, get_column_name_from_pattern
+from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -48,30 +48,12 @@ def _add_index_timestamp_to_eit_dataframe(
     return df[~df.index.duplicated(keep="first")]
 
 
-def _parse_asc_selected_columns(
-    lines: list[str], selected_columns: list[str] | None = None
-) -> pd.DataFrame:
-    """Parses only selected columns from a large ASC dataframe (line-by-line)."""
+def _parse_asc_table(lines: list[str]) -> pd.DataFrame:
+    """Parses a large tab-separated ASC table (line-by-line)."""
     header_line = lines[0].strip()
     all_columns = [
         token.replace("+", "").replace(",", ".").strip() for token in header_line.split("\t")
     ]
-
-    if selected_columns is None:
-        column_indices = list(range(len(all_columns)))
-        selected_columns = all_columns[:]
-    else:
-        resolved_columns = []
-        for pattern in selected_columns:
-            column_name = get_column_name_from_pattern(all_columns, pattern)
-            if column_name is not None:
-                resolved_columns.append(column_name)
-
-        index_map = {column_name: index for index, column_name in enumerate(all_columns)}
-        selected_columns = [
-            column_name for column_name in resolved_columns if column_name in index_map
-        ]
-        column_indices = [index_map[column_name] for column_name in selected_columns]
 
     rows = []
     for raw_line in lines[1:]:
@@ -83,9 +65,9 @@ def _parse_asc_selected_columns(
         ]
         if len(values) < len(all_columns):
             values += [None] * (len(all_columns) - len(values))
-        rows.append([values[index] for index in column_indices])
+        rows.append(values[: len(all_columns)])
 
-    df = pd.DataFrame(rows, columns=selected_columns)
+    df = pd.DataFrame(rows, columns=all_columns)
     df[df.columns] = df[df.columns].apply(pd.to_numeric, errors="coerce")
     df = df.set_index(options_naming.Time_column_label)
     df["time_hours"] = pd.to_timedelta(df.index, unit="D")
@@ -121,7 +103,7 @@ def _parse_matrix(lines: list[str]) -> np.ndarray:
 
 
 def _parse_eit_asc_file(
-    path: str | Path, columns_to_extract: list[str] | None
+    path: str | Path,
 ) -> tuple[dict, np.ndarray, np.ndarray, pd.DataFrame, pd.DataFrame]:
     """Parse a single EIT ASC file."""
     lines_metadata = []
@@ -174,20 +156,8 @@ def _parse_eit_asc_file(
             else:
                 lines_metadata.append(stripped_line)
 
-    df_tidal_variation_summary_df = _parse_asc_selected_columns(lines_tidal_variation_summary_df)
-
-    if columns_to_extract:
-        selected_cols_tidal_variation_full_df = [
-            options_naming.Time_column_label,
-            *columns_to_extract,
-        ]
-    else:
-        selected_cols_tidal_variation_full_df = None
-
-    df_tidal_variation_full_df = _parse_asc_selected_columns(
-        lines_tidal_variation_full_df,
-        selected_cols_tidal_variation_full_df,
-    )
+    df_tidal_variation_summary_df = _parse_asc_table(lines_tidal_variation_summary_df)
+    df_tidal_variation_full_df = _parse_asc_table(lines_tidal_variation_full_df)
 
     metadata = _parse_metadata_lines(lines_metadata)
     dynamic_image_matrix = _parse_matrix(lines_dynamic_image_matrix)
@@ -204,7 +174,7 @@ def _parse_eit_asc_file(
 
 @time_it
 def _parse_eit_asc_file_list(
-    asc_files: list[Path], columns_to_extract: list[str] | None
+    asc_files: list[Path],
 ) -> tuple[
     list[dict],
     list[np.ndarray],
@@ -220,9 +190,7 @@ def _parse_eit_asc_file_list(
     all_tidal_variation_full_dfs = []
 
     for file_path in asc_files:
-        metadata, dynamic_image, tidal_image, df_summary, df_full = _parse_eit_asc_file(
-            file_path, columns_to_extract
-        )
+        metadata, dynamic_image, tidal_image, df_summary, df_full = _parse_eit_asc_file(file_path)
         df_summary["source_file"] = file_path.name
         df_full["source_file"] = file_path.name
 
@@ -307,17 +275,14 @@ class EITDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:
-        database_options_specific = kwargs.get("database_options_specific", {})
+    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
         (
             _list_metadata,
             _list_dynamic_images,
             _list_tidal_images,
             _df_tidal_variation_summary,
             df,
-        ) = _parse_eit_asc_file_list(
-            file_path_list, database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
-        )
+        ) = _parse_eit_asc_file_list(file_path_list)
 
         df = deduplicate_then_sort_index(df)
         if path_output is not None:

@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -41,7 +41,10 @@ class FluxmedSignalsDataSource(DataSourceBase):
                 raise ValueError("Cannot extract timestamp from filename: " + filename)
 
             start_time_str = match.group(1)
-            start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S").replace(tzinfo=UTC)
+            # Naive on purpose: the device writes UTC in the filename, but stamping that
+            # into _load output would freeze it in the parquet cache — _format localizes
+            # it from the configured timezone instead (ADR-0010).
+            start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S")  # noqa: DTZ007
 
             with Path.open(file_path, "r", encoding="utf-8") as file:
                 lines = [line.strip() for line in file]

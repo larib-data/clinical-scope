@@ -9,7 +9,6 @@ from defusedxml.ElementTree import parse as parse_xml
 
 import clinical_scope.datasource.sources.mindray_scope.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
-from clinical_scope.datasource.formatting.timezone import apply_timezone_to_dataframe
 from clinical_scope.datasource.timing import time_it
 from clinical_scope.io.file_utils import deduplicate_then_sort_index
 
@@ -180,6 +179,29 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _reject_mixed_timezone_awareness(df_list: list[pd.DataFrame], file_names: list[str]) -> None:
+    """
+    Raise when a folder yields both naive (.csv) and offset-bearing (.xml) frames.
+
+    _load keeps each file's own timezone fidelity (ADR-0010), so a mixed folder reaches
+    pd.concat as naive-plus-aware and fails there with a pandas message naming neither file.
+    Mixing the two formats in one folder was never a supported case.
+    """
+    awareness = [
+        (name, getattr(df.index, "tz", None) is not None)
+        for name, df in zip(file_names, df_list, strict=True)
+    ]
+    naive = [name for name, is_aware in awareness if not is_aware]
+    aware = [name for name, is_aware in awareness if is_aware]
+    if naive and aware:
+        msg = (
+            f"Mixed timezone awareness in one mindray_scope folder: {naive[0]!r} is tz-naive "
+            f"while {aware[0]!r} carries a UTC offset ({len(naive)} naive, {len(aware)} aware). "
+            "Keep .csv and .xml recordings in separate patient folders."
+        )
+        raise ValueError(msg)
+
+
 class MindRayScopeDataSource(DataSourceBase):
     """MindRay scope datasource processor."""
 
@@ -188,9 +210,11 @@ class MindRayScopeDataSource(DataSourceBase):
     @classmethod
     @time_it
     def _load(
-        cls, file_path_list: list[Path], path_output: Path | None, **kwargs: Any
+        cls,
+        file_path_list: list[Path],
+        path_output: Path | None,
+        **kwargs: Any,  # noqa: ARG003
     ) -> pd.DataFrame:
-        database_options_specific = kwargs.get("database_options_specific", {})
         extension_preference = options_naming.FILE_EXTENSIONS
 
         file_dict = {}
@@ -228,6 +252,7 @@ class MindRayScopeDataSource(DataSourceBase):
 
         optimize_storage_dtypes = True
         df_list = []
+        loaded_file_names = []
 
         for file_path in file_path_list:
             if file_path.suffix == ".csv":
@@ -248,14 +273,9 @@ class MindRayScopeDataSource(DataSourceBase):
                     )
                     timestamps.extend(pd.to_datetime(row_times))
                 df_local = pd.DataFrame({name: signal}, index=timestamps)
-                df_local = apply_timezone_to_dataframe(
-                    df_local,
-                    database_options_specific,
-                    options_naming.DATA_SOURCE_DEFAULT_TIMEZONE,
-                    options_naming,
-                )
 
                 df_list.append(df_local)
+                loaded_file_names.append(file_path.name)
 
             elif file_path.suffix == ".xml":
                 # .xml seems tz aware
@@ -263,6 +283,9 @@ class MindRayScopeDataSource(DataSourceBase):
                 df_local = _format_xml_waveform_data(df_waveform)
 
                 df_list.append(df_local)
+                loaded_file_names.append(file_path.name)
+
+        _reject_mixed_timezone_awareness(df_list, loaded_file_names)
 
         # concat(axis=1) aligns by label and the merged frame is sorted below, so a
         # per-frame pre-sort here is wasted copies.
