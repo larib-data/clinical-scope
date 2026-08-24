@@ -260,6 +260,9 @@ class DataSourceBase(ABC):
             path_dataframe,
             compute_bounds=cls._make_bounds_computer(patient_options, database_options_specific),
             select_columns=make_column_selector(database_options_specific),
+            # A cache is a file we wrote, so its index is the time axis by construction whatever
+            # its dtype (EIT's is float64 fractional days). No other caller may claim that.
+            index_is_time_axis=True,
         )
 
     @classmethod

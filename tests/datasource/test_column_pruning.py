@@ -6,9 +6,9 @@ columns, would — pruning only changes which columns are read off disk, never t
 values, and never the datetime axis (dropping it would crash `set_datetime_index`).
 
 The invariant everywhere is ``read(pruned) == read(all)[list(pruned.columns)]``, checked
-across {materialized cache index, non-materialized raw index} × {literal, wildcard 0/1/2+
-matches}, on every wire point: the low-level `read_parquet_pruned`, the quick-load cache
-(`_quick_load`), and `other` (uncached parquet, read fresh every run).
+across {timestamp index, caller-declared non-temporal index, non-materialized raw index} ×
+{literal, wildcard 0/1/2+ matches}, on every wire point: the low-level `read_parquet_pruned`,
+the quick-load cache (`_quick_load`), and `other` (uncached parquet, read fresh every run).
 
 Column pruning is orthogonal to the datetime window — it must fire even with no window set
 (the common case) — so most tests deliberately set no window.
@@ -57,6 +57,28 @@ def _make_nonmaterialized_parquet(tmp_path: Path) -> Path:
         }
     )
     df.to_parquet(path)  # default RangeIndex → not a materialized index
+    return path
+
+
+def _make_non_temporal_index_parquet(tmp_path: Path) -> Path:
+    """
+    The EIT cache shape: a named float64 index of fractional days, plus a duration column.
+
+    ``time_hours`` is not decoration: it is in the real cache, and it is what makes datetime
+    detection abstain cleanly rather than crash, which is the state this class pins.
+    """
+    path = tmp_path / "non_temporal_index.parquet"
+    index = pd.Index([minute / 1440 for minute in range(60)], name="Time")
+    df = pd.DataFrame(
+        {
+            "time_hours": pd.to_timedelta(index, unit="D"),
+            "pre_a": range(60),
+            "pre_b": range(60, 120),
+            "other": range(120, 180),
+        },
+        index=index,
+    )
+    df.to_parquet(path)
     return path
 
 
@@ -191,6 +213,58 @@ class TestReadParquetPrunedNonMaterializedIndex:
         # The detected datetime column ('timestamp') is always unioned in, even for 0 matches.
         assert "timestamp" in actual.columns
         assert set(actual.columns) == {"timestamp", *_expected_cols(full, field_display)}
+        pd.testing.assert_frame_equal(actual, full[list(actual.columns)])
+
+
+# ---------------------------------------------------------------------------
+# Low-level: read_parquet_pruned, caller-declared (non-temporal) index
+# ---------------------------------------------------------------------------
+
+
+class TestReadParquetPrunedNonTemporalIndex:
+    """A float64 index prunes only when the caller vouches that it is the time axis."""
+
+    @pytest.mark.parametrize(
+        "field_display",
+        [
+            ["pre_a"],  # literal, 1 match
+            ["pre*"],  # wildcard, 2+ matches
+            ["zzz*"],  # wildcard, 0 matches (index only)
+        ],
+    )
+    def test_pruned_read_equals_full_subset(self, tmp_path, field_display):
+        path = _make_non_temporal_index_parquet(tmp_path)
+        full = pd.read_parquet(path)
+        actual = read_parquet_pruned(
+            path,
+            select_columns=lambda names: _pruned_columns(field_display, names),
+            index_is_time_axis=True,
+        )
+        assert list(actual.columns) == _expected_cols(full, field_display)
+        # pandas restores the index without it ever being named in columns=, so unlike the
+        # detection path there is nothing to union back.
+        pd.testing.assert_index_equal(actual.index, full.index)
+        pd.testing.assert_frame_equal(actual, full[list(actual.columns)], check_column_type=False)
+
+    def test_without_declaration_reads_all_columns(self, tmp_path):
+        """The gate: provenance unlocks pruning here, never anything read off the file."""
+        path = _make_non_temporal_index_parquet(tmp_path)
+        full = pd.read_parquet(path)
+        actual = read_parquet_pruned(
+            path, select_columns=lambda names: _pruned_columns(["pre_a"], names)
+        )
+        pd.testing.assert_frame_equal(actual, full)
+
+    def test_declaration_is_inert_without_a_stored_index(self, tmp_path):
+        """A RangeIndex file has no index column to vouch for, so detection still runs."""
+        path = _make_nonmaterialized_parquet(tmp_path)
+        full = pd.read_parquet(path)
+        actual = read_parquet_pruned(
+            path,
+            select_columns=lambda names: _pruned_columns(["pre_a"], names),
+            index_is_time_axis=True,
+        )
+        assert set(actual.columns) == {"timestamp", "pre_a"}
         pd.testing.assert_frame_equal(actual, full[list(actual.columns)])
 
 

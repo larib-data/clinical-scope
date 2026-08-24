@@ -328,15 +328,16 @@ def _find_datetime_col_parsed(df: pd.DataFrame) -> tuple[str, pd.Series]:
 # ==================================================================================================
 
 
-def resolve_stored_datetime_index(path: Path) -> tuple[str, str | None] | None:
+def resolve_stored_index_field(path: Path) -> pa.Field | None:
     """
-    Return the parquet file's materialized DatetimeIndex column and tz, if any.
+    Return the parquet file's materialized index column as a pyarrow field, if any.
 
-    ``(index_column_name, tz)`` if *path* already stores a materialized DatetimeIndex
-    column (e.g. written by our own ``to_parquet``), else ``None``. ``tz`` is ``None``
-    for a tz-naive stored index. Returns ``None`` (not a
-    materialized index) for a plain ``RangeIndex`` — pandas records that as a
-    descriptor dict rather than a physical column name.
+    The field of the single index column *path* stores (e.g. written by our own
+    ``to_parquet``), else ``None``: a plain ``RangeIndex`` is recorded as a descriptor dict
+    rather than a physical column name, and a MultiIndex resolves to several columns.
+
+    The field's *type* is deliberately not judged here: "which column is the index" and "is
+    that index a range-comparable time axis" are separate questions, answered at the call site.
     """
     schema = pq.ParquetFile(path).schema_arrow
     pandas_metadata = schema.pandas_metadata
@@ -345,11 +346,7 @@ def resolve_stored_datetime_index(path: Path) -> tuple[str, str | None] | None:
     index_columns = pandas_metadata.get("index_columns") or []
     if len(index_columns) != 1 or not isinstance(index_columns[0], str):
         return None
-    column_name = index_columns[0]
-    field = schema.field(column_name)
-    if not pa.types.is_timestamp(field.type):
-        return None
-    return column_name, (str(field.type.tz) if field.type.tz else None)
+    return schema.field(index_columns[0])
 
 
 def _is_numeric_pa_type(field_type: pa.DataType) -> bool:
@@ -525,6 +522,8 @@ def read_parquet_pruned(
     compute_bounds: Callable[[str | None], tuple[pd.Timestamp | None, pd.Timestamp | None] | None]
     | None = None,
     select_columns: Callable[[list[str]], list[str] | None] | None = None,
+    *,
+    index_is_time_axis: bool = False,
 ) -> pd.DataFrame:
     """
     Read a parquet file, pruning out-of-window rows *and* unconfigured columns at read time.
@@ -539,33 +538,44 @@ def read_parquet_pruned(
       read (a superset of the finally-selected signals), or ``None`` to read all. Independent
       of any window — the common case is a wide cache with no window set.
 
-    Index-safe: a materialized DatetimeIndex is auto-restored by pandas even when omitted;
-    a non-materialized datetime column is unioned back so ``set_datetime_index`` still finds
-    it; if that column can't be resolved, column pruning is skipped (never drop the time axis).
+    Index-safe: a materialized index is auto-restored by pandas even when omitted from
+    ``columns=``; a non-materialized datetime column is unioned back so ``set_datetime_index``
+    still finds it; if that column can't be resolved, column pruning is skipped (never drop the
+    time axis).
+
+    *index_is_time_axis* lets a caller that knows the file's provenance declare that its stored
+    index is the time axis whatever its dtype, so a non-temporal one (EIT's float64 fractional
+    days) prunes columns instead of falling back to reading all of them. A declared axis is not
+    thereby known to be range-comparable, so it never carries a row filter — and, since the axis
+    is already accounted for, detection is skipped entirely, giving up any pushdown it might
+    have found on a data column.
     """
     file_columns = pq.ParquetFile(path).schema_arrow.names
     requested_columns = None if select_columns is None else select_columns(list(file_columns))
 
-    stored_index = resolve_stored_datetime_index(path)
-    materialized = stored_index is not None
+    index_field = resolve_stored_index_field(path)
+    # A timestamp index is also range-comparable, so it can carry the row filter; a declared
+    # one is only known to be the axis — enough to prune columns, never enough to filter rows.
+    temporal_index = index_field is not None and pa.types.is_timestamp(index_field.type)
+    axis_survives_pruning = temporal_index or (index_is_time_axis and index_field is not None)
     want_pushdown = compute_bounds is not None
 
-    # Resolve the datetime column only when needed (row filter, or protecting a
-    # non-materialized time axis); detection samples data, so skip it otherwise.
+    # Resolve the datetime column only when needed (row filter, or protecting an axis that
+    # isn't the index); detection samples data, so skip it otherwise.
     column_name = kind = tz = None
     physically_naive = False
-    if want_pushdown or (requested_columns is not None and not materialized):
-        if materialized:
-            column_name, tz = stored_index
-            kind = "timestamp"
-            physically_naive = tz is None
-        else:
-            detected = _detect_datetime_column_from_parquet(path)
-            if detected is not None:
-                column_name, kind, tz, physically_naive = detected
+    if temporal_index:
+        column_name = index_field.name
+        tz = str(index_field.type.tz) if index_field.type.tz else None
+        kind = "timestamp"
+        physically_naive = tz is None
+    elif not axis_survives_pruning and (want_pushdown or requested_columns is not None):
+        detected = _detect_datetime_column_from_parquet(path)
+        if detected is not None:
+            column_name, kind, tz, physically_naive = detected
 
     columns_to_read = requested_columns
-    if columns_to_read is not None and not materialized:
+    if columns_to_read is not None and not axis_survives_pruning:
         if column_name is None:
             columns_to_read = None  # unknown datetime axis → don't risk dropping it, read all
         elif column_name not in columns_to_read:

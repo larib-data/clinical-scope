@@ -658,3 +658,40 @@ class TestEitPushdownOptOut:
 
     def test_allow_datetime_pushdown_is_false(self, eit_cls):
         assert eit_cls.ALLOW_DATETIME_PUSHDOWN is False
+
+
+class TestDeclaredIndexNeverPushesDownRows:
+    """Vouching that an index *is* the axis says nothing about it being range-comparable."""
+
+    @staticmethod
+    def _float_index_parquet(tmp_path: Path) -> Path:
+        path = tmp_path / "float_index.parquet"
+        index = pd.Index([minute / 1440 for minute in range(60)], name="Time")
+        pd.DataFrame({"Global": range(60), "Local 1": range(60, 120)}, index=index).to_parquet(path)
+        return path
+
+    def test_bounds_are_never_requested(self, tmp_path):
+        """No bounds asked for means no predicate can be built — the safety is structural."""
+        path = self._float_index_parquet(tmp_path)
+        requested_tz = []
+
+        def compute_bounds(tz):
+            requested_tz.append(tz)
+            return pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")
+
+        actual = read_parquet_pruned(path, compute_bounds=compute_bounds, index_is_time_axis=True)
+
+        assert requested_tz == []
+        pd.testing.assert_frame_equal(actual, pd.read_parquet(path))
+
+    def test_row_filter_would_have_emptied_the_frame(self, tmp_path):
+        """Every row survives, so the window could not have been quietly applied."""
+        path = self._float_index_parquet(tmp_path)
+        actual = read_parquet_pruned(
+            path,
+            compute_bounds=lambda _tz: (pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")),
+            select_columns=lambda names: ["Global"],
+            index_is_time_axis=True,
+        )
+        assert list(actual.columns) == ["Global"]
+        assert len(actual) == len(pd.read_parquet(path))
