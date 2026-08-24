@@ -754,7 +754,7 @@ class DataSourceBase(ABC):
             database_options_specific if database_options_specific is not None else {}
         )
 
-        # Remove field_display so _load() returns ALL columns (handles EIT pre-filtering)
+        # Remove field_display so _load() returns ALL columns.
         database_options_for_load = {
             key: value
             for key, value in database_options.items()

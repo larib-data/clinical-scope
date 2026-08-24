@@ -181,11 +181,10 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
 
 def _reject_mixed_timezone_awareness(df_list: list[pd.DataFrame], file_names: list[str]) -> None:
     """
-    Raise when a folder yields both naive (.csv) and offset-bearing (.xml) frames.
+    Raise when *df_list* mixes tz-naive (.csv) and tz-aware (.xml) frames.
 
-    _load keeps each file's own timezone fidelity (ADR-0010), so a mixed folder reaches
-    pd.concat as naive-plus-aware and fails there with a pandas message naming neither file.
-    Mixing the two formats in one folder was never a supported case.
+    Without this check the mix reaches pd.concat and fails there instead, with a
+    pandas message naming neither offending file.
     """
     awareness = [
         (name, getattr(df.index, "tz", None) is not None)

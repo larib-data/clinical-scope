@@ -33,6 +33,9 @@ class MindRayRespiWavesDataSource(DataSourceBase):
         3. Expand timestamps to nanosecond precision using sampling_rate
         4. Pivot the data to have one column per unique waveform
         5. Set the expanded timestamps as the index
+
+        Only the file's own offset reaches the index; a naive timestamp stays naive
+        here and is localized by _format instead (ADR-0010).
         """
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
@@ -47,8 +50,6 @@ class MindRayRespiWavesDataSource(DataSourceBase):
             return pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))
 
         base_timestamps = pd.to_datetime(df["event_timestamp"])
-        # Only the file's own offset may reach the index: naive raw data stays naive here and
-        # is localized in _format, so the cache never freezes a configured timezone (ADR-0010).
         base_timezone = base_timestamps.dt.tz
         base_timezone_str = str(base_timezone) if base_timezone is not None else None
         full_label_names = df["waveform_label"] + "-" + df["waveform_unit"]

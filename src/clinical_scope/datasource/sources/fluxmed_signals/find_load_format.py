@@ -41,9 +41,7 @@ class FluxmedSignalsDataSource(DataSourceBase):
                 raise ValueError("Cannot extract timestamp from filename: " + filename)
 
             start_time_str = match.group(1)
-            # Naive on purpose: the device writes UTC in the filename, but stamping that
-            # into _load output would freeze it in the parquet cache — _format localizes
-            # it from the configured timezone instead (ADR-0010).
+            # Naive: _format localizes from the configured timezone (ADR-0010).
             start_time = datetime.strptime(start_time_str, "%y_%m_%d-%H_%M_%S")  # noqa: DTZ007
 
             with Path.open(file_path, "r", encoding="utf-8") as file:
