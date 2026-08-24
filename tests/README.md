@@ -47,3 +47,13 @@ pytest tests/datasource/ --update-snapshots -m snapshot
 |--------|---------|
 | `slow` | Long-running tests (full pipeline, batch extract) |
 | `snapshot` | Golden-file content regression tests |
+
+## Benchmarks
+
+`tests/benchmarks/` holds performance harnesses, not tests — pytest never collects them (they aren't named `test_*.py`), and they take minutes and gigabytes to run. Invoke one directly:
+
+```bash
+python tests/benchmarks/bench_pushdown.py --size-gb 2 --out after.json
+```
+
+`bench_pushdown.py` measures parquet read pruning (datetime row pushdown + column pruning) as a before/after A/B; its docstring carries the methodology and the design constraints that keep the comparison valid ([ADR-0007](../docs/adr/0007-read-time-pruning-is-an-optimization.md)).

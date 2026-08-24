@@ -36,11 +36,11 @@ Concretely:
 Two properties made this the choice:
 
 - **Correctness must not depend on arithmetic being exact.** Under option 3 a bounds bug costs speed, never data. Under option 1 the same bug costs data, silently. Given the ordering hazards above, that difference is the whole decision.
-- **The cheap 80% is most of the win.** The benchmark (`scripts/bench_pushdown.py`) exists to keep this honest: a loose window that reads slightly too much captures nearly all of the saving that an exact one would.
+- **The cheap 80% is most of the win.** The benchmark (`tests/benchmarks/bench_pushdown.py`) exists to keep this honest: a loose window that reads slightly too much captures nearly all of the saving that an exact one would.
 
 ## Consequences
 
 - **Easier:** a new reader can adopt pushdown by declaring one flag, without having to reason about whether its bounds are precisely right. The cache stays run-independent, so `quick_load` remains safe to leave on.
-- **Harder / accepted trade-offs:** the window now exists in two forms — loose bounds for the read, the authoritative filter downstream — and they must stay consistent. `scripts/bench_pushdown.py` guards the performance half; the correctness half rests on the superset property, so **any change that tightens the bounds must preserve it**.
+- **Harder / accepted trade-offs:** the window now exists in two forms — loose bounds for the read, the authoritative filter downstream — and they must stay consistent. `tests/benchmarks/bench_pushdown.py` guards the performance half; the correctness half rests on the superset property, so **any change that tightens the bounds must preserve it**.
 - **Relationship to [ADR-0004](0004-validate-datetime-column-candidates.md):** that ADR decided a datetime column is only accepted once its *content* parses. Column pruning means the validator may now see a narrower set of candidate columns than the file contains, since a column not named in `field_display` is never read. The rule is unchanged; its input is smaller.
 - **Revisit if:** a format arrives whose index guarantees make exact bounds provably safe — then exact pushdown is worth it *for that source*, declared per source, and never as a global default.

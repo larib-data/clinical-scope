@@ -173,7 +173,7 @@ class TestPushdownBounds:
             "datetime_end": "2004-09-15 08:25:00",
         }
         start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz=None)
-        buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
+        buffer = pd.Timedelta(seconds=1.0)
         assert start == pd.Timestamp("2004-09-15 08:20:00") - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00") + buffer
 
@@ -185,7 +185,7 @@ class TestPushdownBounds:
             "other": {"time_shift": 30.0},
         }
         start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz=None)
-        buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
+        buffer = pd.Timedelta(seconds=1.0)
         assert start == pd.Timestamp("2004-09-15 08:20:00") - pd.Timedelta(seconds=30.0) - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00") - pd.Timedelta(seconds=30.0) + buffer
 
@@ -197,7 +197,7 @@ class TestPushdownBounds:
             "other": {"time_shift": -30.0},
         }
         start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz=None)
-        buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
+        buffer = pd.Timedelta(seconds=1.0)
         assert start == pd.Timestamp("2004-09-15 08:20:00") + pd.Timedelta(seconds=30.0) - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00") + pd.Timedelta(seconds=30.0) + buffer
 
@@ -228,7 +228,7 @@ class TestPushdownBounds:
         start, end = other_cls._pushdown_bounds(
             patient_options, database_options_specific, index_tz=None
         )
-        buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
+        buffer = pd.Timedelta(seconds=1.0)
         # UTC input converted to Europe/Paris wall-clock (+2h, CEST in September), tz stripped
         # to match the physically tz-naive on-disk column.
         assert start == pd.Timestamp("2004-09-15 10:20:00") - buffer
@@ -243,7 +243,7 @@ class TestPushdownBounds:
             "datetime_end": "2004-09-15 08:25:00",
         }
         start, end = other_cls._pushdown_bounds(patient_options, {}, index_tz="UTC")
-        buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
+        buffer = pd.Timedelta(seconds=1.0)
         assert start == pd.Timestamp("2004-09-15 08:20:00", tz="UTC") - buffer
         assert end == pd.Timestamp("2004-09-15 08:25:00", tz="UTC") + buffer
 

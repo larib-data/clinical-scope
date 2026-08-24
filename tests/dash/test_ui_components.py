@@ -126,6 +126,19 @@ class TestSectionHeaders:
         built = {component_id for component_id, _ in _widgets(container)}
         assert built == {f"user_options.{field.NAME}" for field in iter_user_option_fields()}
 
+    def test_display_timezone_callback_id_matches_a_real_widget(self):
+        """
+        Two datetime callbacks Input this widget by id. A pattern-matching id that stops
+        matching raises nothing -- the callback simply never fires -- so pin the composition
+        against an independent literal and against the form that has to answer it.
+        """
+        container, _ = build_ui_and_schema_registry(
+            cst.UserOptions, cst.UserOptions.PREFIX, id_type="user-option"
+        )
+        composed = f"{cst.UserOptions.PREFIX}.{cst.UserOptions.DisplayTimezone.NAME}"
+        assert composed == "user_options.display_timezone"
+        assert composed in {component_id for component_id, _ in _widgets(container)}
+
     def test_every_declared_section_is_ranked(self):
         """A section missing from SECTION_ORDER would silently sort to the top."""
         declared = {getattr(schema, "SECTION", None) for schema in iter_user_option_fields()}

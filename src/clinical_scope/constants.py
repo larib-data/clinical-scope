@@ -87,6 +87,32 @@ class DatetimeColumnDetection:
     SAMPLE_MAX_ROW_DECODED = 1_000_000  # cap on rows decoded, but always ≥ 2 groups (below)
 
 
+class ParquetPushdownKind:
+    """How a detected parquet datetime column can carry a row predicate (see io/file_utils)."""
+
+    TIMESTAMP = "timestamp"  # real timestamp column — bounds filter it directly
+    EPOCH_NS = "epoch_ns"  # numeric nanoseconds since epoch — bounds convert to int first
+    OTHER = "other"  # detected as the time axis, but no predicate is safe on it
+
+
+class InspectionStatus:
+    """``DataSourceInspection.status`` values (see datasource/inspection.py)."""
+
+    OK = "ok"
+    FILE_NOT_FOUND = "file_not_found"
+    LOAD_ERROR = "load_error"
+    FORMAT_ERROR = "format_error"
+
+
+class PatientFolderScanStatus:
+    """``PatientFolderScan.status`` values (see datasource/registry.py)."""
+
+    OK = "ok"
+    MISSING = "missing"  # nothing at that path
+    IS_FILE = "is_file"  # a file where a patient folder was expected
+    UNREADABLE = "unreadable"  # exists, but the OS refused to list it
+
+
 class ApiType:
     FLOAT = "float"
     INT = "int"
@@ -258,6 +284,9 @@ DEFAULT_COLORWAY = Colorway.OKABE_ITO
 DEFAULT_PLOT_TEMPLATE = PlotTemplate.LIGHT
 DEFAULT_HOVERMODE = HoverMode.X_UNIFIED
 DEFAULT_HOVER_TIME_FORMAT = HoverTimeFormat.TIME_ONLY
+# Priority sorts subplots ascending, so an unset one must land after anything configured:
+# large enough that no hand-written priority realistically reaches it.
+DEFAULT_PLOT_PRIORITY = 10000
 # Fixed rather than auto-scaled: colour range must stay comparable across patients for a
 # trained eye reading it like a bedside monitor.
 DEFAULT_SPECTROGRAM_DB_MIN = 0.0
@@ -295,6 +324,11 @@ class UserOptions:
     """
 
     SECTION_ORDER = UserOptionSection.ORDER
+
+    # Widget-id prefix, mirroring PatientOptions.GLOBAL. Dash pattern-matching ids that stop
+    # matching don't raise -- the callback just never fires -- so every Input naming one of
+    # these widgets must compose it from here rather than spelling it out.
+    PREFIX = "user_options"
 
     class SaveHtmlOnProcess:
         ORDER = 1

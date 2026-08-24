@@ -593,8 +593,8 @@ class TestHoverFallbacks:
                 hover_time_format=cst.HoverTimeFormat.DATE_TIME,
             ),
         )
-        assert model.figure.layout.hovermode == cst.HoverMode.CLOSEST
-        assert model.figure.layout.xaxis.hoverformat == cst.HoverTimeFormat.DATE_TIME
+        assert model.figure.layout.hovermode == "closest"
+        assert model.figure.layout.xaxis.hoverformat == "%Y-%m-%d %H:%M:%S.%3f"
 
     def test_loops_keep_plotly_hovermode(self):
         loop = Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))

@@ -167,8 +167,10 @@ class DataSourceBase(ABC):
         )
         shift_td = pd.Timedelta(seconds=time_shift)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
-        # A tz-naive bound is interpreted in the library default: a wrong guess is one constant
-        # offset on every bound, which is easy to spot.
+        # A tz-naive bound is interpreted in the default *display* timezone, not LIBRARY_TZ:
+        # naive bounds are what the form used to write, and it typed them in display time.
+        # Deliberately the constant rather than the user option -- this is the load path, and
+        # extract_* output must not depend on ~/.clinical_scope/user_options.json.
         display_timezone = cst.DISPLAY_TIMEZONE
 
         def _to_aware(raw_value: str | None) -> pd.Timestamp | None:
@@ -443,7 +445,7 @@ class DataSourceBase(ABC):
         datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
         datetime_start = pd.Timestamp(datetime_start) if datetime_start else None
         datetime_end = pd.Timestamp(datetime_end) if datetime_end else None
-        # See _pushdown_bounds: a tz-naive bound is interpreted in the library default.
+        # See _pushdown_bounds: a tz-naive bound is interpreted in the default display timezone.
         display_timezone = cst.DISPLAY_TIMEZONE
         return filter_data_by_timestamps(
             df,
@@ -687,7 +689,7 @@ class DataSourceBase(ABC):
                 columns was not necessarily pruned to get there).
 
         Returns:
-            DataSourceInspection with status ``"ok"`` or ``"format_error"``.
+            DataSourceInspection with status ``OK`` or ``FORMAT_ERROR`` (cst.InspectionStatus).
 
         """
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
@@ -705,7 +707,7 @@ class DataSourceBase(ABC):
             logger.exception("[%s] inspect: format failed.", datasource_name)
             return DataSourceInspection(
                 datasource_name=datasource_name,
-                status="format_error",
+                status=cst.InspectionStatus.FORMAT_ERROR,
                 error_message=str(exc),
                 file_path=file_path,
                 raw_date_range=raw_date_range,
@@ -716,7 +718,7 @@ class DataSourceBase(ABC):
         df_filtered_display = _to_display_tz(df_filtered, display_timezone=display_timezone)
         return DataSourceInspection(
             datasource_name=datasource_name,
-            status="ok",
+            status=cst.InspectionStatus.OK,
             file_path=file_path,
             raw_date_range=raw_date_range,
             filtered_date_range=_date_range(df_filtered_display),
@@ -780,14 +782,14 @@ class DataSourceBase(ABC):
             logger.exception("[%s] inspect: load failed.", cls.DATASOURCE_NAME)
             return DataSourceInspection(
                 datasource_name=cls.DATASOURCE_NAME,
-                status="load_error",
+                status=cst.InspectionStatus.LOAD_ERROR,
                 error_message=str(exc),
                 file_path=file_path_str,
             )
 
         if df_raw is None:
             return DataSourceInspection(
-                datasource_name=cls.DATASOURCE_NAME, status="file_not_found"
+                datasource_name=cls.DATASOURCE_NAME, status=cst.InspectionStatus.FILE_NOT_FOUND
             )
 
         return cls._make_inspection(

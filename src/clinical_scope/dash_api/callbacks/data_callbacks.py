@@ -402,7 +402,13 @@ def build_patient_options_ui(
 @callback(
     Output("datetime-tz-label-start", "children"),
     Output("datetime-tz-label-end", "children"),
-    Input({"type": "user-option", "name": "user_options.display_timezone"}, "value"),
+    Input(
+        {
+            "type": "user-option",
+            "name": f"{cst.UserOptions.PREFIX}.{cst.UserOptions.DisplayTimezone.NAME}",
+        },
+        "value",
+    ),
 )
 def update_datetime_tz_label(display_timezone: str | None) -> tuple[str, str]:
     """
@@ -517,7 +523,13 @@ def reload_patient_options(
 @callback(
     Output({"type": "patient-option", "name": ALL}, "value", allow_duplicate=True),
     Output("form-display-timezone-store", "data", allow_duplicate=True),
-    Input({"type": "user-option", "name": "user_options.display_timezone"}, "value"),
+    Input(
+        {
+            "type": "user-option",
+            "name": f"{cst.UserOptions.PREFIX}.{cst.UserOptions.DisplayTimezone.NAME}",
+        },
+        "value",
+    ),
     State({"type": "patient-option", "name": ALL}, "value"),
     State({"type": "patient-option", "name": ALL}, "id"),
     State("form-display-timezone-store", "data"),
@@ -605,22 +617,22 @@ def _inspect_patient_folder(path: Path) -> Any:
     """Scan *path* and return the preview Span. Runs in a worker thread (see caller)."""
     scan = datasource.scan_patient_folder(path)
 
-    if scan.status == "is_file":
+    if scan.status == cst.PatientFolderScanStatus.IS_FILE:
         return html.Span(
             "⚠ That's a file, not a folder. Pick the patient folder (maybe its parent? "
             f"{path.parent.parent} ?)",
             style=_PREVIEW_ERROR,
         )
     # A suffix but no such directory: almost certainly a data file, not the folder.
-    if scan.status == "missing" and path.suffix:
+    if scan.status == cst.PatientFolderScanStatus.MISSING and path.suffix:
         return html.Span(
             f"⚠ '{path.name}' looks like a file, not a folder. Pick the patient folder, not a "
             "data file.",
             style=_PREVIEW_ERROR,
         )
-    if scan.status == "missing":
+    if scan.status == cst.PatientFolderScanStatus.MISSING:
         return html.Span("⚠ This folder doesn't exist.", style=_PREVIEW_WARN)
-    if scan.status == "unreadable":
+    if scan.status == cst.PatientFolderScanStatus.UNREADABLE:
         return html.Span(
             "⚠ Couldn't read this folder (permission or path issue).", style=_PREVIEW_WARN
         )
@@ -884,10 +896,10 @@ def process_visualization(
 def _status_badge(status: str) -> html.Span:
     """Return a coloured inline badge for a datasource status."""
     color = {
-        "ok": "#28a745",
-        "file_not_found": "#fd7e14",
-        "load_error": "#dc3545",
-        "format_error": "#dc3545",
+        cst.InspectionStatus.OK: "#28a745",
+        cst.InspectionStatus.FILE_NOT_FOUND: "#fd7e14",
+        cst.InspectionStatus.LOAD_ERROR: "#dc3545",
+        cst.InspectionStatus.FORMAT_ERROR: "#dc3545",
     }.get(status, "#6c757d")
     return html.Span(
         status,

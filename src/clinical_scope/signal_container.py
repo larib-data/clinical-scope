@@ -48,8 +48,9 @@ def get_unique_or_raise(
 
 
 def compute_average_priority(items: list[Any]) -> float:
-    """Compute average plot_priority, defaulting missing to 10000."""
-    return float(np.mean([getattr(item, "plot_priority", 10000) or 10000 for item in items]))
+    """Compute average plot_priority, defaulting missing to cst.DEFAULT_PLOT_PRIORITY."""
+    default = cst.DEFAULT_PLOT_PRIORITY
+    return float(np.mean([getattr(item, "plot_priority", default) or default for item in items]))
 
 
 def merge_y_ranges(
@@ -247,7 +248,7 @@ class PlotOptions:
         if self.plot_type is None:
             logger.warning("PlotOptions.plot_type should not be initialized to None")
         if self.plot_priority is None:
-            self.plot_priority = 10000
+            self.plot_priority = cst.DEFAULT_PLOT_PRIORITY
 
     @staticmethod
     def combine_from_signals(signals: list["Signal"], group_name: str) -> "PlotOptions":

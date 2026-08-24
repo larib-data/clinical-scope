@@ -255,7 +255,7 @@ def _pick_best_candidate(passing: list[tuple[str, pd.Series]]) -> tuple[str, pd.
     ]
     column_name, parsed = (utc_named or top)[0]
     if "utc" in str(column_name).lower() and parsed.dt.tz is None:
-        parsed = parsed.dt.tz_localize("UTC")
+        parsed = parsed.dt.tz_localize(cst.LIBRARY_TZ)
     return column_name, parsed
 
 
@@ -411,8 +411,9 @@ def _detect_datetime_column_from_parquet(
     rather than loading the whole file upfront.
 
     Returns ``(column_name, kind, tz, physically_naive)`` where *kind* is
-    ``"timestamp"`` (direct range filter, *tz* set for tz-aware columns) or
-    ``"epoch_ns"`` (nanosecond-epoch numeric column, *tz* is ``None``) — both safe for
+    ``TIMESTAMP`` (direct range filter, *tz* set for tz-aware columns) or
+    ``EPOCH_NS`` (nanosecond-epoch numeric column, *tz* is ``None``) — see
+    :class:`~clinical_scope.constants.ParquetPushdownKind`. Both are safe for
     an unambiguous parquet row filter. Any other resolved type (e.g. a string datetime
     column, unparsed) is not pushdown-safe and yields ``None``, so the caller falls
     back to a full unfiltered read.
@@ -464,8 +465,13 @@ def _detect_datetime_column_from_parquet(
             # (set_datetime_index) later does, and the row-filter bounds must agree with that.
             # The physical on-disk type stays naive though, so flag it for the caller.
             tz = parsed.dt.tz
-            return column_name, "timestamp", (str(tz) if tz else None), field_type.tz is None
-        return column_name, "other", None, False
+            return (
+                column_name,
+                cst.ParquetPushdownKind.TIMESTAMP,
+                (str(tz) if tz else None),
+                field_type.tz is None,
+            )
+        return column_name, cst.ParquetPushdownKind.OTHER, None, False
 
     numeric_columns = [column_name for column_name in columns if _is_numeric(column_name)]
     if numeric_columns:
@@ -482,7 +488,7 @@ def _detect_datetime_column_from_parquet(
             return None
         if epoch_passing:
             column_name, _parsed = _pick_best_candidate(epoch_passing)
-            return column_name, "epoch_ns", None, True
+            return column_name, cst.ParquetPushdownKind.EPOCH_NS, None, True
 
     return None
 
@@ -495,10 +501,10 @@ def _build_datetime_row_filters(
 ) -> list[tuple] | None:
     """Turn resolved ``(start, end)`` bounds into pyarrow row filters, or ``None`` if empty."""
     start, end = bounds
-    if kind == "epoch_ns":
+    if kind == cst.ParquetPushdownKind.EPOCH_NS:
         start = None if start is None else start.value
         end = None if end is None else end.value
-    elif kind == "timestamp" and physically_naive:
+    elif kind == cst.ParquetPushdownKind.TIMESTAMP and physically_naive:
         # A naive column may carry a semantic tz from name detection (e.g. "*utc*"); strip the
         # tz label so the wall-clock bounds match the physical, tz-naive on-disk column.
         if start is not None and start.tzinfo is not None:
@@ -567,7 +573,7 @@ def read_parquet_pruned(
     if temporal_index:
         column_name = index_field.name
         tz = str(index_field.type.tz) if index_field.type.tz else None
-        kind = "timestamp"
+        kind = cst.ParquetPushdownKind.TIMESTAMP
         physically_naive = tz is None
     elif not axis_survives_pruning and (want_pushdown or requested_columns is not None):
         detected = _detect_datetime_column_from_parquet(path)
@@ -582,8 +588,13 @@ def read_parquet_pruned(
             columns_to_read = [column_name, *columns_to_read]  # keep the time axis in the read
 
     filters = None
-    if want_pushdown and column_name is not None and kind is not None and kind != "other":
-        bounds = compute_bounds(tz if kind == "timestamp" else None)
+    if (
+        want_pushdown
+        and column_name is not None
+        and kind is not None
+        and kind != cst.ParquetPushdownKind.OTHER
+    ):
+        bounds = compute_bounds(tz if kind == cst.ParquetPushdownKind.TIMESTAMP else None)
         if bounds is not None:
             filters = _build_datetime_row_filters(column_name, kind, physically_naive, bounds)
 

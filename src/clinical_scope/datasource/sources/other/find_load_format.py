@@ -377,13 +377,19 @@ class OtherDataSource(DataSourceBase):
         search_folder = cls._find_folder(folder_path)
         if search_folder is None:
             return [
-                DataSourceInspection(datasource_name=cls.DATASOURCE_NAME, status="file_not_found")
+                DataSourceInspection(
+                    datasource_name=cls.DATASOURCE_NAME,
+                    status=cst.InspectionStatus.FILE_NOT_FOUND,
+                )
             ]
 
         file_paths = cls._find(search_folder)
         if not file_paths:
             return [
-                DataSourceInspection(datasource_name=cls.DATASOURCE_NAME, status="file_not_found")
+                DataSourceInspection(
+                    datasource_name=cls.DATASOURCE_NAME,
+                    status=cst.InspectionStatus.FILE_NOT_FOUND,
+                )
             ]
 
         results: list[DataSourceInspection] = []
@@ -415,7 +421,7 @@ class OtherDataSource(DataSourceBase):
                     results.append(
                         DataSourceInspection(
                             datasource_name=inspection_name,
-                            status="load_error",
+                            status=cst.InspectionStatus.LOAD_ERROR,
                             error_message=str(exc),
                             file_path=str(file_path),
                         )
@@ -445,7 +451,7 @@ class OtherDataSource(DataSourceBase):
                 results.append(
                     DataSourceInspection(
                         datasource_name=inspection_name,
-                        status="load_error",
+                        status=cst.InspectionStatus.LOAD_ERROR,
                         error_message=f"Unexpected error processing {file_path.name}",
                         file_path=str(file_path),
                     )
@@ -454,7 +460,7 @@ class OtherDataSource(DataSourceBase):
         return results or [
             DataSourceInspection(
                 datasource_name=cls.DATASOURCE_NAME,
-                status="file_not_found",
+                status=cst.InspectionStatus.FILE_NOT_FOUND,
                 file_path=str(search_folder),
             )
         ]
