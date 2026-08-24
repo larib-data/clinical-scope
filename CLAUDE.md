@@ -51,6 +51,8 @@ Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical l
 
 **A module is justified only by format-specific parsing** ([ADR-0008](docs/adr/0008-datasource-modules-need-format-specific-parsing.md)). Plain CSV/parquet with a datetime column belongs in `other/`, configured per file under an `other::<stem>` key — that scope carries its own `time_shift`, timezone, grouping and trace style, so a module would add machinery and no capability.
 
+**`_load` transcribes; `_format` interprets** ([ADR-0010](docs/adr/0010-load-transcribes-format-interprets.md)). `_load`'s output *is* the parquet cache, so it must be reproducible from the source file alone — no option resolved inside it. Mechanically: no `DATA_SOURCE_DEFAULT_TIMEZONE`, no `apply_timezone_to_dataframe` in any `_load`.
+
 **Adding one**: use the `/new-datasource` skill — it is authoritative for the module layout, `options.py` constants, the loader, registration (Other stays last), example data, tests, snapshots, and the tutorial table.
 
 ## Config files
