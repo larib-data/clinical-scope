@@ -37,6 +37,10 @@ from clinical_scope.dash_api.styles import (
     BUTTON_PROCESS,
     BUTTON_RELOAD,
     BUTTON_UPLOAD,
+    COLOR_HEX_FIELD,
+    COLOR_HEX_INPUT,
+    COLOR_PRESET_SWATCH,
+    COLOR_PREVIEW_SWATCH,
     COLOR_PURPLE,
     INSPECTION_MODAL_HEADER_ROW,
     INSPECTION_MODAL_PANEL,
@@ -196,29 +200,58 @@ _annotation_toolbar = html.Div(
     ],
 )
 
+
+# ---------------------------------------------------------------------------
+# Colour picker — shared by both creation modals
+# ---------------------------------------------------------------------------
+def _color_picker(swatch_type: str, input_id: str, preview_id: str) -> html.Div:
+    """
+    Build a colour picker: preset shortcuts alongside the hex field holding the chosen colour.
+
+    The hex field holds the colour; presets write into it and the preview swatch mirrors it.
+    Malformed input is flagged by the field's own `pattern`, styled in color_picker.css.
+    """
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.Div(
+                        id={"type": swatch_type, "color": color},
+                        n_clicks=0,
+                        className="color-preset-swatch",
+                        style={**COLOR_PRESET_SWATCH, "backgroundColor": color},
+                    )
+                    for color in ANNOTATION_COLORS
+                ],
+                style={"display": "flex", "gap": "6px", "alignItems": "center"},
+            ),
+            html.Div(
+                [
+                    html.Div(
+                        id=preview_id,
+                        style={**COLOR_PREVIEW_SWATCH, "backgroundColor": ANNOTATION_COLORS[0]},
+                    ),
+                    dcc.Input(
+                        id=input_id,
+                        type="text",
+                        value=ANNOTATION_COLORS[0],
+                        maxLength=7,
+                        pattern=cst.HEX_COLOR_PATTERN,
+                        className="hex-color-input",
+                        style=COLOR_HEX_INPUT,
+                    ),
+                ],
+                className="hex-color-field",
+                style=COLOR_HEX_FIELD,
+            ),
+        ],
+        style={"display": "flex", "alignItems": "center", "gap": "10px"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Annotation creation modal
 # ---------------------------------------------------------------------------
-_color_swatches = html.Div(
-    [
-        html.Div(
-            id={"type": "annotation-color-swatch", "color": color},
-            n_clicks=0,
-            style={
-                "width": "22px",
-                "height": "22px",
-                "borderRadius": "50%",
-                "backgroundColor": color,
-                "cursor": "pointer",
-                "border": "2px solid transparent",
-                "flexShrink": 0,
-            },
-        )
-        for color in ANNOTATION_COLORS
-    ],
-    style={"display": "flex", "gap": "6px", "alignItems": "center"},
-)
-
 _annotation_modal = html.Div(
     id="annotation-modal",
     style=ANNOTATION_MODAL_STYLE_HIDDEN,
@@ -284,25 +317,10 @@ _annotation_modal = html.Div(
                             "Color",
                             style={"fontSize": "13px", "fontWeight": "bold", "marginBottom": "4px"},
                         ),
-                        html.Div(
-                            [
-                                _color_swatches,
-                                dcc.Input(
-                                    id="annotation-color-input",
-                                    type="text",
-                                    value=ANNOTATION_COLORS[0],
-                                    maxLength=7,
-                                    style={
-                                        "width": "90px",
-                                        "padding": "4px 8px",
-                                        "border": "1px solid #ced4da",
-                                        "borderRadius": "4px",
-                                        "fontSize": "12px",
-                                        "fontFamily": "monospace",
-                                    },
-                                ),
-                            ],
-                            style={"display": "flex", "alignItems": "center", "gap": "10px"},
+                        _color_picker(
+                            "annotation-color-swatch",
+                            "annotation-color-input",
+                            "annotation-color-preview",
                         ),
                     ],
                     style={"marginBottom": "12px"},
@@ -353,26 +371,6 @@ _annotation_modal = html.Div(
 # ---------------------------------------------------------------------------
 # Annotation group creation modal
 # ---------------------------------------------------------------------------
-_group_color_swatches = html.Div(
-    [
-        html.Div(
-            id={"type": "group-color-swatch", "color": color},
-            n_clicks=0,
-            style={
-                "width": "22px",
-                "height": "22px",
-                "borderRadius": "50%",
-                "backgroundColor": color,
-                "cursor": "pointer",
-                "border": "2px solid transparent",
-                "flexShrink": 0,
-            },
-        )
-        for color in ANNOTATION_COLORS
-    ],
-    style={"display": "flex", "gap": "6px", "alignItems": "center"},
-)
-
 _annotation_group_modal = html.Div(
     id="annotation-group-modal",
     style=ANNOTATION_MODAL_STYLE_HIDDEN,
@@ -456,25 +454,10 @@ _annotation_group_modal = html.Div(
                             "Color",
                             style={"fontSize": "13px", "fontWeight": "bold", "marginBottom": "4px"},
                         ),
-                        html.Div(
-                            [
-                                _group_color_swatches,
-                                dcc.Input(
-                                    id="group-color-input",
-                                    type="text",
-                                    value=ANNOTATION_COLORS[0],
-                                    maxLength=7,
-                                    style={
-                                        "width": "90px",
-                                        "padding": "4px 8px",
-                                        "border": "1px solid #ced4da",
-                                        "borderRadius": "4px",
-                                        "fontSize": "12px",
-                                        "fontFamily": "monospace",
-                                    },
-                                ),
-                            ],
-                            style={"display": "flex", "alignItems": "center", "gap": "10px"},
+                        _color_picker(
+                            "group-color-swatch",
+                            "group-color-input",
+                            "group-color-preview"
                         ),
                     ],
                     style={"marginBottom": "12px"},

@@ -42,6 +42,9 @@ DEFAULT_NAME_PATIENT_OPTIONS = "patient_options.json"
 DEFAULT_QUICK_LOAD = False
 ANNOTATION_FILE_NAME = "annotations.json"
 ANNOTATION_KEY = "annotations"
+# Doubles as the HTML `pattern` attribute of the colour fields, which is implicitly anchored —
+# hence `re.fullmatch` on the Python side, so both ends accept exactly the same strings.
+HEX_COLOR_PATTERN = r"#?[0-9A-Fa-f]{6}"
 
 # Signal-free, no-PHI app state cached under the user's home (~/<CLINICAL_SCOPE_DIR_NAME>/).
 CLINICAL_SCOPE_DIR_NAME = ".clinical_scope"

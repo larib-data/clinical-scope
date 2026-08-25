@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 
   **What changes for you:** a configuration that already sets `trace_options` (or the Excel `trace_mode` / `line_width` / `opacity` / `marker_symbol` columns) on a device datasource starts taking effect, where before it was ignored. Where a datasource ships its own trace style, your block now wins key by key over it; keys you leave unset keep the shipped value. Nothing changes for a configuration that only styled `other::<stem>` files.
 
+- **The annotation colour picker no longer disagrees with itself.** The row of preset swatches carried its own "selected" highlight alongside the hex code, and the two drifted apart: typing a code left the highlight behind, and opening a modal — which pre-fills the colour of the trace you clicked, rarely one of the six presets — moved the code without moving the highlight. The colour saved always came from the hex field, so the highlighted swatch was the half that lied. Presets are now plain shortcuts that fill the field, and a swatch beside it previews the colour the annotation will actually get.
+
+  **What changes for you:** a code pasted without its leading `#` is accepted, a malformed one is flagged as you leave the field, and a colour that is not a valid six-digit hex now falls back to the default instead of being written into the annotation file as-is.
+
 ---
 
 ## [1.1.0] — 2026-08-24

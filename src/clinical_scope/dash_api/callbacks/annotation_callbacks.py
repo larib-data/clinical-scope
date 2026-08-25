@@ -24,6 +24,7 @@ from clinical_scope.dash_api.annotations.model import (
     TIME_BASED_ANNOTATION_TYPES,
     Annotation,
     AnnotationType,
+    normalize_hex_color,
 )
 from clinical_scope.dash_api.annotations.renderer import (
     build_figure_overlays,
@@ -38,6 +39,7 @@ from clinical_scope.dash_api.styles import (
     BUTTON_ANNOTATION_INACTIVE,
     BUTTON_ANNOTATION_SAVE,
     BUTTON_MODAL_CLOSE,
+    COLOR_PREVIEW_SWATCH,
 )
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
 from clinical_scope.signal_container import DisplayFallbacks
@@ -150,26 +152,6 @@ def _format_x_short(x_val: str | None, display_tz: str | None = None) -> str:
         numeric_value = float(x_val)
         return f"{numeric_value:.4g}"
     return str(x_val)
-
-
-def _build_swatch_styles(selected_color: str, swatch_ids: list[dict]) -> list[dict]:
-    """Return a style list for colour swatches, highlighting the selected one."""
-    styles = []
-    for swatch_id in swatch_ids:
-        color = swatch_id["color"]
-        border = "3px solid #333" if color == selected_color else "2px solid transparent"
-        styles.append(
-            {
-                "width": "22px",
-                "height": "22px",
-                "borderRadius": "50%",
-                "backgroundColor": color,
-                "cursor": "pointer",
-                "border": border,
-                "flexShrink": 0,
-            }
-        )
-    return styles
 
 
 def _annotation_list_row(
@@ -667,38 +649,52 @@ def toggle_global_checkbox_visibility(modal_data: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 5. Colour swatch pickers — one per creation modal (annotation, group)
+# 5. Colour pickers — one per creation modal (annotation, group)
 # ---------------------------------------------------------------------------
+# The hex input is the single source of truth: presets only write to it, the preview only
+# reads from it. A second indicator of the selected colour would inevitably desync from it.
 
 
 @callback(
     Output("annotation-color-input", "value", allow_duplicate=True),
-    Output({"type": "annotation-color-swatch", "color": ALL}, "style"),
     Input({"type": "annotation-color-swatch", "color": ALL}, "n_clicks"),
-    State({"type": "annotation-color-swatch", "color": ALL}, "id"),
     prevent_initial_call=True,
 )
-def pick_annotation_color_swatch(_n_clicks_list: list, swatch_ids: list) -> tuple[str, list]:
-    """Highlight the selected colour swatch and update the annotation modal hex input."""
+def pick_annotation_color_swatch(_n_clicks_list: list) -> str:
+    """Write the clicked preset into the annotation modal hex input."""
     if ctx.triggered_id is None:
         raise PreventUpdate
-    selected = ctx.triggered_id["color"]
-    return selected, _build_swatch_styles(selected, swatch_ids)
+    return ctx.triggered_id["color"]
 
 
 @callback(
     Output("group-color-input", "value", allow_duplicate=True),
-    Output({"type": "group-color-swatch", "color": ALL}, "style"),
     Input({"type": "group-color-swatch", "color": ALL}, "n_clicks"),
-    State({"type": "group-color-swatch", "color": ALL}, "id"),
     prevent_initial_call=True,
 )
-def pick_group_color_swatch(_n_clicks_list: list, swatch_ids: list) -> tuple[str, list]:
-    """Highlight the selected colour swatch and update the group modal hex input."""
+def pick_group_color_swatch(_n_clicks_list: list) -> str:
+    """Write the clicked preset into the group modal hex input."""
     if ctx.triggered_id is None:
         raise PreventUpdate
-    selected = ctx.triggered_id["color"]
-    return selected, _build_swatch_styles(selected, swatch_ids)
+    return ctx.triggered_id["color"]
+
+
+@callback(
+    Output("annotation-color-preview", "style"),
+    Input("annotation-color-input", "value"),
+)
+def update_annotation_color_preview(color: str) -> dict:
+    """Mirror the annotation hex input, showing the colour that Create would actually save."""
+    return {**COLOR_PREVIEW_SWATCH, "backgroundColor": normalize_hex_color(color)}
+
+
+@callback(
+    Output("group-color-preview", "style"),
+    Input("group-color-input", "value"),
+)
+def update_group_color_preview(color: str) -> dict:
+    """Mirror the group hex input, showing the colour that the group would actually get."""
+    return {**COLOR_PREVIEW_SWATCH, "backgroundColor": normalize_hex_color(color)}
 
 
 # ---------------------------------------------------------------------------
@@ -735,7 +731,7 @@ def create_annotation(
     annotation_type = AnnotationType(modal_data["type"])
     is_global = "global" in (global_checkbox or [])
     subplot_name = None if is_global else modal_data.get("subplot_name")
-    color = color or ANNOTATION_COLORS[0]
+    color = normalize_hex_color(color)
 
     if annotation_type == AnnotationType.TIME_EVENT:
         data = {"x": modal_data["x"], "xaxis": modal_data.get("xaxis", "x")}
@@ -1363,7 +1359,7 @@ def activate_group(
     if triggered_id == "create-group-btn":
         if not name:
             raise PreventUpdate
-        color = color or ANNOTATION_COLORS[0]
+        color = normalize_hex_color(color)
         annotation_type = AnnotationType(annotation_type_value or AnnotationType.TIME_EVENT.value)
         is_global = (
             "global" in (scope_value or []) and annotation_type in TIME_BASED_ANNOTATION_TYPES

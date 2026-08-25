@@ -10,10 +10,13 @@ dcc.Store and written to JSON.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+
+import clinical_scope.constants as cst
 
 
 def _now_iso() -> str:
@@ -37,6 +40,8 @@ TIME_BASED_ANNOTATION_TYPES: frozenset[AnnotationType] = frozenset(
 
 # Preset color palette offered in the creation modal
 ANNOTATION_COLORS: list[str] = [
+    "#999999",  # gray
+    "#000000",  # black
     "#e74c3c",  # red
     "#3498db",  # blue
     "#2ecc71",  # green
@@ -44,6 +49,19 @@ ANNOTATION_COLORS: list[str] = [
     "#9b59b6",  # purple
     "#1abc9c",  # teal
 ]
+
+
+def normalize_hex_color(value: str | None) -> str:
+    """
+    Return `value` canonicalised to "#rrggbb", falling back to the first preset if malformed.
+
+    The colour fields are free text, so a "#"-less paste is accepted and anything else malformed
+    resolves to the default rather than reaching annotations.json verbatim.
+    """
+    candidate = (value or "").strip()
+    if re.fullmatch(cst.HEX_COLOR_PATTERN, candidate):
+        return f"#{candidate.lstrip('#').lower()}"
+    return ANNOTATION_COLORS[0]
 
 
 @dataclass
