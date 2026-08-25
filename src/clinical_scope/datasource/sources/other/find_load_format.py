@@ -79,22 +79,6 @@ def _patient_options_for_file(patient_options: dict, file_stem: str) -> dict:
     return {**patient_options, options_naming.DATASOURCE_NAME: {**generic, **per_file}}
 
 
-def _source_options_for_file(base_source_options: dict | None, file_config: dict) -> dict:
-    """
-    Return *base_source_options* with the file's own ``trace_options`` merged over it.
-
-    Trace styling (``mode``, ``line_width``, …) normally lives in a datasource's options.py,
-    which leaves no route for a single ``other`` file to look different from its neighbours —
-    a sparse infusion log needs markers where a waveform does not.
-    """
-    per_file = file_config.get(cst.DatabaseOptions.TRACE_OPTIONS)
-    if not per_file:
-        return base_source_options or {}
-    base = base_source_options or {}
-    base_trace = base.get(cst.SourceOptions.TRACE_OPTIONS, {})
-    return {**base, cst.SourceOptions.TRACE_OPTIONS: {**base_trace, **per_file}}
-
-
 def _qualify(file_stem: str, bare_name: str) -> str:
     """Scope a bare per-file name to its file: ``waves`` + ``Pao`` -> ``waves::Pao``."""
     return f"{file_stem}{cst.QUALIFIED_NAME_SEPARATOR}{bare_name}"
@@ -279,8 +263,6 @@ class OtherDataSource(DataSourceBase):
                     logger.debug("No columns selected for '%s', skipping file", file_path.name)
                     continue
 
-                file_source_options = _source_options_for_file(cls.SOURCE_OPTIONS, file_config)
-
                 file_signal_raw_names: list[str] = []
                 for column_name in columns:
                     raw_name = _qualify(file_stem, column_name)
@@ -288,7 +270,7 @@ class OtherDataSource(DataSourceBase):
                         signal_obj = Signal.time_series_from_dataframe(
                             df=df,
                             raw_signal_name=column_name,
-                            source_options=file_source_options,
+                            source_options=cls.SOURCE_OPTIONS,
                             database_options_specific=file_config,
                             display_fallbacks=display_fallbacks,
                         )

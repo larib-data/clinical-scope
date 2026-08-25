@@ -95,3 +95,33 @@ class TestSnapshot:
         assert_or_update_snapshot(
             formatted_df, SNAPSHOT_DIR / self._DS / "formatted.parquet", update=update_snapshots
         )
+
+
+class TestTraceOptions:
+    """A user's trace_options block reaches the signals of a module datasource."""
+
+    @staticmethod
+    def _signals(formatted_df, cls, database_options_specific):
+        column = formatted_df.columns[0]
+        return cls._extract_signals(
+            formatted_df, {"field_display": [column], **database_options_specific}
+        )
+
+    def test_module_default_applies_without_config(self, formatted_df, mindray_respi_waves_cls):
+        signals = self._signals(formatted_df, mindray_respi_waves_cls, {})
+        assert signals
+        assert all(sig.trace.mode == "lines" for sig in signals)
+
+    def test_user_block_overrides_the_module_default(self, formatted_df, mindray_respi_waves_cls):
+        signals = self._signals(
+            formatted_df, mindray_respi_waves_cls, {"trace_options": {"mode": "lines+markers"}}
+        )
+        assert signals
+        assert all(sig.trace.mode == "lines+markers" for sig in signals)
+
+    def test_unset_keys_keep_the_module_default(self, formatted_df, mindray_respi_waves_cls):
+        """Merging, not replacing: line_width survives an override that only sets mode."""
+        signals = self._signals(
+            formatted_df, mindray_respi_waves_cls, {"trace_options": {"mode": "lines+markers"}}
+        )
+        assert all(sig.trace.line.width == 1.0 for sig in signals)

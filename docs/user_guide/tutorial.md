@@ -221,9 +221,7 @@ The plot is titled with its file's name in front — the example above appears a
 
 **Per-file timezone.** Each `other::<stem>` block may declare its own `additional_informations.timezone`, for a file exported by a device in another zone. Without it, timestamps that carry no timezone of their own are read as UTC.
 
-**Per-file trace style.** A `trace_options` block changes how that file's traces are drawn.
-Sparse, step-like data (infusion rates, hand-entered values) reads much better with visible
-points than as a bare line:
+**Per-file trace style.** A `trace_options` block changes how that file's traces are drawn — sparse, step-like data (infusion rates, hand-entered values) reads much better with visible points than as a bare line:
 
 ```json
 "other::syringe": {
@@ -232,12 +230,7 @@ points than as a bare line:
 }
 ```
 
-`mode` accepts `lines`, `markers` or `lines+markers`; `line_width`, `line_dash`, `opacity`,
-`marker_symbol` and `marker_size` are also available. Keys you leave out keep their default,
-and a key you misspell is reported when the configuration is checked. Per-signal `color`,
-`line_dash` and `visible` still live in the `signals` block and win over `trace_options`.
-In Excel, set `trace_mode`, `line_width`, `opacity` and `marker_symbol` on the sentinel
-(`*`) row instead — see [`signals` sheet](#signals-sheet).
+The same block works in any per-source section; each `other::<stem>` file carries its own, so a curated infusion log and a raw waveform export can look different. Full key list in [`trace_options` Block](#trace_options-block).
 
 **Per-file processing options.** Every file you declare with an `other::<stem>` key also gets its own box in the *Specific Options* panel, sitting alongside the device boxes rather than nested under a shared "Other" one. Each box carries that file's own `time_shift` and *Group signals by source file*, so a curated two-column export and a ninety-column raw dump can be corrected and laid out independently. Files present in the folder but not declared in `database_options` fall back to the shared "Other (generic)" box. See [patient_options.json](#patient_optionsjson).
 
@@ -623,6 +616,10 @@ source key in this file is what activates that source; removing it disables it e
         "period_resampling": 0.5,
         "priority": 1.0
     },
+    "trace_options": {
+        "mode": "lines+markers",
+        "line_width": 2.0
+    },
     "additional_informations": {
         "timezone": "Europe/Paris"
     }
@@ -640,6 +637,7 @@ source key in this file is what activates that source; removing it disables it e
 | `spectrogram` | object | `{}` | Spectrogram definitions (see [`spectrogram`](#spectrogram-block) below). |
 | `psd` | object | `{}` | Power spectral density definitions (see [`psd`](#psd-block) below). |
 | `numerics` | object | `{}` | Datasource-level defaults applied to every signal (see [`numerics`](#numerics-block-datasource-level-defaults) below). |
+| `trace_options` | object | source default | How every trace of this datasource is drawn — line, markers, opacity (see [`trace_options`](#trace_options-block) below). |
 | `additional_informations` | object | `{}` | Device-level metadata, including timezone override (see [`additional_informations`](#additional_informations-block) below). |
 
 ### Per-Signal Fields Reference (`signals.<signal_name>`) {#per-signal-fields-reference-signalssignal_name}
@@ -676,6 +674,33 @@ The `numerics` block sets **default values** for every signal of a datasource wi
 | `priority` | float | source default | Default plot priority for numerics (lower = higher on page). Overridden per signal by `signals.<name>.priority`. |
 
 > In the Excel format, these values are set via the **sentinel row** (`signal = *`).
+> See [database_options.xlsx](#database_optionsxlsx).
+
+### `trace_options` Block (Datasource-Level Trace Style) {#trace_options-block}
+
+The `trace_options` block changes how every trace of a datasource is drawn. It works in any per-source block — a device datasource, or an `other::<stem>` file scope — and each key you set replaces the datasource's built-in default while the keys you leave out keep theirs.
+
+A dense overlay reads better semi-transparent — the demo database draws the EIT impedance curves this way, so the individual regions stay legible where they cross:
+
+```json
+"eit": {
+    "trace_options": { "opacity": 0.7 }
+}
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `mode` | string | `"lines"` | `"lines"`, `"markers"` or `"lines+markers"`. |
+| `line_width` | float | source default | Line width in pixels. |
+| `line_dash` | string | `"solid"` | Line style: `"solid"`, `"dash"`, `"dot"`, `"dashdot"`. |
+| `opacity` | float | `1.0` | Trace opacity, `0`–`1`. |
+| `marker_symbol` | string | source default | Plotly marker symbol (e.g. `"circle"`, `"square"`), used when `mode` includes markers. |
+| `marker_size` | float | source default | Marker size in pixels. |
+
+A key you misspell is reported when the configuration is checked, and ignored. Per-signal `color`, `line_dash` and `visible` live in the [`signals`](#per-signal-fields-reference-signalssignal_name) block and win over anything set here — use `trace_options` for the whole datasource and `signals` for the exceptions.
+
+> In the Excel format, these values are set via the **sentinel row** (`signal = *`), in the
+> `trace_mode`, `line_width`, `opacity` and `marker_symbol` columns.
 > See [database_options.xlsx](#database_optionsxlsx).
 
 ### `spectrogram` Block {#spectrogram-block}
@@ -871,7 +896,7 @@ The **Scope** column below indicates where each field is meaningful:
 | `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. Set `no` to keep the row's label and unit on file while leaving the signal out of the plots entirely: unlike `visible`, it produces no trace and no legend entry. Useful for parking a signal you may want back later, or for describing a column that is not worth plotting (see `Comments(-)` under `fluxmed_parameters` in `example/demo_database/database_options.xlsx`). |
 | `groups` | No | Signal | Semicolon-separated group names (e.g., `Respiratory;Pressure`). Groups within one datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
 | `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. Works with `other::<stem>` datasource keys. See [`additional_informations` Block](#additional_informations-block) for which datasources support this. |
-| `trace_mode` | No | **Sentinel** | `lines`, `markers` or `lines+markers` for every trace in this datasource. Only valid in `*` rows. Works with `other::<stem>` datasource keys — e.g. a sparse infusion log reads better as `markers` than as connected `lines`. |
+| `trace_mode` | No | **Sentinel** | `lines`, `markers` or `lines+markers` for every trace in this datasource, `other::<stem>` keys included — e.g. a sparse infusion log reads better as `markers` than as connected `lines`. Only valid in `*` rows; see [`trace_options`](#trace_options-block). |
 | `line_width` | No | **Sentinel** | Line width in pixels for every trace in this datasource. Only valid in `*` rows. |
 | `opacity` | No | **Sentinel** | Trace opacity, `0`-`1`. Only valid in `*` rows. |
 | `marker_symbol` | No | **Sentinel** | Plotly marker symbol (e.g., `circle`, `square`) used when `trace_mode` includes `markers`. Only valid in `*` rows. |
