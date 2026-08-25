@@ -309,3 +309,43 @@ ANNOTATION_LIST_ROW: dict = {
     "borderBottom": "1px solid #f0f0f0",
     "fontSize": "13px",
 }
+
+# ---------------------------------------------------------------------------
+# Colour picker (annotation & group creation modals)
+# ---------------------------------------------------------------------------
+
+# No "selected" variant by design: the hex field alone records the chosen colour.
+COLOR_PRESET_SWATCH: dict = {
+    "width": "22px",
+    "height": "22px",
+    "borderRadius": "50%",
+    "cursor": "pointer",
+    "flexShrink": 0,
+}
+
+# Square and inset in the hex field, so it reads as that field's value and not a seventh preset.
+COLOR_PREVIEW_SWATCH: dict = {
+    "width": "22px",
+    "height": "22px",
+    "borderRadius": "2px",
+    "margin": "3px",
+    "flexShrink": 0,
+}
+
+# Wrapper carrying the border, so the preview swatch and the text sit in one visual control.
+COLOR_HEX_FIELD: dict = {
+    "display": "flex",
+    "alignItems": "center",
+    "border": "1px solid #ced4da",
+    "borderRadius": "4px",
+    "overflow": "hidden",
+}
+
+COLOR_HEX_INPUT: dict = {
+    "width": "80px",
+    "padding": "4px 8px 4px 2px",
+    "border": "none",
+    "outline": "none",
+    "fontSize": "12px",
+    "fontFamily": "monospace",
+}

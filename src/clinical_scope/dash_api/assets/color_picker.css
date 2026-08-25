@@ -1,0 +1,29 @@
+/* =============================================================================
+   COLOUR PICKER (annotation & group creation modals)
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   Preset Swatches
+   ----------------------------------------------------------------------------- */
+
+/* The presets carry no selected state, so hover is what tells the user they are clickable. */
+.color-preset-swatch:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+}
+
+.color-preset-swatch {
+  transition: transform 0.1s ease-in-out;
+}
+
+/* -----------------------------------------------------------------------------
+   Hex Field Validity
+   ----------------------------------------------------------------------------- */
+
+/* The browser evaluates the input's `pattern` itself, so validity needs no callback.
+   `:not(:focus)` keeps it quiet mid-typing: the warning lands on blur and clears once valid.
+   `:has()` because the border sits on the wrapper, not on the input. */
+.hex-color-field:has(> .hex-color-input:invalid:not(:focus)) {
+  border-color: #e74c3c;
+  background-color: #fdf0ef;
+}
