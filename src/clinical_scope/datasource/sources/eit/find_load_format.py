@@ -279,7 +279,7 @@ class EITDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
         (
             _list_metadata,
             _list_dynamic_images,
@@ -289,10 +289,7 @@ class EITDataSource(DataSourceBase):
         ) = _parse_eit_asc_file_list(file_path_list)
 
         df = deduplicate_then_sort_index(df)
-        df = _add_columns_percentage_for_eit(df)
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
-        return df
+        return _add_columns_percentage_for_eit(df)
 
     @classmethod
     @time_it

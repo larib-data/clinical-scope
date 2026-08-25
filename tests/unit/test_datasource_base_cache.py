@@ -48,9 +48,8 @@ def _make_fake_source(
     Build a fresh ``DataSourceBase`` subclass per test.
 
     Each test gets its own class — no shared mutable state, no reset fixture needed.
-    The fake's ``_load`` mirrors the convention every real datasource follows:
-    save to ``path_output`` iff one was passed. That convention is the calling
-    contract under test, so the fake replicates it deliberately.
+    The fake's ``_load`` only returns a frame, like every real datasource: writing the
+    parquet cache is the base class's job, and that is precisely what these tests exercise.
     """
     _source_file = source_file
 
@@ -69,9 +68,7 @@ def _make_fake_source(
             return _source_file if _source_file is not None else folder_path / "raw_data.bin"
 
         @classmethod
-        def _load(cls, file_path, path_output, **kwargs):  # noqa: ARG003
-            if path_output is not None:
-                cls._save_dataframe(fresh_df, path_output)
+        def _load(cls, file_path):  # noqa: ARG003
             return fresh_df
 
     return _FakeSource
@@ -142,6 +139,37 @@ def test_quick_load_truth_table(
         check_freq=False,
         obj="parquet on disk did not match the expected post-condition",
     )
+
+
+# ---------------------------------------------------------------------------------------------------
+# The base class owns the write: `_load` transcribes and saves nothing itself (ADR-0010)
+# ---------------------------------------------------------------------------------------------------
+def test_base_writes_the_cache_a_load_never_saves(patient_folder: Path) -> None:
+    """A `_load` that only returns a frame still leaves a readable cache behind."""
+    source = _make_fake_source(_df_v1())
+    cache_path = patient_folder / cst.FOLDER_NAME_OUTPUT / "fake_source.parquet"
+
+    df, _, _ = source._load_raw_dataframe(
+        _patient_options(patient_folder, quick_load=False), database_options={}
+    )
+
+    pd.testing.assert_frame_equal(df, _df_v1(), check_freq=False)
+    assert cache_path.is_file(), "the base class must write the cache for a saving-free _load"
+    pd.testing.assert_frame_equal(pd.read_parquet(cache_path), _df_v1(), check_freq=False)
+
+
+def test_empty_frame_writes_neither_cache_nor_output_folder(tmp_path: Path) -> None:
+    """An empty frame is not worth a cache — nor the output folder it would be written into."""
+    empty = pd.DataFrame({"col": []}, index=pd.DatetimeIndex([], tz="UTC"))
+    source = _make_fake_source(empty)
+    output_folder = tmp_path / cst.FOLDER_NAME_OUTPUT
+
+    df, _, _ = source._load_raw_dataframe(
+        _patient_options(tmp_path, quick_load=False), database_options={}
+    )
+
+    assert df.empty
+    assert not output_folder.exists(), "an empty frame must not even create the output folder"
 
 
 # ---------------------------------------------------------------------------------------------------

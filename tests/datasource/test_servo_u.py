@@ -16,7 +16,7 @@ def ds_folder(patient_full_path, servo_u_cls):
 def loaded_df(ds_folder, servo_u_cls):
     file_path = servo_u_cls._find(ds_folder)
     assert file_path is not None
-    return servo_u_cls._load(file_path, None)
+    return servo_u_cls._load(file_path)
 
 
 class TestFind:

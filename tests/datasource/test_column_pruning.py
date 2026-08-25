@@ -406,7 +406,7 @@ def _wide_frame() -> pd.DataFrame:
     )
 
 
-def _make_source(load_calls: list | None = None) -> type:
+def _make_source() -> type:
     """A datasource whose fresh `_load` returns the same wide frame the cache holds."""
 
     class _FakeCachedSource(DataSourceBase):
@@ -423,9 +423,7 @@ def _make_source(load_calls: list | None = None) -> type:
             return folder_path / "raw_data.bin"
 
         @classmethod
-        def _load(cls, file_path, path_output, **kwargs):  # noqa: ARG003
-            if load_calls is not None:
-                load_calls.append(kwargs)
+        def _load(cls, file_path):  # noqa: ARG003
             return _wide_frame()
 
     return _FakeCachedSource
@@ -449,8 +447,8 @@ class TestInspectConfiguredColumnsOnly:
     The opt-in trades the unconfigured-column rows for the memory — and nothing else.
 
     Rows stay unpruned in every case (inspect's `% retained` and raw date range are
-    comparisons against the *unwindowed* file), and the fresh-load path keeps seeing no
-    `field_display` at all, so the cache a first load writes is never narrowed by an inspect.
+    comparisons against the *unwindowed* file), and a fresh load reads every column — `_load`
+    takes no configuration, so an inspect can never narrow the cache a first load writes.
     """
 
     DB_OPTIONS = {"field_display": ["HR", "SpO2"]}
@@ -484,17 +482,6 @@ class TestInspectConfiguredColumnsOnly:
         )
         assert {column.raw_name for column in result.columns} == {"HR", "SpO2", "RR"}
         assert result.columns_pruned is False
-
-    def test_fresh_load_never_sees_field_display(self, tmp_path):
-        # Regression guard: EIT's `_load` pre-filters on field_display and caches the result,
-        # so letting the flag reach a fresh load would write a narrowed cache.
-        (tmp_path / cst.FOLDER_NAME_OUTPUT).mkdir()
-        load_calls: list = []
-        _make_source(load_calls).inspect(
-            _patient_options(tmp_path), self.DB_OPTIONS, configured_columns_only=True
-        )
-        assert load_calls, "the fresh load path should have run"
-        assert "field_display" not in load_calls[0]["database_options_specific"]
 
     @pytest.mark.parametrize("configured_columns_only", [False, True])
     def test_rows_are_never_pruned(self, cached_patient, monkeypatch, configured_columns_only):

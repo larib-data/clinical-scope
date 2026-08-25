@@ -113,15 +113,13 @@ class DataSourceBase(ABC):
 
     @classmethod
     @abstractmethod
-    def _load(
-        cls, file_path: Path | list[Path], path_output: Path | None, **kwargs
-    ) -> pd.DataFrame:
+    def _load(cls, file_path: Path | list[Path]) -> pd.DataFrame:
         """
-        Load and parse raw data file(s) into a DataFrame.
+        Transcribe the raw data file(s) into a datetime-indexed DataFrame, and nothing more.
 
-        Args:
-            path_output: Path to save loaded DataFrame for quick loading, or none if no saving
-                         needed
+        The base class writes the returned frame to the parquet cache, so per ADR-0010 no
+        option may be resolved here — a signature taking only the file path enforces it.
+        Interpretation (timezone, time shift, windowing) belongs in ``_format``.
 
         Returns:
             Loaded data, indexed by datetime.
@@ -281,20 +279,15 @@ class DataSourceBase(ABC):
         *apply_datetime_pushdown* set to ``False`` bypasses parquet row-pushdown
         (used by ``inspect()``, which needs the full raw file for date-range stats).
 
-        *configured_field_display* restores ``field_display`` into *database_options* for
-        reading — but only on branches where doing so is provably safe (a cache read, or a
-        fresh load this datasource never caches). It exists for
-        ``inspect(configured_columns_only=True)``: a narrowed ``field_display`` in front of a
-        fresh, cache-writing ``_load()`` must never reach it, since the cache it writes is
-        read back by every later run. ADR-0010 now forbids any ``_load()`` from resolving
-        ``field_display`` at all, so this is defence in depth rather than the only guard.
+        *configured_field_display* applies to the quick-load branch only: it restores a
+        narrowed ``field_display`` into *database_options* for the cache read that serves
+        ``inspect(configured_columns_only=True)``.
 
         Returns:
             (df, file_path_str, columns_pruned) on success, (None, None, False) if the file
-            was not found. ``columns_pruned`` reflects whether ``field_display`` actually
-            reached the read that ran — never inferred from the resulting frame's columns,
-            which can't tell "restricted at read time" apart from "the file only ever had
-            these columns" (a data-dependent coincidence, not pruning).
+            was not found. ``columns_pruned`` says whether the read that ran was structurally
+            restricted to ``field_display``, which only a cache read can be — a fresh
+            ``_load()`` takes no configuration and always parses every column.
             Raises exceptions for actual load errors.
 
         """
@@ -333,31 +326,19 @@ class DataSourceBase(ABC):
 
         file_path_str = str(file_path[0]) if isinstance(file_path, list) else str(file_path)
         logger.info("🔍 [%s] Loading fresh data from: %s", cls.DATASOURCE_NAME, search_folder)
-        # write_cache=False means this _load() output is never cached, so honoring
-        # field_display here can't narrow a future full read.
-        # Sources that opt out of caching (ALLOW_QUICK_LOAD=False, e.g. other) are
-        # otherwise always on this branch and could never benefit from configured_columns_only.
-        load_column_options = database_options
-        if configured_field_display is not None and not write_cache:
-            load_column_options = {
-                **database_options,
-                cst.DatabaseOptions.FIELD_DISPLAY: configured_field_display,
-            }
-        df = cls._load(
-            file_path,
-            dataframe_path if write_cache else None,
-            database_options_specific=load_column_options,
-            patient_options=patient_options if apply_datetime_pushdown else None,
-        )
+        df = cls._load(file_path)
         logger.info(
             "📥 [%s] Loaded: %d rows x %d columns.",
             cls.DATASOURCE_NAME,
             df.shape[0],
             df.shape[1],
         )
+        # An empty frame would cache a "no data" state every later quick_load run reads back.
+        if write_cache and not df.empty:
+            cls._save_dataframe(df, dataframe_path)
         if not write_cache and cls.CREATE_SOURCE_SYMLINK:
             cls._create_source_symlink(file_path, dataframe_path.parent)
-        columns_pruned = bool(load_column_options.get(cst.DatabaseOptions.FIELD_DISPLAY))
+        columns_pruned = False
         return df, file_path_str, columns_pruned
 
     @classmethod
@@ -612,7 +593,7 @@ class DataSourceBase(ABC):
         inspection metadata.
 
         Parquet caching inside ``clinical_scope_output/`` is always created automatically by
-        ``_load()`` inside ``_load_raw_dataframe()``.
+        ``_load_raw_dataframe()``.
 
         Args:
             patient_options: Patient-specific options (same as :meth:`main`).

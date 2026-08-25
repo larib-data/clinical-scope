@@ -208,12 +208,7 @@ class MindRayScopeDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(
-        cls,
-        file_path_list: list[Path],
-        path_output: Path | None,
-        **kwargs: Any,  # noqa: ARG003
-    ) -> pd.DataFrame:
+    def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
         extension_preference = options_naming.FILE_EXTENSIONS
 
         file_dict = {}
@@ -293,6 +288,4 @@ class MindRayScopeDataSource(DataSourceBase):
         if optimize_storage_dtypes:
             df = _optimize_df_types(df)
 
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
         return df

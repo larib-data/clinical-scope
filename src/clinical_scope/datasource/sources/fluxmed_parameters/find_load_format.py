@@ -28,7 +28,7 @@ class FluxmedParametersDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path) -> pd.DataFrame:
         if file_path.suffix.lower() == ".parquet":
             df = load_parquet_with_datetime_index(file_path)
         elif file_path.suffix.lower() in [".txt", ".csv"]:
@@ -107,7 +107,4 @@ class FluxmedParametersDataSource(DataSourceBase):
             )
             raise NotImplementedError(msg)
 
-        df = df[~df.index.duplicated(keep="first")]
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
-        return df
+        return df[~df.index.duplicated(keep="first")]

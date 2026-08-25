@@ -2,7 +2,6 @@ import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
@@ -140,12 +139,7 @@ class ServoUDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(
-        cls,
-        file_path_list: list[Path],
-        path_output: Path | None,
-        **kwargs: Any,  # noqa: ARG003
-    ) -> pd.DataFrame:
+    def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
         all_dfs = []
         first_file_done = False
         start_time = None
@@ -162,10 +156,7 @@ class ServoUDataSource(DataSourceBase):
             all_dfs.append(df_local)
 
         df = pd.concat(all_dfs)
-        df = deduplicate_then_sort_index(df)
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
-        return df
+        return deduplicate_then_sort_index(df)
 
     @classmethod
     @time_it
