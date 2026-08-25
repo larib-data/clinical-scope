@@ -165,19 +165,18 @@ class DataSourceBase(ABC):
         )
         shift_td = pd.Timedelta(seconds=time_shift)
         buffer = pd.Timedelta(seconds=cst.DATETIME_PUSHDOWN_BUFFER_SECONDS)
-        # A tz-naive bound is interpreted in the default *display* timezone, not LIBRARY_TZ:
-        # naive bounds are what the form used to write, and it typed them in display time.
-        # Deliberately the constant rather than the user option -- this is the load path, and
-        # extract_* output must not depend on ~/.clinical_scope/user_options.json.
-        display_timezone = cst.DISPLAY_TIMEZONE
 
+        # An aware bound passes through untouched -- the UI qualifies its bounds at Submit, so
+        # this constant is reached only by bounds that never met a user (scripts, hand-edited
+        # files). Interpreting those in the user option would make extract_* output depend on
+        # ~/.clinical_scope/user_options.json. See ADR-0011.
         def _to_aware(raw_value: str | None) -> pd.Timestamp | None:
             if not raw_value:
                 return None
             timestamp = pd.Timestamp(raw_value)
             if timestamp.tzinfo is not None:
                 return timestamp
-            return timestamp.tz_localize(display_timezone)
+            return timestamp.tz_localize(cst.NAIVE_BOUND_TZ)
 
         start_aware = _to_aware(datetime_start)
         end_aware = _to_aware(datetime_end)
@@ -426,14 +425,13 @@ class DataSourceBase(ABC):
         datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
         datetime_start = pd.Timestamp(datetime_start) if datetime_start else None
         datetime_end = pd.Timestamp(datetime_end) if datetime_end else None
-        # See _pushdown_bounds: a tz-naive bound is interpreted in the default display timezone.
-        display_timezone = cst.DISPLAY_TIMEZONE
+        # See _pushdown_bounds: only a tz-naive bound is interpreted here.
         return filter_data_by_timestamps(
             df,
             time_start=datetime_start,
             time_end=datetime_end,
             filter_date=filter_date,
-            display_timezone=display_timezone,
+            naive_bound_tz=cst.NAIVE_BOUND_TZ,
         )
 
     @classmethod

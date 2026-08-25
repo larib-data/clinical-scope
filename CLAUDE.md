@@ -53,6 +53,8 @@ Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical l
 
 **`_load` transcribes; `_format` interprets** ([ADR-0010](docs/adr/0010-load-transcribes-format-interprets.md)). `_load`'s output *is* the parquet cache, so it must be reproducible from the source file alone — no option resolved inside it. Mechanically: no `DATA_SOURCE_DEFAULT_TIMEZONE`, no `apply_timezone_to_dataframe` in any `_load`.
 
+**Datetime bounds are qualified at the boundary** ([ADR-0011](docs/adr/0011-datetime-bounds-are-qualified-at-the-boundary.md)). The UI turns naive form text into a tz-aware instant at Submit, using the user's `display_timezone` — *that* is what makes the Settings timezone govern the time window. The load path only ever localizes a bound that is still naive (script or hand-edited file), and does so with `cst.NAIVE_BOUND_TZ`, never a user option, so `extract_*` output does not depend on who is at the keyboard. `cst.NAIVE_BOUND_TZ` and `cst.DISPLAY_TIMEZONE` are separate literals on purpose; do not alias them.
+
 **Adding one**: use the `/new-datasource` skill — it is authoritative for the module layout, `options.py` constants, the loader, registration (Other stays last), example data, tests, snapshots, and the tutorial table.
 
 ## Config files

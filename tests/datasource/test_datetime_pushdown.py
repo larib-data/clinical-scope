@@ -164,10 +164,10 @@ class TestPushdownBounds:
     def test_no_window_returns_none(self, other_cls):
         assert other_cls._pushdown_bounds({}, {}, index_tz=None) is None
 
-    def test_naive_target_converts_from_display_tz_and_pads(self, other_cls, monkeypatch):
-        # 'other' source tz is UTC; pin the display default to UTC too, isolating the
+    def test_naive_target_converts_from_naive_bound_tz_and_pads(self, other_cls, monkeypatch):
+        # 'other' source tz is UTC; pin the naive-bound default to UTC too, isolating the
         # ± buffer as the only transformation left to verify.
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -178,7 +178,7 @@ class TestPushdownBounds:
         assert end == pd.Timestamp("2004-09-15 08:25:00") + buffer
 
     def test_time_shift_is_inverted(self, other_cls, monkeypatch):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -190,7 +190,7 @@ class TestPushdownBounds:
         assert end == pd.Timestamp("2004-09-15 08:25:00") - pd.Timedelta(seconds=30.0) + buffer
 
     def test_negative_time_shift_is_inverted(self, other_cls, monkeypatch):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -212,11 +212,11 @@ class TestPushdownBounds:
     ):
         """
         The exact configuration behind issue #57's bug: no materialized index tz, and a
-        per-source timezone override that differs from both the library display default and
+        per-source timezone override that differs from both the naive-bound default and
         the datasource default — must actually shift the bounds, not just take the fallback
         branch as a no-op (both prior unit tests above used UTC==UTC, hiding this).
         """
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -237,7 +237,7 @@ class TestPushdownBounds:
         assert end.tzinfo is None
 
     def test_aware_target_uses_index_tz_directly(self, other_cls, monkeypatch):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -275,7 +275,7 @@ class TestQuickLoadCachePushdownEquality:
     def test_naive_cache_pushdown_matches_disabled(
         self, servo_u_cls, patient_full_path, monkeypatch, datetime_start, datetime_end
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": datetime_start,
@@ -295,7 +295,7 @@ class TestQuickLoadCachePushdownEquality:
     def test_aware_cache_pushdown_matches_disabled_with_time_shift(
         self, mindray_respi_numerics_cls, patient_full_path, monkeypatch
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": "2004-09-15 08:12:40",
@@ -317,27 +317,27 @@ class TestQuickLoadCachePushdownEquality:
 
 class TestNaiveAwareBoundEquivalence:
     """
-    A tz-aware bound must select exactly what the equivalent naive + display_timezone
-    pair would.
+    A tz-aware bound must select exactly what the equivalent naive + cst.NAIVE_BOUND_TZ
+    pair would -- and, being already qualified, must not depend on that constant at all.
     """
 
     @pytest.mark.parametrize(
-        "datetime_start,datetime_end,display_timezone",
+        "datetime_start,datetime_end,naive_bound_tz",
         [
             ("2004-09-15 08:12:40", "2004-09-15 08:12:50", "UTC"),
             ("2004-09-15 10:12:40", "2004-09-15 10:12:50", "Europe/Paris"),
         ],
     )
-    def test_aware_bound_matches_naive_plus_display_timezone(
+    def test_aware_bound_matches_naive_plus_naive_bound_tz(
         self,
         servo_u_cls,
         patient_full_path,
         monkeypatch,
         datetime_start,
         datetime_end,
-        display_timezone,
+        naive_bound_tz,
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", display_timezone)
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", naive_bound_tz)
         naive_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": datetime_start,
@@ -346,12 +346,12 @@ class TestNaiveAwareBoundEquivalence:
         }
         df_naive = servo_u_cls.extract(naive_options, {})
 
-        # Deliberately a different library default: an aware bound must not need this to agree.
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "America/New_York")
+        # Deliberately a different default: an aware bound must not need this to agree.
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "America/New_York")
         aware_options = {
             "data_folder": str(patient_full_path),
-            "datetime_start": to_aware_display_ts(datetime_start, display_timezone),
-            "datetime_end": to_aware_display_ts(datetime_end, display_timezone),
+            "datetime_start": to_aware_display_ts(datetime_start, naive_bound_tz),
+            "datetime_end": to_aware_display_ts(datetime_end, naive_bound_tz),
             "quick_load": True,
         }
         df_aware = servo_u_cls.extract(aware_options, {})
@@ -397,7 +397,7 @@ class TestOtherParquetPushdownEquality:
     def test_pushdown_matches_disabled(
         self, other_cls, patient_difficult_path, monkeypatch, datetime_start, datetime_end
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "data_folder": str(patient_difficult_path),
             "datetime_start": datetime_start,
@@ -443,7 +443,7 @@ class TestOtherDatetimeColumnDetectionTimezoneOverride:
     def test_naive_utc_named_column_with_timezone_override_matches_disabled(
         self, other_cls, tmp_path, monkeypatch
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         other_dir = tmp_path / "other"
         other_dir.mkdir()
         file_path = other_dir / "device_export.parquet"

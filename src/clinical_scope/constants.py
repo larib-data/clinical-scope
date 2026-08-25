@@ -16,7 +16,11 @@ JUNK_FILENAME_PATTERNS = frozenset(
 )
 
 LIBRARY_TZ = "UTC"
+# Timezone plots, annotations and inspect() reports are rendered in, absent a user setting.
 DISPLAY_TIMEZONE = "Europe/Paris"
+# Timezone a tz-naive datetime_start/datetime_end patient option is interpreted in on the
+# load path. Equal to DISPLAY_TIMEZONE by convention, separate by construction: see ADR-0011.
+NAIVE_BOUND_TZ = "Europe/Paris"
 DATETIME_INDEX_NAME = "datetime_index"
 
 QUALIFIED_NAME_SEPARATOR = "::"

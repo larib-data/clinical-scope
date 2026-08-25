@@ -304,9 +304,9 @@ class TestQuickLoadCachePruning:
         assert list(out.columns) == ["HR", "SpO2", "RR"]
 
     def test_composes_row_and_column_pruning(self, servo_u_cls, tmp_path, monkeypatch):
-        # The materialized cache index is tz-aware UTC (_make_cache); pin the display default
-        # to UTC so the naive window lands inside it.
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        # The materialized cache index is tz-aware UTC (_make_cache); pin the naive-bound
+        # default to UTC so the naive window lands inside it.
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         path = _make_cache(tmp_path)
         full = pd.read_parquet(path)
         patient_options = {
@@ -486,7 +486,7 @@ class TestInspectConfiguredColumnsOnly:
     @pytest.mark.parametrize("configured_columns_only", [False, True])
     def test_rows_are_never_pruned(self, cached_patient, monkeypatch, configured_columns_only):
         # The window must cut only *after* the read, or "% retained" would always be 100%.
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         result = _make_source().inspect(
             _patient_options(
                 cached_patient,
