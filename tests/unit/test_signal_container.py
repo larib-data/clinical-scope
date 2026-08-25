@@ -183,6 +183,63 @@ class TestSignalTimeSeries:
         assert sig.data.timezone is not None
 
 
+class TestTraceOptionsPrecedence:
+    """A database_options trace_options block layers over the module's source_options."""
+
+    MODULE_OPTIONS = {"trace_options": {"mode": "lines", "line_width": 1.0}}
+
+    @staticmethod
+    def _signal(source_options=None, database_options_specific=None):
+        df = _make_df(columns=["X"])
+        return Signal.time_series_from_dataframe(
+            df,
+            "X",
+            source_options=source_options,
+            database_options_specific=database_options_specific,
+        )
+
+    def test_user_block_applies_without_any_module_default(self):
+        sig = self._signal(database_options_specific={"trace_options": {"mode": "markers"}})
+        assert sig.trace.mode == "markers"
+
+    def test_user_key_wins_over_the_module_key(self):
+        sig = self._signal(
+            source_options=self.MODULE_OPTIONS,
+            database_options_specific={"trace_options": {"line_width": 4.0}},
+        )
+        assert sig.trace.line.width == 4.0
+
+    def test_module_keys_the_user_omits_survive(self):
+        sig = self._signal(
+            source_options=self.MODULE_OPTIONS,
+            database_options_specific={"trace_options": {"line_width": 4.0}},
+        )
+        assert sig.trace.mode == "lines"
+
+    def test_unknown_keys_are_dropped_not_raised(self):
+        """The parser only warns on a typo, so the reader has to tolerate one."""
+        sig = self._signal(database_options_specific={"trace_options": {"mdoe": "markers"}})
+        assert sig.trace.mode == "lines"
+
+    def test_a_non_dict_block_is_ignored(self):
+        """Validation reports it as an error but does not abort the run."""
+        sig = self._signal(
+            source_options=self.MODULE_OPTIONS,
+            database_options_specific={"trace_options": "lines+markers"},
+        )
+        assert sig.trace.mode == "lines"
+
+    def test_per_signal_line_dash_still_wins(self):
+        """The signals block stays the last word, as the tutorial promises."""
+        sig = self._signal(
+            database_options_specific={
+                "trace_options": {"line_dash": "solid"},
+                "signals": {"X": {"line_dash": "dot"}},
+            }
+        )
+        assert sig.trace.line.dash == "dot"
+
+
 # ---------------------------------------------------------------------------
 # Signal.loop_from_signals
 # ---------------------------------------------------------------------------

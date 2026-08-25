@@ -23,9 +23,15 @@ _Avoid_: device, modality
 
 **Signal**:
 A single measured channel sampled over time from one datasource (e.g. arterial pressure, SpO₂).
-_Avoid_: field, parameter, channel, trace, series, variable
+_Avoid_: field, parameter, channel, trace (a distinct concept — see **Trace**), series, variable
 - A Signal's **raw name** is its identifier in the source data (the device's original column name); its **Label** is its human-readable display name.
 - The `field_display` and `grouped_fields` keys in a `database_options` file reference Signals **by raw name**.
+
+**Trace**:
+The drawn form of one Signal — the Plotly-level object, carrying the style it is rendered with (lines or markers, width, dash, opacity, marker symbol and size). Configured via the `trace_options` key.
+_Avoid_: curve, line, plot (a plot holds one or more Traces)
+- A Signal is the measurement; a Trace is how it is drawn. That distinction is why the styling key is `trace_options` and not `signal_options` — and why "trace" is the wrong word for a Signal itself.
+- Style set on a **Datasource** applies to every Trace it produces; per-Signal `color`, `line_dash` and `visible` in the `signals` block override it.
 
 **Loop**:
 A plot of one Signal's values against another's (X–Y) rather than against time — e.g. a pressure–volume loop. Configured via the `loop` key (which Signal pairs to pair up).
@@ -92,6 +98,7 @@ The `database_options` block of per-datasource defaults — resampling period an
 - A **Database** contains one or more **Patients**, which share its `database_options`.
 - A **Patient** contains one or more **Datasources** (one subfolder each).
 - A **Datasource** produces many **Signals**.
+- A **Signal** is drawn as one **Trace**.
 - A **Loop** is derived from two **Signals**.
 - A **Spectrogram** is derived from one **Signal**.
 - A **PSD** is derived from one or more **Signals**, overlaid on one subplot.
@@ -109,4 +116,5 @@ The `database_options` block of per-datasource defaults — resampling period an
 ## Flagged ambiguities
 
 - **"numerics"** names two unrelated things: (a) the `_numerics` suffix in datasource names (e.g. `mindray_respi_numerics`), a naming convention hinting at low-frequency data — not load-bearing; and (b) the **Numerics** config block (resampling-period + plot-priority defaults shared across a datasource's Signals). Resolution: keep the word for both; disambiguate by context — "the numerics block" vs "a `_numerics` source". High/low-frequency itself is just a datasource property, not a core distinction.
+- **"trace_options"** is one key name at two tiers: (a) the block a user writes in a `database_options` section, and (b) the block a datasource module ships in its own `options.py`. The strings are identical (`cst.DatabaseOptions.TRACE_OPTIONS` and `cst.SourceOptions.TRACE_OPTIONS`), so nothing in the data distinguishes them — the module's is the default, the user's overrides it key by key. Resolution: keep one name for one concept (**Trace** style), and say which tier when it matters — "the module default" vs "the user's block". The module tier is deliberately absent from the three **Configuration** tiers above: it is a shipped default, not something anyone configures.
 - **"process"** denotes two different **Actions**: the `process_patient_data.py` script performs **Extract** (no plots), while the UI's "Process visualization" button performs **Visualize**. Resolution: prefer the precise verbs **Inspect / Extract / Visualize**; avoid bare "process".

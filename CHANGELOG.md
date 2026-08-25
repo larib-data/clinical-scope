@@ -6,7 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **`trace_options` now applies to every datasource, not only `other::<stem>` files.** The block was accepted and validated in any `database_options` section, and the Excel sentinel row wrote it for any datasource, but only `other` ever read it — anywhere else it validated cleanly and did nothing. It now works everywhere it was already accepted.
+
+  **What changes for you:** a configuration that already sets `trace_options` (or the Excel `trace_mode` / `line_width` / `opacity` / `marker_symbol` columns) on a device datasource starts taking effect, where before it was ignored. Where a datasource ships its own trace style, your block now wins key by key over it; keys you leave unset keep the shipped value. Nothing changes for a configuration that only styled `other::<stem>` files.
 
 ---
 

@@ -434,8 +434,12 @@ class Signal:
         y_axis_title_raw = f"{name_signal} ({y_unit_name or ''})"
         y_axis_title = wrap_label(y_axis_title_raw, max_line_length=12)
 
-        # TraceOptions fields
-        trace_options_dict = source_options.get(cst.SourceOptions.TRACE_OPTIONS, {})
+        # TraceOptions fields. A malformed user block is reported by validation but not fatal,
+        # so a non-dict has to be tolerated here.
+        module_trace_options = source_options.get(cst.SourceOptions.TRACE_OPTIONS, {})
+        user_trace_raw = database_options_specific.get(cst.DatabaseOptions.TRACE_OPTIONS, {})
+        user_trace_options = user_trace_raw if isinstance(user_trace_raw, dict) else {}
+        trace_options_dict = {**module_trace_options, **user_trace_options}
         valid_keys_trace_options = {field_obj.name for field_obj in fields(TraceOptions)}
         additional_trace_options = {
             key: value
@@ -458,7 +462,7 @@ class Signal:
             display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
             **additional_plot_options,
         )
-        # line_dash from database_options takes precedence over source_options
+        # A per-signal line_dash is the last word, beating either trace_options tier.
         if line_dash_db is not None:
             additional_trace_options["line_dash"] = line_dash_db
         return TraceOptions(
