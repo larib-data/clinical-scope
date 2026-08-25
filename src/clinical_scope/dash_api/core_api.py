@@ -455,9 +455,7 @@ _annotation_group_modal = html.Div(
                             style={"fontSize": "13px", "fontWeight": "bold", "marginBottom": "4px"},
                         ),
                         _color_picker(
-                            "group-color-swatch",
-                            "group-color-input",
-                            "group-color-preview"
+                            "group-color-swatch", "group-color-input", "group-color-preview"
                         ),
                     ],
                     style={"marginBottom": "12px"},
