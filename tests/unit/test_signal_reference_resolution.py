@@ -1,5 +1,5 @@
 """
-Unit tests for wrapper._resolve_signal_references.
+Unit tests for plot_assembly._resolve_signal_references.
 
 The three-mode chain carries the whole weight of `grouped_fields`, `global.loop` and `psd`
 signal references, and `::` means two different things depending on the datasource: for most
@@ -9,8 +9,8 @@ sources a reference is `datasource::raw_name`, but an 'other' file's raw_name is
 
 import pytest
 
+from clinical_scope.plot_assembly import _resolve_signal_references
 from clinical_scope.signal_container import Metadata, Signal
-from clinical_scope.wrapper import _resolve_signal_references
 
 
 def _signal(raw_name: str, name: str, datasource_name: str) -> Signal:

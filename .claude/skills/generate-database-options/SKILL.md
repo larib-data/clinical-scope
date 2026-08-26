@@ -129,7 +129,7 @@ Use this table to guide refinements and answer user questions.
 ### Known limitations (tell the user if relevant)
 
 - ℹ️ **`global.loop`** (cross-datasource phase loops): **supported** — see
-  `wrapper.py::_resolve_signal_references`. Two signals per loop, each resolved via the
+  `plot_assembly.py::_resolve_signal_references`. Two signals per loop, each resolved via the
   3-mode chain (qualified `datasource::raw_name` → display name → raw name fallback).
   See `docs/user_guide/tutorial.md` → *Global Loops vs. Per-Source Loops*.
 - ℹ️ **Qualified signal references** (`"datasource::signal_name"`): supported in both

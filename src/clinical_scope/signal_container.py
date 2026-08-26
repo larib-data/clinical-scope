@@ -774,8 +774,8 @@ class Signal:
             line_dash=line_dash or signal.trace_options.line_dash,
         )
         return cls(
-            # Qualified rather than the bare source raw_name: wrapper.main prunes single-signal
-            # PlotGroups whose raw_name is in a global group, which would swallow the PSD too.
+            # Qualified by the PSD's own name: two entries built from one source signal with
+            # different window_s would otherwise share a raw_name as well as a display name.
             raw_name=f"{psd_name}{cst.QUALIFIED_NAME_SEPARATOR}{label or signal.raw_name}",
             name=label or signal.name,
             data=data,

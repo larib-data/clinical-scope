@@ -353,7 +353,7 @@ class TestPsdConfig:
 
     def test_psd_overlays_signals_from_two_different_files(self, tmp_path):
         """One PSD subplot may compare channels living in separate files under other/."""
-        from clinical_scope.wrapper import _build_psd_signals
+        from clinical_scope.plot_assembly import _build_psd_signals
 
         folder = tmp_path / "other"
         folder.mkdir(parents=True)

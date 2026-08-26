@@ -16,6 +16,7 @@ CLI scripts (extract / inspect / visualize) and the Python API are documented in
 ```
 src/clinical_scope/
   wrapper.py            main pipeline — visualize / extract / inspect
+  plot_assembly.py      Signals + database_options → PlotGroups (grouping, derived plots)
   signal_container.py   Signal / PlotGroup / PlotModel data models
   constants.py          global constants + option schema classes
   datasource/
@@ -41,7 +42,9 @@ src/clinical_scope/
 - **Extract** (`wrapper.extract_patient` / `batch_extract` / `extract_datasource`, also `from clinical_scope import extract_datasource, extract_patient, batch_extract`) — stop at `format`, return DataFrame(s). `save_path`/`save_folder` write explicit output, independent of the per-patient `clinical_scope_output/` parquet cache (always written; reused when `quick_load` is set).
 - **Inspect** (`wrapper.inspect`) — stop at `format`, return `list[DataSourceInspection]` (columns, point counts, time ranges). `OtherDataSource.inspect()` returns **one entry per file** (`other::<stem>`); the wrapper handles single-or-list returns.
 
-**Signal references** in `grouped_fields` and `global.loop` resolve via a 3-mode lookup in `_resolve_signal_references`: qualified `datasource::raw_name` → display name → raw-name fallback.
+**Signal references** in `grouped_fields`, `loop`, `spectrogram` and `psd` resolve via a 3-mode lookup in `plot_assembly._resolve_signal_references`: qualified `datasource::raw_name` → display name → raw-name fallback.
+
+**Config scope is desugared once, and grouping joins on signal identity** ([ADR-0013](docs/adr/0013-signal-references-are-qualified-before-assembly.md)). `assemble_plot_groups` is called once, after the datasource loop, and its first step rewrites every per-datasource reference as a qualified global one — downstream, local scope does not exist. Both config spellings stay valid; the desugaring is a property of the code, not of the file format. A signal is left out of the default one-plot-per-signal pass only when a group took *that object*, never when something merely shares its `raw_name` (unique only within a datasource).
 
 `wrapper.main`/`inspect` call an optional `progress_callback(current, total, name)` between datasources, which drives the UI progress bar.
 

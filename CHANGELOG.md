@@ -7,6 +7,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **A group in one data source no longer hides a same-named signal in another.** Grouping matched signals by name across the whole run, but a name like `HR`, `SpO2` or `ABP` is only unique *within* one source. So grouping `HR` under your monitor could silently drop the ventilator's `HR` from the page — no error, just a missing plot, and which one disappeared depended on the order the sources happened to load in. Groups now take the signals they actually name, and nothing else.
+
+- **A group that finds only one of its signals now keeps the group's name.** A group configured over four pressures but resolving to one used to be titled after that surviving signal — so the same configuration gave a differently-named panel depending on how much data a recording happened to contain. It is now always titled after the group.
+
+- **`loop`, `spectrogram` and `psd` written inside a data source's own section accept the same signal references as `global` ones.** They matched raw column names only; a display name (the `label` you configured) silently matched nothing. They now resolve display names too. A loop given other than exactly two signals is reported as a skipped plot instead of an unexplained error in the log.
+
 - **`trace_options` now applies to every datasource, not only `other::<stem>` files.** The block was accepted and validated in any `database_options` section, and the Excel sentinel row wrote it for any datasource, but only `other` ever read it — anywhere else it validated cleanly and did nothing. It now works everywhere it was already accepted.
 
   **What changes for you:** a configuration that already sets `trace_options` (or the Excel `trace_mode` / `line_width` / `opacity` / `marker_symbol` columns) on a device datasource starts taking effect, where before it was ignored. Where a datasource ships its own trace style, your block now wins key by key over it; keys you leave unset keep the shipped value. Nothing changes for a configuration that only styled `other::<stem>` files.
