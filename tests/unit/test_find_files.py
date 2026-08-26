@@ -12,7 +12,7 @@ with all disambiguation tiers:
 
 from pathlib import Path
 
-from clinical_scope.io.file_utils import find_files
+from clinical_scope.io.discovery import find_files
 
 # ---------------------------------------------------------------------------
 # Helpers

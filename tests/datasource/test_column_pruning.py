@@ -27,11 +27,8 @@ import pytest
 
 import clinical_scope.constants as cst
 from clinical_scope.datasource.base import DataSourceBase
-from clinical_scope.io.file_utils import (
-    _pruned_columns,
-    get_column_name_from_pattern,
-    read_parquet_pruned,
-)
+from clinical_scope.io.column_patterns import _pruned_columns, get_column_name_from_pattern
+from clinical_scope.io.parquet_pruning import read_cache_pruned, read_parquet_pruned
 
 OTHER_DIR = (
     Path(__file__).resolve().parent.parent
@@ -235,10 +232,9 @@ class TestReadParquetPrunedNonTemporalIndex:
     def test_pruned_read_equals_full_subset(self, tmp_path, field_display):
         path = _make_non_temporal_index_parquet(tmp_path)
         full = pd.read_parquet(path)
-        actual = read_parquet_pruned(
+        actual = read_cache_pruned(
             path,
             select_columns=lambda names: _pruned_columns(field_display, names),
-            index_is_time_axis=True,
         )
         assert list(actual.columns) == _expected_cols(full, field_display)
         # pandas restores the index without it ever being named in columns=, so unlike the
@@ -259,10 +255,9 @@ class TestReadParquetPrunedNonTemporalIndex:
         """A RangeIndex file has no index column to vouch for, so detection still runs."""
         path = _make_nonmaterialized_parquet(tmp_path)
         full = pd.read_parquet(path)
-        actual = read_parquet_pruned(
+        actual = read_cache_pruned(
             path,
             select_columns=lambda names: _pruned_columns(["pre_a"], names),
-            index_is_time_axis=True,
         )
         assert set(actual.columns) == {"timestamp", "pre_a"}
         pd.testing.assert_frame_equal(actual, full[list(actual.columns)])

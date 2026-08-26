@@ -26,7 +26,7 @@ from clinical_scope.datasource.sources.mindray_scope import (
 )
 from clinical_scope.datasource.sources.other import find_load_format as _other
 from clinical_scope.datasource.sources.servo_u import find_load_format as _servo_u
-from clinical_scope.io.file_utils import (
+from clinical_scope.io.discovery import (
     folder_has_real_content,
     folder_name_matches_keywords,
     is_junk_file,

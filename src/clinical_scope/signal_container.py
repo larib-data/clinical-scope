@@ -19,7 +19,8 @@ from clinical_scope.datasource.formatting.timezone import (
     resolve_display_timezone,
     to_float_seconds,
 )
-from clinical_scope.io.file_utils import get_column_name_from_pattern
+from clinical_scope.io.column_patterns import get_column_name_from_pattern
+from clinical_scope.io.export import print_out_figure
 from clinical_scope.io.paths import get_visualization_path
 
 logger = logging.getLogger(__name__)
@@ -1250,25 +1251,3 @@ def wrap_label(text: str, max_line_length: int = 12, break_chars: str = r"[ \-_]
         lines.append(current_line.strip())
 
     return "<br>".join(lines)
-
-
-# ==================================================================================================
-def print_out_figure(path_output: Path, fig_list: list, self_contained: bool = False) -> None:
-    """
-    Export Plotly figures to a single HTML file.
-
-    With *self_contained*, plotly.js is embedded once (in the first figure; the rest reuse it)
-    so the file renders on a machine with no network — at ~3.5 MB. Otherwise it is fetched
-    from a CDN, which keeps the file small but shows a blank page offline.
-    """
-    path_output.parent.mkdir(parents=True, exist_ok=True)
-    with Path.open(path_output, "w") as file_out:
-        for figure_index, fig in enumerate(fig_list):
-            if self_contained:
-                # Embedding the ~3.5 MB bundle once per file, not once per figure.
-                include_plotlyjs = (
-                    cst.HtmlExport.INLINE if figure_index == 0 else cst.HtmlExport.OMIT
-                )
-            else:
-                include_plotlyjs = cst.HtmlExport.CDN
-            file_out.write(fig.to_html(full_html=False, include_plotlyjs=include_plotlyjs))

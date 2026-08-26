@@ -10,11 +10,12 @@ Covers the detection pipeline:
 """
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
-from clinical_scope.io.file_utils import (
-    load_csv_with_datetime_index,
-    load_parquet_with_datetime_index,
+from clinical_scope.io.time_axis import (
+    _is_numeric_pa_type,
+    detect_time_axis_in_frame,
     set_datetime_index,
 )
 
@@ -196,7 +197,7 @@ class TestLoaders:
         )
         path = tmp_path / "data.parquet"
         df.to_parquet(path)
-        result = load_parquet_with_datetime_index(path)
+        result = set_datetime_index(pd.read_parquet(path))
         assert isinstance(result.index, pd.DatetimeIndex)
         assert list(result.columns) == ["value"]
 
@@ -204,7 +205,7 @@ class TestLoaders:
         df = pd.DataFrame({"timestamp": dt_strings(10), "value": range(10)})
         path = tmp_path / "data.parquet"
         df.to_parquet(path)
-        result = load_parquet_with_datetime_index(path)
+        result = set_datetime_index(pd.read_parquet(path))
         assert isinstance(result.index, pd.DatetimeIndex)
         assert result.index.name == "timestamp"
 
@@ -212,7 +213,7 @@ class TestLoaders:
         df = pd.DataFrame({"acquisition_time": dt_strings(10), "value": range(10)})
         path = tmp_path / "data.csv"
         df.to_csv(path, index=False)
-        result = load_csv_with_datetime_index(path)
+        result = set_datetime_index(pd.read_csv(path))
         assert isinstance(result.index, pd.DatetimeIndex)
         assert result.index.name == "acquisition_time"
 
@@ -221,7 +222,7 @@ class TestLoaders:
         path = tmp_path / "data.csv"
         df.to_csv(path, index=False)
         with pytest.raises(ValueError, match="No datetime column detected"):
-            load_csv_with_datetime_index(path)
+            set_datetime_index(pd.read_csv(path))
 
 
 # ===========================================================================
@@ -446,3 +447,44 @@ class TestUtcAutoLocalization:
         df = pd.DataFrame({"timestamp": dt_strings(10), "value": range(10)})
         result = set_datetime_index(df)
         assert result.index.tz is None
+
+
+class TestNumericTypeClassificationAgreement:
+    """
+    Tripwire for a code-review finding on issue #57: schema-only detection
+    (`_is_numeric_pa_type`, pyarrow-type-based) and full-frame detection
+    (`detect_time_axis_in_frame`, `pd.api.types.is_numeric_dtype`-based) each decide
+    independently whether a column is "numeric" and should be deferred to the epoch tier.
+    If they ever disagree on a dtype that also passes datetime-content validation, the
+    pushdown fast-path and the full unfiltered read could pick *different* datetime
+    columns — silently wrong filter results, not an error.
+
+    This pins today's known-good agreement so a future pandas/pyarrow upgrade that shifts
+    either classification is caught here first, rather than downstream as a silent mismatch.
+    """
+
+    # Every dtype that can plausibly appear as a real clinical parquet column.
+    NUMERIC_TYPES = [pa.int32(), pa.int64(), pa.float32(), pa.float64()]
+    NON_NUMERIC_TYPES = [pa.string(), pa.timestamp("ns"), pa.timestamp("ns", tz="UTC")]
+
+    @pytest.mark.parametrize("pa_type", NUMERIC_TYPES)
+    def test_numeric_types_agree(self, pa_type):
+        assert _is_numeric_pa_type(pa_type) is True
+        assert pd.api.types.is_numeric_dtype(pa_type.to_pandas_dtype()) is True
+
+    @pytest.mark.parametrize("pa_type", NON_NUMERIC_TYPES)
+    def test_non_numeric_types_agree(self, pa_type):
+        assert _is_numeric_pa_type(pa_type) is False
+        assert pd.api.types.is_numeric_dtype(pa_type.to_pandas_dtype()) is False
+
+    def test_known_bool_divergence_is_unchanged(self):
+        """
+        The one known gap (code-review finding, deliberately not fixed): schema-only
+        treats bool as non-numeric, pandas treats it as numeric. Harmless today because
+        both paths still reject a bool column as a datetime candidate (schema-only fails
+        string-parse; full-frame fails the epoch-ns year-range check) — but if this
+        assertion ever starts failing, the two paths' agreement has shifted and
+        `_is_numeric_pa_type` should be revisited.
+        """
+        assert _is_numeric_pa_type(pa.bool_()) is False
+        assert pd.api.types.is_numeric_dtype(pa.bool_().to_pandas_dtype()) is True

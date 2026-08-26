@@ -28,13 +28,10 @@ from clinical_scope.datasource.inspection import (
     _column_infos,
 )
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import (
-    find_files,
-    folder_name_matches_keywords,
-    make_column_selector,
-    read_parquet_pruned,
-    save_df,
-)
+from clinical_scope.io.column_patterns import make_column_selector
+from clinical_scope.io.discovery import find_files, folder_name_matches_keywords
+from clinical_scope.io.export import save_df
+from clinical_scope.io.parquet_pruning import read_cache_pruned
 from clinical_scope.io.paths import get_datasource_cache_path
 from clinical_scope.signal_container import DisplayFallbacks, Signal
 
@@ -255,13 +252,10 @@ class DataSourceBase(ABC):
         """
         database_options_specific = database_options_specific or {}
 
-        return read_parquet_pruned(
+        return read_cache_pruned(
             path_dataframe,
             compute_bounds=cls._make_bounds_computer(patient_options, database_options_specific),
             select_columns=make_column_selector(database_options_specific),
-            # A cache is a file we wrote, so its index is the time axis by construction whatever
-            # its dtype (EIT's is float64 fractional days). No other caller may claim that.
-            index_is_time_axis=True,
         )
 
     @classmethod
@@ -596,7 +590,7 @@ class DataSourceBase(ABC):
         Args:
             patient_options: Patient-specific options (same as :meth:`main`).
             save_path: If given, save the formatted DataFrame to this path using
-                :func:`io.file_utils.save_df` (supports ``.csv`` and ``.parquet``).
+                :func:`io.export.save_df` (supports ``.csv`` and ``.parquet``).
 
         Returns:
             Formatted ``pd.DataFrame``, or ``None`` if the file was not found or

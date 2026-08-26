@@ -95,7 +95,7 @@ class DatetimeColumnDetection:
 
 
 class ParquetPushdownKind:
-    """How a detected parquet datetime column can carry a row predicate (see io/file_utils)."""
+    """How a detected parquet datetime column can carry a row predicate (see io/parquet_pruning)."""
 
     TIMESTAMP = "timestamp"  # real timestamp column — bounds filter it directly
     EPOCH_NS = "epoch_ns"  # numeric nanoseconds since epoch — bounds convert to int first

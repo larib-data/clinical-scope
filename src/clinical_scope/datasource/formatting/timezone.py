@@ -371,13 +371,3 @@ def _date_range(df: pd.DataFrame) -> tuple[str, str] | None:
         return (fmt_ts(df.index.min()), fmt_ts(df.index.max()))
     except Exception:  # noqa: BLE001
         return None
-
-
-def _first_last_timestamp(df: pd.DataFrame, column: str) -> tuple[str | None, str | None]:
-    """Return (first, last) compact timestamp strings for valid (non-NaN) values in a column."""
-    if column not in df.columns:
-        return None, None
-    valid_index = df.index[df[column].notna()]
-    if valid_index.empty:
-        return None, None
-    return fmt_ts(valid_index.min()), fmt_ts(valid_index.max())

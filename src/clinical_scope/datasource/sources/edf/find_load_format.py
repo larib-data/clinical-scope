@@ -9,7 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.edf.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import deduplicate_then_sort_index
+from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 

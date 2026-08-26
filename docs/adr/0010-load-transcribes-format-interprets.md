@@ -76,3 +76,7 @@ The rule is now carried by the signature. `_load(file_path)` takes the file and 
 The `configured_field_display` guard the Consequences flagged for removal is gone — the *guard*, not the parameter. The fresh-load branch that restored `field_display` for non-caching sources could never fire under this rule and has been deleted; the parameter survives on the quick-load branch, where it still prunes the cache read that serves `inspect(configured_columns_only=True)`.
 
 One small behaviour note: the base declines to write a cache for an empty frame, and does not create the output folder for one either. Four sources' early returns already skipped the save for that reason; the rule is now uniform and stated once.
+
+## Update — 2026-08-26
+
+The cache's provenance is now expressed by which function a caller reaches for. `io/file_utils.py` split along its concerns — `time_axis`, `parquet_pruning`, `discovery`, `column_patterns`, `export` — and the `index_is_time_axis` flag that carried this ADR's guarantee became a second front door: `read_cache_pruned` for a file we wrote, `read_parquet_pruned` for one we did not. "No other caller may claim that" was a comment at the call site; it is now the absence of any way to say it. The path cited in the Consequences above, `io/file_utils.py:568-571`, is today `_pruning_plan` in `io/parquet_pruning.py`.

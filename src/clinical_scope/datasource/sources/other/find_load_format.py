@@ -9,13 +9,10 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.other.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.inspection import DataSourceInspection
-from clinical_scope.io.file_utils import (
-    deduplicate_then_sort_index,
-    make_column_selector,
-    read_parquet_pruned,
-    set_datetime_index,
-)
+from clinical_scope.io.column_patterns import make_column_selector
+from clinical_scope.io.parquet_pruning import read_parquet_pruned
 from clinical_scope.io.paths import get_output_folder
+from clinical_scope.io.time_axis import deduplicate_then_sort_index, set_datetime_index
 from clinical_scope.signal_container import (
     DisplayFallbacks,
     Signal,

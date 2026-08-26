@@ -8,7 +8,7 @@ datasource folder from one holding real data.
 
 from pathlib import Path
 
-from clinical_scope.io.file_utils import folder_has_real_content, is_junk_file
+from clinical_scope.io.discovery import folder_has_real_content, is_junk_file
 
 
 def create(tmp_path: Path, *names: str) -> list[Path]:

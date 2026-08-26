@@ -8,7 +8,7 @@ copy-skipping when the index is already unique / already sorted.
 import numpy as np
 import pandas as pd
 
-from clinical_scope.io.file_utils import deduplicate_then_sort_index
+from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 
 def test_already_sorted_and_unique_is_returned_without_copying():

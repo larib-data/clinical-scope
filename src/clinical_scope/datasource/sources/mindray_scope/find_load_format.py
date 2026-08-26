@@ -10,7 +10,7 @@ from defusedxml.ElementTree import parse as parse_xml
 import clinical_scope.datasource.sources.mindray_scope.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import deduplicate_then_sort_index
+from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
