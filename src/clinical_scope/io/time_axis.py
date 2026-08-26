@@ -189,12 +189,14 @@ def _sample_parquet_columns(parquet_file: pq.ParquetFile, columns: list[str]) ->
     ``SAMPLE_MIN_GROUPS`` are sampled even if the budget alone would pick fewer (huge row
     groups), so detection always sees two independent places.
     """
+    # ignore_metadata keeps a materialized index column addressable by name: pandas metadata
+    # would restore it as the frame's index, and a candidate can be exactly that column.
     parquet_metadata = parquet_file.metadata
     row_group_count = parquet_metadata.num_row_groups
     detection_constants = cst.DatetimeColumnDetection
     max_row_decoded = detection_constants.SAMPLE_MAX_ROW_DECODED
     if row_group_count <= 1 or parquet_metadata.num_rows <= max_row_decoded:
-        return parquet_file.read(columns=columns).to_pandas()
+        return parquet_file.read(columns=columns).to_pandas(ignore_metadata=True)
 
     rows_per_group = parquet_metadata.row_group(0).num_rows
     budget_groups = max(1, max_row_decoded // rows_per_group)
@@ -213,7 +215,7 @@ def _sample_parquet_columns(parquet_file: pq.ParquetFile, columns: list[str]) ->
         parquet_file.read_row_group(group_index, columns=columns).slice(0, rows_per_block)
         for group_index in indices
     ]
-    return pa.concat_tables(tables).to_pandas()
+    return pa.concat_tables(tables).to_pandas(ignore_metadata=True)
 
 
 def detect_time_axis_in_parquet(path: Path) -> DetectedTimeAxis | None:

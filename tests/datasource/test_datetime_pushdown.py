@@ -151,6 +151,95 @@ class TestReadParquetWithDatetimePushdownLowLevel:
 
 
 # ---------------------------------------------------------------------------
+# Pruning decisions, observed through the two readers
+# ---------------------------------------------------------------------------
+
+
+class TestPruningDecisionsThroughTheReader:
+    """
+    What each pruning decision does to the frame a caller receives.
+
+    Every expectation is an independent full read plus a plain pandas slice -- never the
+    library's own resolution replayed -- so a wrong decision shows up as wrong data rather
+    than as agreement with itself.
+    """
+
+    @staticmethod
+    def _detection_parquet(tmp_path: Path) -> Path:
+        """RangeIndex file: the time axis is a column, so detection has to find it."""
+        path = tmp_path / "detected.parquet"
+        pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2020-01-01", periods=50, freq="1min"),
+                "pre_a": range(50),
+                "other": range(50),
+            }
+        ).to_parquet(path, index=False)
+        return path
+
+    @staticmethod
+    def _float_index_parquet(tmp_path: Path) -> Path:
+        """EIT-shaped: a stored index that is the time axis but is not range-comparable."""
+        path = tmp_path / "float_index.parquet"
+        index = pd.Index([minute / 1440 for minute in range(60)], name="Time")
+        pd.DataFrame({"Global": range(60), "Local 1": range(60, 120)}, index=index).to_parquet(path)
+        return path
+
+    def test_time_axis_survives_a_selection_that_omits_it(self, tmp_path):
+        """Dropping the axis would strand the frame with no index to set downstream."""
+        path = self._detection_parquet(tmp_path)
+        actual = read_parquet_pruned(path, select_columns=lambda _names: ["pre_a"])
+        assert "timestamp" in actual.columns
+        pd.testing.assert_frame_equal(actual, pd.read_parquet(path)[list(actual.columns)])
+
+    def test_unresolvable_axis_reads_every_column(self, tmp_path):
+        """With no detectable axis there is nothing to protect, so pruning is declined."""
+        path = tmp_path / "no_axis.parquet"
+        pd.DataFrame({"pre_a": range(10), "other": range(10)}).to_parquet(path, index=False)
+        actual = read_parquet_pruned(path, select_columns=lambda _names: ["pre_a"])
+        pd.testing.assert_frame_equal(actual, pd.read_parquet(path))
+
+    def test_column_pruning_does_not_need_a_window(self, tmp_path):
+        """The two prunings are orthogonal -- the common case is a wide file and no window."""
+        path = self._detection_parquet(tmp_path)
+        full = pd.read_parquet(path)
+        actual = read_parquet_pruned(
+            path, compute_bounds=lambda _tz: None, select_columns=lambda _names: ["pre_a"]
+        )
+        assert "other" not in actual.columns
+        assert len(actual) == len(full)
+
+    def test_epoch_column_window_matches_a_plain_slice(self, tmp_path):
+        """A numeric epoch axis needs integer bounds on disk; wrong types read wrong rows."""
+        path = tmp_path / "epoch.parquet"
+        stamps = pd.date_range("2020-01-01", periods=50, freq="1min")
+        pd.DataFrame(
+            {"epoch": stamps.as_unit("ns").astype("int64"), "value": range(50)}
+        ).to_parquet(path, index=False)
+        start, end = stamps[10], stamps[20]
+
+        actual = read_parquet_pruned(path, compute_bounds=lambda _tz: (start, end))
+
+        full = pd.read_parquet(path)
+        as_time = pd.to_datetime(full["epoch"], unit="ns")
+        expected = full[(as_time >= start) & (as_time <= end)]
+        pd.testing.assert_frame_equal(
+            actual.reset_index(drop=True), expected.reset_index(drop=True)
+        )
+        assert 0 < len(actual) < len(full)
+
+    def test_stored_non_temporal_index_is_read_not_rejected(self, tmp_path):
+        """
+        Regression: detection samples a materialized index column by name. Restoring pandas
+        metadata would turn it back into the frame's index mid-detection and raise KeyError,
+        so a plain parquet with a float index used to crash instead of declining to prune.
+        """
+        path = self._float_index_parquet(tmp_path)
+        actual = read_parquet_pruned(path, select_columns=lambda _names: ["Global"])
+        pd.testing.assert_frame_equal(actual, pd.read_parquet(path))
+
+
+# ---------------------------------------------------------------------------
 # _pushdown_bounds: conservative-loose bounds computation (base.py)
 # ---------------------------------------------------------------------------
 
