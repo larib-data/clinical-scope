@@ -4,7 +4,6 @@ from dash import dcc, html
 
 import clinical_scope.constants as cst
 from clinical_scope.dash_api import ui_components
-from clinical_scope.dash_api.helper_api import iter_user_option_fields
 from clinical_scope.dash_api.ui_components import (
     build_ui_and_schema_registry,
     dash_widget_factory,
@@ -12,6 +11,7 @@ from clinical_scope.dash_api.ui_components import (
     to_widget_value,
 )
 from clinical_scope.dash_api.validation import validate_value
+from clinical_scope.user_options import iter_fields
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -124,7 +124,7 @@ class TestSectionHeaders:
             cst.UserOptions, "user_options", id_type="user-option"
         )
         built = {component_id for component_id, _ in _widgets(container)}
-        assert built == {f"user_options.{field.NAME}" for field in iter_user_option_fields()}
+        assert built == {f"user_options.{field.NAME}" for field in iter_fields()}
 
     def test_display_timezone_callback_id_matches_a_real_widget(self):
         """
@@ -141,7 +141,7 @@ class TestSectionHeaders:
 
     def test_every_declared_section_is_ranked(self):
         """A section missing from SECTION_ORDER would silently sort to the top."""
-        declared = {getattr(schema, "SECTION", None) for schema in iter_user_option_fields()}
+        declared = {getattr(schema, "SECTION", None) for schema in iter_fields()}
         assert declared <= set(cst.UserOptions.SECTION_ORDER)
 
 

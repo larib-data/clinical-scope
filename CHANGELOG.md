@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file.
 
   **What changes for you:** a code pasted without its leading `#` is accepted, a malformed one is flagged as you leave the field, and a colour that is not a valid six-digit hex now falls back to the default instead of being written into the annotation file as-is.
 
+- **A hand-edited `~/.clinical_scope/user_options.json` is now checked when it loads.** Settings were only validated as you typed them into the Settings modal, so a file edited by hand — or one holding a value from an older version — could carry a subplot height of `99999`, a palette that no longer exists, or a misspelled timezone, and reach the app unchecked. Each such value now falls back to its default and says which one it was in the log, and a setting stored under a name the app no longer knows is reported rather than dropped in silence.
+
+  **What changes for you:** the Settings modal also refuses a spectrogram colour range whose minimum is not below its maximum — both bounds snap back to their defaults as you save, instead of the pair being stored and quietly corrected at plot time.
+
 ---
 
 ## [1.1.0] — 2026-08-24
