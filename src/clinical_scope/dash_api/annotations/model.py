@@ -2,21 +2,32 @@
 Annotation data model.
 
 An Annotation represents a user-created mark on a plot: a time event (vertical
-line), a time window (shaded rectangle), or a point (arrow + label).
+line), a time window (shaded rectangle), or a point (arrow + label).  It is
+serialisable to a plain dict so it can be stored in a dcc.Store and written to JSON.
 
-Each Annotation is serialisable to a plain dict so it can be stored in a
-dcc.Store and written to JSON.
+An AnnotationSet is an immutable collection of them, and a Group is a set of annotations
+sharing a ``group_id``.  Groups are never persisted (see :mod:`.io`): a group exists only as
+the annotations that carry its id, and its name, colour, type and scope are read off the
+first of them.  That derivation is defined here, once, rather than at each call site.
+
+Nothing here imports Dash: a callback hydrates the store's list of dicts into an
+AnnotationSet, asks a question or produces a modified copy, and serialises back out.
+The set itself is never stored — ``dcc.Store`` holds JSON only.
 """
 
 from __future__ import annotations
 
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import clinical_scope.constants as cst
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _now_iso() -> str:
@@ -112,6 +123,10 @@ class Annotation:
                                for loop-plot points where per-point timing is available.
     created_at
         ISO datetime string of creation time.
+    extra
+        Keys present in the source dict that this class does not own, kept verbatim so a
+        hand-written or externally generated ``annotations.json`` survives a round-trip
+        through the app (ADR-0012).
 
     """
 
@@ -128,10 +143,46 @@ class Annotation:
     patient: str | None = None
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(default_factory=_now_iso)
+    extra: dict = field(default_factory=dict)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        annotation_type: AnnotationType,
+        plot_name: str,
+        data: dict,
+        is_global: bool = False,
+        subplot_name: str | None = None,
+        **kwargs,
+    ) -> Annotation:
+        """
+        Build a *new* annotation, applying the creation-time defaults for its type.
+
+        Deserialisation must not come through here: :meth:`from_dict` reproduces a stored
+        annotation verbatim, so a point whose label the user explicitly un-hid loads back un-hidden.
+        """
+        if annotation_type is AnnotationType.POINT:
+            # A point is anchored to one (x, y) inside a single subplot, so it can never be
+            # global, and its label starts hidden so the dot marker alone shows.
+            is_global = False
+            kwargs.setdefault("label_hidden", True)
+        return cls(
+            type=annotation_type,
+            plot_name=plot_name,
+            data=data,
+            subplot_name=None if is_global else subplot_name,
+            **kwargs,
+        )
 
     def to_dict(self) -> dict:
-        """Serialise to a JSON-safe dict."""
+        """
+        Serialise to a JSON-safe dict.
+
+        Unowned keys go first so a known field can never be shadowed by a stale one in `extra`.
+        """
         return {
+            **self.extra,
             "id": self.id,
             "type": self.type.value,
             "label": self.label,
@@ -164,4 +215,159 @@ class Annotation:
             trace_metadata=annotation_dict.get("trace_metadata"),
             label_hidden=annotation_dict.get("label_hidden", False),
             created_at=annotation_dict.get("created_at", _now_iso()),
+            extra={
+                key: value
+                for key, value in annotation_dict.items()
+                if key not in _OWNED_ANNOTATION_KEYS
+            },
+        )
+
+
+# Derived from the dataclass rather than restated, so a promoted field stops landing in `extra`
+# on its own.  `extra` itself is not a serialised key.
+_OWNED_ANNOTATION_KEYS: frozenset[str] = frozenset(
+    annotation_field.name for annotation_field in fields(Annotation)
+) - {"extra"}
+
+
+@dataclass(frozen=True)
+class Group:
+    """
+    A set of annotations sharing a ``group_id``, plus the metadata derived from its first member.
+
+    Always holds at least one annotation: a group with no members cannot be derived, and so
+    cannot be represented.
+    """
+
+    id: str
+    name: str
+    color: str
+    type: AnnotationType
+    is_global: bool
+    annotations: list[Annotation]
+
+    @property
+    def is_hidden(self) -> bool:
+        """Whether every member's label is hidden — the state the group's eye icon shows."""
+        return all(annotation.label_hidden for annotation in self.annotations)
+
+    def __len__(self) -> int:
+        return len(self.annotations)
+
+
+class AnnotationSet:
+    """An ordered, immutable collection of annotations. Every mutator returns a new set."""
+
+    def __init__(self, annotations: list[Annotation] | tuple[Annotation, ...] = ()) -> None:
+        self._annotations: tuple[Annotation, ...] = tuple(annotations)
+
+    # ----------------------------------------------------------------------------------------
+    # Boundaries
+    # ----------------------------------------------------------------------------------------
+
+    @classmethod
+    def from_dicts(cls, annotation_dicts: list[dict] | None) -> AnnotationSet:
+        """Hydrate from a ``dcc.Store`` payload, tolerating the ``None`` of an untouched store."""
+        return cls([Annotation.from_dict(item) for item in (annotation_dicts or [])])
+
+    def to_dicts(self) -> list[dict]:
+        """Serialise back to a JSON-safe list for a ``dcc.Store`` payload."""
+        return [annotation.to_dict() for annotation in self._annotations]
+
+    @property
+    def annotations(self) -> list[Annotation]:
+        """The annotations, in order."""
+        return list(self._annotations)
+
+    def __iter__(self) -> Iterator[Annotation]:
+        return iter(self._annotations)
+
+    def __len__(self) -> int:
+        return len(self._annotations)
+
+    # ----------------------------------------------------------------------------------------
+    # Derivation
+    # ----------------------------------------------------------------------------------------
+
+    def groups(self) -> list[Group]:
+        """Derive the groups, in first-seen order, each carrying its members in creation order."""
+        members: dict[str, list[Annotation]] = {}
+        metadata: dict[str, Annotation] = {}
+        for annotation in self._annotations:
+            if not annotation.group_id:
+                continue
+            if annotation.group_id not in members:
+                members[annotation.group_id] = []
+                metadata[annotation.group_id] = annotation
+            members[annotation.group_id].append(annotation)
+
+        return [
+            Group(
+                id=group_id,
+                name=first.group_name or "",
+                color=first.color,
+                type=first.type,
+                is_global=first.subplot_name is None,
+                annotations=members[group_id],
+            )
+            for group_id, first in metadata.items()
+        ]
+
+    def group(self, group_id: str) -> Group | None:
+        """Return the group with this id, or ``None`` if no annotation carries it."""
+        return next((group for group in self.groups() if group.id == group_id), None)
+
+    def ungrouped(self) -> list[Annotation]:
+        """Annotations belonging to no group, in order."""
+        return [annotation for annotation in self._annotations if not annotation.group_id]
+
+    # ----------------------------------------------------------------------------------------
+    # Mutators — each returns a new set, leaving this one untouched
+    # ----------------------------------------------------------------------------------------
+
+    def with_added(self, annotation: Annotation) -> AnnotationSet:
+        """Append an annotation to the end of the set."""
+        return AnnotationSet([*self._annotations, annotation])
+
+    def without(self, annotation_id: str) -> AnnotationSet:
+        """Drop the annotation with this id."""
+        return AnnotationSet(
+            [annotation for annotation in self._annotations if annotation.id != annotation_id]
+        )
+
+    def without_group(self, group_id: str) -> AnnotationSet:
+        """Drop every annotation belonging to this group."""
+        return AnnotationSet(
+            [annotation for annotation in self._annotations if annotation.group_id != group_id]
+        )
+
+    def with_label_toggled(self, annotation_id: str) -> AnnotationSet:
+        """Flip ``label_hidden`` on the annotation with this id."""
+        return AnnotationSet(
+            [
+                replace(annotation, label_hidden=not annotation.label_hidden)
+                if annotation.id == annotation_id
+                else annotation
+                for annotation in self._annotations
+            ]
+        )
+
+    def with_group_labels_toggled(self, group_id: str) -> AnnotationSet:
+        """
+        Flip a whole group's labels to the state its eye icon is not showing.
+
+        Pairing the target with :attr:`Group.is_hidden` here is what keeps the icon and the
+        button it sits on from drifting apart.
+        """
+        group = self.group(group_id)
+        if group is None:
+            return self
+        target_hidden = not group.is_hidden
+        return AnnotationSet(
+            [
+                replace(annotation, label_hidden=target_hidden)
+                if annotation.group_id == group_id
+                else annotation
+                for annotation in self._annotations
+            ]
         )
