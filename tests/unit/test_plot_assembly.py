@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from clinical_scope import constants as cst
 from clinical_scope.database_options_parser import normalize_database_options
 from clinical_scope.plot_assembly import assemble_plot_groups
 from clinical_scope.signal_container import (
@@ -109,7 +108,7 @@ class TestFileNamespacesAreFlattened:
 
     @staticmethod
     def _files(**per_file: dict) -> dict:
-        return {"other": {cst.DatabaseOptions.FILES: per_file}}
+        return {"other": {"files": per_file}}
 
     def test_a_per_file_group_takes_the_file_s_own_columns(self, two_files):
         options = self._files(waves={"grouped_fields": {"Pressures": ["art", "paw"]}})
@@ -149,7 +148,7 @@ class TestFileNamespacesAreFlattened:
         options = {
             "other": {
                 "grouped_fields": {"Arterial": ["waves::art", "numerics::art"]},
-                cst.DatabaseOptions.FILES: {"waves": {"loop": {"PV": ["paw", "art"]}}},
+                "files": {"waves": {"loop": {"PV": ["paw", "art"]}}},
             }
         }
         assert _names(assemble_plot_groups(two_files, options)) == [

@@ -13,7 +13,7 @@ from clinical_scope.plot_types.base import (
     PlotBuilder,
     PlotTypeArityError,
     RenderSpec,
-    TimeSeries,
+    require_time_series,
 )
 from clinical_scope.plot_types.loop.schema import LOOP_REFERENCE_COUNT, LoopSchema
 from clinical_scope.signal_container import (
@@ -78,13 +78,8 @@ def loop_from_signals(signal_x: Signal, signal_y: Signal, name: str | None = Non
     start_total = time.perf_counter()
     timing = {}
 
-    time_series = TimeSeries.NAME
-    if (
-        signal_x.trace_options.plot_options.plot_type != time_series
-        or signal_y.trace_options.plot_options.plot_type != time_series
-    ):
-        msg = f"Both input signals must be of type '{time_series}'."
-        raise ValueError(msg)
+    require_time_series(signal_x)
+    require_time_series(signal_y)
 
     x_x = signal_utc_float_seconds(signal_x)
     x_y = signal_utc_float_seconds(signal_y)

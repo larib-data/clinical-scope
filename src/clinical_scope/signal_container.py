@@ -326,8 +326,8 @@ def signal_utc_float_seconds(signal: "Signal") -> np.ndarray:
     Return true UTC epoch float seconds for a signal's time axis.
 
     to_plotly_trace() shifts data.x in-place from its source timezone to naive
-    DISPLAY_TIMEZONE values.  loop_from_signals() is called after that mutation,
-    so data.x no longer holds UTC values.  Re-localise to data.timezone then
+    DISPLAY_TIMEZONE values, and a derived plot type builds from the signal after that
+    mutation, so data.x no longer holds UTC values.  Re-localise to data.timezone then
     convert to UTC nanoseconds via .asi8 (avoids np.issubdtype on tz-aware dtype).
     """
     if signal.data.timezone is None:
@@ -352,9 +352,8 @@ class Signal:
     quality: Quality = field(default_factory=Quality)
     kwargs: dict = field(default_factory=dict)
     # Both are read by to_plotly_trace, which __post_init__ calls — so they have to be
-    # constructor fields. `render` is how a derived plot type says how it wants drawing:
-    # a plain time_series installs nothing and gets the defaults below (ADR-free by test,
-    # see tests/plot_types/test_boundaries.py).
+    # constructor fields. `render` is how a derived plot type says how it wants drawing;
+    # a plain time_series installs nothing and gets the defaults.
     display_fallbacks: DisplayFallbacks = field(default_factory=DisplayFallbacks)
     render: RenderSpec = field(default_factory=RenderSpec)
     timing: dict = field(default_factory=dict, init=False)

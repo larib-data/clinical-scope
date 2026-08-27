@@ -8,11 +8,15 @@ Holds the *leaf* half only, so importing it costs nothing and closes no cycle: t
 Adding a plot type is a package plus a line in ``AVAILABLE`` here and a line in ``builders``.
 Forgetting either is an ImportError at start-up -- never a config that validates cleanly and
 renders nothing, which is the failure this package exists to make impossible.
+
+That covers how a type *behaves*. A type wanting a user display setting or an axis payload of
+its own also pays for the mechanism carrying it -- a ``DisplayFallbacks`` field, a ``Data``
+field -- which is shared with every other type and lives outside this package.
 """
 
 from importlib.util import find_spec
 
-from clinical_scope.plot_types.base import PlotTypeSchema, TimeSeries
+from clinical_scope.plot_types.base import CAPABILITIES, PlotTypeSchema, TimeSeries
 from clinical_scope.plot_types.loop.schema import LoopSchema
 from clinical_scope.plot_types.psd.schema import PsdSchema
 from clinical_scope.plot_types.spectrogram.schema import SpectrogramSchema
@@ -48,23 +52,15 @@ POINT_TIMESTAMPS = frozenset(schema.NAME for schema in AVAILABLE if schema.POINT
 NAMES = frozenset(schema.NAME for schema in AVAILABLE)
 
 
-def schema_for(name: str) -> type[PlotTypeSchema]:
-    """Return the schema registered under *name*, or raise -- there is no default plot type."""
-    for schema in AVAILABLE:
-        if name == schema.NAME:
-            return schema
-    msg = f"Unknown plot type {name!r}; registered: {sorted(NAMES)}."
-    raise KeyError(msg)
-
-
 def _check_registry_is_complete() -> None:
     """
     Refuse to import a registry with a half-declared plot type.
 
     Checks what a forgotten piece actually looks like: a name that doesn't match its package,
-    a config section spelled differently from the type, or a package whose ``plot`` half was
-    never written. The plot module is probed rather than imported -- importing it here would
-    pull ``signal_container`` into a leaf and close the cycle this split exists to keep open.
+    a config section spelled differently from the type, a package whose ``plot`` half was never
+    written, or a capability declared on the schema that no set here exposes. The plot module is
+    probed rather than imported -- importing it here would pull ``signal_container`` into a leaf
+    and close the cycle this split exists to keep open.
     """
     seen: set[str] = set()
     for schema in AVAILABLE:
@@ -88,6 +84,14 @@ def _check_registry_is_complete() -> None:
         if find_spec(f"{__package__}.{name}.plot") is None:
             msg = f"Plot type {name!r} has a schema but no {name}/plot.py to build it."
             raise NotImplementedError(msg)
+
+    unexposed = sorted(flag for flag in CAPABILITIES if flag not in globals())
+    if unexposed:
+        msg = (
+            f"Capabilities {unexposed} are declared on PlotTypeSchema but no set here exposes "
+            f"them, so no render site can read them."
+        )
+        raise NotImplementedError(msg)
 
 
 _check_registry_is_complete()

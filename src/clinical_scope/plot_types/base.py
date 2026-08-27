@@ -53,7 +53,6 @@ class CellReader:
 
     is_empty: Callable[[Any], bool]
     to_float: Callable[[Any], float | None]
-    is_truthy: Callable[[Any], bool]
     parse_groups: Callable[[Any], list[str]]
 
 
@@ -197,6 +196,18 @@ class TimeSeries(PlotTypeSchema):
 
     NAME = "time_series"
 
+
+# The roster of capability flags, so a seventh is declared in exactly one place. ``registry``
+# derives its sets from this and refuses to import a flag no set exposes -- a capability
+# declared here and missed there would be readable by nothing, silently.
+CAPABILITIES: tuple[str, ...] = (
+    "TIME_AXIS",
+    "UNIFIED_HOVER",
+    "RESAMPLED",
+    "GRID_LAYOUT",
+    "HAS_COLORBAR",
+    "POINT_TIMESTAMPS",
+)
 
 FREQ_RANGE_BOUNDS = 2
 

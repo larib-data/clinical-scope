@@ -98,7 +98,6 @@ def _parse_groups(value: Any) -> list[str]:
 _CELL_READER = CellReader(
     is_empty=_is_empty,
     to_float=_to_float,
-    is_truthy=_is_truthy,
     parse_groups=_parse_groups,
 )
 

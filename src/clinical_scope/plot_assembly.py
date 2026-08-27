@@ -124,7 +124,6 @@ def _namespace_specs(
         _GroupSpec(_scoped(scope, name), [qualify(ref) for ref in references], section_name)
         for name, references in namespace.get(cst.DatabaseOptions.GROUPED_FIELDS, {}).items()
     ]
-    # Straight off the registry: adding a derived plot type changes nothing here.
     derived_specs = [
         _DerivedSpec(schema, _scoped(scope, name), schema.map_refs(config, qualify), section_name)
         for schema in plot_types.DERIVED

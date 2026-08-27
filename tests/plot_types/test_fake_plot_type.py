@@ -1,6 +1,6 @@
 """Register a fourth plot type and drive it through every path a real one takes.
 
-This is the acceptance criterion of #83 as a test: *adding a plot type is a package plus its
+The guarantee this package makes, stated as a test: *adding a plot type is a package plus its
 registry lines*. Nothing in `constants.py`, `database_options_parser.py`,
 `database_options_xlsx.py`, `plot_assembly.py` or `signal_container.py` knows `fake` exists,
 and all five still handle it — including inside an `other::<stem>` section, which the `other`

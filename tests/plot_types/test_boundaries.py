@@ -20,6 +20,12 @@ plot a signal ends up on is nobody's business at load time. ``other`` broke this
 each file's plot-type sections itself, which is how a forgotten ``psd`` row let that section
 validate cleanly and render nothing. Reference scoping lives in ``plot_assembly`` now, at
 every level -- a stem is a namespace exactly as a datasource is.
+
+What the first rule does **not** catch, so a green run is not read as more than it is: a name
+reached through the registry (``registry.LoopSchema.NAME``) rather than written out, and any
+string merely *containing* a type's name rather than equal to it -- ``loops_per_row``,
+``loop_time_axis``, ``spectrogram_freq_axis``. Those are the shared display and payload
+mechanisms, which a plot type uses rather than owns.
 """
 
 import ast
