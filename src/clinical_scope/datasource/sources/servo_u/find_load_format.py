@@ -2,14 +2,13 @@ import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
 import clinical_scope.datasource.sources.servo_u.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import deduplicate_then_sort_index
+from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -140,12 +139,7 @@ class ServoUDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(
-        cls,
-        file_path_list: list[Path],
-        path_output: Path | None,
-        **kwargs: Any,  # noqa: ARG003
-    ) -> pd.DataFrame:
+    def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
         all_dfs = []
         first_file_done = False
         start_time = None
@@ -162,10 +156,7 @@ class ServoUDataSource(DataSourceBase):
             all_dfs.append(df_local)
 
         df = pd.concat(all_dfs)
-        df = deduplicate_then_sort_index(df)
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
-        return df
+        return deduplicate_then_sort_index(df)
 
     @classmethod
     @time_it

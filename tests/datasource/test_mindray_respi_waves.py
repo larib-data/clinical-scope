@@ -18,7 +18,7 @@ def ds_folder(patient_full_path, mindray_respi_waves_cls):
 def loaded_df(ds_folder, mindray_respi_waves_cls):
     file_path = mindray_respi_waves_cls._find(ds_folder)
     assert file_path is not None
-    return mindray_respi_waves_cls._load(file_path, None)
+    return mindray_respi_waves_cls._load(file_path)
 
 
 class TestFind:
@@ -71,7 +71,7 @@ class TestLoadCsv:
         file_path = mindray_respi_waves_cls._find(folder)
         if file_path is None:
             pytest.skip("No file found")
-        df = mindray_respi_waves_cls._load(file_path, None)
+        df = mindray_respi_waves_cls._load(file_path)
         assert isinstance(df, pd.DataFrame)
         assert isinstance(df.index, pd.DatetimeIndex)
 

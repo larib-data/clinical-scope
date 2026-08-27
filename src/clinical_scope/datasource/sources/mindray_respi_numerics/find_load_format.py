@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
@@ -8,7 +7,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.mindray_respi_numerics.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import deduplicate_then_sort_index
+from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs: Any) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path) -> pd.DataFrame:
         """
         Load and parse MindRay Respi Numerics data.
 
@@ -55,8 +54,4 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
         df_pivoted.columns = df_pivoted.columns.get_level_values(0)
 
         df_pivoted.index = pd.to_datetime(df_pivoted.index)
-        df_pivoted = deduplicate_then_sort_index(df_pivoted)
-
-        if path_output is not None:
-            cls._save_dataframe(df_pivoted, path_output)
-        return df_pivoted
+        return deduplicate_then_sort_index(df_pivoted)

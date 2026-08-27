@@ -8,10 +8,7 @@ import pandas as pd
 import clinical_scope.datasource.sources.fluxmed_signals.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import (
-    deduplicate_then_sort_index,
-    load_parquet_with_datetime_index,
-)
+from clinical_scope.io.time_axis import deduplicate_then_sort_index, set_datetime_index
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +28,9 @@ class FluxmedSignalsDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path) -> pd.DataFrame:
         if file_path.suffix.lower() == ".parquet":
-            df = load_parquet_with_datetime_index(file_path)
+            df = set_datetime_index(pd.read_parquet(file_path))
         elif file_path.suffix.lower() in [".txt", ".csv"]:
             filename = file_path.name
             match = re.search(r"(\d+_\d+_\d+-\d+_\d+_\d+)", filename)
@@ -101,7 +98,4 @@ class FluxmedSignalsDataSource(DataSourceBase):
             )
             raise NotImplementedError(msg)
 
-        df = deduplicate_then_sort_index(df)
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
-        return df
+        return deduplicate_then_sort_index(df)

@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -10,7 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.edf.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import deduplicate_then_sort_index
+from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -90,22 +89,13 @@ class EDFDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(
-        cls,
-        file_path_list: list[Path],
-        path_output: Path | None,
-        **kwargs: Any,  # noqa: ARG003
-    ) -> pd.DataFrame:
+    def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
         frames = [read_edf_file(file_path) for file_path in file_path_list]
         if not frames:
             return pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))
 
         df = frames[0] if len(frames) == 1 else pd.concat(frames)
-        df = deduplicate_then_sort_index(df)
-
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
-        return df
+        return deduplicate_then_sort_index(df)
 
     @classmethod
     def _anchor_undated_recording(cls, df: pd.DataFrame, patient_options: dict) -> pd.DataFrame:

@@ -7,6 +7,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **A group in one data source no longer hides a same-named signal in another.** Grouping matched signals by name across the whole run, but a name like `HR`, `SpO2` or `ABP` is only unique *within* one source. So grouping `HR` under your monitor could silently drop the ventilator's `HR` from the page — no error, just a missing plot, and which one disappeared depended on the order the sources happened to load in. Groups now take the signals they actually name, and nothing else.
+
+- **A group that finds only one of its signals now keeps the group's name.** A group configured over four pressures but resolving to one used to be titled after that surviving signal — so the same configuration gave a differently-named panel depending on how much data a recording happened to contain. It is now always titled after the group.
+
+- **`loop`, `spectrogram` and `psd` written inside a data source's own section accept the same signal references as `global` ones.** They matched raw column names only; a display name (the `label` you configured) silently matched nothing. They now resolve display names too. A loop given other than exactly two signals is reported as a skipped plot instead of an unexplained error in the log.
+
 - **`trace_options` now applies to every datasource, not only `other::<stem>` files.** The block was accepted and validated in any `database_options` section, and the Excel sentinel row wrote it for any datasource, but only `other` ever read it — anywhere else it validated cleanly and did nothing. It now works everywhere it was already accepted.
 
   **What changes for you:** a configuration that already sets `trace_options` (or the Excel `trace_mode` / `line_width` / `opacity` / `marker_symbol` columns) on a device datasource starts taking effect, where before it was ignored. Where a datasource ships its own trace style, your block now wins key by key over it; keys you leave unset keep the shipped value. Nothing changes for a configuration that only styled `other::<stem>` files.
@@ -14,6 +20,10 @@ All notable changes to this project will be documented in this file.
 - **The annotation colour picker no longer disagrees with itself.** The row of preset swatches carried its own "selected" highlight alongside the hex code, and the two drifted apart: typing a code left the highlight behind, and opening a modal — which pre-fills the colour of the trace you clicked, rarely one of the six presets — moved the code without moving the highlight. The colour saved always came from the hex field, so the highlighted swatch was the half that lied. Presets are now plain shortcuts that fill the field, and a swatch beside it previews the colour the annotation will actually get.
 
   **What changes for you:** a code pasted without its leading `#` is accepted, a malformed one is flagged as you leave the field, and a colour that is not a valid six-digit hex now falls back to the default instead of being written into the annotation file as-is.
+
+- **A hand-edited `~/.clinical_scope/user_options.json` is now checked when it loads.** Settings were only validated as you typed them into the Settings modal, so a file edited by hand — or one holding a value from an older version — could carry a subplot height of `99999`, a palette that no longer exists, or a misspelled timezone, and reach the app unchecked. Each such value now falls back to its default and says which one it was in the log, and a setting stored under a name the app no longer knows is reported rather than dropped in silence.
+
+  **What changes for you:** the Settings modal also refuses a spectrogram colour range whose minimum is not below its maximum — both bounds snap back to their defaults as you save, instead of the pair being stored and quietly corrected at plot time.
 
 ---
 

@@ -499,6 +499,8 @@ subsequent annotations will belong to that group until you switch or create anot
 
 `annotations.json` sits in the patient data folder, next to the datasource sub-folders. Annotations are reloaded automatically when you re-process the same patient.
 
+If you write the file by hand or generate it from another tool, any extra fields you add to an annotation are kept as they are.
+
 ## Python API
 
 Annotations can be loaded programmatically for analysis:

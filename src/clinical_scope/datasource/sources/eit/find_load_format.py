@@ -9,7 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.eit.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import deduplicate_then_sort_index
+from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +279,7 @@ class EITDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path_list: list[Path], path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
         (
             _list_metadata,
             _list_dynamic_images,
@@ -289,10 +289,7 @@ class EITDataSource(DataSourceBase):
         ) = _parse_eit_asc_file_list(file_path_list)
 
         df = deduplicate_then_sort_index(df)
-        df = _add_columns_percentage_for_eit(df)
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
-        return df
+        return _add_columns_percentage_for_eit(df)
 
     @classmethod
     @time_it

@@ -16,8 +16,10 @@ CLI scripts (extract / inspect / visualize) and the Python API are documented in
 ```
 src/clinical_scope/
   wrapper.py            main pipeline — visualize / extract / inspect
+  plot_assembly.py      Signals + database_options → PlotGroups (grouping, derived plots)
   signal_container.py   Signal / PlotGroup / PlotModel data models
   constants.py          global constants + option schema classes
+  user_options.py       UserOptions schema as data: traversal, defaults, validate()
   datasource/
     base.py             DataSourceBase — find/load/format/extract/inspect template
     registry.py         registered sources (DataSource.AVAILABLE; keep Other last)
@@ -41,7 +43,9 @@ src/clinical_scope/
 - **Extract** (`wrapper.extract_patient` / `batch_extract` / `extract_datasource`, also `from clinical_scope import extract_datasource, extract_patient, batch_extract`) — stop at `format`, return DataFrame(s). `save_path`/`save_folder` write explicit output, independent of the per-patient `clinical_scope_output/` parquet cache (always written; reused when `quick_load` is set).
 - **Inspect** (`wrapper.inspect`) — stop at `format`, return `list[DataSourceInspection]` (columns, point counts, time ranges). `OtherDataSource.inspect()` returns **one entry per file** (`other::<stem>`); the wrapper handles single-or-list returns.
 
-**Signal references** in `grouped_fields` and `global.loop` resolve via a 3-mode lookup in `_resolve_signal_references`: qualified `datasource::raw_name` → display name → raw-name fallback.
+**Signal references** in `grouped_fields`, `loop`, `spectrogram` and `psd` resolve via a 3-mode lookup in `plot_assembly._resolve_signal_references`: qualified `datasource::raw_name` → display name → raw-name fallback.
+
+**Config scope is desugared once, and grouping joins on signal identity** ([ADR-0013](docs/adr/0013-signal-references-are-qualified-before-assembly.md)). `assemble_plot_groups` is called once, after the datasource loop, and its first step rewrites every per-datasource reference as a qualified global one — downstream, local scope does not exist. Both config spellings stay valid; the desugaring is a property of the code, not of the file format. A signal is left out of the default one-plot-per-signal pass only when a group took *that object*, never when something merely shares its `raw_name` (unique only within a datasource).
 
 `wrapper.main`/`inspect` call an optional `progress_callback(current, total, name)` between datasources, which drives the UI progress bar.
 
@@ -53,6 +57,8 @@ Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical l
 
 **`_load` transcribes; `_format` interprets** ([ADR-0010](docs/adr/0010-load-transcribes-format-interprets.md)). `_load`'s output *is* the parquet cache, so it must be reproducible from the source file alone — no option resolved inside it. Mechanically: no `DATA_SOURCE_DEFAULT_TIMEZONE`, no `apply_timezone_to_dataframe` in any `_load`.
 
+**Datetime bounds are qualified at the boundary** ([ADR-0011](docs/adr/0011-datetime-bounds-are-qualified-at-the-boundary.md)). The UI turns naive form text into a tz-aware instant at Submit, using the user's `display_timezone` — *that* is what makes the Settings timezone govern the time window. The load path only ever localizes a bound that is still naive (script or hand-edited file), and does so with `cst.NAIVE_BOUND_TZ`, never a user option, so `extract_*` output does not depend on who is at the keyboard. `cst.NAIVE_BOUND_TZ` and `cst.DISPLAY_TIMEZONE` are separate literals on purpose; do not alias them.
+
 **Adding one**: use the `/new-datasource` skill — it is authoritative for the module layout, `options.py` constants, the loader, registration (Other stays last), example data, tests, snapshots, and the tutorial table.
 
 ## Config files
@@ -60,7 +66,7 @@ Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical l
 Field-by-field reference is in the [tutorial](docs/user_guide/tutorial.md). The three tiers:
 - **`database_options`** (`.json` or `.xlsx`) — per-source signal config: `field_display`, `signals` (labels/units/colors), `grouped_fields`, `loop`; plus `global.grouped_fields`. Uploading one in the UI caches it to `~/.clinical_scope/last_database_options.json` (signal metadata only, no PHI).
 - **`patient_options`** (`.json`) — per-run settings: `data_folder`, `datetime_start`/`datetime_end`, `quick_load`, and per-source options (`time_shift`, `day`, …).
-- **`user_options`** (`~/.clinical_scope/user_options.json`) — the third tier: per-person app behaviour + display fallbacks, edited only in the Settings modal. **Never overrides `database_options`** ([ADR-0005](docs/adr/0005-user-options-are-fallbacks.md)). A new display setting = a `UserOptions` schema class (with `SECTION`) + a field on `DisplayFallbacks` (`signal_container.py`) + one read site; the carrier is threaded from `wrapper.main` down to both `Signal` and `PlotModel` construction, so no signature grows.
+- **`user_options`** (`~/.clinical_scope/user_options.json`) — the third tier: per-person app behaviour + display fallbacks, edited only in the Settings modal. **Never overrides `database_options`** ([ADR-0005](docs/adr/0005-user-options-are-fallbacks.md)). A new display setting = a `UserOptions` schema class (with `SECTION`) + a field on `DisplayFallbacks` (`signal_container.py`) + one read site; the carrier is threaded from `wrapper.main` down to both `Signal` and `PlotModel` construction, so no signature grows. Values are held to the schema by `user_options.validate()` at every boundary that accepts one, and only `dash_api` may read the file ([ADR-0014](docs/adr/0014-user-options-are-validated-at-the-boundary.md)).
 
 Reference configs: `example/demo_database/database_options.{xlsx,json}` — the canonical example, in both formats, runnable against `demo_patient/` and covering **every** datasource it ships. **The `.json` is generated from the `.xlsx`**; edit the spreadsheet and regenerate. `tests/unit/test_example_assets.py` enforces both the coverage and the parity, and prints the regeneration one-liner. `example/option_files/patient_options_example.json` covers the other tier, for library users who never launch the app and so never get an app-written one.
 

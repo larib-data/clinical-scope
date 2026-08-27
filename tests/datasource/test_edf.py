@@ -22,7 +22,7 @@ def ds_folder(patient_full_path, edf_cls):
 def loaded_df(ds_folder, edf_cls):
     file_path = edf_cls._find(ds_folder)
     assert file_path is not None
-    return edf_cls._load(file_path, None)
+    return edf_cls._load(file_path)
 
 
 def _write_edf(path, start_datetime, sample_rate=4, seconds=2, labels=("chan A", "chan B")):
@@ -172,7 +172,7 @@ class TestUndatedRecording:
     @pytest.fixture
     def undated_df(self, tmp_path, edf_cls):
         path = _write_edf(tmp_path / "undated.edf", datetime.datetime(1985, 1, 1, 9, 30))  # noqa: DTZ001
-        return edf_cls._load([path], None)
+        return edf_cls._load([path])
 
     @staticmethod
     def _first(df, edf_cls, recording_start=None):
@@ -206,7 +206,7 @@ class TestUndatedRecording:
 
     def test_epoch_start_is_treated_as_undated(self, tmp_path, edf_cls):
         path = _write_edf(tmp_path / "epoch.edf", datetime.datetime(1970, 1, 1, 0, 0))  # noqa: DTZ001
-        df = edf_cls._load([path], None)
+        df = edf_cls._load([path])
         assert self._first(df, edf_cls, "2024-05-04 22:15:00") == pd.Timestamp(
             "2024-05-04 22:15:00", tz="Europe/Paris"
         )
@@ -215,7 +215,7 @@ class TestUndatedRecording:
         """Anchoring shifts the whole recording, it does not collapse the gap between files."""
         _write_edf(tmp_path / "a.edf", datetime.datetime(1985, 1, 1, 0, 0), seconds=2)  # noqa: DTZ001
         _write_edf(tmp_path / "b.edf", datetime.datetime(1985, 1, 1, 0, 1), seconds=2)  # noqa: DTZ001
-        df = edf_cls._load(sorted(tmp_path.glob("*.edf")), None)
+        df = edf_cls._load(sorted(tmp_path.glob("*.edf")))
         formatted = edf_cls._format(
             df, {"data_folder": "", "edf": {"recording_start": "2024-05-04 10:00:00"}}, {}
         )
@@ -228,7 +228,7 @@ class TestDatedRecording:
     @pytest.fixture
     def dated_df(self, tmp_path, edf_cls):
         path = _write_edf(tmp_path / "dated.edf", datetime.datetime(2024, 3, 1, 7, 0))  # noqa: DTZ001
-        return edf_cls._load([path], None)
+        return edf_cls._load([path])
 
     def test_recording_start_is_ignored(self, dated_df, edf_cls):
         patient_options = {"data_folder": "", "edf": {"recording_start": "2024-05-04 22:15:00"}}

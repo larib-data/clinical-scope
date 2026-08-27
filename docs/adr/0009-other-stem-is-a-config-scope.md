@@ -26,11 +26,11 @@ So `other::waves` names a configuration scope — one file — carrying its own 
 
 The asymmetry with other datasources is deliberate and is the point of recording this: **`other/` is the only source whose files are unrelated by construction.** Everywhere else, a folder is one recording. A contributor who reaches for `edf::<stem>` by analogy is generalising from the exception.
 
-Signal references resolve in three modes, in order — qualified `datasource::raw_name`, then display name, then bare raw name (`_resolve_signal_references`, `wrapper.py`).
+Signal references resolve in three modes, in order — qualified `datasource::raw_name`, then display name, then bare raw name (`_resolve_signal_references`, `plot_assembly.py`).
 
 ## Consequences
 
 - **Easier:** an `other/` folder can hold files from unrelated machines, each configured independently, without any of them earning a module. Cross-source `grouped_fields` and `loop` entries can address a specific file's column unambiguously.
-- **Harder / accepted trade-offs:** a file in `other/` named after a registered datasource makes a reference genuinely readable two ways — `other/servo_u.parquet` gives a scope whose qualified names collide with the real `servo_u` source. Both readings are legitimate, so this cannot be resolved by rule alone: the precedence order above decides, and `_warn_if_also_a_raw_name` (`wrapper.py:46-60`) logs the collision naming the losing signal and the spelling that reaches it. Silent shadowing was the alternative and was rejected.
+- **Harder / accepted trade-offs:** a file in `other/` named after a registered datasource makes a reference genuinely readable two ways — `other/servo_u.parquet` gives a scope whose qualified names collide with the real `servo_u` source. Both readings are legitimate, so this cannot be resolved by rule alone: the precedence order above decides, and `_warn_if_also_a_raw_name` (`plot_assembly.py`) logs the collision naming the losing signal and the spelling that reaches it. Silent shadowing was the alternative and was rejected.
 - **Also:** signals inside `other/` are named `<stem>::<column>` rather than bare column names, so configurations written against the old single-block form need their references rewritten. This is part of the [ADR-0008](0008-datasource-modules-need-format-specific-parsing.md) migration.
 - **Revisit if:** a second datasource appears whose folder genuinely holds unrelated recordings rather than chunks of one. At that point the scope mechanism generalises — but it should generalise to *that* source explicitly, not to all of them by default.

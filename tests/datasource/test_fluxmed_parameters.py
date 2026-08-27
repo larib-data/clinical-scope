@@ -18,7 +18,7 @@ def ds_folder(patient_full_path, fluxmed_parameters_cls):
 def loaded_df(ds_folder, fluxmed_parameters_cls):
     file_path = fluxmed_parameters_cls._find(ds_folder)
     assert file_path is not None
-    return fluxmed_parameters_cls._load(file_path, None)
+    return fluxmed_parameters_cls._load(file_path)
 
 
 class TestFind:

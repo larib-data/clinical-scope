@@ -17,12 +17,11 @@ import pytest
 
 import clinical_scope.constants as cst
 from clinical_scope.datasource.formatting.timezone import to_aware_display_ts
-from clinical_scope.io.file_utils import (
-    _detect_datetime_column_from_parquet,
-    _find_datetime_col_parsed,
-    _is_numeric_pa_type,
-    load_parquet_with_datetime_index,
-    read_parquet_pruned,
+from clinical_scope.io.parquet_pruning import read_cache_pruned, read_parquet_pruned
+from clinical_scope.io.time_axis import (
+    detect_time_axis_in_frame,
+    detect_time_axis_in_parquet,
+    set_datetime_index,
 )
 
 OTHER_DIR = (
@@ -131,9 +130,7 @@ class TestReadParquetWithDatetimePushdownLowLevel:
         pd.testing.assert_frame_equal(actual, expected)
 
     def test_no_bounds_returns_full_unfiltered_read(self):
-        actual = read_parquet_pruned(
-            TZ_AWARE_STORED_INDEX_PARQUET, compute_bounds=lambda _tz: None
-        )
+        actual = read_parquet_pruned(TZ_AWARE_STORED_INDEX_PARQUET, compute_bounds=lambda _tz: None)
         expected = pd.read_parquet(TZ_AWARE_STORED_INDEX_PARQUET)
         pd.testing.assert_frame_equal(actual, expected)
 
@@ -154,6 +151,95 @@ class TestReadParquetWithDatetimePushdownLowLevel:
 
 
 # ---------------------------------------------------------------------------
+# Pruning decisions, observed through the two readers
+# ---------------------------------------------------------------------------
+
+
+class TestPruningDecisionsThroughTheReader:
+    """
+    What each pruning decision does to the frame a caller receives.
+
+    Every expectation is an independent full read plus a plain pandas slice -- never the
+    library's own resolution replayed -- so a wrong decision shows up as wrong data rather
+    than as agreement with itself.
+    """
+
+    @staticmethod
+    def _detection_parquet(tmp_path: Path) -> Path:
+        """RangeIndex file: the time axis is a column, so detection has to find it."""
+        path = tmp_path / "detected.parquet"
+        pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2020-01-01", periods=50, freq="1min"),
+                "pre_a": range(50),
+                "other": range(50),
+            }
+        ).to_parquet(path, index=False)
+        return path
+
+    @staticmethod
+    def _float_index_parquet(tmp_path: Path) -> Path:
+        """EIT-shaped: a stored index that is the time axis but is not range-comparable."""
+        path = tmp_path / "float_index.parquet"
+        index = pd.Index([minute / 1440 for minute in range(60)], name="Time")
+        pd.DataFrame({"Global": range(60), "Local 1": range(60, 120)}, index=index).to_parquet(path)
+        return path
+
+    def test_time_axis_survives_a_selection_that_omits_it(self, tmp_path):
+        """Dropping the axis would strand the frame with no index to set downstream."""
+        path = self._detection_parquet(tmp_path)
+        actual = read_parquet_pruned(path, select_columns=lambda _names: ["pre_a"])
+        assert "timestamp" in actual.columns
+        pd.testing.assert_frame_equal(actual, pd.read_parquet(path)[list(actual.columns)])
+
+    def test_unresolvable_axis_reads_every_column(self, tmp_path):
+        """With no detectable axis there is nothing to protect, so pruning is declined."""
+        path = tmp_path / "no_axis.parquet"
+        pd.DataFrame({"pre_a": range(10), "other": range(10)}).to_parquet(path, index=False)
+        actual = read_parquet_pruned(path, select_columns=lambda _names: ["pre_a"])
+        pd.testing.assert_frame_equal(actual, pd.read_parquet(path))
+
+    def test_column_pruning_does_not_need_a_window(self, tmp_path):
+        """The two prunings are orthogonal -- the common case is a wide file and no window."""
+        path = self._detection_parquet(tmp_path)
+        full = pd.read_parquet(path)
+        actual = read_parquet_pruned(
+            path, compute_bounds=lambda _tz: None, select_columns=lambda _names: ["pre_a"]
+        )
+        assert "other" not in actual.columns
+        assert len(actual) == len(full)
+
+    def test_epoch_column_window_matches_a_plain_slice(self, tmp_path):
+        """A numeric epoch axis needs integer bounds on disk; wrong types read wrong rows."""
+        path = tmp_path / "epoch.parquet"
+        stamps = pd.date_range("2020-01-01", periods=50, freq="1min")
+        pd.DataFrame(
+            {"epoch": stamps.as_unit("ns").astype("int64"), "value": range(50)}
+        ).to_parquet(path, index=False)
+        start, end = stamps[10], stamps[20]
+
+        actual = read_parquet_pruned(path, compute_bounds=lambda _tz: (start, end))
+
+        full = pd.read_parquet(path)
+        as_time = pd.to_datetime(full["epoch"], unit="ns")
+        expected = full[(as_time >= start) & (as_time <= end)]
+        pd.testing.assert_frame_equal(
+            actual.reset_index(drop=True), expected.reset_index(drop=True)
+        )
+        assert 0 < len(actual) < len(full)
+
+    def test_stored_non_temporal_index_is_read_not_rejected(self, tmp_path):
+        """
+        Regression: detection samples a materialized index column by name. Restoring pandas
+        metadata would turn it back into the frame's index mid-detection and raise KeyError,
+        so a plain parquet with a float index used to crash instead of declining to prune.
+        """
+        path = self._float_index_parquet(tmp_path)
+        actual = read_parquet_pruned(path, select_columns=lambda _names: ["Global"])
+        pd.testing.assert_frame_equal(actual, pd.read_parquet(path))
+
+
+# ---------------------------------------------------------------------------
 # _pushdown_bounds: conservative-loose bounds computation (base.py)
 # ---------------------------------------------------------------------------
 
@@ -164,10 +250,10 @@ class TestPushdownBounds:
     def test_no_window_returns_none(self, other_cls):
         assert other_cls._pushdown_bounds({}, {}, index_tz=None) is None
 
-    def test_naive_target_converts_from_display_tz_and_pads(self, other_cls, monkeypatch):
-        # 'other' source tz is UTC; pin the display default to UTC too, isolating the
+    def test_naive_target_converts_from_naive_bound_tz_and_pads(self, other_cls, monkeypatch):
+        # 'other' source tz is UTC; pin the naive-bound default to UTC too, isolating the
         # ± buffer as the only transformation left to verify.
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -178,7 +264,7 @@ class TestPushdownBounds:
         assert end == pd.Timestamp("2004-09-15 08:25:00") + buffer
 
     def test_time_shift_is_inverted(self, other_cls, monkeypatch):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -190,7 +276,7 @@ class TestPushdownBounds:
         assert end == pd.Timestamp("2004-09-15 08:25:00") - pd.Timedelta(seconds=30.0) + buffer
 
     def test_negative_time_shift_is_inverted(self, other_cls, monkeypatch):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -212,11 +298,11 @@ class TestPushdownBounds:
     ):
         """
         The exact configuration behind issue #57's bug: no materialized index tz, and a
-        per-source timezone override that differs from both the library display default and
+        per-source timezone override that differs from both the naive-bound default and
         the datasource default — must actually shift the bounds, not just take the fallback
         branch as a no-op (both prior unit tests above used UTC==UTC, hiding this).
         """
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -237,7 +323,7 @@ class TestPushdownBounds:
         assert end.tzinfo is None
 
     def test_aware_target_uses_index_tz_directly(self, other_cls, monkeypatch):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "datetime_start": "2004-09-15 08:20:00",
             "datetime_end": "2004-09-15 08:25:00",
@@ -275,7 +361,7 @@ class TestQuickLoadCachePushdownEquality:
     def test_naive_cache_pushdown_matches_disabled(
         self, servo_u_cls, patient_full_path, monkeypatch, datetime_start, datetime_end
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": datetime_start,
@@ -295,7 +381,7 @@ class TestQuickLoadCachePushdownEquality:
     def test_aware_cache_pushdown_matches_disabled_with_time_shift(
         self, mindray_respi_numerics_cls, patient_full_path, monkeypatch
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": "2004-09-15 08:12:40",
@@ -317,27 +403,27 @@ class TestQuickLoadCachePushdownEquality:
 
 class TestNaiveAwareBoundEquivalence:
     """
-    A tz-aware bound must select exactly what the equivalent naive + display_timezone
-    pair would.
+    A tz-aware bound must select exactly what the equivalent naive + cst.NAIVE_BOUND_TZ
+    pair would -- and, being already qualified, must not depend on that constant at all.
     """
 
     @pytest.mark.parametrize(
-        "datetime_start,datetime_end,display_timezone",
+        "datetime_start,datetime_end,naive_bound_tz",
         [
             ("2004-09-15 08:12:40", "2004-09-15 08:12:50", "UTC"),
             ("2004-09-15 10:12:40", "2004-09-15 10:12:50", "Europe/Paris"),
         ],
     )
-    def test_aware_bound_matches_naive_plus_display_timezone(
+    def test_aware_bound_matches_naive_plus_naive_bound_tz(
         self,
         servo_u_cls,
         patient_full_path,
         monkeypatch,
         datetime_start,
         datetime_end,
-        display_timezone,
+        naive_bound_tz,
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", display_timezone)
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", naive_bound_tz)
         naive_options = {
             "data_folder": str(patient_full_path),
             "datetime_start": datetime_start,
@@ -346,12 +432,12 @@ class TestNaiveAwareBoundEquivalence:
         }
         df_naive = servo_u_cls.extract(naive_options, {})
 
-        # Deliberately a different library default: an aware bound must not need this to agree.
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "America/New_York")
+        # Deliberately a different default: an aware bound must not need this to agree.
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "America/New_York")
         aware_options = {
             "data_folder": str(patient_full_path),
-            "datetime_start": to_aware_display_ts(datetime_start, display_timezone),
-            "datetime_end": to_aware_display_ts(datetime_end, display_timezone),
+            "datetime_start": to_aware_display_ts(datetime_start, naive_bound_tz),
+            "datetime_end": to_aware_display_ts(datetime_end, naive_bound_tz),
             "quick_load": True,
         }
         df_aware = servo_u_cls.extract(aware_options, {})
@@ -397,7 +483,7 @@ class TestOtherParquetPushdownEquality:
     def test_pushdown_matches_disabled(
         self, other_cls, patient_difficult_path, monkeypatch, datetime_start, datetime_end
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         patient_options = {
             "data_folder": str(patient_difficult_path),
             "datetime_start": datetime_start,
@@ -443,7 +529,7 @@ class TestOtherDatetimeColumnDetectionTimezoneOverride:
     def test_naive_utc_named_column_with_timezone_override_matches_disabled(
         self, other_cls, tmp_path, monkeypatch
     ):
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         other_dir = tmp_path / "other"
         other_dir.mkdir()
         file_path = other_dir / "device_export.parquet"
@@ -475,9 +561,7 @@ class TestOtherDatetimeColumnDetectionTimezoneOverride:
         finally:
             other_cls.ALLOW_DATETIME_PUSHDOWN = original
         target_disabled = {
-            s.raw_name: s
-            for s in signals_disabled
-            if s.raw_name.startswith("device_export::")
+            s.raw_name: s for s in signals_disabled if s.raw_name.startswith("device_export::")
         }
 
         # Guards the original bug directly: pushdown used to silently return zero signals here.
@@ -511,9 +595,9 @@ class TestSampledDetection:
         df.to_parquet(path, row_group_size=100)  # 20 row groups
         assert pq.ParquetFile(path).num_row_groups > 1  # spread path is actually exercised
 
-        detected = _detect_datetime_column_from_parquet(path)
+        detected = detect_time_axis_in_parquet(path)
         assert detected is not None
-        col, kind, _tz, _naive = detected
+        col, kind = detected.column_name, detected.kind
         assert (col, kind) == ("timestamp", "timestamp")
 
     def test_two_datetime_columns_in_one_tier_abstains_and_reads_all(self, tmp_path):
@@ -533,7 +617,7 @@ class TestSampledDetection:
         )
         df.to_parquet(path)  # default RangeIndex → detection path, not stored-index
 
-        assert _detect_datetime_column_from_parquet(path) is None
+        assert detect_time_axis_in_parquet(path) is None
 
         start = pd.Timestamp("2020-01-01 00:00:10")
         end = pd.Timestamp("2020-01-01 00:00:20")
@@ -568,17 +652,19 @@ class TestSampledDetection:
 
         # The file genuinely has a valid higher-priority 'datetime' column (garbage only in the
         # sampled groups), so the authoritative full-frame detector indexes on it...
-        assert _find_datetime_col_parsed(pd.read_parquet(path))[0] == "datetime"
+        assert detect_time_axis_in_frame(pd.read_parquet(path))[0] == "datetime"
         # ...while sampled pushdown can't confirm it and must abstain — never pick 'timestamp'
         # and prune on it (the desync). Abstaining falls back to a full read.
-        assert _detect_datetime_column_from_parquet(path) is None
+        assert detect_time_axis_in_parquet(path) is None
 
         # Window over the middle (valid) region, expressed on the authoritative 'datetime' axis.
         start = pd.Timestamp("2020-01-01 10:00:00")
         end = pd.Timestamp("2020-01-01 13:00:00")
 
-        enabled = load_parquet_with_datetime_index(path, compute_bounds=lambda _tz: (start, end))
-        disabled = load_parquet_with_datetime_index(path)  # no pushdown → full read
+        enabled = set_datetime_index(
+            read_parquet_pruned(path, compute_bounds=lambda _tz: (start, end))
+        )
+        disabled = set_datetime_index(pd.read_parquet(path))  # no pushdown → full read
 
         # The authoritative datetime-window cut (_filter_by_datetime) runs on both downstream.
         enabled = enabled[(enabled.index >= start) & (enabled.index <= end)]
@@ -587,14 +673,72 @@ class TestSampledDetection:
         pd.testing.assert_frame_equal(enabled, disabled)
 
 
+class TestNameAssertedTimezoneBounds:
+    """
+    The one input that reaches the tz-label strip: a utc-named column stored tz-NAIVE.
+
+    Detection asserts UTC from the name (`_pick_best_candidate`), so the semantic tz and the
+    on-disk type disagree. A bound expressed in any zone must still land on the right instant:
+    pyarrow compares against the bare stored values, and an unconverted label would shift the
+    window by the offset.
+    """
+
+    @staticmethod
+    def _naive_utc_parquet(tmp_path):
+        path = tmp_path / "naive_utc.parquet"
+        pd.DataFrame(
+            {
+                "time_utc": pd.to_datetime([f"2020-07-01 {hour}:00:00" for hour in range(11, 16)]),
+                "value": range(5),
+            }
+        ).to_parquet(path, index=False)
+        return path
+
+    def test_detection_asserts_utc_over_a_naive_column(self, tmp_path):
+        detected = detect_time_axis_in_parquet(self._naive_utc_parquet(tmp_path))
+        assert (detected.tz, detected.tz_from_name) == ("UTC", True)
+
+    @pytest.mark.parametrize(
+        "start_text,end_text,bound_tz,expected_hours",
+        [
+            ("12:00", "15:00", "UTC", [12, 13, 14, 15]),
+            # Two different zones naming the same instants must select the same rows.
+            ("12:00", "15:00", "Europe/Paris", [11, 12, 13]),  # +02:00 -> 10:00-13:00Z
+            ("07:00", "09:00", "America/New_York", [11, 12, 13]),  # -04:00 -> 11:00-13:00Z
+        ],
+    )
+    def test_window_lands_on_the_same_instant_whatever_zone_expressed_it(
+        self, tmp_path, start_text, end_text, bound_tz, expected_hours
+    ):
+        path = self._naive_utc_parquet(tmp_path)
+        start = pd.Timestamp(f"2020-07-01 {start_text}", tz=bound_tz)
+        end = pd.Timestamp(f"2020-07-01 {end_text}", tz=bound_tz)
+
+        pushed = read_parquet_pruned(path, compute_bounds=lambda tz: (start, end))
+        assert sorted(set_datetime_index(pushed).index.hour.tolist()) == expected_hours
+
+    def test_pushdown_never_drops_a_row_the_authoritative_cut_keeps(self, tmp_path):
+        """Pushdown may under-prune; it may never lose a row the downstream filter would keep."""
+        path = self._naive_utc_parquet(tmp_path)
+        start = pd.Timestamp("2020-07-01 12:00", tz="Europe/Paris")
+        end = pd.Timestamp("2020-07-01 15:00", tz="Europe/Paris")
+
+        pushed = set_datetime_index(
+            read_parquet_pruned(path, compute_bounds=lambda tz: (start, end))
+        )
+        full = set_datetime_index(pd.read_parquet(path))
+        cut = full[(full.index >= start) & (full.index <= end)]
+
+        assert cut.index.isin(pushed.index).all()
+        assert len(pushed) < len(full)  # it really did prune
+
+
 class TestInspectIgnoresPushdownWindow:
     """inspect() always passes apply_datetime_pushdown=False (base.py) — it needs whole-file
     raw stats, so a narrow datetime_start/end window set by patient_options must not shrink
     the reported raw_date_range. By design, not incidental."""
 
-    def test_narrow_window_does_not_shrink_raw_date_range(
-        self, servo_u_cls, patient_full_path
-    ):
+    def test_narrow_window_does_not_shrink_raw_date_range(self, servo_u_cls, patient_full_path):
         base_options = {
             "data_folder": str(patient_full_path),
             "quick_load": False,
@@ -610,47 +754,6 @@ class TestInspectIgnoresPushdownWindow:
         )
         assert narrow.status == "ok"
         assert narrow.raw_date_range == full.raw_date_range
-
-
-class TestNumericTypeClassificationAgreement:
-    """
-    Tripwire for a code-review finding on issue #57: schema-only detection
-    (`_is_numeric_pa_type`, pyarrow-type-based) and full-frame detection
-    (`_find_datetime_col_parsed`, `pd.api.types.is_numeric_dtype`-based) each decide
-    independently whether a column is "numeric" and should be deferred to the epoch tier.
-    If they ever disagree on a dtype that also passes datetime-content validation, the
-    pushdown fast-path and the full unfiltered read could pick *different* datetime
-    columns — silently wrong filter results, not an error.
-
-    This pins today's known-good agreement so a future pandas/pyarrow upgrade that shifts
-    either classification is caught here first, rather than downstream as a silent mismatch.
-    """
-
-    # Every dtype that can plausibly appear as a real clinical parquet column.
-    NUMERIC_TYPES = [pa.int32(), pa.int64(), pa.float32(), pa.float64()]
-    NON_NUMERIC_TYPES = [pa.string(), pa.timestamp("ns"), pa.timestamp("ns", tz="UTC")]
-
-    @pytest.mark.parametrize("pa_type", NUMERIC_TYPES)
-    def test_numeric_types_agree(self, pa_type):
-        assert _is_numeric_pa_type(pa_type) is True
-        assert pd.api.types.is_numeric_dtype(pa_type.to_pandas_dtype()) is True
-
-    @pytest.mark.parametrize("pa_type", NON_NUMERIC_TYPES)
-    def test_non_numeric_types_agree(self, pa_type):
-        assert _is_numeric_pa_type(pa_type) is False
-        assert pd.api.types.is_numeric_dtype(pa_type.to_pandas_dtype()) is False
-
-    def test_known_bool_divergence_is_unchanged(self):
-        """
-        The one known gap (code-review finding, deliberately not fixed): schema-only
-        treats bool as non-numeric, pandas treats it as numeric. Harmless today because
-        both paths still reject a bool column as a datetime candidate (schema-only fails
-        string-parse; full-frame fails the epoch-ns year-range check) — but if this
-        assertion ever starts failing, the two paths' agreement has shifted and
-        `_is_numeric_pa_type` should be revisited.
-        """
-        assert _is_numeric_pa_type(pa.bool_()) is False
-        assert pd.api.types.is_numeric_dtype(pa.bool_().to_pandas_dtype()) is True
 
 
 class TestEitPushdownOptOut:
@@ -679,7 +782,7 @@ class TestDeclaredIndexNeverPushesDownRows:
             requested_tz.append(tz)
             return pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")
 
-        actual = read_parquet_pruned(path, compute_bounds=compute_bounds, index_is_time_axis=True)
+        actual = read_cache_pruned(path, compute_bounds=compute_bounds)
 
         assert requested_tz == []
         pd.testing.assert_frame_equal(actual, pd.read_parquet(path))
@@ -687,11 +790,10 @@ class TestDeclaredIndexNeverPushesDownRows:
     def test_row_filter_would_have_emptied_the_frame(self, tmp_path):
         """Every row survives, so the window could not have been quietly applied."""
         path = self._float_index_parquet(tmp_path)
-        actual = read_parquet_pruned(
+        actual = read_cache_pruned(
             path,
             compute_bounds=lambda _tz: (pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")),
             select_columns=lambda names: ["Global"],
-            index_is_time_axis=True,
         )
         assert list(actual.columns) == ["Global"]
         assert len(actual) == len(pd.read_parquet(path))

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import clinical_scope.constants as cst
+from clinical_scope import user_options
 
 # ==================================================================================================
 logger = logging.getLogger(__name__)
@@ -40,20 +41,6 @@ def get_user_options_path() -> Path:
     return Path.home() / cst.CLINICAL_SCOPE_DIR_NAME / cst.USER_OPTIONS_FILE_NAME
 
 
-def iter_user_option_fields() -> list[Any]:
-    """Return the UserOptions nested schema classes (those exposing a NAME)."""
-    return [
-        getattr(cst.UserOptions, attr)
-        for attr in dir(cst.UserOptions)
-        if hasattr(getattr(cst.UserOptions, attr), "NAME")
-    ]
-
-
-def user_options_defaults() -> dict[str, Any]:
-    """Build the default user_options dict from the UserOptions schema classes."""
-    return {field.NAME: field.DEFAULT for field in iter_user_option_fields()}
-
-
 def save_user_options(data: dict[str, Any]) -> None:
     """Persist the user_options dict to its cache path (best-effort)."""
     try:
@@ -63,16 +50,31 @@ def save_user_options(data: dict[str, Any]) -> None:
 
 
 def load_user_options() -> dict[str, Any]:
-    """Load user options, filling any missing/unknown keys from schema defaults."""
-    options = user_options_defaults()
+    """
+    Load the on-disk user options, held to the schema.
+
+    Nothing else reads this file: it is hand-editable, so a stored value gets the same
+    checks the settings modal applies, and both a rejected value and a name the schema no
+    longer knows are reported rather than dropped in silence.
+    """
     path = get_user_options_path()
+    stored: dict[str, Any] = {}
     if path.exists():
         try:
             with path.open() as file:
-                stored = json.load(file)
-            options.update({key: value for key, value in stored.items() if key in options})
+                loaded = json.load(file)
+            stored = loaded if isinstance(loaded, dict) else {}
         except Exception:
             logger.exception("Failed to load user options:")
+
+    known = user_options.defaults()
+    unknown = sorted(key for key in stored if key not in known)
+    if unknown:
+        logger.warning("Ignoring unknown user option(s): %s", ", ".join(unknown))
+
+    options, corrections = user_options.validate(stored)
+    for correction in corrections:
+        logger.warning("%s", correction.message)
     return options
 
 

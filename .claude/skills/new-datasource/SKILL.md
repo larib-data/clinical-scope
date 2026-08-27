@@ -84,7 +84,7 @@ Create three files under `src/clinical_scope/datasource/sources/<datasource_name
 
 Critical contracts:
 - `_load` returns a `pd.DataFrame` with a sorted, deduplicated `DatetimeIndex` and numeric signal columns.
-- `_load` signature: `(cls, file_path: Path, path_output, **kwargs)` when `MULTI_FILE=False`, `(cls, file_path_list: list[Path], path_output, **kwargs)` when `MULTI_FILE=True`. The base class dispatches based on the option.
+- `_load` signature: `(cls, file_path: Path)` when `MULTI_FILE=False`, `(cls, file_path_list: list[Path])` when `MULTI_FILE=True`. The base class dispatches based on the option, and writes the parquet cache itself from the frame you return — `_load` must not save anything.
 - Empty data: return `pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))` — never plain `pd.DataFrame()`, and never `tz=…`: `_load` output is the parquet cache, so it stays naive and `_format` localizes it ([ADR-0010](../../../docs/adr/0010-load-transcribes-format-interprets.md)).
 - No module-level `main()` is needed. The `@add_main_module(<module>)` decorator in `registry.py` finds the `DataSourceBase` subclass inside your module and binds its inherited `main` classmethod — your module only has to define the class.
 - Decorate `_load` with `@time_it` from `clinical_scope.datasource.timing`.

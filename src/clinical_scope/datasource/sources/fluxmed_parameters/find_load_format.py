@@ -8,7 +8,7 @@ import pandas as pd
 import clinical_scope.datasource.sources.fluxmed_parameters.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
-from clinical_scope.io.file_utils import load_parquet_with_datetime_index
+from clinical_scope.io.time_axis import set_datetime_index
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +28,9 @@ class FluxmedParametersDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path) -> pd.DataFrame:
         if file_path.suffix.lower() == ".parquet":
-            df = load_parquet_with_datetime_index(file_path)
+            df = set_datetime_index(pd.read_parquet(file_path))
         elif file_path.suffix.lower() in [".txt", ".csv"]:
             filename = file_path.name
             match = re.search(r"(\d+_\d+_\d+-\d+_\d+_\d+)", filename)
@@ -107,7 +107,4 @@ class FluxmedParametersDataSource(DataSourceBase):
             )
             raise NotImplementedError(msg)
 
-        df = df[~df.index.duplicated(keep="first")]
-        if path_output is not None:
-            cls._save_dataframe(df, path_output)
-        return df
+        return df[~df.index.duplicated(keep="first")]

@@ -16,7 +16,7 @@ def ds_folder(patient_full_path, eit_cls):
 def loaded_df(ds_folder, eit_cls):
     file_path = eit_cls._find(ds_folder)
     assert file_path is not None
-    return eit_cls._load(file_path, None)
+    return eit_cls._load(file_path)
 
 
 class TestFind:

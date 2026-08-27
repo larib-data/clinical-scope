@@ -18,25 +18,30 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-def resolve_display_timezone(display_timezone: str | None) -> str:
+def resolve_display_timezone(display_timezone: str | None, fallback: str | None = None) -> str:
     """
     Return a usable IANA timezone name, falling back to ``cst.DISPLAY_TIMEZONE``.
 
     An absent value is the normal case and stays silent; a present-but-invalid name
     (hand-edited file, programmatic call) is logged rather than left to raise deep inside
     pandas/zoneinfo.
+
+    *fallback* lets a caller that is not resolving a *display* timezone name its own default
+    -- the load path passes ``cst.NAIVE_BOUND_TZ`` (ADR-0011) so an invalid name there cannot
+    silently land on the user-facing display default.
     """
+    fallback = fallback or cst.DISPLAY_TIMEZONE
     if not display_timezone:
-        return cst.DISPLAY_TIMEZONE
+        return fallback
     try:
         ZoneInfo(display_timezone)
     except (ZoneInfoNotFoundError, KeyError, ValueError):
         logger.warning(
-            "display_timezone %r is not a valid IANA name; using %s",
+            "timezone %r is not a valid IANA name; using %s",
             display_timezone,
-            cst.DISPLAY_TIMEZONE,
+            fallback,
         )
-        return cst.DISPLAY_TIMEZONE
+        return fallback
     return display_timezone
 
 
@@ -91,16 +96,21 @@ def filter_data_by_timestamps(
     time_start: pd.Timestamp | None,
     time_end: pd.Timestamp | None,
     filter_date: bool = True,
-    display_timezone: str | None = None,
+    naive_bound_tz: str | None = None,
 ) -> pd.DataFrame:
-    """Filter data between time_start and time_end timestamps using a hardcoded library timezone."""
+    """
+    Filter data between time_start and time_end, comparing in ``cst.LIBRARY_TZ``.
+
+    An aware bound is converted; a naive one is first localized in *naive_bound_tz*, which
+    is a load-path default and not the user's display timezone (ADR-0011).
+    """
     if not pd.api.types.is_datetime64_any_dtype(data.index):
         logger.warning("Data index is not datetime. Skipping filtering.")
         return data
 
     # Shallow copy since below only rebinds the index or row-filters, never mutates columns.
     filtered = data.copy(deep=False)
-    resolved_timezone = resolve_display_timezone(display_timezone)
+    resolved_timezone = resolve_display_timezone(naive_bound_tz, fallback=cst.NAIVE_BOUND_TZ)
 
     if filtered.index.tz is None:
         msg = "Dataframe 'data' index should be timezone-aware"
@@ -361,13 +371,3 @@ def _date_range(df: pd.DataFrame) -> tuple[str, str] | None:
         return (fmt_ts(df.index.min()), fmt_ts(df.index.max()))
     except Exception:  # noqa: BLE001
         return None
-
-
-def _first_last_timestamp(df: pd.DataFrame, column: str) -> tuple[str | None, str | None]:
-    """Return (first, last) compact timestamp strings for valid (non-NaN) values in a column."""
-    if column not in df.columns:
-        return None, None
-    valid_index = df.index[df[column].notna()]
-    if valid_index.empty:
-        return None, None
-    return fmt_ts(valid_index.min()), fmt_ts(valid_index.max())

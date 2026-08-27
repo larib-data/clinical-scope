@@ -1,7 +1,6 @@
 import logging
 import re
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,8 @@ from clinical_scope.datasource.formatting.timezone import (
     resolve_display_timezone,
     to_float_seconds,
 )
-from clinical_scope.io.file_utils import get_column_name_from_pattern
+from clinical_scope.io.column_patterns import get_column_name_from_pattern
+from clinical_scope.io.export import print_out_figure
 from clinical_scope.io.paths import get_visualization_path
 
 logger = logging.getLogger(__name__)
@@ -98,86 +98,32 @@ class DisplayFallbacks:
     @classmethod
     def from_user_options(cls, user_options: dict[str, Any] | None) -> "DisplayFallbacks":
         """
-        Read the display tenants of *user_options*; missing or unusable values keep defaults.
+        Project the display tenants of *user_options* onto the carrier.
 
-        An absent key is the normal case (a settings file predating the option), so it stays
-        silent. A value that is present but discarded is logged — the settings modal already
-        validates, so it only happens to a hand-edited ``user_options.json``.
+        A projection, not a check: range and choice rules live in
+        :func:`clinical_scope.user_options.validate`, which the UI runs before a value can be
+        stored. The timezone is the exception — it is the one tenant whose bad value raises
+        inside pandas/zoneinfo rather than merely rendering oddly, so it is resolved here too,
+        covering a dict hand-built by a library caller.
         """
         options = user_options or {}
         schema = cst.UserOptions
 
-        def bounded_number(field_schema: Any, cast: Callable[[Any], Any] = int) -> int | float:
-            if field_schema.NAME not in options:
-                return field_schema.DEFAULT
-            try:
-                value = cast(options[field_schema.NAME])
-            except (TypeError, ValueError):
-                logger.warning(
-                    "user_options['%s'] = %r is not a number; using %s",
-                    field_schema.NAME,
-                    options[field_schema.NAME],
-                    field_schema.DEFAULT,
-                )
-                return field_schema.DEFAULT
-            clamped = max(field_schema.MIN, min(field_schema.MAX, value))
-            if clamped != value:
-                logger.warning(
-                    "user_options['%s'] = %s is outside [%s, %s]; using %s",
-                    field_schema.NAME,
-                    value,
-                    field_schema.MIN,
-                    field_schema.MAX,
-                    clamped,
-                )
-            return clamped
-
-        def ordered_bounds(min_schema: Any, max_schema: Any) -> tuple[float, float]:
-            # Each bound is in range on its own yet the pair can still be inverted, which
-            # reaches Plotly as zmin > zmax and renders an unreadable scale.
-            low = bounded_number(min_schema, cast=float)
-            high = bounded_number(max_schema, cast=float)
-            if low >= high:
-                logger.warning(
-                    "user_options['%s'] = %s is not below '%s' = %s; using [%s, %s]",
-                    min_schema.NAME,
-                    low,
-                    max_schema.NAME,
-                    high,
-                    min_schema.DEFAULT,
-                    max_schema.DEFAULT,
-                )
-                return (min_schema.DEFAULT, max_schema.DEFAULT)
-            return (low, high)
-
-        def one_of(field_schema: Any) -> Any:
-            if field_schema.NAME not in options:
-                return field_schema.DEFAULT
-            value = options[field_schema.NAME]
-            allowed = [choice_value for choice_value, _ in field_schema.CHOICES]
-            if value not in allowed:
-                logger.warning(
-                    "user_options['%s'] = %r is not one of %s; using %r",
-                    field_schema.NAME,
-                    value,
-                    allowed,
-                    field_schema.DEFAULT,
-                )
-                return field_schema.DEFAULT
-            return value
+        def stored(field_schema: Any) -> Any:
+            return options.get(field_schema.NAME, field_schema.DEFAULT)
 
         return cls(
-            subplot_height=bounded_number(schema.DefaultSubplotHeight),
-            loop_subplot_height=bounded_number(schema.LoopSubplotHeight),
-            loops_per_row=one_of(schema.LoopsPerRow),
-            legend_entry_width=bounded_number(schema.LegendEntryWidth),
-            y_significant_digits=one_of(schema.YSignificantDigits),
-            colorway=one_of(schema.FallbackColorway),
-            template=one_of(schema.Template),
-            hovermode=one_of(schema.HoverModeOption),
-            hover_time_format=one_of(schema.HoverTimeFormatOption),
+            subplot_height=stored(schema.DefaultSubplotHeight),
+            loop_subplot_height=stored(schema.LoopSubplotHeight),
+            loops_per_row=stored(schema.LoopsPerRow),
+            legend_entry_width=stored(schema.LegendEntryWidth),
+            y_significant_digits=stored(schema.YSignificantDigits),
+            colorway=stored(schema.FallbackColorway),
+            template=stored(schema.Template),
+            hovermode=stored(schema.HoverModeOption),
+            hover_time_format=stored(schema.HoverTimeFormatOption),
             display_timezone=resolve_display_timezone(options.get(schema.DisplayTimezone.NAME)),
-            spectrogram_db_range=ordered_bounds(schema.SpectrogramDbMin, schema.SpectrogramDbMax),
+            spectrogram_db_range=(stored(schema.SpectrogramDbMin), stored(schema.SpectrogramDbMax)),
         )
 
     @property
@@ -773,8 +719,8 @@ class Signal:
             line_dash=line_dash or signal.trace_options.line_dash,
         )
         return cls(
-            # Qualified rather than the bare source raw_name: wrapper.main prunes single-signal
-            # PlotGroups whose raw_name is in a global group, which would swallow the PSD too.
+            # Qualified by the PSD's own name: two entries built from one source signal with
+            # different window_s would otherwise share a raw_name as well as a display name.
             raw_name=f"{psd_name}{cst.QUALIFIED_NAME_SEPARATOR}{label or signal.raw_name}",
             name=label or signal.name,
             data=data,
@@ -1250,25 +1196,3 @@ def wrap_label(text: str, max_line_length: int = 12, break_chars: str = r"[ \-_]
         lines.append(current_line.strip())
 
     return "<br>".join(lines)
-
-
-# ==================================================================================================
-def print_out_figure(path_output: Path, fig_list: list, self_contained: bool = False) -> None:
-    """
-    Export Plotly figures to a single HTML file.
-
-    With *self_contained*, plotly.js is embedded once (in the first figure; the rest reuse it)
-    so the file renders on a machine with no network — at ~3.5 MB. Otherwise it is fetched
-    from a CDN, which keeps the file small but shows a blank page offline.
-    """
-    path_output.parent.mkdir(parents=True, exist_ok=True)
-    with Path.open(path_output, "w") as file_out:
-        for figure_index, fig in enumerate(fig_list):
-            if self_contained:
-                # Embedding the ~3.5 MB bundle once per file, not once per figure.
-                include_plotlyjs = (
-                    cst.HtmlExport.INLINE if figure_index == 0 else cst.HtmlExport.OMIT
-                )
-            else:
-                include_plotlyjs = cst.HtmlExport.CDN
-            file_out.write(fig.to_html(full_html=False, include_plotlyjs=include_plotlyjs))

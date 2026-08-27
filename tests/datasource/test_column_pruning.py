@@ -27,11 +27,8 @@ import pytest
 
 import clinical_scope.constants as cst
 from clinical_scope.datasource.base import DataSourceBase
-from clinical_scope.io.file_utils import (
-    _pruned_columns,
-    get_column_name_from_pattern,
-    read_parquet_pruned,
-)
+from clinical_scope.io.column_patterns import _pruned_columns, get_column_name_from_pattern
+from clinical_scope.io.parquet_pruning import read_cache_pruned, read_parquet_pruned
 
 OTHER_DIR = (
     Path(__file__).resolve().parent.parent
@@ -235,10 +232,9 @@ class TestReadParquetPrunedNonTemporalIndex:
     def test_pruned_read_equals_full_subset(self, tmp_path, field_display):
         path = _make_non_temporal_index_parquet(tmp_path)
         full = pd.read_parquet(path)
-        actual = read_parquet_pruned(
+        actual = read_cache_pruned(
             path,
             select_columns=lambda names: _pruned_columns(field_display, names),
-            index_is_time_axis=True,
         )
         assert list(actual.columns) == _expected_cols(full, field_display)
         # pandas restores the index without it ever being named in columns=, so unlike the
@@ -259,10 +255,9 @@ class TestReadParquetPrunedNonTemporalIndex:
         """A RangeIndex file has no index column to vouch for, so detection still runs."""
         path = _make_nonmaterialized_parquet(tmp_path)
         full = pd.read_parquet(path)
-        actual = read_parquet_pruned(
+        actual = read_cache_pruned(
             path,
             select_columns=lambda names: _pruned_columns(["pre_a"], names),
-            index_is_time_axis=True,
         )
         assert set(actual.columns) == {"timestamp", "pre_a"}
         pd.testing.assert_frame_equal(actual, full[list(actual.columns)])
@@ -304,9 +299,9 @@ class TestQuickLoadCachePruning:
         assert list(out.columns) == ["HR", "SpO2", "RR"]
 
     def test_composes_row_and_column_pruning(self, servo_u_cls, tmp_path, monkeypatch):
-        # The materialized cache index is tz-aware UTC (_make_cache); pin the display default
-        # to UTC so the naive window lands inside it.
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        # The materialized cache index is tz-aware UTC (_make_cache); pin the naive-bound
+        # default to UTC so the naive window lands inside it.
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         path = _make_cache(tmp_path)
         full = pd.read_parquet(path)
         patient_options = {
@@ -406,7 +401,7 @@ def _wide_frame() -> pd.DataFrame:
     )
 
 
-def _make_source(load_calls: list | None = None) -> type:
+def _make_source() -> type:
     """A datasource whose fresh `_load` returns the same wide frame the cache holds."""
 
     class _FakeCachedSource(DataSourceBase):
@@ -423,9 +418,7 @@ def _make_source(load_calls: list | None = None) -> type:
             return folder_path / "raw_data.bin"
 
         @classmethod
-        def _load(cls, file_path, path_output, **kwargs):  # noqa: ARG003
-            if load_calls is not None:
-                load_calls.append(kwargs)
+        def _load(cls, file_path):  # noqa: ARG003
             return _wide_frame()
 
     return _FakeCachedSource
@@ -449,8 +442,8 @@ class TestInspectConfiguredColumnsOnly:
     The opt-in trades the unconfigured-column rows for the memory — and nothing else.
 
     Rows stay unpruned in every case (inspect's `% retained` and raw date range are
-    comparisons against the *unwindowed* file), and the fresh-load path keeps seeing no
-    `field_display` at all, so the cache a first load writes is never narrowed by an inspect.
+    comparisons against the *unwindowed* file), and a fresh load reads every column — `_load`
+    takes no configuration, so an inspect can never narrow the cache a first load writes.
     """
 
     DB_OPTIONS = {"field_display": ["HR", "SpO2"]}
@@ -485,21 +478,10 @@ class TestInspectConfiguredColumnsOnly:
         assert {column.raw_name for column in result.columns} == {"HR", "SpO2", "RR"}
         assert result.columns_pruned is False
 
-    def test_fresh_load_never_sees_field_display(self, tmp_path):
-        # Regression guard: EIT's `_load` pre-filters on field_display and caches the result,
-        # so letting the flag reach a fresh load would write a narrowed cache.
-        (tmp_path / cst.FOLDER_NAME_OUTPUT).mkdir()
-        load_calls: list = []
-        _make_source(load_calls).inspect(
-            _patient_options(tmp_path), self.DB_OPTIONS, configured_columns_only=True
-        )
-        assert load_calls, "the fresh load path should have run"
-        assert "field_display" not in load_calls[0]["database_options_specific"]
-
     @pytest.mark.parametrize("configured_columns_only", [False, True])
     def test_rows_are_never_pruned(self, cached_patient, monkeypatch, configured_columns_only):
         # The window must cut only *after* the read, or "% retained" would always be 100%.
-        monkeypatch.setattr(cst, "DISPLAY_TIMEZONE", "UTC")
+        monkeypatch.setattr(cst, "NAIVE_BOUND_TZ", "UTC")
         result = _make_source().inspect(
             _patient_options(
                 cached_patient,

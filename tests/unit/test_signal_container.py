@@ -17,8 +17,8 @@ from clinical_scope.signal_container import (
     compute_average_priority,
     get_unique_or_raise,
     merge_y_ranges,
-    print_out_figure,
 )
+from clinical_scope.io.export import print_out_figure
 from clinical_scope.spectral import SpectralRefusalError
 
 # ---------------------------------------------------------------------------

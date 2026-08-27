@@ -12,6 +12,7 @@ from clinical_scope.dash_api.callbacks.user_options_callbacks import (
     reflect_user_options,
 )
 from clinical_scope.signal_container import DisplayFallbacks
+from clinical_scope.user_options import defaults
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,7 +49,20 @@ class TestValueCoercionOnSave:
     def test_float_clamped_to_bounds(self, user_options_home):
         name = cst.UserOptions.SpectrogramDbMax.NAME
         assert self._saved(name, 99999.0) == 100.0
-        assert self._saved(name, -99999.0) == -100.0
+        assert self._saved(cst.UserOptions.SpectrogramDbMin.NAME, -99999.0) == -100.0
+
+    def test_inverted_db_pair_is_refused_on_save(self, user_options_home):
+        """Both bounds are in range on their own; the modal must not store zmin > zmax."""
+        saved = persist_user_options(
+            [80.0, 10.0],
+            [
+                _widget_id(cst.UserOptions.SpectrogramDbMin.NAME),
+                _widget_id(cst.UserOptions.SpectrogramDbMax.NAME),
+            ],
+            {},
+        )
+        assert saved[cst.UserOptions.SpectrogramDbMin.NAME] == 0.0
+        assert saved[cst.UserOptions.SpectrogramDbMax.NAME] == 40.0
 
     def test_cleared_int_input_falls_back_to_default(self, user_options_home):
         assert self._saved(cst.UserOptions.LegendEntryWidth.NAME, None) == 220
@@ -77,10 +91,10 @@ class TestValueCoercionOnSave:
         so ``updated == store`` alone must not read as "nothing changed" and skip the resync.
         """
         name = cst.UserOptions.DisplayTimezone.NAME
-        store = {name: cst.DISPLAY_TIMEZONE}
+        store = defaults()
         result = persist_user_options(["NotATimezone"], [_widget_id(name)], store)
+        assert result == store
         assert result is not no_update
-        assert result[name] == cst.DISPLAY_TIMEZONE
 
     def test_checklist_is_stored_as_a_bool(self, user_options_home):
         assert self._saved(cst.UserOptions.SaveHtmlOnProcess.NAME, [True]) is True
@@ -103,11 +117,13 @@ class TestPersistUserOptions:
 
         store = persist_user_options(values, [_widget_id(name) for name in names], {})
 
-        assert store == {
+        assert {name: store[name] for name in names} == {
             cst.UserOptions.SaveHtmlOnProcess.NAME: True,
             cst.UserOptions.FallbackColorway.NAME: cst.Colorway.TOL_MUTED,
             cst.UserOptions.LoopsPerRow.NAME: 3,
         }
+        # Untouched settings are filled from the schema, so the store is never partial.
+        assert set(store) == set(defaults())
 
     def test_persists_to_disk(self, user_options_home):
         name = cst.UserOptions.Template.NAME
@@ -153,10 +169,6 @@ class TestReflectUserOptions:
 
 
 class TestUserOptionsRoundTrip:
-    def test_defaults_cover_every_schema_field(self):
-        defaults = ui_helper.user_options_defaults()
-        assert set(defaults) == {field.NAME for field in ui_helper.iter_user_option_fields()}
-
     def test_saved_options_reload_and_reach_the_carrier(self, user_options_home):
         persist_user_options(
             [cst.Colorway.TOL_MUTED, 3],

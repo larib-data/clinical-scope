@@ -6,7 +6,7 @@ Covers:
 - wrapper.extract_datasource()     (wrapper.py)
 - wrapper.extract_patient()        (wrapper.py)
 - wrapper.batch_extract()          (wrapper.py)
-- file_utils.save_df()                 (file_utils.py)
+- export.save_df()                     (io/export.py)
 - datasource_list.detect_datasource_from_folder()  (datasource_list.py)
 """
 
@@ -18,7 +18,7 @@ import pytest
 
 from clinical_scope import wrapper
 from clinical_scope.datasource.registry import detect_datasource_from_folder
-from clinical_scope.io.file_utils import save_df
+from clinical_scope.io.export import save_df
 
 # ==================================================================================================
 # Helpers

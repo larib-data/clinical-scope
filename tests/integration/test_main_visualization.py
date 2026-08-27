@@ -55,27 +55,52 @@ class TestMainWithDefaultConfig:
 
 
 class TestMainGlobalGrouping:
-    def test_global_grouped_fields(self, patient_options_full, example_database_options):
-        """The example config has global.grouped_fields.Pressure — verify grouping works."""
+    """
+    ``global.grouped_fields`` is the only place a group may span datasources.
+
+    The demo patient has no raw name shared by two sources, so the collisions identity-based
+    grouping exists to prevent are not expressible here — see tests/unit/test_plot_assembly.py.
+    """
+
+    @pytest.fixture(scope="class")
+    def time_series_groups(self, patient_options_full, example_database_options):
         models = main(patient_options_full, example_database_options)
-        ts_models = [m for m in models if m.plot_type == "time_series"]
-        if not ts_models:
-            pytest.skip("No time_series models produced")
-        ts_model = ts_models[0]
-        pressure_groups = [g for g in ts_model.groups if "Pressure" in g.name]
-        # With synthetic data, the ART/PNId/etc. signals may or may not exist.
-        # If they do, the Pressure group should be there.
-        all_signal_names = {s.raw_name for g in ts_model.groups for s in g.signals}
-        global_fields = {"ART", "PNId", "PNIm", "PNIs"}
-        if global_fields & all_signal_names:
-            assert len(pressure_groups) > 0, "Expected a 'Pressure' group"
+        return next(model for model in models if model.plot_type == "time_series").groups
+
+    @staticmethod
+    def _named(groups, name):
+        return next(group for group in groups if group.name == name)
+
+    def test_a_global_group_gathers_signals_from_several_datasources(self, time_series_groups):
+        group = self._named(time_series_groups, "Paw [cross-source qualified refs]")
+        assert [signal.metadata.datasource_name for signal in group.signals] == [
+            "fluxmed_signals",
+            "mindray_scope",
+            "mindray_respi_waves",
+        ]
+
+    def test_a_qualified_other_reference_resolves(self, time_series_groups):
+        """``other::numerics::PNId`` is three segments, the last two the signal's own raw name."""
+        group = self._named(time_series_groups, "NI Pressure")
+        assert [signal.raw_name for signal in group.signals] == [
+            "numerics::PNId",
+            "numerics::PNIm",
+            "numerics::PNIs",
+        ]
+
+    def test_a_globally_grouped_signal_is_not_also_plotted_alone(self, time_series_groups):
+        grouped = {
+            signal.raw_name for signal in self._named(time_series_groups, "NI Pressure").signals
+        }
+        alone = {
+            group.signals[0].raw_name for group in time_series_groups if len(group.signals) == 1
+        }
+        assert grouped & alone == set()
 
 
 class TestToHtml:
     def test_to_html_writes_file(self, patient_options_full, example_database_options, tmp_path):
         models = main(patient_options_full, example_database_options)
-        if not models:
-            pytest.skip("No models produced")
         opts = dict(patient_options_full)
         opts["data_folder"] = str(tmp_path)
         # Create the output directory (to_html expects it or helper creates it)
@@ -103,10 +128,7 @@ class TestUserOptionsReachTheFigures:
     @pytest.fixture(scope="class")
     def time_series_model(self, patient_options_full, example_database_options, user_options):
         models = main(patient_options_full, example_database_options, user_options=user_options)
-        ts_models = [model for model in models if model.plot_type == "time_series"]
-        if not ts_models:
-            pytest.skip("No time_series models produced")
-        return ts_models[0]
+        return next(model for model in models if model.plot_type == "time_series")
 
     def test_subplot_height_applied(self, time_series_model):
         assert time_series_model.computed_height == 175 * len(time_series_model.groups)
@@ -133,16 +155,13 @@ class TestUserOptionsReachTheFigures:
         heart_rate = [
             trace for trace in time_series_model.figure.data if trace.name == "Heart Rate"
         ]
-        if not heart_rate:
-            pytest.skip("Heart Rate signal absent from the demo data")
+        assert heart_rate
         assert "%{y:.0f}" in heart_rate[0].hovertemplate
 
     def test_no_user_options_keeps_defaults(self, patient_options_full, example_database_options):
         models = main(patient_options_full, example_database_options)
-        ts_models = [model for model in models if model.plot_type == "time_series"]
-        if not ts_models:
-            pytest.skip("No time_series models produced")
-        assert ts_models[0].computed_height == 300 * len(ts_models[0].groups)
+        ts_model = next(model for model in models if model.plot_type == "time_series")
+        assert ts_model.computed_height == 300 * len(ts_model.groups)
 
 
 class TestMainGlobalLoops:
@@ -173,8 +192,6 @@ class TestMainGlobalLoops:
         """The loop PlotModel group must be named after the loop key."""
         models = main(patient_options_full, db_opts_with_global_loop)
         loop_models = [m for m in models if m.plot_type == "loop"]
-        if not loop_models:
-            pytest.skip("No loop PlotModel produced — signal data may be absent")
         group_names = [g.name for m in loop_models for g in m.groups]
         assert "pv_loop" in group_names
 
@@ -182,8 +199,7 @@ class TestMainGlobalLoops:
         """The loop PlotModel must carry a rendered Plotly figure."""
         models = main(patient_options_full, db_opts_with_global_loop)
         loop_models = [m for m in models if m.plot_type == "loop"]
-        if not loop_models:
-            pytest.skip("No loop PlotModel produced — signal data may be absent")
+        assert loop_models
         for m in loop_models:
             assert isinstance(m.figure, go.Figure)
             assert len(m.figure.data) > 0
