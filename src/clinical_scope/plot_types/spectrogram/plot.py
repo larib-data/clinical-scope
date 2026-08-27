@@ -93,7 +93,7 @@ def spectrogram_from_signal(
 
 def build(all_signals: list[Signal], spectrogram_name: str, spectrogram_config: Any) -> Signal:
     """Build the spectrogram one ``spectrogram`` config entry describes."""
-    config_cls = cst.DatabaseOptions.SpectrogramConfig
+    config_cls = SpectrogramSchema.Config
     source_signal = resolve_one(spectrogram_config.get(config_cls.SIGNAL), all_signals)
     try:
         return spectrogram_from_signal(

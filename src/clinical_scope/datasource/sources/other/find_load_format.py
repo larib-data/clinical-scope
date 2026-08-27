@@ -1,6 +1,7 @@
 import csv
 import logging
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +14,7 @@ from clinical_scope.io.column_patterns import make_column_selector
 from clinical_scope.io.parquet_pruning import read_parquet_pruned
 from clinical_scope.io.paths import get_output_folder
 from clinical_scope.io.time_axis import deduplicate_then_sort_index, set_datetime_index
+from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.signal_container import (
     DisplayFallbacks,
     Signal,
@@ -81,43 +83,6 @@ def _qualify(file_stem: str, bare_name: str) -> str:
     return f"{file_stem}{cst.QUALIFIED_NAME_SEPARATOR}{bare_name}"
 
 
-def _qualify_loop(file_stem: str, bare_columns: list) -> list:
-    return [_qualify(file_stem, bare_column) for bare_column in bare_columns]
-
-
-def _qualify_spectrogram(file_stem: str, entry: dict) -> dict:
-    signal_key = cst.DatabaseOptions.SpectrogramConfig.SIGNAL
-    if signal_key not in entry:
-        return dict(entry)
-    return {**entry, signal_key: _qualify(file_stem, entry[signal_key])}
-
-
-def _qualify_psd(file_stem: str, entry: dict) -> dict:
-    config_cls = cst.DatabaseOptions.PsdConfig
-    signal_key = config_cls.Entry.SIGNAL
-    qualified = []
-    for item in entry.get(config_cls.SIGNALS) or []:
-        # A plain string is shorthand for an Entry naming just a signal, as in wrapper.py.
-        if isinstance(item, dict):
-            if signal_key in item:
-                qualified.append({**item, signal_key: _qualify(file_stem, item[signal_key])})
-            else:
-                qualified.append(dict(item))
-        else:
-            qualified.append(_qualify(file_stem, item))
-    return {**entry, config_cls.SIGNALS: qualified}
-
-
-# Derived-plot sections a per-file 'other::<stem>' block may declare, and how each one's bare
-# signal references get scoped to that file. Adding a fifth derived plot type means adding a
-# row here -- forgetting to is what made 'psd' validate cleanly yet never render.
-PER_FILE_DERIVED_SECTIONS = {
-    cst.DatabaseOptions.LOOP: _qualify_loop,
-    cst.DatabaseOptions.SPECTROGRAM: _qualify_spectrogram,
-    cst.DatabaseOptions.PSD: _qualify_psd,
-}
-
-
 def _resolve_columns(df: pd.DataFrame, file_config: dict) -> list[str]:
     """
     Determine which columns to expose as signals for a file.
@@ -182,8 +147,9 @@ class OtherDataSource(DataSourceBase):
         ``database_options_parser.normalize_database_options`` populates from ``other::<stem>``
         keys. Each ``other::<stem>`` section supports the full set of database_options keys:
         ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
-        ``grouped_fields``, ``trace_options``, and every derived-plot section listed in
-        :data:`PER_FILE_DERIVED_SECTIONS` (``loop``, ``spectrogram``, ``psd``).
+        ``grouped_fields``, ``trace_options``, and a section for every registered plot
+        type (``loop``, ``spectrogram``, ``psd``) -- each one scoped by the plot type's
+        own ``map_refs``, so a new type is covered here without a line changing.
 
         Per-file *patient* options (``time_shift``, ``group_by_file``) are read the same way,
         from a standalone ``patient_options["other::<stem>"]`` block — see
@@ -208,7 +174,9 @@ class OtherDataSource(DataSourceBase):
         all_signals: list[Signal] = []
         loaded_files: list[Path] = []
         grouped_fields: dict = {}
-        derived_sections: dict[str, dict] = {key: {} for key in PER_FILE_DERIVED_SECTIONS}
+        derived_sections: dict[str, dict] = {
+            schema.SECTION_KEY: {} for schema in plot_types.DERIVED
+        }
 
         for file_path in file_paths:
             try:
@@ -297,11 +265,13 @@ class OtherDataSource(DataSourceBase):
                     # Both the entry name and the signal references it holds are scoped to the
                     # file: two files may each declare a loop called "PV" without one erasing
                     # the other, and each keeps pointing at its own columns.
-                    for section_key, qualify_entry in PER_FILE_DERIVED_SECTIONS.items():
-                        for entry_name, entry in file_config.get(section_key, {}).items():
-                            derived_sections[section_key][_qualify(file_stem, entry_name)] = (
-                                qualify_entry(file_stem, entry)
-                            )
+                    scope_to_file = partial(_qualify, file_stem)
+                    for schema in plot_types.DERIVED:
+                        section = file_config.get(schema.SECTION_KEY, {})
+                        for entry_name, entry in section.items():
+                            derived_sections[schema.SECTION_KEY][
+                                _qualify(file_stem, entry_name)
+                            ] = schema.map_refs(entry, scope_to_file)
 
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)

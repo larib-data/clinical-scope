@@ -15,7 +15,7 @@ from clinical_scope.plot_types.base import (
     RenderSpec,
     TimeSeries,
 )
-from clinical_scope.plot_types.loop.schema import LoopSchema
+from clinical_scope.plot_types.loop.schema import LOOP_REFERENCE_COUNT, LoopSchema
 from clinical_scope.signal_container import (
     Data,
     Metadata,
@@ -28,8 +28,6 @@ from clinical_scope.signal_container import (
 from clinical_scope.signal_reference import resolve_one
 
 logger = logging.getLogger(__name__)
-
-LOOP_REFERENCE_COUNT = 2
 
 
 def _hover_spec(

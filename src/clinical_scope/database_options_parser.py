@@ -1,17 +1,17 @@
 """Parse and validate database_options files."""
 
 import logging
-from typing import Literal, NamedTuple
 
 import clinical_scope.constants as cst
+from clinical_scope.plot_types import registry as plot_types
+from clinical_scope.validation import ValidationIssue
 
 logger = logging.getLogger(__name__)
 
 
-class ValidationIssue(NamedTuple):
-    severity: Literal["error", "warning", "info"]
-    path: str
-    message: str
+def _known_section_keys() -> frozenset[str]:
+    """Every section key a config may set: the fixed ones, plus one per registered type."""
+    return cst.DatabaseOptions.KNOWN_SECTION_KEYS | plot_types.SECTION_KEYS
 
 
 def normalize_database_options(database_options: dict) -> None:
@@ -67,20 +67,19 @@ def validate_database_options(database_options: dict) -> list[ValidationIssue]:
 def _validate_section(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
     _check_unknown_keys(section, path_prefix, issues)
     _check_types(section, path_prefix, issues)
+    _check_plot_types(section, path_prefix, issues)
     _check_redundant_entries(section, path_prefix, issues)
 
 
 def _check_unknown_keys(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
-    unknown = set(section.keys()) - cst.DatabaseOptions.KNOWN_SECTION_KEYS
+    known = _known_section_keys()
+    unknown = set(section.keys()) - known
     if unknown:
         issues.append(
             ValidationIssue(
                 severity="warning",
                 path=path_prefix,
-                message=(
-                    f"Unknown keys: {sorted(unknown)}. "
-                    f"Expected: {sorted(cst.DatabaseOptions.KNOWN_SECTION_KEYS)}"
-                ),
+                message=(f"Unknown keys: {sorted(unknown)}. Expected: {sorted(known)}"),
             )
         )
     signals = section.get(cst.DatabaseOptions.SIGNALS)
@@ -101,133 +100,17 @@ def _check_unknown_keys(section: dict, path_prefix: str, issues: list[Validation
                     )
                 )
 
-    for section_key, config_cls in (
-        (cst.DatabaseOptions.SPECTROGRAM, cst.DatabaseOptions.SpectrogramConfig),
-        (cst.DatabaseOptions.PSD, cst.DatabaseOptions.PsdConfig),
-    ):
-        entries = section.get(section_key)
-        if not entries or not isinstance(entries, dict):
-            continue
-        for entry_name, entry_options in entries.items():
-            if not isinstance(entry_options, dict):
-                continue
-            unknown_entry = set(entry_options.keys()) - config_cls.KNOWN_KEYS
-            if unknown_entry:
-                issues.append(
-                    ValidationIssue(
-                        severity="warning",
-                        path=f"{path_prefix}.{section_key}.{entry_name}",
-                        message=(
-                            f"Unknown keys: {sorted(unknown_entry)}. "
-                            f"Expected: {sorted(config_cls.KNOWN_KEYS)}"
-                        ),
-                    )
-                )
 
+def _check_plot_types(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
+    """
+    Hand each plot type its own section to check.
 
-def _check_spectral_types(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
-    """Validate ``spectrogram`` and ``psd``, which differ only in how they name their signals."""
-    spectrogram_config = cst.DatabaseOptions.SpectrogramConfig
-    psd_config = cst.DatabaseOptions.PsdConfig
-
-    # Each row carries its own config class: the two schemas happen to share key *names* today,
-    # but reading one section's keys off the other's class would hide the day they diverge.
-    for section_key, config_cls in (
-        (cst.DatabaseOptions.SPECTROGRAM, spectrogram_config),
-        (cst.DatabaseOptions.PSD, psd_config),
-    ):
-        entries = section.get(section_key)
-        if entries is not None and not isinstance(entries, dict):
-            issues.append(
-                ValidationIssue(
-                    severity="error",
-                    path=f"{path_prefix}.{section_key}",
-                    message=f"Must be a dict, got {type(entries).__name__}",
-                )
-            )
-            continue
-
-        for entry_name, entry_options in (entries or {}).items():
-            if not isinstance(entry_options, dict):
-                continue
-            entry_path = f"{path_prefix}.{section_key}.{entry_name}"
-
-            if config_cls is psd_config:
-                names = entry_options.get(psd_config.SIGNALS)
-                if not (isinstance(names, list) and names):
-                    issues.append(
-                        ValidationIssue(
-                            severity="error",
-                            path=f"{entry_path}.signals",
-                            message=(
-                                f"Must be a required non-empty list of signal names, got {names!r}"
-                            ),
-                        )
-                    )
-                else:
-                    _check_psd_entries(names, entry_path, issues)
-            elif spectrogram_config.SIGNAL not in entry_options:
-                issues.append(
-                    ValidationIssue(
-                        severity="error",
-                        path=entry_path,
-                        message="Missing required key 'signal'",
-                    )
-                )
-
-            freq_range = entry_options.get(config_cls.FREQ_RANGE)
-            if freq_range is None or not (
-                isinstance(freq_range, list)
-                and len(freq_range) == 2  # noqa: PLR2004
-                and all(isinstance(bound, (int, float)) for bound in freq_range)
-            ):
-                issues.append(
-                    ValidationIssue(
-                        severity="error",
-                        path=f"{entry_path}.freq_range",
-                        message=(
-                            f"Must be a required 2-element list of numbers, got {freq_range!r}"
-                        ),
-                    )
-                )
-
-
-def _check_psd_entries(entries: list, entry_path: str, issues: list[ValidationIssue]) -> None:
-    """Validate each ``psd.<name>.signals`` item: a plain ref string, or an Entry dict."""
-    entry_config = cst.DatabaseOptions.PsdConfig.Entry
-    for item_idx, item in enumerate(entries):
-        if isinstance(item, str):
-            continue
-        item_path = f"{entry_path}.signals[{item_idx}]"
-        if not isinstance(item, dict):
-            issues.append(
-                ValidationIssue(
-                    severity="error",
-                    path=item_path,
-                    message=f"Must be a signal name string or a dict, got {item!r}",
-                )
-            )
-            continue
-        if not isinstance(item.get(entry_config.SIGNAL), str) or not item.get(entry_config.SIGNAL):
-            issues.append(
-                ValidationIssue(
-                    severity="error",
-                    path=item_path,
-                    message="Missing required key 'signal'",
-                )
-            )
-        unknown_item = set(item.keys()) - entry_config.KNOWN_KEYS
-        if unknown_item:
-            issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    path=item_path,
-                    message=(
-                        f"Unknown keys: {sorted(unknown_item)}. "
-                        f"Expected: {sorted(entry_config.KNOWN_KEYS)}"
-                    ),
-                )
-            )
+    The parser knows a section may configure plot types; it does not know what any of them
+    requires. A type whose config it cannot read is a type it cannot silently accept, which
+    is what let ``psd`` validate cleanly and render nothing before this.
+    """
+    for schema in plot_types.DERIVED:
+        issues.extend(schema.validate(section.get(schema.SECTION_KEY), path_prefix))
 
 
 def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
@@ -287,8 +170,6 @@ def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue])
                     ),
                 )
             )
-
-    _check_spectral_types(section, path_prefix, issues)
 
     signals = signals_raw if isinstance(signals_raw, dict) else {}
     for raw_name, signal_options in signals.items():

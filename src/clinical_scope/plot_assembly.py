@@ -23,9 +23,9 @@ from functools import partial
 from typing import Any
 
 from clinical_scope import constants as cst
+from clinical_scope.plot_types import builders
 from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.plot_types.base import PlotTypeSchema, SourceSignalNotFoundError
-from clinical_scope.plot_types.builders import BUILDERS
 from clinical_scope.signal_container import PlotGroup, Signal
 from clinical_scope.signal_reference import resolve_signal_references
 
@@ -49,72 +49,6 @@ def _qualify(reference: Any, datasource_name: str, datasource_signals: list[Sign
     return f"{datasource_name}{cst.QUALIFIED_NAME_SEPARATOR}{target}"
 
 
-def _qualify_loop(config: Any, datasource_name: str, datasource_signals: list[Signal]) -> Any:
-    if not isinstance(config, (list, tuple)):
-        return config
-    return [_qualify(reference, datasource_name, datasource_signals) for reference in config]
-
-
-def _qualify_spectrogram(
-    config: Any, datasource_name: str, datasource_signals: list[Signal]
-) -> Any:
-    key = cst.DatabaseOptions.SpectrogramConfig.SIGNAL
-    if not isinstance(config, dict) or key not in config:
-        return config
-    return {**config, key: _qualify(config[key], datasource_name, datasource_signals)}
-
-
-def _qualify_psd(config: Any, datasource_name: str, datasource_signals: list[Signal]) -> Any:
-    key = cst.DatabaseOptions.PsdConfig.SIGNALS
-    entry_key = cst.DatabaseOptions.PsdConfig.Entry.SIGNAL
-    if not isinstance(config, dict) or not isinstance(config.get(key), (list, tuple)):
-        return config
-    qualified = [
-        {**entry, entry_key: _qualify(entry[entry_key], datasource_name, datasource_signals)}
-        if isinstance(entry, dict)
-        else _qualify(entry, datasource_name, datasource_signals)
-        for entry in config[key]
-    ]
-    return {**config, key: qualified}
-
-
-_QUALIFIERS: dict[type[PlotTypeSchema], Callable[[Any, str, list[Signal]], Any]] = {
-    plot_types.LoopSchema: _qualify_loop,
-    plot_types.SpectrogramSchema: _qualify_spectrogram,
-    plot_types.PsdSchema: _qualify_psd,
-}
-
-
-# ==================================================================================================
-# Derived plots
-# ==================================================================================================
-@dataclass(frozen=True)
-class _DerivedPlotKind:
-    """One registered derived plot type, paired with the builder from its own package."""
-
-    schema: type[PlotTypeSchema]
-    build: Callable[[list[Signal], str, Any], Signal | list[Signal]]
-    qualify: Callable[[Any, str, list[Signal]], Any]
-    refusals: tuple[type[Exception], ...]
-
-    @property
-    def section_key(self) -> str:
-        return self.schema.SECTION_KEY
-
-
-# In the order their sections are read, taken from the registry -- adding a derived plot type
-# is a package plus its two registry lines, never a row here.
-_DERIVED_PLOTS = tuple(
-    _DerivedPlotKind(
-        schema=schema,
-        build=BUILDERS[schema].build,
-        qualify=_QUALIFIERS[schema],
-        refusals=BUILDERS[schema].refusals,
-    )
-    for schema in plot_types.DERIVED
-)
-
-
 @dataclass(frozen=True)
 class _GroupSpec:
     """One configured group of signals, its references already qualified."""
@@ -128,7 +62,7 @@ class _GroupSpec:
 class _DerivedSpec:
     """One configured derived plot, its references already qualified."""
 
-    kind: _DerivedPlotKind
+    schema: type[PlotTypeSchema]
     name: str
     config: Any
     origin: str
@@ -164,14 +98,14 @@ def _flatten_config(
                 )
                 group_specs.append(_GroupSpec(group_name, qualified, section_name))
 
-            for kind in _DERIVED_PLOTS:
-                for item_name, item_config in section.get(kind.section_key, {}).items():
-                    config = (
-                        item_config
-                        if is_global
-                        else kind.qualify(item_config, section_name, section_signals)
-                    )
-                    derived_specs.append(_DerivedSpec(kind, item_name, config, section_name))
+            qualify = partial(
+                _qualify, datasource_name=section_name, datasource_signals=section_signals
+            )
+            # Straight off the registry: adding a derived plot type changes nothing here.
+            for schema in plot_types.DERIVED:
+                for item_name, item_config in section.get(schema.SECTION_KEY, {}).items():
+                    config = item_config if is_global else schema.map_refs(item_config, qualify)
+                    derived_specs.append(_DerivedSpec(schema, item_name, config, section_name))
         except Exception:
             logger.exception("⚠️ Unreadable database_options section '%s'; skipping.", section_name)
 
@@ -338,13 +272,14 @@ def assemble_plot_groups(signals: list[Signal], database_options_global: dict) -
         for spec in derived_specs:
             if spec.origin != origin:
                 continue
+            builder = builders.BUILDERS[spec.schema]
             _add_derived_plot_group(
-                kind=spec.kind.section_key,
+                kind=spec.schema.SECTION_KEY,
                 item_name=spec.name,
                 datasource_name=spec.origin,
-                build_signal=partial(spec.kind.build, signals, spec.name, spec.config),
+                build_signal=partial(builder.build, signals, spec.name, spec.config),
                 plot_group_list=plot_group_list,
-                refusal_exceptions=spec.kind.refusals,
+                refusal_exceptions=builder.refusals,
             )
 
     return plot_group_list

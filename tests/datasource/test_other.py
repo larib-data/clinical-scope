@@ -294,6 +294,25 @@ class TestLoopConfig:
             "numerics::PV": ["numerics::art", "numerics::paw"],
         }
 
+    def test_a_malformed_loop_does_not_cost_the_whole_file(self, tmp_path):
+        """
+        A bad loop entry is one skipped plot, not a skipped file.
+
+        It used to be the file: scoping a per-file loop walked the config assuming a list, so
+        a hand-written scalar raised inside the per-file try/except and took every signal in
+        that file down with it. The walk is the plot type's own now, and it hands back a shape
+        it does not recognise for assembly to report and skip.
+        """
+        _write_other_patient(tmp_path, [("waves", ".parquet")])
+
+        section = _run_other_with(
+            {"other::waves": {"loop": {"PV": "art"}}},
+            tmp_path,
+        )
+
+        assert section.get("loop", {}) == {"waves::PV": "art"}
+        assert section.get("grouped_fields", {}), "the file's signals still loaded"
+
 
 class TestSpectrogramConfig:
     """Per-file spectrogram definitions from other::filename are injected into database_options."""

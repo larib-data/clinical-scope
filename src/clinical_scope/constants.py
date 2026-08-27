@@ -510,9 +510,6 @@ class DatabaseOptions:
     NUMERICS = "numerics"
     ADDITIONAL_INFORMATIONS = "additional_informations"
     GROUPED_FIELDS = "grouped_fields"
-    LOOP = "loop"
-    SPECTROGRAM = "spectrogram"
-    PSD = "psd"
     FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
     # Per-section trace styling (mode, line_width, ...) written by the user in a config file.
     # Same string as SourceOptions.TRACE_OPTIONS, the tier a module ships; the user's wins per key.
@@ -521,6 +518,8 @@ class DatabaseOptions:
     # Trailing marker that turns a field_display entry into a prefix wildcard (e.g. "Local 1*").
     WILDCARD_SUFFIX = "*"
 
+    # Only the keys no plot type owns. Every registered plot type's section key is unioned
+    # onto this by the parser, so adding a plot type cannot make a valid config warn.
     KNOWN_SECTION_KEYS = frozenset(
         {
             SIGNALS,
@@ -528,9 +527,6 @@ class DatabaseOptions:
             NUMERICS,
             ADDITIONAL_INFORMATIONS,
             GROUPED_FIELDS,
-            LOOP,
-            SPECTROGRAM,
-            PSD,
             FILES,
             TRACE_OPTIONS,
         }
@@ -567,39 +563,6 @@ class DatabaseOptions:
                 HOVER_TEMPLATE,
             }
         )
-
-    # --- Per-spectrogram configuration (inside "spectrogram" → "<name>" dict) ---
-    class SpectrogramConfig:
-        SIGNAL = "signal"  # one raw name — no arithmetic, no pairs, no wildcards
-        FREQ_RANGE = "freq_range"  # [min_hz, max_hz], required — no workable global default
-        DB_RANGE = "db_range"  # [min_db, max_db], optional — falls back to a user option
-        WINDOW_S = "window_s"  # optional override; derived from freq_min by default
-        OVERLAP = "overlap"  # optional override; fixed at 50% by default
-
-        KNOWN_KEYS = frozenset({SIGNAL, FREQ_RANGE, DB_RANGE, WINDOW_S, OVERLAP})
-
-    # --- Per-PSD configuration (inside "psd" → "<name>" dict) ---
-    class PsdConfig:
-        # Plural where a spectrogram has a single SIGNAL: PSDs share a subplot, so one
-        # entry overlays several. Freq/db range are shared axis properties of the whole
-        # subplot, so they stay here; window_s/overlap/label are per-trace (see Entry)
-        # since two traces sharing one channel need their own processing/legend.
-        SIGNALS = "signals"
-        FREQ_RANGE = "freq_range"  # [min_hz, max_hz], required — no workable global default
-        DB_RANGE = "db_range"  # [min_db, max_db], optional — y-axis range; autoscales when unset
-
-        KNOWN_KEYS = frozenset({SIGNALS, FREQ_RANGE, DB_RANGE})
-
-        # --- One item of SIGNALS; a plain string is shorthand for {SIGNAL: <str>} ---
-        class Entry:
-            SIGNAL = "signal"
-            WINDOW_S = "window_s"  # optional override; derived from freq_min by default
-            OVERLAP = "overlap"  # optional override; fixed at 50% by default
-            LABEL = "label"  # optional trace label; needed to tell apart 2 entries sharing a signal
-            COLOR = "color"  # optional override; defaults to the source signal's own color
-            LINE_DASH = "line_dash"  # optional override; defaults to the source signal's own
-
-            KNOWN_KEYS = frozenset({SIGNAL, WINDOW_S, OVERLAP, LABEL, COLOR, LINE_DASH})
 
     # --- Datasource-level trace styling (inside "trace_options" dict) ---
     class TraceOptionsConfig:

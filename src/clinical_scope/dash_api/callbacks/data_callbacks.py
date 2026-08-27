@@ -33,10 +33,7 @@ from clinical_scope.dash_api.styles import (
     INSPECTION_MODAL_STYLE_SHOWN,
     SECTION_HEADER_STYLE,
 )
-from clinical_scope.database_options_parser import (
-    ValidationIssue,
-    validate_database_options,
-)
+from clinical_scope.database_options_parser import validate_database_options
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 from clinical_scope.datasource.formatting.timezone import (
     resolve_display_timezone,
@@ -57,6 +54,7 @@ from clinical_scope.io.paths import (
 )
 from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.signal_container import PlotModel
+from clinical_scope.validation import ValidationIssue
 
 logger = logging.getLogger(__name__)
 

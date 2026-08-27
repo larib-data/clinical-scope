@@ -96,7 +96,7 @@ def psd_from_signal(
 
 def build(all_signals: list[Signal], psd_name: str, psd_config: Any) -> list[Signal]:
     """Build one PSD trace per configured entry; they share a subplot, so a list comes back."""
-    config_cls = cst.DatabaseOptions.PsdConfig
+    config_cls = PsdSchema.Config
     entry_cls = config_cls.Entry
     # A plain string is shorthand for an Entry naming just a signal, no per-trace overrides.
     entries = [

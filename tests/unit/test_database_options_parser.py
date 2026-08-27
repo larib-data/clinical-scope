@@ -1,9 +1,7 @@
 """Unit tests for database_options_parser.py."""
 
-from clinical_scope.database_options_parser import (
-    ValidationIssue,
-    validate_database_options,
-)
+from clinical_scope.database_options_parser import validate_database_options
+from clinical_scope.validation import ValidationIssue
 
 
 def _issues(severity: str, db: dict) -> list[ValidationIssue]:

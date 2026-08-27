@@ -50,9 +50,17 @@ src/clinical_scope/
 - **Extract** (`wrapper.extract_patient` / `batch_extract` / `extract_datasource`, also `from clinical_scope import extract_datasource, extract_patient, batch_extract`) — stop at `format`, return DataFrame(s). `save_path`/`save_folder` write explicit output, independent of the per-patient `clinical_scope_output/` parquet cache (always written; reused when `quick_load` is set).
 - **Inspect** (`wrapper.inspect`) — stop at `format`, return `list[DataSourceInspection]` (columns, point counts, time ranges). `OtherDataSource.inspect()` returns **one entry per file** (`other::<stem>`); the wrapper handles single-or-list returns.
 
-**Signal references** in `grouped_fields`, `loop`, `spectrogram` and `psd` resolve via a 3-mode lookup in `plot_assembly._resolve_signal_references`: qualified `datasource::raw_name` → display name → raw-name fallback.
+**Signal references** in `grouped_fields` and in any plot type's section resolve via a 3-mode lookup in `signal_reference.resolve_signal_references`: qualified `datasource::raw_name` → display name → raw-name fallback.
 
 **Config scope is desugared once, and grouping joins on signal identity** ([ADR-0013](docs/adr/0013-signal-references-are-qualified-before-assembly.md)). `assemble_plot_groups` is called once, after the datasource loop, and its first step rewrites every per-datasource reference as a qualified global one — downstream, local scope does not exist. Both config spellings stay valid; the desugaring is a property of the code, not of the file format. A signal is left out of the default one-plot-per-signal pass only when a group took *that object*, never when something merely shares its `raw_name` (unique only within a datasource).
+
+**A plot type is a module.** Everything that varies by plot type lives in `plot_types/<name>/`; nothing outside the package branches on plot type or hardcodes a section key (asserted by `tests/plot_types/test_boundaries.py`). Each package has two halves, split by *who may import it*:
+- `schema.py` — the leaf: `NAME`/`SECTION_KEY`, config keys, `validate()`, `map_refs()`, xlsx sheet + row interpretation, and the six capability flags. Imports nothing above `constants`.
+- `plot.py` — the top: `build()`, the maths, the rendering it installs. Imports `signal_container`.
+
+Capabilities are booleans yet sit in the leaf half because **`signal_container` reads them and may never import a `plot.py`** — it is reachable from a half-initialised `datasource` package, so a `plot.py` importing `Signal` back out of it is an ImportError for some entry points and not others. That splits the registry too: `registry.py` imports schemas only (safe for everyone), `builders.py` imports the plot halves and is read by `plot_assembly` alone. It is also why a derived type **pushes** its rendering onto the Signal it builds (`RenderSpec`) instead of `to_plotly_trace` pulling it.
+
+`time_series` is registered but has no package: every default in `PlotTypeSchema` is its behaviour, and `DERIVED` is the types with a `SECTION_KEY`. **Adding a plot type is a package plus one line in `registry.AVAILABLE` and one in `builders.BUILDERS`** — nothing in `constants.py`, `database_options_parser.py`, `database_options_xlsx.py`, `other/find_load_format.py`, `plot_assembly.py` or `signal_container.py` changes. Forgetting a half is an import-time crash, never a config that validates and renders nothing (`tests/plot_types/test_fake_plot_type.py` registers a fourth type and drives it through all six paths).
 
 `wrapper.main`/`inspect` call an optional `progress_callback(current, total, name)` between datasources, which drives the UI progress bar.
 
@@ -106,7 +114,7 @@ Ruff (`ruff check .`, `ruff format .`), capped to the 0.16.x line by the `dev` e
 
 Keep inline comments concise — one line where possible; explain the non-obvious *why*, **not** the *what*. Reserve longer prose for docstrings.
 
-Shared literal values (option keys, plot types, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today. That is a `src/` rule: tests assert **independent literals** (`== 300`, not `== cst.DEFAULT_SUBPLOT_HEIGHT`), since a test that restates the constant it exercises can never fail.
+Shared literal values (option keys, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today. The exception is a value one registered module *owns*: a datasource's option keys live in its `options.py`, a plot type's name, section key and config keys in its `schema.py`, and each registry owns the ordering across its own members. That is a `src/` rule: tests assert **independent literals** (`== 300`, not `== cst.DEFAULT_SUBPLOT_HEIGHT`), since a test that restates the constant it exercises can never fail.
 
 ## Logs
 

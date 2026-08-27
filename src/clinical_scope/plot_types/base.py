@@ -42,6 +42,22 @@ class RenderSpec:
 
 
 @dataclass(frozen=True)
+class CellReader:
+    """
+    The xlsx reader's cell coercions, lent to a schema for the length of one sheet.
+
+    Passed in rather than imported: the reader imports every schema to find its sheet, so a
+    schema importing the reader back would close a cycle. It also states the seam -- the
+    reader owns how a cell is read, the plot type owns what a row means.
+    """
+
+    is_empty: Callable[[Any], bool]
+    to_float: Callable[[Any], float | None]
+    is_truthy: Callable[[Any], bool]
+    parse_groups: Callable[[Any], list[str]]
+
+
+@dataclass(frozen=True)
 class PlotBuilder:
     """
     A derived plot type's top half, as ``plot.py`` exports it.
@@ -180,6 +196,31 @@ class TimeSeries(PlotTypeSchema):
     """
 
     NAME = "time_series"
+
+
+FREQ_RANGE_BOUNDS = 2
+
+
+def check_freq_range(freq_range: Any, path: str) -> list[ValidationIssue]:
+    """
+    Check the required ``freq_range`` both spectral plot types take.
+
+    Shared because it is the same axis rule, not because the two types are related: a
+    frequency band is ``[min, max]`` whatever is plotted against it.
+    """
+    if freq_range is not None and (
+        isinstance(freq_range, list)
+        and len(freq_range) == FREQ_RANGE_BOUNDS
+        and all(isinstance(bound, (int, float)) for bound in freq_range)
+    ):
+        return []
+    return [
+        ValidationIssue(
+            severity="error",
+            path=f"{path}.freq_range",
+            message=f"Must be a required 2-element list of numbers, got {freq_range!r}",
+        )
+    ]
 
 
 def require_time_series(signal: Any) -> None:
