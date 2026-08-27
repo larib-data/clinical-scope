@@ -130,7 +130,9 @@ Gitignored under `logs/`: `logs/app/dash_api.log` (app), `logs/scripts/` (script
 
 | Skill | When to use |
 |---|---|
+| `/grilling` | Stress-test a plan or decision before building — one question at a time, until it is settled |
 | `/new-datasource` | Add a new medical device / file format as a datasource module |
+| `/new-plot-type` | Add a new way of drawing signals — first deciding whether it is a plot type at all |
 | `/organize-patient-folder` | Reorganize a dump of clinical files into the per-datasource folder structure |
 | `/generate-database-options` | Generate a `database_options` config by inspecting a patient folder |
 | `/anonymize-timeseries` | De-identify clinical timeseries files so they can be committed as example data |
