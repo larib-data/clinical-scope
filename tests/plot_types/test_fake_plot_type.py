@@ -2,8 +2,9 @@
 
 This is the acceptance criterion of #83 as a test: *adding a plot type is a package plus its
 registry lines*. Nothing in `constants.py`, `database_options_parser.py`,
-`database_options_xlsx.py`, `other/find_load_format.py`, `plot_assembly.py` or
-`signal_container.py` knows `fake` exists, and all six still handle it.
+`database_options_xlsx.py`, `plot_assembly.py` or `signal_container.py` knows `fake` exists,
+and all five still handle it — including inside an `other::<stem>` section, which the `other`
+datasource itself no longer reads.
 
 The fake type's config entry is a bare string, a shape none of the real three use, so each
 hook is exercised on a case the production types do not cover. Its workbook is built to a
@@ -16,7 +17,10 @@ import io
 import pandas as pd
 import pytest
 
-from clinical_scope.database_options_parser import validate_database_options
+from clinical_scope.database_options_parser import (
+    normalize_database_options,
+    validate_database_options,
+)
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 from clinical_scope.plot_assembly import assemble_plot_groups
 from clinical_scope.plot_types import builders, registry
@@ -99,6 +103,26 @@ class TestReferenceScoping:
         del fake_plot_type
         scoped = FakeSchema.map_refs("Paw", lambda ref: f"waves::{ref}")
         assert scoped == "waves::Paw"
+
+    def test_an_other_file_section_needs_no_line_in_the_datasource(
+        self, fake_plot_type, make_signal
+    ):
+        """
+        A fourth type is configurable per file the day it is registered.
+
+        This is what forgetting a row used to cost: the scoping lived in ``other``, so a type
+        the datasource had never heard of got a section that validated and drew nothing.
+        """
+        del fake_plot_type
+        signal = make_signal(raw_name="waves::sig_a")
+        signal.metadata.datasource_name = "other"
+
+        options = {"other::waves": {"fake": {"F": "sig_a"}}}
+        normalize_database_options(options)
+        groups = assemble_plot_groups([signal], options)
+
+        fake_groups = [g for g in groups if g.plot_options.plot_type == FakeSchema.NAME]
+        assert [g.name for g in fake_groups] == ["waves::F"]
 
 
 class TestXlsxSheet:

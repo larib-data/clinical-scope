@@ -7,7 +7,9 @@ datasource has loaded, and needs nothing on disk. Two rules govern it (ADR-0013)
 * **Config scope is desugared once.** A per-datasource section is a namespace, not a
   different kind of grouping, so its references are rewritten as qualified global ones
   before anything else happens. Downstream, local scope does not exist -- one resolver,
-  one suppression rule, one spelling of a reference.
+  one suppression rule, one spelling of a reference. An ``other::<stem>`` section is the
+  same rule one level down, and desugars here too: a datasource knows which files exist,
+  not what a spectrogram is.
 * **Group membership joins on signal identity, not on ``raw_name``.** A raw name is unique
   only *within* a datasource, so any join on it across datasources silently drops a plot
   the first time two sources share a name (``HR``, ``SpO2``, ``ABP``).
@@ -17,7 +19,7 @@ a clinician's screen.
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -34,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================================================
-# Desugaring per-datasource sections into qualified global ones
+# Desugaring configured sections into qualified global ones
 # ==================================================================================================
 def _qualify(reference: Any, datasource_name: str, datasource_signals: list[Signal]) -> str:
     """
@@ -47,6 +49,30 @@ def _qualify(reference: Any, datasource_name: str, datasource_signals: list[Sign
     matched = resolve_signal_references([reference], datasource_signals)
     target = matched[0].raw_name if matched else reference
     return f"{datasource_name}{cst.QUALIFIED_NAME_SEPARATOR}{target}"
+
+
+def _scoped(scope: str, name: str) -> str:
+    """Prefix *name* with its inner namespace, if it is in one."""
+    return f"{scope}{cst.QUALIFIED_NAME_SEPARATOR}{name}" if scope else name
+
+
+def _namespace_path(section_name: str, scope: str) -> str:
+    """How a namespace is spelled in a log line, matching the validator's issue paths."""
+    return f"{section_name}.{cst.DatabaseOptions.FILES}.{scope}" if scope else section_name
+
+
+def _namespaces(section: dict) -> Iterator[tuple[str, dict]]:
+    """
+    Yield ``(scope, config)`` for the section itself and for each namespace nested in it.
+
+    A section's ``files`` block is one namespace per file -- the ``other::<stem>`` sections
+    a config file is written in, which the parser moved here. Nesting is where the scoping
+    stops: a file is not a datasource, so it declares no ``files`` of its own.
+    """
+    yield "", section
+    for stem, per_file in section.get(cst.DatabaseOptions.FILES, {}).items():
+        if isinstance(per_file, dict):
+            yield stem, per_file
 
 
 @dataclass(frozen=True)
@@ -68,14 +94,54 @@ class _DerivedSpec:
     origin: str
 
 
+def _namespace_specs(
+    namespace: dict,
+    section_name: str,
+    section_signals: list[Signal],
+    is_global: bool,
+    scope: str,
+) -> tuple[list[_GroupSpec], list[_DerivedSpec]]:
+    """
+    Read one namespace's groups and derived plots, with every reference already qualified.
+
+    *scope* is the inner namespace the config was written in -- a file stem, or empty for a
+    datasource section. It is applied *lexically*, before resolution: an ``other`` signal's
+    raw name already carries its stem, so ``waves`` + ``art`` is the raw name ``waves::art``,
+    which :func:`_qualify` then resolves and qualifies as any other. Resolving the bare name
+    first would depend on whether the column happens to be labelled.
+
+    An entry's own name keeps its scope, unlike a datasource section's: the stem is the only
+    thing telling two files' plots apart, and ``other`` names no device a clinician would read.
+    """
+
+    def qualify(reference: Any) -> Any:
+        # ``global`` is not a namespace: what it names is global as written.
+        if is_global:
+            return reference
+        return _qualify(_scoped(scope, reference), section_name, section_signals)
+
+    group_specs = [
+        _GroupSpec(_scoped(scope, name), [qualify(ref) for ref in references], section_name)
+        for name, references in namespace.get(cst.DatabaseOptions.GROUPED_FIELDS, {}).items()
+    ]
+    # Straight off the registry: adding a derived plot type changes nothing here.
+    derived_specs = [
+        _DerivedSpec(schema, _scoped(scope, name), schema.map_refs(config, qualify), section_name)
+        for schema in plot_types.DERIVED
+        for name, config in namespace.get(schema.SECTION_KEY, {}).items()
+    ]
+    return group_specs, derived_specs
+
+
 def _flatten_config(
     database_options_global: dict, signals: list[Signal]
 ) -> tuple[list[_GroupSpec], list[_DerivedSpec]]:
     """
-    Desugar every per-datasource section into qualified global references.
+    Desugar every configured section into qualified global references.
 
-    Runs at the head of assembly rather than at parse time because ``other`` injects its
-    derived sections into its own section *during load*, after normalization has run.
+    Runs at the head of assembly rather than at parse time because a datasource may still
+    add to its own section *during load* -- ``other`` derives a group per file from the
+    columns that actually loaded, which no reader of the config file could know.
     Returns internal values; *database_options_global* is never written back to.
     """
     group_specs: list[_GroupSpec] = []
@@ -88,26 +154,19 @@ def _flatten_config(
         section_signals = [
             signal for signal in signals if signal.metadata.datasource_name == section_name
         ]
-        configured_groups = section.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
-        try:
-            for group_name, references in configured_groups.items():
-                qualified = (
-                    list(references)
-                    if is_global
-                    else [_qualify(ref, section_name, section_signals) for ref in references]
+        for scope, namespace in _namespaces(section):
+            try:
+                groups, derived = _namespace_specs(
+                    namespace, section_name, section_signals, is_global, scope
                 )
-                group_specs.append(_GroupSpec(group_name, qualified, section_name))
-
-            qualify = partial(
-                _qualify, datasource_name=section_name, datasource_signals=section_signals
-            )
-            # Straight off the registry: adding a derived plot type changes nothing here.
-            for schema in plot_types.DERIVED:
-                for item_name, item_config in section.get(schema.SECTION_KEY, {}).items():
-                    config = item_config if is_global else schema.map_refs(item_config, qualify)
-                    derived_specs.append(_DerivedSpec(schema, item_name, config, section_name))
-        except Exception:
-            logger.exception("⚠️ Unreadable database_options section '%s'; skipping.", section_name)
+            except Exception:
+                logger.exception(
+                    "⚠️ Unreadable database_options section '%s'; skipping.",
+                    _namespace_path(section_name, scope),
+                )
+                continue
+            group_specs.extend(groups)
+            derived_specs.extend(derived)
 
     return group_specs, derived_specs
 

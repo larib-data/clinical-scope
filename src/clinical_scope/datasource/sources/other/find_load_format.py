@@ -1,7 +1,6 @@
 import csv
 import logging
 from collections.abc import Callable
-from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -14,7 +13,6 @@ from clinical_scope.io.column_patterns import make_column_selector
 from clinical_scope.io.parquet_pruning import read_parquet_pruned
 from clinical_scope.io.paths import get_output_folder
 from clinical_scope.io.time_axis import deduplicate_then_sort_index, set_datetime_index
-from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.signal_container import (
     DisplayFallbacks,
     Signal,
@@ -140,16 +138,17 @@ class OtherDataSource(DataSourceBase):
 
         Each file becomes a separate PlotGroup (subplot) with all its numeric
         columns as traces. Files that fail to load are skipped without affecting others.
-        Populates database_options_specific['grouped_fields'] so the wrapper groups
-        signals by source file.
+        Adds one group per file to database_options_specific['grouped_fields'] so the
+        wrapper groups signals by source file.
 
         Per-file configuration is read from ``database_options_specific["files"]``, which
         ``database_options_parser.normalize_database_options`` populates from ``other::<stem>``
-        keys. Each ``other::<stem>`` section supports the full set of database_options keys:
+        keys. What this source takes from a file's section is what loading it needs --
         ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
-        ``grouped_fields``, ``trace_options``, and a section for every registered plot
-        type (``loop``, ``spectrogram``, ``psd``) -- each one scoped by the plot type's
-        own ``map_refs``, so a new type is covered here without a line changing.
+        ``trace_options``. Everything that *names* signals (``grouped_fields`` and each plot
+        type's section) is left where it is: a datasource knows which files exist, which is
+        what makes the stem a namespace, but not what any plot type's config looks like.
+        ``plot_assembly`` scopes those to the file, alongside the per-datasource ones.
 
         Per-file *patient* options (``time_shift``, ``group_by_file``) are read the same way,
         from a standalone ``patient_options["other::<stem>"]`` block — see
@@ -174,9 +173,6 @@ class OtherDataSource(DataSourceBase):
         all_signals: list[Signal] = []
         loaded_files: list[Path] = []
         grouped_fields: dict = {}
-        derived_sections: dict[str, dict] = {
-            schema.SECTION_KEY: {} for schema in plot_types.DERIVED
-        }
 
         for file_path in file_paths:
             try:
@@ -248,30 +244,15 @@ class OtherDataSource(DataSourceBase):
                             file_path.name,
                         )
 
-                if file_signal_raw_names:
-                    # Grouping: prefer user-defined groups, fall back to group-by-file
-                    file_grouped = file_config.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
-                    if file_grouped:
-                        for group_name, bare_columns in file_grouped.items():
-                            qualified = [
-                                _qualify(file_stem, bare_column) for bare_column in bare_columns
-                            ]
-                            grouped_fields[_qualify(file_stem, group_name)] = [
-                                raw for raw in qualified if raw in file_signal_raw_names
-                            ]
-                    elif group_by_file:
-                        grouped_fields[file_stem] = file_signal_raw_names
-
-                    # Both the entry name and the signal references it holds are scoped to the
-                    # file: two files may each declare a loop called "PV" without one erasing
-                    # the other, and each keeps pointing at its own columns.
-                    scope_to_file = partial(_qualify, file_stem)
-                    for schema in plot_types.DERIVED:
-                        section = file_config.get(schema.SECTION_KEY, {})
-                        for entry_name, entry in section.items():
-                            derived_sections[schema.SECTION_KEY][
-                                _qualify(file_stem, entry_name)
-                            ] = schema.map_refs(entry, scope_to_file)
+                # One group per file, when the file configures none of its own. Injected
+                # rather than read from the config because it is the *loaded columns* --
+                # everything a config file states is scoped by assembly instead.
+                if (
+                    file_signal_raw_names
+                    and group_by_file
+                    and not file_config.get(cst.DatabaseOptions.GROUPED_FIELDS)
+                ):
+                    grouped_fields[file_stem] = file_signal_raw_names
 
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
@@ -283,12 +264,12 @@ class OtherDataSource(DataSourceBase):
             output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
             cls._create_source_symlink(loaded_files, get_output_folder(folder_path, output_root))
 
-        # Inject the collected sections into database_options for the wrapper to use
+        # Merged, not assigned: a 'other' section may carry groups of its own, and they are
+        # the caller's, not ours to drop.
         if grouped_fields:
-            database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
-        for section_key, entries in derived_sections.items():
-            if entries:
-                database_options[section_key] = entries
+            database_options.setdefault(cst.DatabaseOptions.GROUPED_FIELDS, {}).update(
+                grouped_fields
+            )
 
         return all_signals
 

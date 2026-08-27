@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file.
 
   **What changes for you:** a code pasted without its leading `#` is accepted, a malformed one is flagged as you leave the field, and a colour that is not a valid six-digit hex now falls back to the default instead of being written into the annotation file as-is.
 
+- **Groups and plots written in an `other::<filename>` section no longer erase those written in the plain `other` section.** Configuring, say, a `grouped_fields` or a `psd` under `other` and *also* under any `other::<filename>` silently dropped the first of the two — the per-file entries replaced the section's own rather than joining them. Both now apply.
+
+  **What changes for you:** a configuration mixing the two spellings starts drawing plots that were quietly missing. A per-file group naming a column that is not in the file also says so in the log now, instead of dropping it in silence.
+
 - **A malformed `loop` in your configuration is now reported instead of ignored.** `spectrogram` and `psd` entries were checked when a configuration loaded, but `loop` never was — a loop naming one signal instead of two, or written as text instead of a list, passed silently and then simply failed to appear on the page. Loops are now checked like the other two, and each problem names the entry it is in.
 
   **What changes for you:** a configuration that has been quietly carrying a broken loop starts saying so. Nothing that was drawing before stops drawing — a valid loop produces no message. One related fix: a broken loop written under an `other::<filename>` section used to take that whole file's signals down with it; now only the loop is skipped and the file's other plots still appear.

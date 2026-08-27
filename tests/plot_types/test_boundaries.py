@@ -1,6 +1,6 @@
 """A plot type is a module: nothing outside ``plot_types/`` may know one by name.
 
-Two rules, both read off the AST rather than left to review, in the style of
+Three rules, all read off the AST rather than left to review, in the style of
 ``tests/datasource/test_load_config_independence.py``.
 
 **No module outside the package names a plot type.** The failure this package exists to kill
@@ -14,6 +14,12 @@ from a half-initialised ``datasource`` package, so a ``plot.py`` importing ``Sig
 of it raises ImportError for some entry points and not others -- a non-deterministic failure
 invisible at the point of violation. It is why rendering is pushed onto a Signal at
 construction rather than pulled at draw time; break the rule and the reason for that is gone.
+
+**No datasource imports ``plot_types`` at all.** A datasource reads a device's files; which
+plot a signal ends up on is nobody's business at load time. ``other`` broke this by scoping
+each file's plot-type sections itself, which is how a forgotten ``psd`` row let that section
+validate cleanly and render nothing. Reference scoping lives in ``plot_assembly`` now, at
+every level -- a stem is a namespace exactly as a datasource is.
 """
 
 import ast
@@ -74,6 +80,31 @@ def test_signal_container_imports_no_plot_module():
         f"signal_container imports {offending}. A plot.py imports Signal, so importing one "
         f"back makes Signal's own module depend on Signal already existing -- push the "
         f"rendering onto the Signal from build() instead (see plot_types.base.RenderSpec)."
+    )
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    sorted((SRC_ROOT / "datasource").rglob("*.py")),
+    ids=lambda p: str(p.relative_to(SRC_ROOT)),
+)
+def test_no_datasource_imports_plot_types(module_path):
+    """Loading a device's files is decided by the format, never by what will be drawn."""
+    tree = ast.parse(module_path.read_text(encoding="utf-8"))
+
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+
+    offending = sorted(name for name in imported if "plot_types" in name)
+    assert not offending, (
+        f"{module_path.relative_to(SRC_ROOT)} imports {offending}. A datasource that reads a "
+        f"plot type's config shape has to be edited when a type is added, and forgetting it is "
+        f"a section that validates and renders nothing -- let plot_assembly scope the "
+        f"references instead."
     )
 
 
