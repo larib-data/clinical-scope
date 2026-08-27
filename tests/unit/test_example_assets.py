@@ -11,6 +11,7 @@ import json
 
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 from clinical_scope.datasource.registry import DataSource, detect_datasource_from_folder
+from clinical_scope.plot_types import registry as plot_type_registry
 
 REGENERATE_HINT = (
     "Regenerate with:\n"
@@ -78,4 +79,28 @@ class TestDemoConfigParity:
             "demo_patient/ ships data the demo config never plots: "
             f"{sorted(on_disk - configured)}. Add a section to database_options.xlsx "
             "and regenerate the json."
+        )
+
+
+class TestDemoPlotTypeCoverage:
+    """The demo config is the only place every plot type is exercised on real data."""
+
+    def test_every_derived_plot_type_is_configured(self, project_root):
+        """A type nobody configures ships untested against the demo, and unseen by a user."""
+        demo = project_root / "example" / "demo_database"
+        with open(demo / "database_options.json", encoding="utf-8") as f:
+            config = json.load(f)
+
+        configured = {
+            section
+            for block in config.values()
+            if isinstance(block, dict)
+            for section in block
+        }
+        expected = {schema.SECTION_KEY for schema in plot_type_registry.DERIVED}
+
+        assert expected <= configured, (
+            "the demo config configures no plot of type(s) "
+            f"{sorted(expected - configured)}. Add a sheet row to database_options.xlsx "
+            f"naming demo signals that suit it, then regenerate the json.\n{REGENERATE_HINT}"
         )
