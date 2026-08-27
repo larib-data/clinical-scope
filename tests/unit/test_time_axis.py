@@ -451,7 +451,7 @@ class TestUtcAutoLocalization:
 
 class TestNumericTypeClassificationAgreement:
     """
-    Tripwire for a code-review finding on issue #57: schema-only detection
+    Tripwire for schema-only detection
     (`_is_numeric_pa_type`, pyarrow-type-based) and full-frame detection
     (`detect_time_axis_in_frame`, `pd.api.types.is_numeric_dtype`-based) each decide
     independently whether a column is "numeric" and should be deferred to the epoch tier.

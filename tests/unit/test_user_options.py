@@ -163,8 +163,8 @@ class TestValidateChoices:
 
     def test_invalid_timezone_falls_back_to_default(self):
         clean, corrections = validate({"display_timezone": "NotATimezone"})
-        assert clean["display_timezone"] == cst.DISPLAY_TIMEZONE
-        assert _by_name(corrections, "display_timezone").used == cst.DISPLAY_TIMEZONE
+        assert clean["display_timezone"] == "Europe/Paris"
+        assert _by_name(corrections, "display_timezone").used == "Europe/Paris"
 
     def test_valid_timezone_is_kept_silently(self):
         assert validate({"display_timezone": "Asia/Tokyo"}) == (
@@ -173,7 +173,7 @@ class TestValidateChoices:
         )
 
     def test_cleared_timezone_falls_back_to_default(self):
-        assert _clean({"display_timezone": ""})["display_timezone"] == cst.DISPLAY_TIMEZONE
+        assert _clean({"display_timezone": ""})["display_timezone"] == "Europe/Paris"
 
 
 # ---------------------------------------------------------------------------
