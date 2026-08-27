@@ -34,7 +34,7 @@ def _signal(raw_name: str, name: str | None = None, datasource: str = "icca") ->
             x=pd.date_range("2024-01-01", periods=points, freq="s").to_numpy(),
             y=np.linspace(0.0, 1.0, points),
         ),
-        trace_options=TraceOptions(plot_options=PlotOptions(plot_type=cst.PlotType.TIME_SERIES)),
+        trace_options=TraceOptions(plot_options=PlotOptions(plot_type="time_series")),
         metadata=Metadata(datasource_name=datasource),
     )
 

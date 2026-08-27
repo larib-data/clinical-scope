@@ -55,6 +55,7 @@ from clinical_scope.io.paths import (
     get_output_base,
     get_patient_options_path,
 )
+from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.signal_container import PlotModel
 
 logger = logging.getLogger(__name__)
@@ -1269,7 +1270,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         fig = plot_model.figure
 
         uid = None
-        if plot_model.name in cst.PlotType.RESAMPLED:
+        if plot_model.name in plot_types.RESAMPLED:
             uid = str(uuid4())
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig
@@ -1390,8 +1391,8 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             dcc.Store(id={"type": "graph-trace-map", "name": plot_model.name}, data=trace_map),
         ]
 
-        # --- Loop time-range slider ---
-        if plot_model.plot_type == cst.PlotType.LOOP:
+        # --- Time-range slider, for a plot whose points carry a time but whose x does not ---
+        if plot_model.plot_type in plot_types.POINT_TIMESTAMPS:
             loop_uid = str(uuid4())
 
             # Traces with no data get a null placeholder rather than being dropped, so cache

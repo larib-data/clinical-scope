@@ -18,8 +18,15 @@ src/clinical_scope/
   wrapper.py            main pipeline — visualize / extract / inspect
   plot_assembly.py      Signals + database_options → PlotGroups (grouping, derived plots)
   signal_container.py   Signal / PlotGroup / PlotModel data models
+  signal_reference.py   resolve a config string to the Signal(s) it names
   constants.py          global constants + option schema classes
   user_options.py       UserOptions schema as data: traversal, defaults, validate()
+  validation.py         ValidationIssue — what every config validator returns
+  plot_types/
+    base.py             PlotTypeSchema + RenderSpec; the defaults ARE time_series
+    registry.py         AVAILABLE schemas, PAGE_ORDER, capability sets (leaf: no plot.py)
+    builders.py         the build hooks; imported only by plot_assembly
+    <name>/             one package per type: schema.py (leaf) + plot.py (top)
   datasource/
     base.py             DataSourceBase — find/load/format/extract/inspect template
     registry.py         registered sources (DataSource.AVAILABLE; keep Other last)

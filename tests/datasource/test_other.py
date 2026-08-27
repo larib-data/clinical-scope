@@ -353,7 +353,7 @@ class TestPsdConfig:
 
     def test_psd_overlays_signals_from_two_different_files(self, tmp_path):
         """One PSD subplot may compare channels living in separate files under other/."""
-        from clinical_scope.plot_assembly import _build_psd_signals
+        from clinical_scope.plot_types.psd.plot import build as build_psd_signals
 
         folder = tmp_path / "other"
         folder.mkdir(parents=True)
@@ -368,7 +368,7 @@ class TestPsdConfig:
         db_opts = {"other": {}}
         signals = _run_other_main(db_opts, tmp_path)
 
-        psd_signals = _build_psd_signals(
+        psd_signals = build_psd_signals(
             signals,
             "cross-file",
             {"signals": ["waves::signal", "numerics::signal"], "freq_range": [1.0, 20.0]},

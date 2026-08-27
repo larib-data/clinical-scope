@@ -44,6 +44,7 @@ from clinical_scope.dash_api.styles import (
     COLOR_PREVIEW_SWATCH,
 )
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
+from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.signal_container import DisplayFallbacks
 
 logger = logging.getLogger(__name__)
@@ -408,8 +409,10 @@ def handle_graph_click(
     no_update_patches = [no_update] * len(graph_ids)
 
     plot_type = subplots_data.get("plot_type")
-    is_loop = plot_type == cst.PlotType.LOOP
-    has_time_axis = plot_type in cst.PlotType.TIME_AXIS
+    # Not "is it a loop": the tooltip carries a timestamp for any plot type whose x is not
+    # time but whose points still know when they were recorded.
+    point_is_timestamped = plot_type in plot_types.POINT_TIMESTAMPS
+    has_time_axis = plot_type in plot_types.TIME_AXIS
     if not has_time_axis and annotation_type in TIME_BASED_ANNOTATION_TYPES:
         logger.warning(
             "User attempted to create %s annotation on a '%s' plot. Its x-axis is not time, "
@@ -517,7 +520,7 @@ def handle_graph_click(
                 "xaxis": xaxis_ref,
                 "yaxis": yaxis_ref,
             }
-            if is_loop:
+            if point_is_timestamped:
                 raw_t = point.get("customdata")
                 if raw_t:
                     with contextlib.suppress(Exception):
@@ -594,7 +597,7 @@ def handle_graph_click(
     if annotation_type == AnnotationType.POINT.value:
         modal_data["y"] = y_val
         modal_data["yaxis"] = yaxis_ref
-        if is_loop:
+        if point_is_timestamped:
             raw_t = point.get("customdata")
             if raw_t:
                 with contextlib.suppress(Exception):
@@ -857,7 +860,7 @@ def render_annotations(
         # Same capability set PlotModel.to_figure reads, so the two stay in step. Point mode
         # forces the nearest point; otherwise restore the user's own panel style, since this
         # patch runs after to_figure and would otherwise silently discard it.
-        if subplots_data.get("plot_type") in cst.PlotType.UNIFIED_HOVER:
+        if subplots_data.get("plot_type") in plot_types.UNIFIED_HOVER:
             patch.layout.hovermode = (
                 cst.HoverMode.CLOSEST if point_mode_active else display_fallbacks.hovermode
             )
