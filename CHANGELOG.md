@@ -25,10 +25,6 @@ All notable changes to this project will be documented in this file.
 
   **What changes for you:** a configuration mixing the two spellings starts drawing plots that were quietly missing. A per-file group naming a column that is not in the file also says so in the log now, instead of dropping it in silence.
 
-- **A malformed `loop` in your configuration is now reported instead of ignored.** `spectrogram` and `psd` entries were checked when a configuration loaded, but `loop` never was — a loop naming one signal instead of two, or written as text instead of a list, passed silently and then simply failed to appear on the page. Loops are now checked like the other two, and each problem names the entry it is in.
-
-  **What changes for you:** a configuration that has been quietly carrying a broken loop starts saying so. Nothing that was drawing before stops drawing — a valid loop produces no message. One related fix: a broken loop written under an `other::<filename>` section used to take that whole file's signals down with it; now only the loop is skipped and the file's other plots still appear.
-
 - **A hand-edited `~/.clinical_scope/user_options.json` is now checked when it loads.** Settings were only validated as you typed them into the Settings modal, so a file edited by hand — or one holding a value from an older version — could carry a subplot height of `99999`, a palette that no longer exists, or a misspelled timezone, and reach the app unchecked. Each such value now falls back to its default and says which one it was in the log, and a setting stored under a name the app no longer knows is reported rather than dropped in silence.
 
   **What changes for you:** the Settings modal also refuses a spectrogram colour range whose minimum is not below its maximum — both bounds snap back to their defaults as you save, instead of the pair being stored and quietly corrected at plot time.

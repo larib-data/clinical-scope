@@ -1,10 +1,10 @@
 """
 How a ``database_options`` string names a signal, and what happens when it names none.
 
-Extracted from ``plot_assembly`` so a plot type's ``plot.py`` can resolve the references in
-its own config: assembly imports the builders, so a builder importing assembly back would
-close a cycle. Resolution itself is unchanged and still governed by ADR-0013 -- by the time
-anything here runs, every reference has already been rewritten as a qualified global one.
+Sits below both callers -- ``plot_assembly`` and each plot type's ``plot.py`` -- because
+assembly imports the builders, so a builder reaching back into assembly for this would close
+a cycle. Every reference reaching here has already been rewritten as a qualified global one
+(ADR-0013); local scope does not exist at this point.
 """
 
 import logging
@@ -45,7 +45,7 @@ def resolve_signal_references(field_list: list[str], all_signals: list[Signal]) 
 
     1. Qualified name ``"datasource::raw_name"`` -- explicit, unambiguous.
     2. Display name -- matches ``signal.name``. Warns if ambiguous.
-    3. Raw name -- current behaviour, backward compatible.
+    3. Raw name -- matches ``signal.raw_name``; the fallback when no display name did.
 
     A ref containing the separator tries mode 1 first but still falls through when it finds
     nothing: an 'other' file's raw_name is itself ``<stem>::<column>``, so ``waves::art`` is a

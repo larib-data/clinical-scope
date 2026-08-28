@@ -3,8 +3,9 @@ Convert a database_options XLSX file to the canonical dict format.
 
 The XLSX file must contain a ``signals`` sheet -- one row per signal, or datasource-level
 defaults with ``signal = *``. Each registered plot type may add an optional sheet of its own
-(``loops``, ``spectrograms``, ``psds``); this module reads them, and the plot type says what
-its rows mean. Neither half can be renamed without the other noticing.
+(``loops``, ...); this module locates whichever sheets the registry names and hands each to
+its plot type, which alone says what its rows mean. Registering a new plot type therefore
+needs no edit here.
 
 The returned dict is structurally identical to a parsed ``database_options.json``
 and is ready to be consumed by :func:`normalize_datasource_options`.

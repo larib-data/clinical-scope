@@ -106,8 +106,8 @@ def _check_plot_types(section: dict, path_prefix: str, issues: list[ValidationIs
     Hand each plot type its own section to check.
 
     The parser knows a section may configure plot types; it does not know what any of them
-    requires. A type whose config it cannot read is a type it cannot silently accept, which
-    is what let ``psd`` validate cleanly and render nothing before this.
+    requires. A section no plot type vouches for is one the parser cannot silently accept: it
+    would validate cleanly and then render nothing.
     """
     for schema in plot_types.DERIVED:
         issues.extend(schema.validate(section.get(schema.SECTION_KEY), path_prefix))

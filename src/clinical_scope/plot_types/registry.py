@@ -7,7 +7,7 @@ Holds the *leaf* half only, so importing it costs nothing and closes no cycle: t
 
 Adding a plot type is a package plus a line in ``AVAILABLE`` here and a line in ``builders``.
 Forgetting either is an ImportError at start-up -- never a config that validates cleanly and
-renders nothing, which is the failure this package exists to make impossible.
+renders nothing.
 
 That covers how a type *behaves*. A type wanting a user display setting or an axis payload of
 its own also pays for the mechanism carrying it -- a ``DisplayFallbacks`` field, a ``Data``

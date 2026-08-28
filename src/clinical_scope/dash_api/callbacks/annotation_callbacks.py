@@ -409,8 +409,8 @@ def handle_graph_click(
     no_update_patches = [no_update] * len(graph_ids)
 
     plot_type = subplots_data.get("plot_type")
-    # Not "is it a loop": the tooltip carries a timestamp for any plot type whose x is not
-    # time but whose points still know when they were recorded.
+    # A plot type can have a non-time x-axis and still know when each point was recorded;
+    # the tooltip carries that timestamp, so the two capabilities are asked separately.
     point_is_timestamped = plot_type in plot_types.POINT_TIMESTAMPS
     has_time_axis = plot_type in plot_types.TIME_AXIS
     if not has_time_axis and annotation_type in TIME_BASED_ANNOTATION_TYPES:
