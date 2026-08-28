@@ -25,7 +25,6 @@ from functools import partial
 from typing import Any
 
 from clinical_scope import constants as cst
-from clinical_scope.plot_types import builders
 from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.plot_types.base import PlotTypeSchema, SourceSignalNotFoundError
 from clinical_scope.signal_container import DisplayFallbacks, PlotGroup, PlotModel, Signal
@@ -330,7 +329,7 @@ def assemble_plot_groups(signals: list[Signal], database_options_global: dict) -
         for spec in derived_specs:
             if spec.origin != origin:
                 continue
-            builder = builders.BUILDERS[spec.schema]
+            builder = plot_types.BUILDERS[spec.schema]
             _add_derived_plot_group(
                 kind=spec.schema.SECTION_KEY,
                 item_name=spec.name,

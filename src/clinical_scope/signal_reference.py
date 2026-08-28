@@ -2,9 +2,9 @@
 How a ``database_options`` string names a signal, and what happens when it names none.
 
 Sits below both callers -- ``plot_assembly`` and each plot type's ``plot.py`` -- because
-assembly imports the builders, so a builder reaching back into assembly for this would close
-a cycle. Every reference reaching here has already been rewritten as a qualified global one
-(ADR-0013); local scope does not exist at this point.
+assembly reaches the builders through the registry, so a builder reaching back into assembly
+for this would close a cycle. Every reference reaching here has already been rewritten as a
+qualified global one (ADR-0013); local scope does not exist at this point.
 """
 
 import logging

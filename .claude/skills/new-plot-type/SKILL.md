@@ -136,7 +136,7 @@ in `constants.py` plus a `DisplayFallbacks` field. Raise either with the user be
 
 - `plot_types/registry.py` — import the schema, insert it into `AVAILABLE` at the position it
   should hold on the page, top to bottom.
-- `plot_types/builders.py` — import the plot half, add `Schema: plot.BUILDER` to `BUILDERS`.
+- `plot_types/registry.py` — import the plot half, add `Schema: plot.BUILDER` to `BUILDERS`.
 
 Nothing else in `src/` changes. `tests/plot_types/test_boundaries.py` fails if a shared module
 learns the new type's name, which is the signal that something belongs in the package instead.
@@ -167,7 +167,7 @@ The last two answer to nothing but this skill, which is what makes them the ones
 - [ ] `src/clinical_scope/plot_types/<name>/plot.py` — the adapter, plus its `BUILDER`
 - [ ] the maths — its own leaf module, or inline in `plot.py`
 - [ ] `src/clinical_scope/plot_types/registry.py` — import + `AVAILABLE`
-- [ ] `src/clinical_scope/plot_types/builders.py` — import + `BUILDERS`
+- [ ] `src/clinical_scope/plot_types/registry.py` — import + `BUILDERS`
 - [ ] `example/demo_database/database_options.{xlsx,json}` — configured, json regenerated
 - [ ] `docs/user_guide/tutorial.md` — a heading and its section
 - [ ] `CONTEXT.md` — glossary entry

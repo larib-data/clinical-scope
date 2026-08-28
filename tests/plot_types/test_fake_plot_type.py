@@ -23,7 +23,7 @@ from clinical_scope.database_options_parser import (
 )
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 from clinical_scope.plot_assembly import assemble_plot_groups, assemble_plot_models
-from clinical_scope.plot_types import builders, registry
+from clinical_scope.plot_types import registry
 
 from tests.plot_types.fake.plot import BUILDER as FAKE_BUILDER
 from tests.plot_types.fake.schema import FakeSchema
@@ -48,7 +48,7 @@ def fake_plot_type(monkeypatch):
     monkeypatch.setattr(registry, "SECTION_KEYS", frozenset(s.SECTION_KEY for s in derived))
     monkeypatch.setattr(registry, "NAMES", frozenset(s.NAME for s in available))
     monkeypatch.setattr(registry, "_BY_NAME", {s.NAME: s for s in available})
-    monkeypatch.setattr(builders, "BUILDERS", {**builders.BUILDERS, FakeSchema: FAKE_BUILDER})
+    monkeypatch.setattr(registry, "BUILDERS", {**registry.BUILDERS, FakeSchema: FAKE_BUILDER})
     return FakeSchema
 
 
