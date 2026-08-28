@@ -2,7 +2,7 @@
 
 Release checklist for `clinical-scope`, starting from a `main` branch you're happy with. Replace `X.Y.Z` below with the version you're releasing.
 
-**Golden rule:** at every step, at least run `clinical-scope` and confirm the example works as intended on your machine before moving on. Bump `version` in [`pyproject.toml`](../pyproject.toml) first — that, not the git tag, is what the wheel ships — and match it with `version` + `date-released` in [`CITATION.cff`](../CITATION.cff).
+**Golden rule:** at every step, at least run `clinical-scope` and confirm the example works as intended on your machine before moving on. Bump `version` in [`pyproject.toml`](../pyproject.toml) first — that, not the git tag, is what the wheel ships — and match it in the three places that restate it: `version` + `date-released` in [`CITATION.cff`](../CITATION.cff), the `version` field of the BibTeX block in [`README.md`](../README.md), and the release heading in [`CHANGELOG.md`](../CHANGELOG.md) (fold `[Unreleased]` into it and date it the day you tag).
 
 1. **Build locally and install from it.**
    ```bash

@@ -6,36 +6,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Fixed
-- **A group in one data source no longer hides a same-named signal in another.** Grouping matched signals by name across the whole run, but a name like `HR`, `SpO2` or `ABP` is only unique *within* one source. So grouping `HR` under your monitor could silently drop the ventilator's `HR` from the page — no error, just a missing plot, and which one disappeared depended on the order the sources happened to load in. Groups now take the signals they actually name, and nothing else.
-
-- **A group that finds only one of its signals now keeps the group's name.** A group configured over four pressures but resolving to one used to be titled after that surviving signal — so the same configuration gave a differently-named panel depending on how much data a recording happened to contain. It is now always titled after the group.
-
-- **`loop`, `spectrogram` and `psd` written inside a data source's own section accept the same signal references as `global` ones.** They matched raw column names only; a display name (the `label` you configured) silently matched nothing. They now resolve display names too. A loop given other than exactly two signals is reported as a skipped plot instead of an unexplained error in the log.
-
-- **`trace_options` now applies to every datasource, not only `other::<stem>` files.** The block was accepted and validated in any `database_options` section, and the Excel sentinel row wrote it for any datasource, but only `other` ever read it — anywhere else it validated cleanly and did nothing. It now works everywhere it was already accepted.
-
-  **What changes for you:** a configuration that already sets `trace_options` (or the Excel `trace_mode` / `line_width` / `opacity` / `marker_symbol` columns) on a device datasource starts taking effect, where before it was ignored. Where a datasource ships its own trace style, your block now wins key by key over it; keys you leave unset keep the shipped value. Nothing changes for a configuration that only styled `other::<stem>` files.
-
-- **The annotation colour picker no longer disagrees with itself.** The row of preset swatches carried its own "selected" highlight alongside the hex code, and the two drifted apart: typing a code left the highlight behind, and opening a modal — which pre-fills the colour of the trace you clicked, rarely one of the six presets — moved the code without moving the highlight. The colour saved always came from the hex field, so the highlighted swatch was the half that lied. Presets are now plain shortcuts that fill the field, and a swatch beside it previews the colour the annotation will actually get.
-
-  **What changes for you:** a code pasted without its leading `#` is accepted, a malformed one is flagged as you leave the field, and a colour that is not a valid six-digit hex now falls back to the default instead of being written into the annotation file as-is.
-
-- **Groups and plots written in an `other::<filename>` section no longer erase those written in the plain `other` section.** Configuring, say, a `grouped_fields` or a `psd` under `other` and *also* under any `other::<filename>` silently dropped the first of the two — the per-file entries replaced the section's own rather than joining them. Both now apply.
-
-  **What changes for you:** a configuration mixing the two spellings starts drawing plots that were quietly missing. A per-file group naming a column that is not in the file also says so in the log now, instead of dropping it in silence.
-
-- **A hand-edited `~/.clinical_scope/user_options.json` is now checked when it loads.** Settings were only validated as you typed them into the Settings modal, so a file edited by hand — or one holding a value from an older version — could carry a subplot height of `99999`, a palette that no longer exists, or a misspelled timezone, and reach the app unchecked. Each such value now falls back to its default and says which one it was in the log, and a setting stored under a name the app no longer knows is reported rather than dropped in silence.
-
-  **What changes for you:** the Settings modal also refuses a spectrogram colour range whose minimum is not below its maximum — both bounds snap back to their defaults as you save, instead of the pair being stored and quietly corrected at plot time.
+_Nothing yet._
 
 ---
 
-## [1.1.0] — 2026-08-24
+## [1.1.0] — 2026-08-28
 
-> **Note:** The first release since v1.0.0 went public. It carries one breaking change (three datasources removed, with a migration path below), two new plot types, a new per-person settings tier, and a substantial reduction in load time and memory for large recordings.
+The first release since v1.0.0 went public, and a large one. Start here:
 
-> **Upgrading:** this release changes what the `clinical_scope_output/` parquet cache contains, and nothing detects a cache written by an older version. After updating, un-tick **"Re-use data if already loaded once"** (`quick_load`) for one run per patient so the cache is rewritten; leaving a stale cache in place gives EIT recordings without their `%Local` columns, and timestamps carrying whatever timezone the old run stamped in.
+| If you… | Read |
+|---|---|
+| are upgrading an existing install | **Before you upgrade** — one cache step, and one breaking change |
+| use the `philips_waves`, `philips_numerics` or `syringe` datasources | **Removed** — they are gone, with a migration path |
+| just want what is new | **Added** — two plot types, an `.edf` reader, per-person settings, per-file `other/` config |
+| have a recording that loads slowly | **Performance** — wide recordings read far fewer columns |
+
+### Before you upgrade
+
+**Rewrite the cache once.** This release changes what the `clinical_scope_output/` parquet cache contains, and nothing detects a cache written by an older version. After updating, un-tick **"Re-use data if already loaded once"** (`quick_load`) for one run per patient so the cache is rewritten; leaving a stale cache in place gives EIT recordings without their `%Local` columns, and timestamps carrying whatever timezone the old run stamped in.
+
+**Check three configuration behaviours that changed.** Each is described in full below; a configuration that never used the feature is unaffected.
+- `trace_options` now applies to every datasource, where before it was silently ignored outside `other::<stem>`.
+- Grouping now takes the signals a group actually names, so a same-named signal in another datasource is no longer hidden.
+- A hand-edited `~/.clinical_scope/user_options.json` is now validated at load; out-of-range values fall back to their defaults and say so in the log.
 
 ### Removed — **breaking**
 - Drop the `philips_waves`, `philips_numerics` and `syringe` datasources. They performed no format-specific parsing — a plain `read_csv` / `read_parquet` — so they were the generic `other` source with extra machinery. Now that each file inside `other/` carries its own configuration and its own `time_shift`, they no longer earn a module.
@@ -68,10 +61,41 @@ All notable changes to this project will be documented in this file.
 - `example/` is split by audience, with the demo configuration promoted to the canonical reference; every demo datasource now starts at a common time, so the default view opens with all sources overlapping.
 
 ### Fixed
+
+#### Grouping and signal references
+- **A group in one data source no longer hides a same-named signal in another.** Grouping matched signals by name across the whole run, but a name like `HR`, `SpO2` or `ABP` is only unique *within* one source. So grouping `HR` under your monitor could silently drop the ventilator's `HR` from the page — no error, just a missing plot, and which one disappeared depended on the order the sources happened to load in. Groups now take the signals they actually name, and nothing else.
+
+- **A group that finds only one of its signals now keeps the group's name.** A group configured over four pressures but resolving to one used to be titled after that surviving signal — so the same configuration gave a differently-named panel depending on how much data a recording happened to contain. It is now always titled after the group.
+
+- **`loop`, `spectrogram` and `psd` written inside a data source's own section accept the same signal references as `global` ones.** They matched raw column names only; a display name (the `label` you configured) silently matched nothing. They now resolve display names too. A loop given other than exactly two signals is reported as a skipped plot instead of an unexplained error in the log.
+
+- **Groups and plots written in an `other::<filename>` section no longer erase those written in the plain `other` section.** Configuring, say, a `grouped_fields` or a `psd` under `other` and *also* under any `other::<filename>` silently dropped the first of the two — the per-file entries replaced the section's own rather than joining them. Both now apply.
+
+  **What changes for you:** a configuration mixing the two spellings starts drawing plots that were quietly missing. A per-file group naming a column that is not in the file also says so in the log now, instead of dropping it in silence.
+
+- Global groups authored in the Excel format now emit qualified references for `other::<stem>` signals, which previously could not resolve.
+
+#### Configuration
+- **`trace_options` now applies to every datasource, not only `other::<stem>` files.** The block was accepted and validated in any `database_options` section, and the Excel sentinel row wrote it for any datasource, but only `other` ever read it — anywhere else it validated cleanly and did nothing. It now works everywhere it was already accepted.
+
+  **What changes for you:** a configuration that already sets `trace_options` (or the Excel `trace_mode` / `line_width` / `opacity` / `marker_symbol` columns) on a device datasource starts taking effect, where before it was ignored. Where a datasource ships its own trace style, your block now wins key by key over it; keys you leave unset keep the shipped value. Nothing changes for a configuration that only styled `other::<stem>` files.
+
+- **A hand-edited `~/.clinical_scope/user_options.json` is now checked when it loads.** Settings were only validated as you typed them into the Settings modal, so a file edited by hand — or one holding a value from an older version — could carry a subplot height of `99999`, a palette that no longer exists, or a misspelled timezone, and reach the app unchecked. Each such value now falls back to its default and says which one it was in the log, and a setting stored under a name the app no longer knows is reported rather than dropped in silence.
+
+  **What changes for you:** the Settings modal also refuses a spectrogram colour range whose minimum is not below its maximum — both bounds snap back to their defaults as you save, instead of the pair being stored and quietly corrected at plot time.
+
+#### Annotations
+- **An `annotations.json` written by another tool keeps its own keys.** Loading a file re-serialised it through a fixed set of recognised fields, so any extra key an external generator had written was erased at load — before you clicked anything — and the stripped version was what the next save wrote back. Unrecognised keys on an annotation now survive the round trip ([ADR-0012](docs/adr/0012-annotation-dicts-are-an-open-schema.md)).
+
+- **The annotation colour picker no longer disagrees with itself.** The row of preset swatches carried its own "selected" highlight alongside the hex code, and the two drifted apart: typing a code left the highlight behind, and opening a modal — which pre-fills the colour of the trace you clicked, rarely one of the six presets — moved the code without moving the highlight. The colour saved always came from the hex field, so the highlighted swatch was the half that lied. Presets are now plain shortcuts that fill the field, and a swatch beside it previews the colour the annotation will actually get.
+
+  **What changes for you:** a code pasted without its leading `#` is accepted, a malformed one is flagged as you leave the field, and a colour that is not a valid six-digit hex now falls back to the default instead of being written into the annotation file as-is.
+
+#### Data loading and plots
 - **Spectrogram and PSD magnitudes are now a true one-sided power spectral density** (`unit²/Hz`), following `scipy.signal.welch`'s windowing, normalisation and detrending. Previously the magnitude tracked window length — a noise floor climbing 3 dB per doubling — so two windows of the same signal could not be compared and an absolute dB range slid out from under the data.
+- A plain parquet file whose stored index is non-temporal (a float or integer index, not one this library wrote) no longer crashes on load; it declines to prune and reads normally.
 - Applying a timezone no longer mutates the caller's DataFrame index in place.
 - A folder holding both `data.csv` and `data.parquet` no longer loads the same data twice under colliding names — one file per stem is kept, preferring parquet.
-- Global groups authored in the Excel format now emit qualified references for `other::<stem>` signals, which previously could not resolve.
 - The bundled EEG example no longer ships channels that were pure artefact.
 
 ### Performance
@@ -82,8 +106,17 @@ All notable changes to this project will be documented in this file.
 - Parquet datetime-column detection reads metadata instead of the column body.
 
 ### Documentation
-- Eight new ADRs: output-root redirection (0003), datetime-column validation (0004), user-options-as-fallbacks (0005), the no-clinical-analysis scope boundary (0006), read-time pruning as an optimization rather than a filter (0007), the format-specific-parsing criterion for datasource modules (0008), `other::<stem>` as a configuration scope (0009), and the load-transcribes / format-interprets split (0010).
+- Twelve new ADRs: output-root redirection (0003), datetime-column validation (0004), user-options-as-fallbacks (0005), the no-clinical-analysis scope boundary (0006), read-time pruning as an optimization rather than a filter (0007), the format-specific-parsing criterion for datasource modules (0008), `other::<stem>` as a configuration scope (0009), the load-transcribes / format-interprets split (0010), datetime bounds qualified at the boundary (0011), annotation dicts as an open schema (0012), signal references qualified before assembly (0013), and user options validated at the boundary (0014).
 - `CONTRIBUTING.md` now states what belongs in the library — ClinicalScope derives for display, it does not interpret — and when a new datasource needs a module of its own rather than a slot in `other/`.
+
+### Internal
+_No effect on configuration files or on what is drawn; listed for contributors._
+- **A plot type is now a package.** Everything that varies by plot type — config keys, validation, spreadsheet interpretation, the maths and the rendering — lives in `plot_types/<name>/`, and nothing outside that package branches on plot type. Adding one is a package plus two adjacent lines in the registry; a forgotten half is an import-time crash rather than a configuration that validates and draws nothing.
+- **Plot-group assembly lifted out of the pipeline.** Grouping and derived-plot construction moved to `plot_assembly.py`, so they are exercised with in-memory signals instead of only by running the whole pipeline against a folder on disk ([ADR-0013](docs/adr/0013-signal-references-are-qualified-before-assembly.md)).
+- **User-option validation lives in one pure core module**, called by every boundary that accepts a value; only `dash_api` reads the on-disk file ([ADR-0014](docs/adr/0014-user-options-are-validated-at-the-boundary.md)).
+- `io/file_utils.py` split one file per concern — time-axis detection, parquet pruning, discovery, column patterns, export — with cache provenance carried by the function a caller reaches for rather than by a flag.
+- Ruff is pinned to the 0.16.x line via the `dev` extra, and CI runs lint and tests as separate jobs so a lint failure cannot gate the test results.
+- New `/new-plot-type` skill, alongside `/new-datasource`, for contributors adding a way of drawing signals.
 
 ---
 
