@@ -125,6 +125,7 @@ Gitignored under `logs/`: `logs/app/dash_api.log` (app), `logs/scripts/` (script
 - **Triage labels** — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`; see `docs/agents/triage-labels.md`.
 - **Domain docs** — single-context repo: `CONTEXT.md` (domain glossary) + `docs/adr/` at root; see `docs/agents/domain.md`.
 - **Doc audience** — `README.md` / `docs/user_guide/tutorial.md` are clinician-facing: state behavior, not implementation; never link to `docs/adr/`, `CONTEXT.md`, or CLAUDE.md from them.
+- **Tutorial PDF** — the standalone bundle ships `tutorial.md` as a PDF, and nothing regenerates it: `assemble_bundle.py` copies whatever is committed. A commit touching `tutorial.md` must run `./docs/user_guide/build_pdf.sh` and commit the regenerated PDF alongside it.
 - **Project skills** (`.claude/skills/`, invoke with `/name`):
 
 | Skill | When to use |

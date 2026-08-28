@@ -52,11 +52,27 @@ pyinstaller src/clinical_scope/build_info/core_api.spec --clean --distpath build
 builded_app/
 └── macOS_arm/
     └── ClinicalScope/
-        ├── ClinicalScope            # Main executable
-        ├── LICENSE                  # Project license (copied from repo root if present)
-        ├── THIRD_PARTY_LICENSES.txt # Bundled dependency notices (auto-generated)
-        └── _internal/               # Dependencies
+        ├── ClinicalScope                    # Main executable
+        ├── ClinicalScope_UserGuide.pdf      # User guide (committed artifact — see below)
+        ├── LICENSE                          # Project license
+        ├── DISCLAIMER.txt                   # Research-use-only notice
+        ├── THIRD_PARTY_LICENSES.txt         # Bundled dependency notices (auto-generated)
+        ├── demo_database/                   # Runnable demo config + demo patient
+        ├── template_patient_data_structure/ # Empty folder skeleton to copy
+        └── _internal/                       # Dependencies
 ```
+
+## Static assets
+
+Everything above the `_internal/` line except the executable is copied in by `assemble_bundle.py`, from the `ASSETS` manifest at the top of that file. Adding a file to the bundle means adding it there — both build entry points read the same list.
+
+**The user guide PDF is a committed artifact, not a build product.** `assemble_bundle.py` copies `docs/user_guide/ClinicalScope_UserGuide.pdf` as it finds it in the repo; nothing regenerates it from `tutorial.md`, and a stale PDF copies just as cleanly as a fresh one — the build cannot tell the difference and says nothing. Regenerating is a manual step:
+
+```bash
+./docs/user_guide/build_pdf.sh    # needs pandoc + xelatex/pdflatex
+```
+
+It is deliberately not wired into `build.sh`: pandoc and a LaTeX engine would then be prerequisites on every build machine, CI runners included, to rebuild a file that changes a few times a year. The cost of that choice is that **`tutorial.md` and the PDF drift silently**, so run the script and commit the result whenever you edit the tutorial — and always before cutting a release ([RELEASING.md](../../../docs/RELEASING.md) step 1).
 
 ## License notices
 
