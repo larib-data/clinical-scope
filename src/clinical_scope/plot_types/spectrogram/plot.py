@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import clinical_scope.constants as cst
 from clinical_scope import spectral
 from clinical_scope.plot_types.base import PlotBuilder, RenderSpec, require_time_series
-from clinical_scope.plot_types.spectrogram.schema import SpectrogramSchema
+from clinical_scope.plot_types.spectrogram.definition import SpectrogramDefinition
 from clinical_scope.signal_container import Data, Metadata, PlotOptions, Signal, TraceOptions
 from clinical_scope.signal_reference import resolve_one
 
@@ -73,7 +73,7 @@ def spectrogram_from_signal(
     # same reasoning as loop_from_signals leaving timezone unset.
     data = Data(x=times, y=power_db, timezone=None, spectrogram_freq_axis=freqs)
     plot_options = PlotOptions(
-        schema=SpectrogramSchema,
+        definition=SpectrogramDefinition,
         y_axis_title="Frequency (Hz)",
         show_legend=False,
         color_range=color_range,
@@ -93,7 +93,7 @@ def spectrogram_from_signal(
 
 def build(all_signals: list[Signal], spectrogram_name: str, spectrogram_config: Any) -> Signal:
     """Build the spectrogram one ``spectrogram`` config entry describes."""
-    config_cls = SpectrogramSchema.Config
+    config_cls = SpectrogramDefinition.Config
     source_signal = resolve_one(spectrogram_config.get(config_cls.SIGNAL), all_signals)
     try:
         return spectrogram_from_signal(

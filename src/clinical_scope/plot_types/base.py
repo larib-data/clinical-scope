@@ -5,15 +5,15 @@ A plot type is a module: everything that varies by plot type lives in that type'
 and nothing outside ``plot_types/`` branches on plot type. Each package has two halves, split
 by what they are allowed to import:
 
-* ``schema.py`` -- the config half. Name, config keys, validation, reference rewriting, xlsx
+* ``definition.py`` -- the config half. Name, config keys, validation, reference rewriting, xlsx
   sheet, and the capability flags. Imports nothing but ``validation``, so reading or checking
   a configuration never loads a plotting library.
 * ``plot.py`` -- the render half. Builds Signals, does the maths, installs the rendering.
   Imports ``signal_container``, numpy and plotly.
 
-Everything a plot type knows travels *on the object*. A Signal carries its schema, which
+Everything a plot type knows travels *on the object*. A Signal carries its definition, which
 answers every capability question, and its :class:`RenderSpec`, which says how to draw it --
-so no render site ever looks a plot type up by name. ``registry.schema_for`` marks the one
+so no render site ever looks a plot type up by name. ``registry.definition_for`` marks the one
 boundary where a name is all there is: a plot type that has been through a Dash store.
 """
 
@@ -49,10 +49,10 @@ class RenderSpec:
 @dataclass(frozen=True)
 class CellReader:
     """
-    The xlsx reader's cell coercions, lent to a schema for the length of one sheet.
+    The xlsx reader's cell coercions, lent to a plot type for the length of one sheet.
 
-    Passed in rather than imported: the reader imports every schema to find its sheet, so a
-    schema importing the reader back would close a cycle. It also states the seam -- the
+    Passed in rather than imported: the reader imports every definition to find its sheet, so
+    one importing the reader back would close a cycle. It also states the seam -- the
     reader owns how a cell is read, the plot type owns what a row means.
     """
 
@@ -100,7 +100,7 @@ class PlotTypeArityError(Exception):
     """Raised by a builder given the wrong number of signal references."""
 
 
-class PlotTypeSchema:
+class PlotTypeDefinition:
     """
     One plot type's leaf half: what it is called, how it behaves, how its config is spelled.
 
@@ -207,13 +207,13 @@ class PlotTypeSchema:
         Interpret this type's xlsx sheet as ``{datasource: {entry_name: config}}``.
 
         The reader transcribes and this decides what a row means, so the spreadsheet columns
-        and the JSON keys -- one schema in two spellings -- cannot drift apart. *rows* is the
+        and the JSON keys -- one grammar in two spellings -- cannot drift apart. *rows* is the
         sheet as a DataFrame, *cells* the reader's cell-value coercions.
         """
         return {}
 
 
-class TimeSeries(PlotTypeSchema):
+class TimeSeries(PlotTypeDefinition):
     """
     The substrate: every loaded signal, drawn against time.
 
@@ -225,7 +225,7 @@ class TimeSeries(PlotTypeSchema):
     NAME = "time_series"
 
 
-class Unknown(PlotTypeSchema):
+class Unknown(PlotTypeDefinition):
     """
     A plot type name nothing recognises -- a typo, or a figure built before a type was removed.
 
@@ -281,6 +281,6 @@ def check_freq_range(freq_range: Any, path: str) -> list[ValidationIssue]:
 
 def require_time_series(signal: "Signal") -> None:
     """Refuse to derive a plot from anything but a raw time-series."""
-    if signal.trace_options.plot_options.schema is not TimeSeries:
+    if signal.trace_options.plot_options.definition is not TimeSeries:
         msg = f"Input signal must be of type '{TimeSeries.NAME}'."
         raise ValueError(msg)

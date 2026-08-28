@@ -12,7 +12,7 @@ this a plot type at all**, and **what maths does it draw** — plus the peripher
 in but does not contain.
 
 Two words carry the skill. A **delta** is what a type declares differently from a line against
-time; every default in `PlotTypeSchema` is `time_series`, so a derived type states only its
+time; every default in `PlotTypeDefinition` is `time_series`, so a derived type states only its
 deltas. A **contract** is what a half of the package owes the rest of the app, and each half
 owes something different because of who may import it.
 
@@ -37,7 +37,7 @@ this, and stop:
 
 > What you want is new maths on a signal, still drawn against time and sharing a zoom with the
 > signal it came from — a compliance curve, a moving average. There is no home for that today:
-> every builder sets its own `schema=`, and nothing builds a derived Signal that renders
+> every builder sets its own `definition=`, and nothing builds a derived Signal that renders
 > *as* a time-series. Making it a plot type would park it on a page section of its own, away
 > from its source. This is a gap worth an issue, not a package.
 
@@ -60,7 +60,7 @@ Read `tests/plot_types/fake/` as well. It is the smallest complete type — two 
 config entry that is a bare string — and `tests/plot_types/test_fake_plot_type.py` drives it
 through all six paths a real one takes.
 
-## Step 3 — Write the leaf (`schema.py`)
+## Step 3 — Write what the type *is* (`definition.py`)
 
 The leaf's **contract**: it imports nothing above `constants`. `signal_container` reads the
 capability flags and may never import a `plot.py`, so a flag must be readable without one.
@@ -76,7 +76,7 @@ capability flags and may never import a `plot.py`, so a flag must be readable wi
 - `map_refs()` — the config with every signal reference rewritten through `map_ref`. One walk
   per config shape; a malformed config is returned untouched for validation to report.
 - `SHEET_NAME`, `SHEET_REQUIRED_COLUMNS`, `read_sheet()` — only if the type is authorable in
-  the xlsx. The sheet columns and the JSON keys are one schema in two spellings, which is why
+  the xlsx. The sheet columns and the JSON keys are one grammar in two spellings, which is why
   they are declared in the same file.
 
 **Done when:** `validate_entry` and `map_refs` each handle the malformed config as well as
@@ -119,9 +119,9 @@ The top's **contract**, which is where the import cycle shows through:
   is already graded as a warning, so a config naming a signal that never loaded reports as the
   config problem it is.
 - Guard the source with `require_time_series()` — a derived plot derives from a raw signal.
-- Set `PlotOptions(schema=<Schema>, …)` — the class, not its name. This is what puts the plot
-  on its own page section, and it is also how every capability question about it gets answered
-  downstream: the render layer reads `schema.GRID_LAYOUT`, never a name.
+- Set `PlotOptions(definition=<Definition>, …)` — the class, not its name. This is what puts
+  the plot on its own page section, and it is also how every capability question about it gets
+  answered downstream: the render layer reads `definition.GRID_LAYOUT`, never a name.
 - **Push** the rendering with `RenderSpec`: a `hover_template` when the trace is a Scatter, a
   `trace_factory` when it is not one at all (a spectrogram is a `go.Heatmap`).
   `to_plotly_trace` cannot reach into the package to pull it.
@@ -134,9 +134,9 @@ in `constants.py` plus a `DisplayFallbacks` field. Raise either with the user be
 
 ## Step 6 — Register
 
-- `plot_types/registry.py` — import the schema, insert it into `AVAILABLE` at the position it
+- `plot_types/registry.py` — import the definition, insert it into `AVAILABLE` at the position it
   should hold on the page, top to bottom.
-- `plot_types/registry.py` — import the plot half, add `Schema: plot.BUILDER` to `BUILDERS`.
+- `plot_types/registry.py` — import the plot half, add `Definition: plot.BUILDER` to `BUILDERS`.
 
 Nothing else in `src/` changes. `tests/plot_types/test_boundaries.py` fails if a shared module
 learns the new type's name, which is the signal that something belongs in the package instead.
@@ -163,7 +163,7 @@ The last two answer to nothing but this skill, which is what makes them the ones
 ## Files changed checklist
 
 - [ ] `src/clinical_scope/plot_types/<name>/__init__.py`
-- [ ] `src/clinical_scope/plot_types/<name>/schema.py` — the leaf, deltas only
+- [ ] `src/clinical_scope/plot_types/<name>/definition.py` — what it is, deltas only
 - [ ] `src/clinical_scope/plot_types/<name>/plot.py` — the adapter, plus its `BUILDER`
 - [ ] the maths — its own leaf module, or inline in `plot.py`
 - [ ] `src/clinical_scope/plot_types/registry.py` — import + `AVAILABLE`

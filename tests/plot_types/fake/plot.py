@@ -6,7 +6,7 @@ from clinical_scope.plot_types.base import PlotBuilder, RenderSpec, require_time
 from clinical_scope.signal_container import Data, Metadata, PlotOptions, Signal, TraceOptions
 from clinical_scope.signal_reference import resolve_one
 
-from tests.plot_types.fake.schema import FakeSchema
+from tests.plot_types.fake.definition import FakeDefinition
 
 
 def build(all_signals: list[Signal], fake_name: str, config: Any) -> Signal:
@@ -18,7 +18,7 @@ def build(all_signals: list[Signal], fake_name: str, config: Any) -> Signal:
         data=Data(x=source.data.x, y=source.data.y, timezone=source.data.timezone),
         trace_options=TraceOptions(
             plot_options=PlotOptions(
-                schema=FakeSchema,
+                definition=FakeDefinition,
                 display_timezone=source.trace_options.plot_options.display_timezone,
             )
         ),

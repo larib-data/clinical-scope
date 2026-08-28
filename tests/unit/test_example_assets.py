@@ -97,7 +97,7 @@ class TestDemoPlotTypeCoverage:
             if isinstance(block, dict)
             for section in block
         }
-        expected = {schema.SECTION_KEY for schema in plot_type_registry.DERIVED}
+        expected = {definition.SECTION_KEY for definition in plot_type_registry.DERIVED}
 
         assert expected <= configured, (
             "the demo config configures no plot of type(s) "

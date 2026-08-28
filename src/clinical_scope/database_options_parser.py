@@ -100,8 +100,8 @@ def _check_plot_types(section: dict, path_prefix: str, issues: list[ValidationIs
     requires. A section no plot type vouches for is one the parser cannot silently accept: it
     would validate cleanly and then render nothing.
     """
-    for schema in plot_types.DERIVED:
-        issues.extend(schema.validate(section.get(schema.SECTION_KEY), path_prefix))
+    for definition in plot_types.DERIVED:
+        issues.extend(definition.validate(section.get(definition.SECTION_KEY), path_prefix))
 
 
 def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:

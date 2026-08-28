@@ -26,7 +26,7 @@ from typing import Any
 
 from clinical_scope import constants as cst
 from clinical_scope.plot_types import registry as plot_types
-from clinical_scope.plot_types.base import PlotTypeSchema, SourceSignalNotFoundError
+from clinical_scope.plot_types.base import PlotTypeDefinition, SourceSignalNotFoundError
 from clinical_scope.signal_container import DisplayFallbacks, PlotGroup, PlotModel, Signal
 from clinical_scope.signal_reference import resolve_signal_references
 
@@ -87,7 +87,7 @@ class _GroupSpec:
 class _DerivedSpec:
     """One configured derived plot, its references already qualified."""
 
-    schema: type[PlotTypeSchema]
+    definition: type[PlotTypeDefinition]
     name: str
     config: Any
     origin: str
@@ -124,9 +124,11 @@ def _namespace_specs(
         for name, references in namespace.get(cst.DatabaseOptions.GROUPED_FIELDS, {}).items()
     ]
     derived_specs = [
-        _DerivedSpec(schema, _scoped(scope, name), schema.map_refs(config, qualify), section_name)
-        for schema in plot_types.DERIVED
-        for name, config in namespace.get(schema.SECTION_KEY, {}).items()
+        _DerivedSpec(
+            definition, _scoped(scope, name), definition.map_refs(config, qualify), section_name
+        )
+        for definition in plot_types.DERIVED
+        for name, config in namespace.get(definition.SECTION_KEY, {}).items()
     ]
     return group_specs, derived_specs
 
@@ -329,9 +331,9 @@ def assemble_plot_groups(signals: list[Signal], database_options_global: dict) -
         for spec in derived_specs:
             if spec.origin != origin:
                 continue
-            builder = plot_types.BUILDERS[spec.schema]
+            builder = plot_types.BUILDERS[spec.definition]
             _add_derived_plot_group(
-                kind=spec.schema.SECTION_KEY,
+                kind=spec.definition.SECTION_KEY,
                 item_name=spec.name,
                 datasource_name=spec.origin,
                 build_signal=partial(builder.build, signals, spec.name, spec.config),
@@ -349,7 +351,7 @@ def assemble_plot_models(
     Bucket plot groups into one PlotModel per plot type, in page order.
 
     Lives here rather than on PlotModel because page order is a fact about the *collection* of
-    plot types, the one thing a single schema cannot carry -- and reading it is what would tie
+    plot types, the one thing a single plot type cannot carry -- and reading it is what would tie
     the data model to the registry.
 
     Args:
@@ -361,20 +363,22 @@ def assemble_plot_models(
 
     """
     fallbacks = display_fallbacks or DisplayFallbacks()
-    groups: dict[type[PlotTypeSchema], list[PlotGroup]] = {}
+    groups: dict[type[PlotTypeDefinition], list[PlotGroup]] = {}
     for plot_group in plot_group_list:
         plot_options = plot_group.plot_options
         # ADR-0005: a height from the database configuration wins; None means it was silent,
         # so the user's per-plot-type fallback fills the gap.
         if plot_options.plot_height is None:
-            plot_options.plot_height = fallbacks.subplot_height_for(plot_options.schema)
-        groups.setdefault(plot_options.schema, []).append(plot_group)
+            plot_options.plot_height = fallbacks.subplot_height_for(plot_options.definition)
+        groups.setdefault(plot_options.definition, []).append(plot_group)
 
     page_order = plot_types.PAGE_ORDER
     ordered = sorted(
         groups,
-        key=lambda schema: (
-            page_order.index(schema.NAME) if schema.NAME in page_order else len(page_order)
+        key=lambda definition: (
+            page_order.index(definition.NAME) if definition.NAME in page_order else len(page_order)
         ),
     )
-    return [PlotModel(groups=groups[schema], display_fallbacks=fallbacks) for schema in ordered]
+    return [
+        PlotModel(groups=groups[definition], display_fallbacks=fallbacks) for definition in ordered
+    ]

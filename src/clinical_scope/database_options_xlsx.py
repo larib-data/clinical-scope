@@ -95,7 +95,7 @@ def _parse_groups(value: Any) -> list[str]:
 
 
 # Lent to each plot type's read_sheet: the reader owns how a cell is read, the plot type owns
-# what a row means. Passed rather than imported -- this module imports every schema.
+# what a row means. Passed rather than imported -- this module imports every definition.
 _CELL_READER = CellReader(
     is_empty=_is_empty,
     to_float=_to_float,
@@ -172,11 +172,11 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
         raise ValueError(msg) from exc
 
     plot_type_sheets = {
-        schema: _read_optional_sheet(
-            file_obj, schema.SHEET_NAME, set(schema.SHEET_REQUIRED_COLUMNS), schema.NAME
+        definition: _read_optional_sheet(
+            file_obj, definition.SHEET_NAME, set(definition.SHEET_REQUIRED_COLUMNS), definition.NAME
         )
-        for schema in plot_types.AVAILABLE
-        if schema.SHEET_NAME
+        for definition in plot_types.AVAILABLE
+        if definition.SHEET_NAME
     }
 
     # ------------------------------------------------------------------
@@ -370,23 +370,23 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
     # Process each plot type's own sheet
     # ------------------------------------------------------------------
     # The reader transcribes and the plot type interprets: a row's meaning lives beside the
-    # JSON keys it produces, so the two spellings of one schema cannot drift apart.
-    for schema, sheet in plot_type_sheets.items():
+    # JSON keys it produces, so the two spellings of one grammar cannot drift apart.
+    for definition, sheet in plot_type_sheets.items():
         try:
-            by_datasource = schema.read_sheet(sheet, _CELL_READER)
+            by_datasource = definition.read_sheet(sheet, _CELL_READER)
         except Exception:
             logger.warning(
                 "Could not read the '%s' sheet; skipping %s definitions.",
-                schema.SHEET_NAME,
-                schema.NAME,
+                definition.SHEET_NAME,
+                definition.NAME,
                 exc_info=True,
             )
             continue
         for datasource_name, entries in by_datasource.items():
             if entries:
-                result.setdefault(datasource_name, {}).setdefault(schema.SECTION_KEY, {}).update(
-                    entries
-                )
+                result.setdefault(datasource_name, {}).setdefault(
+                    definition.SECTION_KEY, {}
+                ).update(entries)
 
     return result
 

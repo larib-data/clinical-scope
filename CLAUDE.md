@@ -23,9 +23,9 @@ src/clinical_scope/
   user_options.py       UserOptions schema as data: traversal, defaults, validate()
   validation.py         ValidationIssue — what every config validator returns
   plot_types/
-    base.py             PlotTypeSchema + RenderSpec; the defaults ARE time_series
-    registry.py         AVAILABLE schemas, BUILDERS, PAGE_ORDER, schema_for()
-    <name>/             one package per type: schema.py (config) + plot.py (render)
+    base.py             PlotTypeDefinition + RenderSpec; the defaults ARE time_series
+    registry.py         AVAILABLE definitions, BUILDERS, PAGE_ORDER, definition_for()
+    <name>/             one package per type: definition.py (config) + plot.py (render)
   datasource/
     base.py             DataSourceBase — find/load/format/extract/inspect template
     registry.py         registered sources (DataSource.AVAILABLE; keep Other last)
@@ -54,10 +54,10 @@ src/clinical_scope/
 **Config scope is desugared once, and grouping joins on signal identity** ([ADR-0013](docs/adr/0013-signal-references-are-qualified-before-assembly.md)). `assemble_plot_groups` is called once, after the datasource loop, and its first step rewrites every per-datasource reference as a qualified global one — downstream, local scope does not exist. An `other::<stem>` section is one namespace deeper and desugars in the same pass; `other` injects nothing a config file states, only the group-per-file it derives from the columns that loaded. Both config spellings stay valid; the desugaring is a property of the code, not of the file format. A signal is left out of the default one-plot-per-signal pass only when a group took *that object*, never when something merely shares its `raw_name` (unique only within a datasource).
 
 **A plot type is a module.** Everything that varies by plot type lives in `plot_types/<name>/`; nothing outside the package branches on plot type or hardcodes a section key (asserted by `tests/plot_types/test_boundaries.py`). Each package has two halves, split by what they may import:
-- `schema.py` — the config half: `NAME`/`SECTION_KEY`, config keys, `validate()`, `map_refs()`, xlsx sheet + row interpretation, and the six capability flags. Imports nothing but `validation`.
+- `definition.py` — what the type *is*: `NAME`/`SECTION_KEY`, the six capability flags, config keys, `validate()`, `map_refs()`, xlsx sheet + row interpretation. Imports nothing but `validation`.
 - `plot.py` — the render half: `build()`, the maths, the rendering it installs. Imports `signal_container`, numpy and plotly.
 
-**Everything a plot type knows travels on the object.** A Signal carries its schema (`plot_options.schema`) and its `RenderSpec`, so every render site reads `schema.GRID_LAYOUT` rather than asking a registry whether `"loop"` is in a set. That is why `signal_container` imports nothing from `plot_types` but `base` (asserted by `test_boundaries.py`), and why the data model never knows the roster. `registry.schema_for(name)` is the single exception: a plot type that crossed a Dash store as JSON has only its name left, and an unregistered one resolves to `Unknown`, which has every capability off.
+**Everything a plot type knows travels on the object.** A Signal carries its definition (`plot_options.definition`) and its `RenderSpec`, so every render site reads `definition.GRID_LAYOUT` rather than asking a registry whether `"loop"` is in a set. That is why `signal_container` imports nothing from `plot_types` but `base` (asserted by `test_boundaries.py`), and why the data model never knows the roster. `registry.definition_for(name)` is the single exception: a plot type that crossed a Dash store as JSON has only its name left, and an unregistered one resolves to `Unknown`, which has every capability off. **"Schema" is not the word here** — the file holds identity and rendering capabilities as well as config grammar, and the codebase already spends `schema` on `UserOptions` classes and the Dash widget registry.
 
 `time_series` is registered but has no package: every default in `PlotTypeSchema` is its behaviour, and `DERIVED` is the types with a `SECTION_KEY`. **Adding a plot type is a package plus two adjacent lines in `registry.py` — `AVAILABLE` and `BUILDERS`** — nothing in `database_options_parser.py`, `database_options_xlsx.py`, `plot_assembly.py` or `signal_container.py` changes, and no datasource imports `plot_types` at all. Two things still cost more, and both are the general mechanism rather than the plot type: a **user display setting** is a `UserOptions` class in `constants.py` plus a `DisplayFallbacks` field (as `loops_per_row` and `spectrogram_db_range` are), and an **axis payload of its own** is a field on `Data` (as `point_time_axis` and `spectrogram_freq_axis` are). Forgetting a half is an import-time crash, never a config that validates and renders nothing (`tests/plot_types/test_fake_plot_type.py` registers a fourth type and drives it through all six paths).
 
@@ -113,7 +113,7 @@ Ruff (`ruff check .`, `ruff format .`), capped to the 0.16.x line by the `dev` e
 
 Keep inline comments concise — one line where possible; explain the non-obvious *why*, **not** the *what*. Reserve longer prose for docstrings.
 
-Shared literal values (option keys, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today. The exception is a value one registered module *owns*: a datasource's option keys live in its `options.py`, a plot type's name, section key and config keys in its `schema.py`, and each registry owns the ordering across its own members. That is a `src/` rule: tests assert **independent literals** (`== 300`, not `== cst.DEFAULT_SUBPLOT_HEIGHT`), since a test that restates the constant it exercises can never fail.
+Shared literal values (option keys, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today. The exception is a value one registered module *owns*: a datasource's option keys live in its `options.py`, a plot type's name, section key and config keys in its `definition.py`, and each registry owns the ordering across its own members. That is a `src/` rule: tests assert **independent literals** (`== 300`, not `== cst.DEFAULT_SUBPLOT_HEIGHT`), since a test that restates the constant it exercises can never fail.
 
 ## Logs
 

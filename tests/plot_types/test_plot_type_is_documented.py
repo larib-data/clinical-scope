@@ -35,23 +35,23 @@ CONTEXT = PROJECT_ROOT / "CONTEXT.md"
 GLOSSARY_TERM = re.compile(r"^\*\*(.+?)\*\*:", re.MULTILINE)
 
 
-def _spellings(schema):
+def _spellings(definition):
     """Every name a type answers to: its own, its config section, its xlsx sheet.
 
-    Taken off the schema rather than pluralized here, so the sheet's name is whatever the
+    Taken off the definition rather than pluralized here, so the sheet's name is whatever the
     type actually declares -- ``loops`` for ``loop``, and nothing at all for a type with no
     sheet of its own.
     """
-    return {name for name in (schema.NAME, schema.SECTION_KEY, schema.SHEET_NAME) if name}
+    return {name for name in (definition.NAME, definition.SECTION_KEY, definition.SHEET_NAME) if name}
 
 
-@pytest.mark.parametrize("schema", registry.DERIVED, ids=lambda s: s.NAME)
-def test_the_tutorial_gives_it_a_heading(schema):
+@pytest.mark.parametrize("definition", registry.DERIVED, ids=lambda s: s.NAME)
+def test_the_tutorial_gives_it_a_heading(definition):
     """Where a clinician finds out the key exists -- a config block, a sheet, or a section."""
     headings = [
         line for line in TUTORIAL.read_text(encoding="utf-8").splitlines() if line.startswith("#")
     ]
-    spellings = _spellings(schema)
+    spellings = _spellings(definition)
 
     found = [
         heading
@@ -60,20 +60,20 @@ def test_the_tutorial_gives_it_a_heading(schema):
     ]
 
     assert found, (
-        f"No heading in docs/user_guide/tutorial.md names the {schema.NAME!r} plot type "
+        f"No heading in docs/user_guide/tutorial.md names the {definition.NAME!r} plot type "
         f"(looked for {sorted(spellings)}). Add the section a reader would need to configure "
         f"one -- the '`spectrogram` Block' and '`spectrograms` sheet' headings are the shape."
     )
 
 
-@pytest.mark.parametrize("schema", registry.DERIVED, ids=lambda s: s.NAME)
-def test_the_glossary_defines_it(schema):
+@pytest.mark.parametrize("definition", registry.DERIVED, ids=lambda s: s.NAME)
+def test_the_glossary_defines_it(definition):
     """Where the word gets one meaning, so the config key and the corridor word agree."""
     terms = {term.casefold() for term in GLOSSARY_TERM.findall(CONTEXT.read_text(encoding="utf-8"))}
-    spellings = {name.casefold() for name in _spellings(schema)}
+    spellings = {name.casefold() for name in _spellings(definition)}
 
     assert terms & spellings, (
-        f"CONTEXT.md defines no term for the {schema.NAME!r} plot type (looked for "
-        f"{sorted(spellings)}). Add a '**{schema.NAME.title()}**:' entry under Core concepts, "
+        f"CONTEXT.md defines no term for the {definition.NAME!r} plot type (looked for "
+        f"{sorted(spellings)}). Add a '**{definition.NAME.title()}**:' entry under Core concepts, "
         f"with the _Avoid_ line naming the words it should not be called."
     )

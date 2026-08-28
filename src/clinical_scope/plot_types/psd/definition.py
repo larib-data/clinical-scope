@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from clinical_scope.plot_types.base import PlotTypeSchema, check_freq_range
+from clinical_scope.plot_types.base import PlotTypeDefinition, check_freq_range
 from clinical_scope.validation import ValidationIssue
 
 logger = logging.getLogger(__name__)
@@ -43,14 +43,14 @@ def _resolve_shared_range(
     return current
 
 
-class PsdSchema(PlotTypeSchema):
+class PsdDefinition(PlotTypeDefinition):
     """
     A PSD plots power against frequency, several signals overlaid on one subplot.
 
     Frequency on x, so nothing about the time axis applies; one entry names several signals
     precisely so their spectra can be compared, which is what the shared subplot is for.
 
-    The JSON keys and the spreadsheet columns below are one schema in two spellings -- the
+    The JSON keys and the spreadsheet columns below are one definition in two spellings -- the
     sheet requires ``freq_min``/``freq_max`` precisely because ``FREQ_RANGE`` is required --
     so they are declared together, where they cannot drift apart.
     """

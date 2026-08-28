@@ -1267,7 +1267,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         fig = plot_model.figure
 
         uid = None
-        if plot_model.schema.RESAMPLED:
+        if plot_model.definition.RESAMPLED:
             uid = str(uuid4())
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig
@@ -1389,7 +1389,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         ]
 
         # --- Time-range slider, for a plot whose points carry a time but whose x does not ---
-        if plot_model.schema.POINT_TIMESTAMPS:
+        if plot_model.definition.POINT_TIMESTAMPS:
             loop_uid = str(uuid4())
 
             # Traces with no data get a null placeholder rather than being dropped, so cache

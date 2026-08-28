@@ -11,7 +11,7 @@ from clinical_scope.plot_types.base import (
     SourceSignalNotFoundError,
     require_time_series,
 )
-from clinical_scope.plot_types.psd.schema import PsdSchema
+from clinical_scope.plot_types.psd.definition import PsdDefinition
 from clinical_scope.signal_container import Data, Metadata, PlotOptions, Signal, TraceOptions
 from clinical_scope.signal_reference import resolve_signal_references
 
@@ -62,7 +62,7 @@ def psd_from_signal(
 
     data = Data(x=freqs, y=power_db, timezone=None)
     plot_options = PlotOptions(
-        schema=PsdSchema,
+        definition=PsdDefinition,
         x_axis_title="Frequency (Hz)",
         x_unit_name="Hz",
         x_axis_range=list(freq_range),
@@ -96,7 +96,7 @@ def psd_from_signal(
 
 def build(all_signals: list[Signal], psd_name: str, psd_config: Any) -> list[Signal]:
     """Build one PSD trace per configured entry; they share a subplot, so a list comes back."""
-    config_cls = PsdSchema.Config
+    config_cls = PsdDefinition.Config
     entry_cls = config_cls.Entry
     # A plain string is shorthand for an Entry naming just a signal, no per-trace overrides.
     entries = [

@@ -4,20 +4,20 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from clinical_scope.plot_types.base import PlotTypeSchema, check_freq_range
+from clinical_scope.plot_types.base import PlotTypeDefinition, check_freq_range
 from clinical_scope.validation import ValidationIssue
 
 logger = logging.getLogger(__name__)
 
 
-class SpectrogramSchema(PlotTypeSchema):
+class SpectrogramDefinition(PlotTypeDefinition):
     """
     A spectrogram is a heatmap of one signal's power spectrum against time.
 
     Time on x like a time-series, but a colour scale rather than a line: it carries a
     colorbar, and a unified hover panel is meaningless when each pixel is its own cell.
 
-    The JSON keys and the spreadsheet columns below are one schema in two spellings -- the
+    The JSON keys and the spreadsheet columns below are one definition in two spellings -- the
     sheet requires ``freq_min``/``freq_max`` precisely because ``FREQ_RANGE`` is required --
     so they are declared together, where they cannot drift apart.
     """

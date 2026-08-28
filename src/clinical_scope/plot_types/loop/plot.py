@@ -15,7 +15,7 @@ from clinical_scope.plot_types.base import (
     RenderSpec,
     require_time_series,
 )
-from clinical_scope.plot_types.loop.schema import LOOP_REFERENCE_COUNT, LoopSchema
+from clinical_scope.plot_types.loop.definition import LOOP_REFERENCE_COUNT, LoopDefinition
 from clinical_scope.signal_container import (
     Data,
     Metadata,
@@ -118,7 +118,7 @@ def loop_from_signals(signal_x: Signal, signal_y: Signal, name: str | None = Non
         context="loop_from_signals",
     )
     plot_options = PlotOptions(
-        schema=LoopSchema,
+        definition=LoopDefinition,
         x_unit_name=signal_x.trace_options.plot_options.y_unit_name,
         y_unit_name=signal_y.trace_options.plot_options.y_unit_name,
         x_axis_range=signal_x.trace_options.plot_options.y_axis_range,

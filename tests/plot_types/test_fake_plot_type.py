@@ -26,21 +26,21 @@ from clinical_scope.plot_assembly import assemble_plot_groups, assemble_plot_mod
 from clinical_scope.plot_types import registry
 
 from tests.plot_types.fake.plot import BUILDER as FAKE_BUILDER
-from tests.plot_types.fake.schema import FakeSchema
+from tests.plot_types.fake.definition import FakeDefinition
 
 
 @pytest.fixture
 def fake_plot_type(monkeypatch):
     """
-    Register FakeSchema for the duration of one test.
+    Register FakeDefinition for the duration of one test.
 
     Mirrors how ``registry`` derives its collections from AVAILABLE. The duplication is the
     point: production registers at import, so a runtime registration has to restate the
     derivation, and this test fails the day the two disagree. Capabilities are not among them
-    -- they are read off the schema a Signal carries, so registering the type is enough.
+    -- they are read off the definition a Signal carries, so registering the type is enough.
     """
-    available = (*registry.AVAILABLE, FakeSchema)
-    derived = tuple(schema for schema in available if schema.SECTION_KEY)
+    available = (*registry.AVAILABLE, FakeDefinition)
+    derived = tuple(definition for definition in available if definition.SECTION_KEY)
 
     monkeypatch.setattr(registry, "AVAILABLE", available)
     monkeypatch.setattr(registry, "PAGE_ORDER", tuple(s.NAME for s in available))
@@ -48,8 +48,8 @@ def fake_plot_type(monkeypatch):
     monkeypatch.setattr(registry, "SECTION_KEYS", frozenset(s.SECTION_KEY for s in derived))
     monkeypatch.setattr(registry, "NAMES", frozenset(s.NAME for s in available))
     monkeypatch.setattr(registry, "_BY_NAME", {s.NAME: s for s in available})
-    monkeypatch.setattr(registry, "BUILDERS", {**registry.BUILDERS, FakeSchema: FAKE_BUILDER})
-    return FakeSchema
+    monkeypatch.setattr(registry, "BUILDERS", {**registry.BUILDERS, FakeDefinition: FAKE_BUILDER})
+    return FakeDefinition
 
 
 class TestValidation:
@@ -80,12 +80,12 @@ class TestReferenceScoping:
 
         groups = assemble_plot_groups([signal], {"eit": {"fake": {"F": "sig_a"}}})
 
-        fake_groups = [g for g in groups if g.plot_options.plot_type == FakeSchema.NAME]
+        fake_groups = [g for g in groups if g.plot_options.plot_type == FakeDefinition.NAME]
         assert [g.name for g in fake_groups] == ["F"]
 
     def test_map_refs_scopes_a_per_file_reference(self, fake_plot_type):
         del fake_plot_type
-        scoped = FakeSchema.map_refs("Paw", lambda ref: f"waves::{ref}")
+        scoped = FakeDefinition.map_refs("Paw", lambda ref: f"waves::{ref}")
         assert scoped == "waves::Paw"
 
     def test_an_other_file_section_needs_no_line_in_the_datasource(
@@ -105,7 +105,7 @@ class TestReferenceScoping:
         normalize_database_options(options)
         groups = assemble_plot_groups([signal], options)
 
-        fake_groups = [g for g in groups if g.plot_options.plot_type == FakeSchema.NAME]
+        fake_groups = [g for g in groups if g.plot_options.plot_type == FakeDefinition.NAME]
         assert [g.name for g in fake_groups] == ["waves::F"]
 
 
@@ -135,12 +135,12 @@ class TestBuildAndRender:
         groups = assemble_plot_groups([signal], {"eit": {"fake": {"F": "sig_a"}}})
         models = assemble_plot_models(groups)
 
-        fake_model = next(m for m in models if m.plot_type == FakeSchema.NAME)
+        fake_model = next(m for m in models if m.plot_type == FakeDefinition.NAME)
         assert fake_model.figure.data
         assert fake_model.figure.data[0].hovertemplate == "<b>F</b> fake<extra></extra>"
 
     def test_its_capabilities_reach_the_figure(self, fake_plot_type, make_signal):
-        """GRID_LAYOUT is declared on the schema alone, and n_cols honours it."""
+        """GRID_LAYOUT is declared on the definition alone, and n_cols honours it."""
         del fake_plot_type
         signals = []
         for raw_name in ("sig_a", "sig_b"):
@@ -153,7 +153,7 @@ class TestBuildAndRender:
         )
         models = assemble_plot_models(groups)
 
-        fake_model = next(m for m in models if m.plot_type == FakeSchema.NAME)
+        fake_model = next(m for m in models if m.plot_type == FakeDefinition.NAME)
         assert fake_model.n_cols > 1
 
     def test_a_single_grid_subplot_is_still_square(self, fake_plot_type, make_signal):
@@ -165,6 +165,6 @@ class TestBuildAndRender:
         groups = assemble_plot_groups([signal], {"eit": {"fake": {"F": "sig_a"}}})
         models = assemble_plot_models(groups)
 
-        fake_model = next(m for m in models if m.plot_type == FakeSchema.NAME)
+        fake_model = next(m for m in models if m.plot_type == FakeDefinition.NAME)
         assert fake_model.n_cols == 1
         assert fake_model.figure.layout.width is not None

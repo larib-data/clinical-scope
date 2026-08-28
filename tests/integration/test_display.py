@@ -102,6 +102,6 @@ class TestLoopFromRealData:
         except ValueError as exc:
             pytest.skip(f"Columns have no overlapping data for a loop: {exc}")
         assert loop.trace_options.plot_options.plot_type == "loop"
-        assert loop.trace_options.plot_options.schema.GRID_LAYOUT is True
+        assert loop.trace_options.plot_options.definition.GRID_LAYOUT is True
         assert loop.data.point_time_axis is not None
         assert len(loop.data.x) > 0

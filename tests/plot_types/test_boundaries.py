@@ -9,7 +9,7 @@ module is what that looks like from the inside. The Dash callbacks are the point
 check: the least-tested layer, and the easiest place for a type branch to grow back.
 
 **``signal_container`` imports nothing from ``plot_types`` but ``base``.** The data model is
-below every plot type, not beside them: a Signal carries its schema and its RenderSpec, so
+below every plot type, not beside them: a Signal carries its definition and its RenderSpec, so
 every capability question is answered from the object rather than looked up in the registry.
 Reaching for the registry here is how that inverts -- the core starts knowing the roster, and
 a plot type can no longer be added without editing it.
@@ -21,7 +21,7 @@ validate cleanly and render nothing. Reference scoping lives in ``plot_assembly`
 every level -- a stem is a namespace exactly as a datasource is.
 
 What the first rule does **not** catch, so a green run is not read as more than it is: a name
-reached through the registry (``registry.LoopSchema.NAME``) rather than written out, and any
+reached through the registry (``registry.LoopDefinition.NAME``) rather than written out, and any
 string merely *containing* a type's name rather than equal to it -- ``loops_per_row``,
 ``point_time_axis``, ``spectrogram_freq_axis``. Those are the shared display and payload
 mechanisms, which a plot type uses rather than owns.
@@ -86,7 +86,7 @@ def test_signal_container_reaches_no_further_than_plot_types_base():
     )
     assert not offending, (
         f"signal_container imports {offending}. Everything a plot type knows travels on the "
-        f"object -- read the flag off plot_options.schema, or push it from build() as a "
+        f"object -- read the flag off plot_options.definition, or push it from build() as a "
         f"RenderSpec. Reaching for the registry here makes the data model know the roster."
     )
 
@@ -118,7 +118,7 @@ def test_no_datasource_imports_plot_types(module_path):
 
 def test_every_registered_type_declares_both_halves():
     """The import-time guard's own test: the registry refuses a half-declared plot type."""
-    for schema in registry.DERIVED:
-        assert schema.SECTION_KEY == schema.NAME
-        assert (PACKAGE_ROOT / schema.NAME / "plot.py").is_file()
-        assert (PACKAGE_ROOT / schema.NAME / "schema.py").is_file()
+    for definition in registry.DERIVED:
+        assert definition.SECTION_KEY == definition.NAME
+        assert (PACKAGE_ROOT / definition.NAME / "plot.py").is_file()
+        assert (PACKAGE_ROOT / definition.NAME / "definition.py").is_file()

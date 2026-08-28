@@ -8,11 +8,11 @@ shape, so every hook it goes through is exercised on a case the real types do no
 from collections.abc import Callable
 from typing import Any
 
-from clinical_scope.plot_types.base import PlotTypeSchema
+from clinical_scope.plot_types.base import PlotTypeDefinition
 from clinical_scope.validation import ValidationIssue
 
 
-class FakeSchema(PlotTypeSchema):
+class FakeDefinition(PlotTypeDefinition):
     """A fourth plot type: one signal, redrawn. Capabilities match no real type on purpose."""
 
     NAME = "fake"

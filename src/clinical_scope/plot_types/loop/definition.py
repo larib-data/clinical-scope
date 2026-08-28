@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from clinical_scope.plot_types.base import PlotTypeSchema
+from clinical_scope.plot_types.base import PlotTypeDefinition
 from clinical_scope.validation import ValidationIssue
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 LOOP_REFERENCE_COUNT = 2
 
 
-class LoopSchema(PlotTypeSchema):
+class LoopDefinition(PlotTypeDefinition):
     """
     A loop plots one signal's values against another's, e.g. a pressure-volume loop.
 
