@@ -41,6 +41,17 @@ Download the latest release for your platform from the **[Releases page](https:/
 
 Unzip and run the `ClinicalScope` executable — no Python installation required. Each bundle includes the user guide PDF and a demo database to get started immediately.
 
+<details>
+<summary><strong>First launch — the app is not code-signed, so your OS warns you once</strong></summary>
+
+- **Windows** — right-click `ClinicalScope.exe` → **Run as administrator**; the first launch needs elevation. SmartScreen may also warn about an unknown publisher (**More info → Run anyway**). One time only — afterwards a plain double-click works, including after a reboot.
+- **macOS (Apple Silicon)** — strip the quarantine flag from the `.zip` *before* unzipping: `xattr -d com.apple.quarantine ClinicalScope-macOS-arm64.zip`. Some browsers unzip downloads automatically and defeat this — turn that off, or use another browser.
+- **Linux** — `chmod +x ClinicalScope/ClinicalScope` if it does not start.
+
+To close the app, close the terminal window that opened with it — ClinicalScope runs inside that window.
+
+</details>
+
 ### From PyPI (Python users)
 
 ```bash
