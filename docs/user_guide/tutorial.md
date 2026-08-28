@@ -48,9 +48,47 @@ typical signals — lives in Section 3: **Patient Data & Supported Data Sources*
 
 # Launching the Application
 
+## First launch
+
+ClinicalScope is not code-signed, so every operating system interrupts the **first** launch with a warning about an unknown publisher. This is expected. The steps below get you past it, and they are needed only once — afterwards the application starts normally.
+
+### Windows
+
+Unzip the archive, then **right-click `ClinicalScope.exe` → Run as administrator**. The first launch needs elevation; a plain double-click will not start it.
+
+SmartScreen may also warn that the publisher is unknown — choose **More info → Run anyway**.
+
+This is a one-time step. After that first run, ClinicalScope starts on a normal double-click, including after a reboot.
+
+### macOS (Apple Silicon)
+
+macOS quarantines downloaded applications and will not open an unsigned one through the normal flow. Remove the quarantine flag from the `.zip` **before** unzipping it:
+
+```bash
+cd ~/Downloads
+xattr -d com.apple.quarantine ClinicalScope-macOS-arm64.zip
+unzip ClinicalScope-macOS-arm64.zip -d ClinicalScope
+```
+
+Then run the `ClinicalScope` executable inside the `ClinicalScope` folder.
+
+> **Heads-up:** some browsers (Safari in particular) unzip downloads automatically. If yours does, turn that option off or use another browser — the command above must run on the `.zip` file, not on an already-extracted folder. If you have downloaded the archive more than once, check that you are acting on the right `.zip` and the right extraction folder.
+
+There is no Intel Mac build; on those machines, install with `pip install clinical-scope` instead.
+
+### Linux
+
+Unzip the archive and run the executable, making it executable first if it does not start:
+
+```bash
+unzip ClinicalScope-linux-x86_64.zip
+chmod +x ClinicalScope/ClinicalScope        # only if needed
+./ClinicalScope/ClinicalScope
+```
+
 ## Starting the App
 
-Locate the **ClinicalScope** executable in the application folder and double-click it.
+Locate the **ClinicalScope** executable in the application folder and double-click it. The very first time, follow [First launch](#first-launch) instead — on Windows the executable has to be started as administrator once.
 
 A terminal window will appear showing the application starting up. After a few seconds, your
 default web browser will automatically open at:
@@ -62,6 +100,8 @@ http://127.0.0.1:8050
 ![Application launch screen](images/App_launch.png){ width=100% }
 
 The bundle also ships this user guide and a template folder for organizing patient data. A `logs` folder appears after the first run, to help with debugging.
+
+To **close** ClinicalScope, close the terminal window that opened with it — the application runs inside that window. If the window is hidden, end the `ClinicalScope` process from your system's process manager.
 
 ## Application Overview
 
