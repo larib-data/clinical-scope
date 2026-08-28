@@ -1,10 +1,11 @@
 """
 Convert a database_options XLSX file to the canonical dict format.
 
-The XLSX file must contain two sheets:
-
-- ``signals``: one row per signal (or datasource-level defaults with ``signal = *``)
-- ``loops``: one row per PV-loop definition (optional sheet)
+The XLSX file must contain a ``signals`` sheet -- one row per signal, or datasource-level
+defaults with ``signal = *``. Each registered plot type may add an optional sheet of its own
+(``loops``, ...); this module locates whichever sheets the registry names and hands each to
+its plot type, which alone says what its rows mean. Registering a new plot type therefore
+needs no edit here.
 
 The returned dict is structurally identical to a parsed ``database_options.json``
 and is ready to be consumed by :func:`normalize_datasource_options`.
@@ -26,6 +27,8 @@ from typing import Any
 import pandas as pd
 
 import clinical_scope.constants as cst
+from clinical_scope.plot_types import registry as plot_types
+from clinical_scope.plot_types.base import CellReader
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +38,7 @@ _SENTINEL_DATASOURCE_DEFAULT = "*"
 _SIGNALS_SHEET_NAME = "signals"
 _SIGNALS_REQUIRED_COLS = {"datasource", "signal"}
 
-_LOOPS_SHEET_NAME = "loops"
-_LOOPS_REQUIRED_COLS = {"datasource", "loop_name", "x_signal", "y_signal"}
-
-_SPECTROGRAMS_SHEET_NAME = "spectrograms"
-_SPECTROGRAMS_REQUIRED_COLS = {"datasource", "spectrogram_name", "signal", "freq_min", "freq_max"}
-
-_PSDS_SHEET_NAME = "psds"
-_PSDS_REQUIRED_COLS = {"datasource", "groups", "signal", "freq_min", "freq_max"}
+# Every other sheet belongs to a plot type, which names it and says what its rows mean.
 
 
 # ---------------------------------------------------------------------------
@@ -98,37 +94,13 @@ def _parse_groups(value: Any) -> list[str]:
     return [group.strip() for group in str(value).split(";") if group.strip()]
 
 
-def _resolve_shared_range(
-    current: list[float] | None,
-    candidate: list[float] | None,
-    *,
-    label: str,
-    row_idx: int,
-    group_name: str,
-    ds: str,
-) -> list[float] | None:
-    """
-    Keep the first ``[min, max]`` seen for a group; a later mismatch warns and is dropped.
-
-    A psds group is denormalized across rows, but the axis range it produces is shared by
-    the whole subplot -- so once a row has set it, later rows can only confirm or conflict.
-    """
-    if candidate is None:
-        return current
-    if current is None:
-        return candidate
-    if candidate != current:
-        logger.warning(
-            "psds row %s: %s %s conflicts with %s already set for group %r (datasource %r); "
-            "keeping the first.",
-            row_idx,
-            label,
-            candidate,
-            current,
-            group_name,
-            ds,
-        )
-    return current
+# Lent to each plot type's read_sheet: the reader owns how a cell is read, the plot type owns
+# what a row means. Passed rather than imported -- this module imports every definition.
+_CELL_READER = CellReader(
+    is_empty=_is_empty,
+    to_float=_to_float,
+    parse_groups=_parse_groups,
+)
 
 
 def _read_optional_sheet(
@@ -199,11 +171,13 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
         msg = f"Could not read 'signals' sheet: {exc}"
         raise ValueError(msg) from exc
 
-    loops_df = _read_optional_sheet(file_obj, _LOOPS_SHEET_NAME, _LOOPS_REQUIRED_COLS, "loop")
-    spectrograms_df = _read_optional_sheet(
-        file_obj, _SPECTROGRAMS_SHEET_NAME, _SPECTROGRAMS_REQUIRED_COLS, "spectrogram"
-    )
-    psds_df = _read_optional_sheet(file_obj, _PSDS_SHEET_NAME, _PSDS_REQUIRED_COLS, "psd")
+    plot_type_sheets = {
+        definition: _read_optional_sheet(
+            file_obj, definition.SHEET_NAME, set(definition.SHEET_REQUIRED_COLUMNS), definition.NAME
+        )
+        for definition in plot_types.AVAILABLE
+        if definition.SHEET_NAME
+    }
 
     # ------------------------------------------------------------------
     # Normalize column names and validate required columns -- required sheet only; the
@@ -248,7 +222,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 if numerics:
                     result[ds].setdefault(cst.DatabaseOptions.NUMERICS, {}).update(numerics)
 
-                timezone = str(row.get("timezone", "")).strip()
+                timezone = _CELL_READER.text(row, "timezone")
                 if timezone:
                     result[ds].setdefault(cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {})[
                         cst.DatabaseOptions.AdditionalInformations.TIMEZONE
@@ -256,7 +230,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
 
                 trace_config = cst.DatabaseOptions.TraceOptionsConfig
                 trace_options = {}
-                trace_mode = str(row.get("trace_mode", "")).strip()
+                trace_mode = _CELL_READER.text(row, "trace_mode")
                 if trace_mode:
                     trace_options[trace_config.MODE] = trace_mode
                 line_width = _to_float(row.get("line_width", ""))
@@ -265,7 +239,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 opacity = _to_float(row.get("opacity", ""))
                 if opacity is not None:
                     trace_options[trace_config.OPACITY] = opacity
-                marker_symbol = str(row.get("marker_symbol", "")).strip()
+                marker_symbol = _CELL_READER.text(row, "marker_symbol")
                 if marker_symbol:
                     trace_options[trace_config.MARKER_SYMBOL] = marker_symbol
                 if trace_options:
@@ -281,11 +255,11 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             signal_config = cst.DatabaseOptions.SignalConfig
             signal_options = {}
 
-            label = str(row.get("label", "")).strip()
+            label = _CELL_READER.text(row, "label")
             if label and label != signal:
                 signal_options[signal_config.LABEL] = label
 
-            unit = str(row.get("unit", "")).strip()
+            unit = _CELL_READER.text(row, "unit")
             if unit:
                 signal_options[signal_config.UNIT] = unit
 
@@ -302,15 +276,15 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             if priority is not None:
                 signal_options[signal_config.PRIORITY] = priority
 
-            color = str(row.get("color", "")).strip()
+            color = _CELL_READER.text(row, "color")
             if color:
                 signal_options[signal_config.COLOR] = color
 
-            visible_raw = str(row.get("visible", "")).strip()
+            visible_raw = _CELL_READER.text(row, "visible")
             if not _is_empty(visible_raw) and not _is_truthy(visible_raw):
                 signal_options[signal_config.VISIBLE] = False
 
-            line_dash = str(row.get("line_dash", "")).strip()
+            line_dash = _CELL_READER.text(row, "line_dash")
             if line_dash:
                 signal_options[signal_config.LINE_DASH] = line_dash
 
@@ -318,7 +292,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             if period_resampling is not None:
                 signal_options[signal_config.PERIOD_RESAMPLING] = period_resampling
 
-            hover_template = str(row.get("hover_template", "")).strip()
+            hover_template = _CELL_READER.text(row, "hover_template")
             if hover_template:
                 signal_options[signal_config.HOVER_TEMPLATE] = hover_template
 
@@ -331,7 +305,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 "marker_symbol",
             )
             for column_name in sentinel_only_columns:
-                if str(row.get(column_name, "")).strip():
+                if _CELL_READER.text(row, column_name):
                     logger.warning(
                         "Row %s (datasource=%r, signal=%r): '%s' is only valid in the "
                         "sentinel ('*') row — ignored for per-signal rows.",
@@ -348,7 +322,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             # ----------------------------------------------------------
             # display column → field_display list
             # ----------------------------------------------------------
-            display_raw = str(row.get("display", "")).strip()
+            display_raw = _CELL_READER.text(row, "display")
             field_display = result[ds].setdefault(cst.DatabaseOptions.FIELD_DISPLAY, [])
             if _is_truthy(display_raw) and signal not in field_display:
                 field_display.append(signal)
@@ -393,197 +367,26 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
         result[cst.DatabaseOptions.GLOBAL] = {cst.DatabaseOptions.GROUPED_FIELDS: global_grouped}
 
     # ------------------------------------------------------------------
-    # Process loops sheet
+    # Process each plot type's own sheet
     # ------------------------------------------------------------------
-    for row_idx, row in loops_df.iterrows():
+    # The reader transcribes and the plot type interprets: a row's meaning lives beside the
+    # JSON keys it produces, so the two spellings of one grammar cannot drift apart.
+    for definition, sheet in plot_type_sheets.items():
         try:
-            ds = str(row.get("datasource", "")).strip()
-            loop_name = str(row.get("loop_name", "")).strip()
-            x_signal = str(row.get("x_signal", "")).strip()
-            y_signal = str(row.get("y_signal", "")).strip()
-
-            if any(_is_empty(field) for field in (ds, loop_name, x_signal, y_signal)):
-                continue
-
-            if ds not in result:
-                result[ds] = {}
-            result[ds].setdefault(cst.DatabaseOptions.LOOP, {})[loop_name] = [x_signal, y_signal]
-
-        except Exception:
-            logger.warning("Skipping loops row %s due to unexpected error.", row_idx, exc_info=True)
-
-    # ------------------------------------------------------------------
-    # Process spectrograms sheet
-    # ------------------------------------------------------------------
-    spectrogram_config = cst.DatabaseOptions.SpectrogramConfig
-    for row_idx, row in spectrograms_df.iterrows():
-        try:
-            ds = str(row.get("datasource", "")).strip()
-            spectrogram_name = str(row.get("spectrogram_name", "")).strip()
-            signal = str(row.get("signal", "")).strip()
-            freq_min = _to_float(row.get("freq_min", ""))
-            freq_max = _to_float(row.get("freq_max", ""))
-
-            if any(_is_empty(field) for field in (ds, spectrogram_name, signal)):
-                continue
-            if freq_min is None or freq_max is None:
-                logger.warning(
-                    "Skipping spectrograms row %s: freq_min/freq_max must both be set.", row_idx
-                )
-                continue
-
-            spectrogram_options: dict[str, Any] = {
-                spectrogram_config.SIGNAL: signal,
-                spectrogram_config.FREQ_RANGE: [freq_min, freq_max],
-            }
-
-            db_min = _to_float(row.get("db_min", ""))
-            db_max = _to_float(row.get("db_max", ""))
-            if db_min is not None and db_max is not None:
-                spectrogram_options[spectrogram_config.DB_RANGE] = [db_min, db_max]
-            elif db_min is not None or db_max is not None:
-                logger.warning(
-                    "Skipping db_range for spectrograms row %s: db_min/db_max must both be set.",
-                    row_idx,
-                )
-
-            window_s = _to_float(row.get("window_s", ""))
-            if window_s is not None:
-                spectrogram_options[spectrogram_config.WINDOW_S] = window_s
-            overlap = _to_float(row.get("overlap", ""))
-            if overlap is not None:
-                spectrogram_options[spectrogram_config.OVERLAP] = overlap
-
-            if ds not in result:
-                result[ds] = {}
-            result[ds].setdefault(cst.DatabaseOptions.SPECTROGRAM, {})[spectrogram_name] = (
-                spectrogram_options
-            )
-
+            by_datasource = definition.read_sheet(sheet, _CELL_READER)
         except Exception:
             logger.warning(
-                "Skipping spectrograms row %s due to unexpected error.", row_idx, exc_info=True
-            )
-
-    # ------------------------------------------------------------------
-    # Process psds sheet
-    # ------------------------------------------------------------------
-    # Two-phase, mirroring the signals sheet's groups resolution above: accumulate every
-    # row's contribution per (datasource, group) first, then resolve each group once --
-    # so a freq/db mismatch across rows can be reported instead of silently dropped.
-    psd_config = cst.DatabaseOptions.PsdConfig
-    psd_entry = psd_config.Entry
-    psd_membership: dict[tuple[str, str], list[dict[str, Any]]] = {}
-
-    for row_idx, row in psds_df.iterrows():
-        try:
-            ds = str(row.get("datasource", "")).strip()
-            signal = str(row.get("signal", "")).strip()
-            groups_list = _parse_groups(row.get("groups", ""))
-
-            if _is_empty(ds) or _is_empty(signal) or not groups_list:
-                continue
-
-            contribution: dict[str, Any] = {
-                "row_idx": row_idx,
-                psd_entry.SIGNAL: signal,
-                "freq_min": _to_float(row.get("freq_min", "")),
-                "freq_max": _to_float(row.get("freq_max", "")),
-                "db_min": _to_float(row.get("db_min", "")),
-                "db_max": _to_float(row.get("db_max", "")),
-            }
-            window_s = _to_float(row.get("window_s", ""))
-            if window_s is not None:
-                contribution[psd_entry.WINDOW_S] = window_s
-            overlap = _to_float(row.get("overlap", ""))
-            if overlap is not None:
-                contribution[psd_entry.OVERLAP] = overlap
-            label = str(row.get("label", "")).strip()
-            if label:
-                contribution[psd_entry.LABEL] = label
-            color = str(row.get("color", "")).strip()
-            if color:
-                contribution[psd_entry.COLOR] = color
-            line_dash = str(row.get("line_dash", "")).strip()
-            if line_dash:
-                contribution[psd_entry.LINE_DASH] = line_dash
-
-            for group_name in groups_list:
-                psd_membership.setdefault((ds, group_name), []).append(contribution)
-
-        except Exception:
-            logger.warning("Skipping psds row %s due to unexpected error.", row_idx, exc_info=True)
-
-    for (ds, group_name), contributions in psd_membership.items():
-        freq_range = None
-        db_range = None
-        entries: list[Any] = []
-
-        for contribution in contributions:
-            row_idx = contribution["row_idx"]
-
-            freq_min, freq_max = contribution["freq_min"], contribution["freq_max"]
-            freq_candidate = (
-                [freq_min, freq_max] if freq_min is not None and freq_max is not None else None
-            )
-            freq_range = _resolve_shared_range(
-                freq_range,
-                freq_candidate,
-                label="freq_range",
-                row_idx=row_idx,
-                group_name=group_name,
-                ds=ds,
-            )
-
-            db_min, db_max = contribution["db_min"], contribution["db_max"]
-            if db_min is not None and db_max is not None:
-                db_range = _resolve_shared_range(
-                    db_range,
-                    [db_min, db_max],
-                    label="db_range",
-                    row_idx=row_idx,
-                    group_name=group_name,
-                    ds=ds,
-                )
-            elif db_min is not None or db_max is not None:
-                logger.warning(
-                    "Skipping db_range for psds row %s: db_min/db_max must both be set.", row_idx
-                )
-
-            # Shorthand: a plain ref string when the row set no per-entry override.
-            entry = {
-                key: contribution[key]
-                for key in (
-                    psd_entry.SIGNAL,
-                    psd_entry.WINDOW_S,
-                    psd_entry.OVERLAP,
-                    psd_entry.LABEL,
-                    psd_entry.COLOR,
-                    psd_entry.LINE_DASH,
-                )
-                if key in contribution
-            }
-            entries.append(entry[psd_entry.SIGNAL] if len(entry) == 1 else entry)
-
-        if freq_range is None:
-            logger.warning(
-                "Skipping PSD group %r (datasource %r): freq_min/freq_max must be set on "
-                "at least one row.",
-                group_name,
-                ds,
+                "Could not read the '%s' sheet; skipping %s definitions.",
+                definition.SHEET_NAME,
+                definition.NAME,
+                exc_info=True,
             )
             continue
-
-        psd_options: dict[str, Any] = {
-            psd_config.SIGNALS: entries,
-            psd_config.FREQ_RANGE: freq_range,
-        }
-        if db_range is not None:
-            psd_options[psd_config.DB_RANGE] = db_range
-
-        if ds not in result:
-            result[ds] = {}
-        result[ds].setdefault(cst.DatabaseOptions.PSD, {})[group_name] = psd_options
+        for datasource_name, entries in by_datasource.items():
+            if entries:
+                result.setdefault(datasource_name, {}).setdefault(
+                    definition.SECTION_KEY, {}
+                ).update(entries)
 
     return result
 

@@ -31,7 +31,9 @@ The post-hoc filter also reached across a module boundary to dictate naming: `Si
 
 Both config spellings stay valid. The desugaring is a property of the code, not of the file format: no parser changes, no config migration, and the per-datasource section keeps its authoring advantages — locality with the rest of a source's config, and no repetition of the datasource name per signal.
 
-The pass must run at the head of assembly rather than at config-parse time, because the `other` datasource injects its derived `grouped_fields` into its section during load. By the time assembly runs — once, after every datasource has loaded — that writeback is already present.
+The pass must run at the head of assembly rather than at config-parse time, because the `other` datasource adds a group per file to its own section during load — one it derives from the columns that actually loaded, which no reader of the config file could. By the time assembly runs — once, after every datasource has loaded — that writeback is already present.
+
+An `other::<stem>` section is the same rule one level down, and desugars in the same pass ([#91](https://github.com/larib-data/clinical-scope/issues/91)). One difference: a file stem is prefixed *lexically*, before resolution, where a datasource name is appended after it. An `other` signal's `raw_name` already carries its stem, so `waves` + `art` is the raw name `waves::art`, which the datasource level then resolves and qualifies as any other; resolving the bare name first would depend on whether that column happened to be labelled. The entry's own name keeps its stem too — it is the only thing telling two files' plots apart, where a datasource name is not something a clinician reads.
 
 **Group membership joins on signal identity, not on `raw_name`.**
 

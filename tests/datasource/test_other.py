@@ -179,7 +179,12 @@ class TestSignalOptionApplication:
 
 
 class TestGroupedFields:
-    """Per-file grouped_fields from other::filename section are injected into database_options."""
+    """
+    The one group ``other`` still injects: one per file, over the columns that loaded.
+
+    It is the only grouping a config file cannot express, which is why it is made here and
+    everything a section *states* is scoped in ``plot_assembly`` instead.
+    """
 
     def _run_main_and_get_db_opts(self, patient_difficult_path, global_db_opts):
         from clinical_scope.datasource.registry import DataSource
@@ -189,24 +194,25 @@ class TestGroupedFields:
         ds.MAIN_MODULE(patient_options, global_db_opts)
         return global_db_opts
 
-    def test_per_file_grouped_fields_injected_with_prefix(self, patient_difficult_path):
-        """Both the group name and its signal references are scoped to the file."""
-
+    def test_a_file_with_groups_of_its_own_gets_no_auto_group(self, patient_difficult_path):
+        """The fallback is a fallback: a configured file keeps the layout it asked for."""
         db_opts = {
             "other::waves_first_half_filtered": {
-                "grouped_fields": {
-                    "Vital signs": ["Solar8000/HR", "Solar8000/PLETH_SPO2"],
-                }
+                "grouped_fields": {"Vital signs": ["Solar8000/HR", "Solar8000/PLETH_SPO2"]}
             }
         }
         normalize_database_options(db_opts)
         result = self._run_main_and_get_db_opts(patient_difficult_path, db_opts["other"])
 
-        groups = result.get("grouped_fields", {})
-        group_name = "waves_first_half_filtered::Vital signs"
-        assert group_name in groups
-        assert "waves_first_half_filtered::Solar8000/HR" in groups[group_name]
-        assert "waves_first_half_filtered::Solar8000/PLETH_SPO2" in groups[group_name]
+        assert "waves_first_half_filtered" not in result.get("grouped_fields", {})
+
+    def test_an_injected_group_does_not_displace_the_section_s_own(self, patient_difficult_path):
+        """Assignment used to clobber them; a caller's ``other`` groups are not ours to drop."""
+        db_opts = {"grouped_fields": {"Arterial": ["waves_first_half_filtered::Solar8000/ART"]}}
+        result = self._run_main_and_get_db_opts(patient_difficult_path, db_opts)
+
+        assert "Arterial" in result["grouped_fields"]
+        assert "waves_first_half_filtered" in result["grouped_fields"]
 
     def test_group_by_file_creates_auto_group(self, patient_difficult_path):
         """When group_by_file=True (default) and no custom groups, file stem is the group name."""
@@ -255,12 +261,17 @@ def _run_other_with(db_opts: dict, patient_path) -> dict:
     return db_opts["other"]
 
 
-class TestLoopConfig:
-    """Per-file loop definitions from other::filename are injected into database_options."""
+class TestPlotTypeSectionsAreLeftAlone:
+    """
+    A plot type's per-file section passes through untouched; ``plot_assembly`` scopes it.
 
-    def test_per_file_loop_injected_with_prefix(self, patient_difficult_path):
-        """Both the loop name and its signal references are scoped to the file."""
+    ``other`` used to walk each one and prefix its references with the file stem, which put a
+    map of every plot type's config shape inside a datasource -- and made a forgotten row the
+    reason a ``psd`` section could validate cleanly and render nothing. What a file's stem
+    scopes is now decided where every other reference is (see tests/unit/test_plot_assembly.py).
+    """
 
+    def test_a_loop_section_reaches_assembly_as_written(self, patient_difficult_path):
         section = _run_other_with(
             {
                 "other::waves_first_half_filtered": {
@@ -270,90 +281,29 @@ class TestLoopConfig:
             patient_difficult_path,
         )
 
-        loop = section.get("loop", {})
-        assert "waves_first_half_filtered::HR vs SpO2" in loop
-        assert loop["waves_first_half_filtered::HR vs SpO2"] == [
-            "waves_first_half_filtered::Solar8000/HR",
-            "waves_first_half_filtered::Solar8000/PLETH_SPO2",
-        ]
-
-    def test_same_loop_name_in_two_files_does_not_collide(self, tmp_path):
-        """Two files may each declare a loop called 'PV' without one erasing the other."""
-        _write_other_patient(tmp_path, [("waves", ".parquet"), ("numerics", ".csv")])
-
-        section = _run_other_with(
-            {
-                "other::waves": {"loop": {"PV": ["art", "paw"]}},
-                "other::numerics": {"loop": {"PV": ["art", "paw"]}},
-            },
-            tmp_path,
-        )
-
-        assert section.get("loop", {}) == {
-            "waves::PV": ["waves::art", "waves::paw"],
-            "numerics::PV": ["numerics::art", "numerics::paw"],
+        assert "loop" not in section, "the datasource no longer hoists a plot type's section"
+        assert section["files"]["waves_first_half_filtered"]["loop"] == {
+            "HR vs SpO2": ["Solar8000/HR", "Solar8000/PLETH_SPO2"]
         }
 
+    def test_a_malformed_loop_does_not_cost_the_whole_file(self, tmp_path):
+        """
+        A bad loop entry is one skipped plot, not a skipped file.
 
-class TestSpectrogramConfig:
-    """Per-file spectrogram definitions from other::filename are injected into database_options."""
+        It used to be the file: scoping a per-file loop walked the config assuming a list, so
+        a hand-written scalar raised inside the per-file try/except and took every signal in
+        that file down with it. Loading no longer reads the entry at all, so no shape it can
+        be written in reaches this code.
+        """
+        _write_other_patient(tmp_path, [("waves", ".parquet")])
 
-    def test_per_file_spectrogram_injected_with_prefix(self, patient_difficult_path):
-        """The bare 'signal' name is prefixed with file_stem::, other keys pass through as-is."""
+        section = _run_other_with({"other::waves": {"loop": {"PV": "art"}}}, tmp_path)
 
-        section = _run_other_with(
-            {
-                "other::waves_first_half_filtered": {
-                    "spectrogram": {
-                        "HR spectrogram": {"signal": "Solar8000/HR", "freq_range": [0.5, 30.0]}
-                    }
-                }
-            },
-            patient_difficult_path,
-        )
-
-        spectrogram = section.get("spectrogram", {})
-        assert spectrogram["waves_first_half_filtered::HR spectrogram"] == {
-            "signal": "waves_first_half_filtered::Solar8000/HR",
-            "freq_range": [0.5, 30.0],
-        }
-
-
-class TestPsdConfig:
-    """Per-file psd definitions from other::filename are injected into database_options."""
-
-    def test_per_file_psd_injected_with_prefix(self, patient_difficult_path):
-        """A psd entry's signals are scoped to the file, in both dict and shorthand form."""
-
-        section = _run_other_with(
-            {
-                "other::waves_first_half_filtered": {
-                    "psd": {
-                        "HR psd": {
-                            "signals": [
-                                "Solar8000/HR",
-                                {"signal": "Solar8000/PLETH_SPO2", "label": "SpO2"},
-                            ],
-                            "freq_range": [0.5, 30.0],
-                        }
-                    }
-                }
-            },
-            patient_difficult_path,
-        )
-
-        psd = section.get("psd", {})
-        assert psd["waves_first_half_filtered::HR psd"] == {
-            "signals": [
-                "waves_first_half_filtered::Solar8000/HR",
-                {"signal": "waves_first_half_filtered::Solar8000/PLETH_SPO2", "label": "SpO2"},
-            ],
-            "freq_range": [0.5, 30.0],
-        }
+        assert section.get("grouped_fields", {}), "the file's signals still loaded"
 
     def test_psd_overlays_signals_from_two_different_files(self, tmp_path):
         """One PSD subplot may compare channels living in separate files under other/."""
-        from clinical_scope.plot_assembly import _build_psd_signals
+        from clinical_scope.plot_types.psd.plot import build as build_psd_signals
 
         folder = tmp_path / "other"
         folder.mkdir(parents=True)
@@ -368,7 +318,7 @@ class TestPsdConfig:
         db_opts = {"other": {}}
         signals = _run_other_main(db_opts, tmp_path)
 
-        psd_signals = _build_psd_signals(
+        psd_signals = build_psd_signals(
             signals,
             "cross-file",
             {"signals": ["waves::signal", "numerics::signal"], "freq_range": [1.0, 20.0]},

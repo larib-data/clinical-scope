@@ -33,10 +33,7 @@ from clinical_scope.dash_api.styles import (
     INSPECTION_MODAL_STYLE_SHOWN,
     SECTION_HEADER_STYLE,
 )
-from clinical_scope.database_options_parser import (
-    ValidationIssue,
-    validate_database_options,
-)
+from clinical_scope.database_options_parser import validate_database_options
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 from clinical_scope.datasource.formatting.timezone import (
     resolve_display_timezone,
@@ -56,6 +53,7 @@ from clinical_scope.io.paths import (
     get_patient_options_path,
 )
 from clinical_scope.signal_container import PlotModel
+from clinical_scope.validation import ValidationIssue
 
 logger = logging.getLogger(__name__)
 
@@ -1269,7 +1267,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         fig = plot_model.figure
 
         uid = None
-        if plot_model.name in cst.PlotType.RESAMPLED:
+        if plot_model.definition.RESAMPLED:
             uid = str(uuid4())
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig
@@ -1390,8 +1388,8 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             dcc.Store(id={"type": "graph-trace-map", "name": plot_model.name}, data=trace_map),
         ]
 
-        # --- Loop time-range slider ---
-        if plot_model.plot_type == cst.PlotType.LOOP:
+        # --- Time-range slider, for a plot whose points carry a time but whose x does not ---
+        if plot_model.definition.POINT_TIMESTAMPS:
             loop_uid = str(uuid4())
 
             # Traces with no data get a null placeholder rather than being dropped, so cache
@@ -1401,7 +1399,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             time_max_global = -np.inf
             for group in plot_model.groups:
                 for signal_obj in group.signals:
-                    time_array = signal_obj.data.loop_time_axis
+                    time_array = signal_obj.data.point_time_axis
                     if time_array is None or signal_obj.data.x is None or signal_obj.data.y is None:
                         trace_data.append({"x": None, "y": None, "time_axis": None})
                         continue

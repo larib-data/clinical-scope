@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import pytest
 
 from clinical_scope.signal_container import PlotGroup, PlotModel, Signal
+from clinical_scope.plot_types.loop.plot import loop_from_signals
 
 
 @pytest.fixture(scope="module")
@@ -97,10 +98,10 @@ class TestLoopFromRealData:
             servo_u_df, y_name, database_options_specific=db_opts
         )
         try:
-            loop = Signal.loop_from_signals(sig_x, sig_y, name="PV loop")
+            loop = loop_from_signals(sig_x, sig_y, name="PV loop")
         except ValueError as exc:
             pytest.skip(f"Columns have no overlapping data for a loop: {exc}")
         assert loop.trace_options.plot_options.plot_type == "loop"
-        assert loop.trace_options.plot_options.square_plot is True
-        assert loop.data.loop_time_axis is not None
+        assert loop.trace_options.plot_options.definition.GRID_LAYOUT is True
+        assert loop.data.point_time_axis is not None
         assert len(loop.data.x) > 0

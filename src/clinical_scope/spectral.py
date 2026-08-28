@@ -29,6 +29,16 @@ class SpectralParams:
     jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE
     gap_factor: float = cst.Spectral.GAP_FACTOR
 
+    @classmethod
+    def from_options(
+        cls, window_s: float | None = None, overlap: float | None = None
+    ) -> "SpectralParams":
+        """Read the two configurable knobs, letting *None* mean "keep the default"."""
+        return cls(
+            window_s=window_s,
+            overlap=overlap if overlap is not None else cls.overlap,
+        )
+
 
 def build_uniform_grid(
     x: np.ndarray,

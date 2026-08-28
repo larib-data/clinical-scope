@@ -510,9 +510,6 @@ class DatabaseOptions:
     NUMERICS = "numerics"
     ADDITIONAL_INFORMATIONS = "additional_informations"
     GROUPED_FIELDS = "grouped_fields"
-    LOOP = "loop"
-    SPECTROGRAM = "spectrogram"
-    PSD = "psd"
     FILES = "files"  # internal key: per-file options injected from other::filename top-level keys
     # Per-section trace styling (mode, line_width, ...) written by the user in a config file.
     # Same string as SourceOptions.TRACE_OPTIONS, the tier a module ships; the user's wins per key.
@@ -521,6 +518,8 @@ class DatabaseOptions:
     # Trailing marker that turns a field_display entry into a prefix wildcard (e.g. "Local 1*").
     WILDCARD_SUFFIX = "*"
 
+    # Only the keys no plot type owns. Every registered plot type's section key is unioned
+    # onto this by the parser, so adding a plot type cannot make a valid config warn.
     KNOWN_SECTION_KEYS = frozenset(
         {
             SIGNALS,
@@ -528,9 +527,6 @@ class DatabaseOptions:
             NUMERICS,
             ADDITIONAL_INFORMATIONS,
             GROUPED_FIELDS,
-            LOOP,
-            SPECTROGRAM,
-            PSD,
             FILES,
             TRACE_OPTIONS,
         }
@@ -567,39 +563,6 @@ class DatabaseOptions:
                 HOVER_TEMPLATE,
             }
         )
-
-    # --- Per-spectrogram configuration (inside "spectrogram" → "<name>" dict) ---
-    class SpectrogramConfig:
-        SIGNAL = "signal"  # one raw name — no arithmetic, no pairs, no wildcards
-        FREQ_RANGE = "freq_range"  # [min_hz, max_hz], required — no workable global default
-        DB_RANGE = "db_range"  # [min_db, max_db], optional — falls back to a user option
-        WINDOW_S = "window_s"  # optional override; derived from freq_min by default
-        OVERLAP = "overlap"  # optional override; fixed at 50% by default
-
-        KNOWN_KEYS = frozenset({SIGNAL, FREQ_RANGE, DB_RANGE, WINDOW_S, OVERLAP})
-
-    # --- Per-PSD configuration (inside "psd" → "<name>" dict) ---
-    class PsdConfig:
-        # Plural where a spectrogram has a single SIGNAL: PSDs share a subplot, so one
-        # entry overlays several. Freq/db range are shared axis properties of the whole
-        # subplot, so they stay here; window_s/overlap/label are per-trace (see Entry)
-        # since two traces sharing one channel need their own processing/legend.
-        SIGNALS = "signals"
-        FREQ_RANGE = "freq_range"  # [min_hz, max_hz], required — no workable global default
-        DB_RANGE = "db_range"  # [min_db, max_db], optional — y-axis range; autoscales when unset
-
-        KNOWN_KEYS = frozenset({SIGNALS, FREQ_RANGE, DB_RANGE})
-
-        # --- One item of SIGNALS; a plain string is shorthand for {SIGNAL: <str>} ---
-        class Entry:
-            SIGNAL = "signal"
-            WINDOW_S = "window_s"  # optional override; derived from freq_min by default
-            OVERLAP = "overlap"  # optional override; fixed at 50% by default
-            LABEL = "label"  # optional trace label; needed to tell apart 2 entries sharing a signal
-            COLOR = "color"  # optional override; defaults to the source signal's own color
-            LINE_DASH = "line_dash"  # optional override; defaults to the source signal's own
-
-            KNOWN_KEYS = frozenset({SIGNAL, WINDOW_S, OVERLAP, LABEL, COLOR, LINE_DASH})
 
     # --- Datasource-level trace styling (inside "trace_options" dict) ---
     class TraceOptionsConfig:
@@ -671,57 +634,3 @@ class Spectral:
     HOVER_HEATMAP_FREQ_FORMAT = ".1f"
     # PSD: Hz spans the whole freq_range on the x-axis, so significant digits scale better.
     HOVER_PSD_FREQ_FORMAT = ".3g"
-
-
-class PlotType:
-    TIME_SERIES = "time_series"
-    SPECTROGRAM = "spectrogram"
-    PSD = "psd"
-    LOOP = "loop"
-
-    # Page order of the plot models (top to bottom); types not listed here go last.
-    PAGE_ORDER = (
-        TIME_SERIES,
-        SPECTROGRAM,
-        PSD,
-        LOOP,
-    )
-
-    # --- Capability sets ---
-    # Membership answers "does this plot type behave this way?", so a new plot type is a name
-    # added to the sets that fit rather than a new branch inside each rendering function.
-
-    # x-axis is time: shares a zoom range across subplots, localizes hovered x, and accepts
-    # time-based annotations. Loop's x is another signal's values and PSD's is frequency.
-    TIME_AXIS = (
-        TIME_SERIES,
-        SPECTROGRAM,
-    )
-
-    # Subplots pack side by side in a square grid instead of stacking one per row.
-    GRID_LAYOUT = (LOOP,)
-
-    # Traces carry a colorbar, which must be resized to sit against its own subplot row —
-    # left alone, one colorbar spans the whole figure.
-    HAS_COLORBAR = (SPECTROGRAM,)
-
-    # Reads the user's hovermode and hover time format. Everything else keeps Plotly's default
-    # ("closest"): a unified panel is meaningless with an independent x per point (loop, psd)
-    # or an independent cell per pixel (spectrogram).
-    UNIFIED_HOVER = (TIME_SERIES,)
-
-    # Wrapped in a FigureResampler for dynamic downsampling on zoom/pan, and so has Plotly's
-    # own zoom-in/out buttons disabled in favour of the resampler's range handling.
-    RESAMPLED = (TIME_SERIES,)
-
-
-# A plot type reaches its config through a database_options section of the same name, so the
-# two constants must not drift apart.
-for _plot_type, _section_key in (
-    (PlotType.LOOP, DatabaseOptions.LOOP),
-    (PlotType.SPECTROGRAM, DatabaseOptions.SPECTROGRAM),
-    (PlotType.PSD, DatabaseOptions.PSD),
-):
-    if _plot_type != _section_key:
-        msg = f"Plot type '{_plot_type}' must equal its database_options key '{_section_key}'."
-        raise NotImplementedError(msg)

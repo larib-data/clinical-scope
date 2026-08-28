@@ -44,6 +44,7 @@ from clinical_scope.dash_api.styles import (
     COLOR_PREVIEW_SWATCH,
 )
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
+from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.signal_container import DisplayFallbacks
 
 logger = logging.getLogger(__name__)
@@ -408,8 +409,12 @@ def handle_graph_click(
     no_update_patches = [no_update] * len(graph_ids)
 
     plot_type = subplots_data.get("plot_type")
-    is_loop = plot_type == cst.PlotType.LOOP
-    has_time_axis = plot_type in cst.PlotType.TIME_AXIS
+    # The store holds JSON, so the definition could not be carried across — this is the one place
+    # a name is converted back. A plot type can have a non-time x-axis and still know when each
+    # point was recorded, so the two capabilities are asked separately.
+    definition = plot_types.definition_for(plot_type)
+    point_is_timestamped = definition.POINT_TIMESTAMPS
+    has_time_axis = definition.TIME_AXIS
     if not has_time_axis and annotation_type in TIME_BASED_ANNOTATION_TYPES:
         logger.warning(
             "User attempted to create %s annotation on a '%s' plot. Its x-axis is not time, "
@@ -517,7 +522,7 @@ def handle_graph_click(
                 "xaxis": xaxis_ref,
                 "yaxis": yaxis_ref,
             }
-            if is_loop:
+            if point_is_timestamped:
                 raw_t = point.get("customdata")
                 if raw_t:
                     with contextlib.suppress(Exception):
@@ -594,7 +599,7 @@ def handle_graph_click(
     if annotation_type == AnnotationType.POINT.value:
         modal_data["y"] = y_val
         modal_data["yaxis"] = yaxis_ref
-        if is_loop:
+        if point_is_timestamped:
             raw_t = point.get("customdata")
             if raw_t:
                 with contextlib.suppress(Exception):
@@ -854,10 +859,10 @@ def render_annotations(
         # subplot-annotations store is still unpopulated, so leave them untouched instead.
         if all_annotations:
             patch.layout.annotations = all_annotations
-        # Same capability set PlotModel.to_figure reads, so the two stay in step. Point mode
+        # Same capability PlotModel.to_figure reads, so the two stay in step. Point mode
         # forces the nearest point; otherwise restore the user's own panel style, since this
         # patch runs after to_figure and would otherwise silently discard it.
-        if subplots_data.get("plot_type") in cst.PlotType.UNIFIED_HOVER:
+        if plot_types.definition_for(subplots_data.get("plot_type")).UNIFIED_HOVER:
             patch.layout.hovermode = (
                 cst.HoverMode.CLOSEST if point_mode_active else display_fallbacks.hovermode
             )

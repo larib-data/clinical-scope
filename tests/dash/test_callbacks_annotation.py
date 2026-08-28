@@ -31,32 +31,32 @@ class TestRenderAnnotationsHovermode:
 
     def test_time_series_gets_hovermode(self):
         graph_ids = [{"name": "time_series"}]
-        subplots_list = [_subplots_data(cst.PlotType.TIME_SERIES)]
+        subplots_list = [_subplots_data("time_series")]
         patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 1
 
     def test_loop_gets_no_hovermode(self):
         graph_ids = [{"name": "loop"}]
-        subplots_list = [_subplots_data(cst.PlotType.LOOP)]
+        subplots_list = [_subplots_data("loop")]
         patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
     def test_spectrogram_gets_no_hovermode(self):
         graph_ids = [{"name": "spectrogram"}]
-        subplots_list = [_subplots_data(cst.PlotType.SPECTROGRAM)]
+        subplots_list = [_subplots_data("spectrogram")]
         patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
     def test_psd_gets_no_hovermode(self):
         graph_ids = [{"name": "psd"}]
-        subplots_list = [_subplots_data(cst.PlotType.PSD)]
+        subplots_list = [_subplots_data("psd")]
         patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
     def test_user_hovermode_survives_an_annotation_redraw(self):
         """This patch runs after to_figure, so a hardcoded value would silently discard it."""
         graph_ids = [{"name": "time_series"}]
-        subplots_list = [_subplots_data(cst.PlotType.TIME_SERIES)]
+        subplots_list = [_subplots_data("time_series")]
         patches = render_annotations(
             [],
             default_mode(),
@@ -70,7 +70,7 @@ class TestRenderAnnotationsHovermode:
     def test_point_mode_overrides_the_user_hovermode(self):
         """Placing a point needs the nearest trace, whatever the panel style says."""
         graph_ids = [{"name": "time_series"}]
-        subplots_list = [_subplots_data(cst.PlotType.TIME_SERIES)]
+        subplots_list = [_subplots_data("time_series")]
         mode = {**default_mode(), "active": True, "type": AnnotationType.POINT.value}
         patches = render_annotations(
             [],
@@ -111,19 +111,19 @@ class TestGraphClickTimeAxisGuard:
         return _click
 
     def test_time_event_refused_on_psd(self, click_on):
-        result = click_on(cst.PlotType.PSD, "time_event", 10.5)
+        result = click_on("psd", "time_event", 10.5)
         assert "not supported on psd plots" in result[self.WARNING_INDEX]
 
     def test_time_window_refused_on_psd(self, click_on):
-        result = click_on(cst.PlotType.PSD, "time_window", 10.5)
+        result = click_on("psd", "time_window", 10.5)
         assert "not supported on psd plots" in result[self.WARNING_INDEX]
 
     def test_point_accepted_on_psd_with_raw_frequency_x(self, click_on):
         """A frequency must reach the modal unchanged, not run through timezone localization."""
-        result = click_on(cst.PlotType.PSD, "point", 10.5)
+        result = click_on("psd", "point", 10.5)
         assert result[self.WARNING_INDEX] == ""
         assert result[1]["x"] == "10.5"
 
     def test_time_event_still_accepted_on_spectrogram(self, click_on):
-        result = click_on(cst.PlotType.SPECTROGRAM, "time_event", "2024-01-01 00:00:00")
+        result = click_on("spectrogram", "time_event", "2024-01-01 00:00:00")
         assert result[self.WARNING_INDEX] == ""

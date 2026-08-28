@@ -18,8 +18,14 @@ src/clinical_scope/
   wrapper.py            main pipeline — visualize / extract / inspect
   plot_assembly.py      Signals + database_options → PlotGroups (grouping, derived plots)
   signal_container.py   Signal / PlotGroup / PlotModel data models
+  signal_reference.py   resolve a config string to the Signal(s) it names
   constants.py          global constants + option schema classes
   user_options.py       UserOptions schema as data: traversal, defaults, validate()
+  validation.py         ValidationIssue — what every config validator returns
+  plot_types/
+    base.py             PlotTypeDefinition + RenderSpec; the defaults ARE time_series
+    registry.py         AVAILABLE definitions, BUILDERS, PAGE_ORDER, definition_for()
+    <name>/             one package per type: definition.py (config) + plot.py (render)
   datasource/
     base.py             DataSourceBase — find/load/format/extract/inspect template
     registry.py         registered sources (DataSource.AVAILABLE; keep Other last)
@@ -43,9 +49,17 @@ src/clinical_scope/
 - **Extract** (`wrapper.extract_patient` / `batch_extract` / `extract_datasource`, also `from clinical_scope import extract_datasource, extract_patient, batch_extract`) — stop at `format`, return DataFrame(s). `save_path`/`save_folder` write explicit output, independent of the per-patient `clinical_scope_output/` parquet cache (always written; reused when `quick_load` is set).
 - **Inspect** (`wrapper.inspect`) — stop at `format`, return `list[DataSourceInspection]` (columns, point counts, time ranges). `OtherDataSource.inspect()` returns **one entry per file** (`other::<stem>`); the wrapper handles single-or-list returns.
 
-**Signal references** in `grouped_fields`, `loop`, `spectrogram` and `psd` resolve via a 3-mode lookup in `plot_assembly._resolve_signal_references`: qualified `datasource::raw_name` → display name → raw-name fallback.
+**Signal references** in `grouped_fields` and in any plot type's section resolve via a 3-mode lookup in `signal_reference.resolve_signal_references`: qualified `datasource::raw_name` → display name → raw-name fallback.
 
-**Config scope is desugared once, and grouping joins on signal identity** ([ADR-0013](docs/adr/0013-signal-references-are-qualified-before-assembly.md)). `assemble_plot_groups` is called once, after the datasource loop, and its first step rewrites every per-datasource reference as a qualified global one — downstream, local scope does not exist. Both config spellings stay valid; the desugaring is a property of the code, not of the file format. A signal is left out of the default one-plot-per-signal pass only when a group took *that object*, never when something merely shares its `raw_name` (unique only within a datasource).
+**Config scope is desugared once, and grouping joins on signal identity** ([ADR-0013](docs/adr/0013-signal-references-are-qualified-before-assembly.md)). `assemble_plot_groups` is called once, after the datasource loop, and its first step rewrites every per-datasource reference as a qualified global one — downstream, local scope does not exist. An `other::<stem>` section is one namespace deeper and desugars in the same pass; `other` injects nothing a config file states, only the group-per-file it derives from the columns that loaded. Both config spellings stay valid; the desugaring is a property of the code, not of the file format. A signal is left out of the default one-plot-per-signal pass only when a group took *that object*, never when something merely shares its `raw_name` (unique only within a datasource).
+
+**A plot type is a module.** Everything that varies by plot type lives in `plot_types/<name>/`; nothing outside the package branches on plot type or hardcodes a section key (asserted by `tests/plot_types/test_boundaries.py`). Each package has two halves, split by what they may import:
+- `definition.py` — what the type *is*: `NAME`/`SECTION_KEY`, the six capability flags, config keys, `validate()`, `map_refs()`, xlsx sheet + row interpretation. Imports nothing but `validation`.
+- `plot.py` — the render half: `build()`, the maths, the rendering it installs. Imports `signal_container`, numpy and plotly.
+
+**Everything a plot type knows travels on the object.** A Signal carries its definition (`plot_options.definition`) and its `RenderSpec`, so every render site reads `definition.GRID_LAYOUT` rather than asking a registry whether `"loop"` is in a set. That is why `signal_container` imports nothing from `plot_types` but `base` (asserted by `test_boundaries.py`), and why the data model never knows the roster. `registry.definition_for(name)` is the single exception: a plot type that crossed a Dash store as JSON has only its name left, and an unregistered one resolves to `Unknown`, which has every capability off. **"Schema" is not the word here** — the file holds identity and rendering capabilities as well as config grammar, and the codebase already spends `schema` on `UserOptions` classes and the Dash widget registry.
+
+`time_series` is registered but has no package: every default in `PlotTypeSchema` is its behaviour, and `DERIVED` is the types with a `SECTION_KEY`. **Adding a plot type is a package plus two adjacent lines in `registry.py` — `AVAILABLE` and `BUILDERS`** — nothing in `database_options_parser.py`, `database_options_xlsx.py`, `plot_assembly.py` or `signal_container.py` changes, and no datasource imports `plot_types` at all. Two things still cost more, and both are the general mechanism rather than the plot type: a **user display setting** is a `UserOptions` class in `constants.py` plus a `DisplayFallbacks` field (as `loops_per_row` and `spectrogram_db_range` are), and an **axis payload of its own** is a field on `Data` (as `point_time_axis` and `spectrogram_freq_axis` are). Forgetting a half is an import-time crash, never a config that validates and renders nothing (`tests/plot_types/test_fake_plot_type.py` registers a fourth type and drives it through all six paths).
 
 `wrapper.main`/`inspect` call an optional `progress_callback(current, total, name)` between datasources, which drives the UI progress bar.
 
@@ -64,7 +78,7 @@ Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical l
 ## Config files
 
 Field-by-field reference is in the [tutorial](docs/user_guide/tutorial.md). The three tiers:
-- **`database_options`** (`.json` or `.xlsx`) — per-source signal config: `field_display`, `signals` (labels/units/colors), `grouped_fields`, `loop`; plus `global.grouped_fields`. Uploading one in the UI caches it to `~/.clinical_scope/last_database_options.json` (signal metadata only, no PHI).
+- **`database_options`** (`.json` or `.xlsx`) — per-source signal config: `field_display`, `signals` (labels/units/colors), `grouped_fields`, and one section per derived plot type (`loop`, `spectrogram`, `psd`); a `global` section takes the same keys, resolved across datasources. Uploading one in the UI caches it to `~/.clinical_scope/last_database_options.json` (signal metadata only, no PHI).
 - **`patient_options`** (`.json`) — per-run settings: `data_folder`, `datetime_start`/`datetime_end`, `quick_load`, and per-source options (`time_shift`, `day`, …).
 - **`user_options`** (`~/.clinical_scope/user_options.json`) — the third tier: per-person app behaviour + display fallbacks, edited only in the Settings modal. **Never overrides `database_options`** ([ADR-0005](docs/adr/0005-user-options-are-fallbacks.md)). A new display setting = a `UserOptions` schema class (with `SECTION`) + a field on `DisplayFallbacks` (`signal_container.py`) + one read site; the carrier is threaded from `wrapper.main` down to both `Signal` and `PlotModel` construction, so no signature grows. Values are held to the schema by `user_options.validate()` at every boundary that accepts one, and only `dash_api` may read the file ([ADR-0014](docs/adr/0014-user-options-are-validated-at-the-boundary.md)).
 
@@ -99,7 +113,7 @@ Ruff (`ruff check .`, `ruff format .`), capped to the 0.16.x line by the `dev` e
 
 Keep inline comments concise — one line where possible; explain the non-obvious *why*, **not** the *what*. Reserve longer prose for docstrings.
 
-Shared literal values (option keys, plot types, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today. That is a `src/` rule: tests assert **independent literals** (`== 300`, not `== cst.DEFAULT_SUBPLOT_HEIGHT`), since a test that restates the constant it exercises can never fail.
+Shared literal values (option keys, orderings, defaults) belong in `constants.py`, not inline in modules — even when only one module uses them today. The exception is a value one registered module *owns*: a datasource's option keys live in its `options.py`, a plot type's name, section key and config keys in its `definition.py`, and each registry owns the ordering across its own members. That is a `src/` rule: tests assert **independent literals** (`== 300`, not `== cst.DEFAULT_SUBPLOT_HEIGHT`), since a test that restates the constant it exercises can never fail.
 
 ## Logs
 
@@ -115,7 +129,9 @@ Gitignored under `logs/`: `logs/app/dash_api.log` (app), `logs/scripts/` (script
 
 | Skill | When to use |
 |---|---|
+| `/grilling` | Stress-test a plan or decision before building — one question at a time, until it is settled |
 | `/new-datasource` | Add a new medical device / file format as a datasource module |
+| `/new-plot-type` | Add a new way of drawing signals — first deciding whether it is a plot type at all |
 | `/organize-patient-folder` | Reorganize a dump of clinical files into the per-datasource folder structure |
 | `/generate-database-options` | Generate a `database_options` config by inspecting a patient folder |
 | `/anonymize-timeseries` | De-identify clinical timeseries files so they can be committed as example data |

@@ -13,8 +13,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from clinical_scope import constants as cst
+from clinical_scope.database_options_parser import normalize_database_options
 from clinical_scope.plot_assembly import assemble_plot_groups
+from clinical_scope.plot_types.base import TimeSeries
 from clinical_scope.signal_container import (
     Data,
     Metadata,
@@ -34,7 +35,7 @@ def _signal(raw_name: str, name: str | None = None, datasource: str = "icca") ->
             x=pd.date_range("2024-01-01", periods=points, freq="s").to_numpy(),
             y=np.linspace(0.0, 1.0, points),
         ),
-        trace_options=TraceOptions(plot_options=PlotOptions(plot_type=cst.PlotType.TIME_SERIES)),
+        trace_options=TraceOptions(plot_options=PlotOptions(definition=TimeSeries)),
         metadata=Metadata(datasource_name=datasource),
     )
 
@@ -69,7 +70,7 @@ class TestLocalSectionsAreFlattened:
         assert _names(assemble_plot_groups(signals, options)) == ["Vitals"]
 
     def test_an_other_file_reference_keeps_resolving(self):
-        """``other`` injects ``<stem>::<column>`` references into its own section during load."""
+        """``other`` injects one already-scoped group per file into its own section at load."""
         signals = [
             _signal("waves::art", "Arterial Pressure", "other"),
             _signal("numerics::FC", "Heart Rate", "other"),
@@ -84,6 +85,92 @@ class TestLocalSectionsAreFlattened:
         groups = assemble_plot_groups(signals, options)
         grouped = [signal.metadata.datasource_name for signal in groups[0].signals]
         assert grouped == ["icca"]
+
+
+class TestFileNamespacesAreFlattened:
+    """
+    An ``other::<stem>`` section is a namespace nested in a datasource's, and desugars here.
+
+    It used to desugar inside ``other``, which meant the datasource held a map of every plot
+    type's config shape -- and the day a type was added and its row forgotten, that type's
+    per-file section validated cleanly and rendered nothing. ``other`` knows which files
+    exist; that is what makes a stem a namespace, and it is all it contributes.
+    """
+
+    @pytest.fixture
+    def two_files(self) -> list[Signal]:
+        """Two files under ``other/``, each with the two columns a loop needs."""
+        return [
+            _signal("waves::art", "Arterial Pressure", "other"),
+            _signal("waves::paw", "Airway Pressure", "other"),
+            _signal("numerics::art", "Arterial Pressure", "other"),
+            _signal("numerics::paw", "Airway Pressure", "other"),
+        ]
+
+    @staticmethod
+    def _files(**per_file: dict) -> dict:
+        return {"other": {"files": per_file}}
+
+    def test_a_per_file_group_takes_the_file_s_own_columns(self, two_files):
+        options = self._files(waves={"grouped_fields": {"Pressures": ["art", "paw"]}})
+        group = next(g for g in assemble_plot_groups(two_files, options) if len(g.signals) > 1)
+        assert [signal.raw_name for signal in group.signals] == ["waves::art", "waves::paw"]
+
+    def test_the_entry_name_is_scoped_so_two_files_do_not_collide(self, two_files):
+        """Unlike a datasource section, a stem stays in the name: it is what tells them apart."""
+        options = self._files(
+            waves={"loop": {"PV": ["paw", "art"]}},
+            numerics={"loop": {"PV": ["paw", "art"]}},
+        )
+        loops = [
+            group for group in assemble_plot_groups(two_files, options)
+            if group.plot_options.plot_type == "loop"
+        ]
+        assert _names(loops) == ["waves::PV", "numerics::PV"]
+
+    def test_a_file_reference_cannot_reach_a_namesake_in_another_file(self):
+        """
+        The stem is prefixed *lexically*, before resolution -- it is not itself a lookup.
+
+        Here ``pmax`` is a column of one file and the label of a column of the other, so a
+        reference resolved before being scoped would leave the file it was written in. An
+        ``other`` signal's raw name already carries its stem, so prefixing first asks for
+        ``waves::pmax`` -- which does not exist, and a group of nothing is not drawn.
+        """
+        signals = [
+            _signal("waves::peak", "pmax", "other"),
+            _signal("numerics::pmax", "Peak Pressure", "other"),
+        ]
+        options = self._files(waves={"grouped_fields": {"Pressures": ["pmax"]}})
+        assert _names(assemble_plot_groups(signals, options)) == ["pmax", "Peak Pressure"]
+
+    def test_a_datasource_level_other_section_still_applies_beside_the_files(self, two_files):
+        """Both are read now; the per-file entries used to overwrite the section's own."""
+        options = {
+            "other": {
+                "grouped_fields": {"Arterial": ["waves::art", "numerics::art"]},
+                "files": {"waves": {"loop": {"PV": ["paw", "art"]}}},
+            }
+        }
+        assert _names(assemble_plot_groups(two_files, options)) == [
+            "Airway Pressure",
+            "Airway Pressure",
+            "Arterial",
+            "waves::PV",
+        ]
+
+    def test_a_malformed_file_section_costs_only_that_file(self, two_files):
+        options = self._files(
+            waves={"grouped_fields": "not a mapping"},
+            numerics={"grouped_fields": {"Pressures": ["art", "paw"]}},
+        )
+        assert "numerics::Pressures" in _names(assemble_plot_groups(two_files, options))
+
+    def test_the_spelling_written_in_a_config_file_arrives_here(self, two_files):
+        """``other::<stem>`` is what a user writes; the parser is what turns it into a file."""
+        options = {"other::waves": {"loop": {"PV": ["paw", "art"]}}}
+        normalize_database_options(options)
+        assert "waves::PV" in _names(assemble_plot_groups(two_files, options))
 
 
 class TestGroupsThatResolveToOneSignal:

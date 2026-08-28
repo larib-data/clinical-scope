@@ -81,43 +81,6 @@ def _qualify(file_stem: str, bare_name: str) -> str:
     return f"{file_stem}{cst.QUALIFIED_NAME_SEPARATOR}{bare_name}"
 
 
-def _qualify_loop(file_stem: str, bare_columns: list) -> list:
-    return [_qualify(file_stem, bare_column) for bare_column in bare_columns]
-
-
-def _qualify_spectrogram(file_stem: str, entry: dict) -> dict:
-    signal_key = cst.DatabaseOptions.SpectrogramConfig.SIGNAL
-    if signal_key not in entry:
-        return dict(entry)
-    return {**entry, signal_key: _qualify(file_stem, entry[signal_key])}
-
-
-def _qualify_psd(file_stem: str, entry: dict) -> dict:
-    config_cls = cst.DatabaseOptions.PsdConfig
-    signal_key = config_cls.Entry.SIGNAL
-    qualified = []
-    for item in entry.get(config_cls.SIGNALS) or []:
-        # A plain string is shorthand for an Entry naming just a signal, as in wrapper.py.
-        if isinstance(item, dict):
-            if signal_key in item:
-                qualified.append({**item, signal_key: _qualify(file_stem, item[signal_key])})
-            else:
-                qualified.append(dict(item))
-        else:
-            qualified.append(_qualify(file_stem, item))
-    return {**entry, config_cls.SIGNALS: qualified}
-
-
-# Derived-plot sections a per-file 'other::<stem>' block may declare, and how each one's bare
-# signal references get scoped to that file. Adding a fifth derived plot type means adding a
-# row here -- forgetting to is what made 'psd' validate cleanly yet never render.
-PER_FILE_DERIVED_SECTIONS = {
-    cst.DatabaseOptions.LOOP: _qualify_loop,
-    cst.DatabaseOptions.SPECTROGRAM: _qualify_spectrogram,
-    cst.DatabaseOptions.PSD: _qualify_psd,
-}
-
-
 def _resolve_columns(df: pd.DataFrame, file_config: dict) -> list[str]:
     """
     Determine which columns to expose as signals for a file.
@@ -175,15 +138,17 @@ class OtherDataSource(DataSourceBase):
 
         Each file becomes a separate PlotGroup (subplot) with all its numeric
         columns as traces. Files that fail to load are skipped without affecting others.
-        Populates database_options_specific['grouped_fields'] so the wrapper groups
-        signals by source file.
+        Adds one group per file to database_options_specific['grouped_fields'] so the
+        wrapper groups signals by source file.
 
         Per-file configuration is read from ``database_options_specific["files"]``, which
         ``database_options_parser.normalize_database_options`` populates from ``other::<stem>``
-        keys. Each ``other::<stem>`` section supports the full set of database_options keys:
+        keys. What this source takes from a file's section is what loading it needs --
         ``signals``, ``field_display``, ``additional_informations`` (timezone), ``numerics``,
-        ``grouped_fields``, ``trace_options``, and every derived-plot section listed in
-        :data:`PER_FILE_DERIVED_SECTIONS` (``loop``, ``spectrogram``, ``psd``).
+        ``trace_options``. Everything that *names* signals (``grouped_fields`` and each plot
+        type's section) is left where it is: a datasource knows which files exist, which is
+        what makes the stem a namespace, but not what any plot type's config looks like.
+        ``plot_assembly`` scopes those to the file, alongside the per-datasource ones.
 
         Per-file *patient* options (``time_shift``, ``group_by_file``) are read the same way,
         from a standalone ``patient_options["other::<stem>"]`` block — see
@@ -208,7 +173,6 @@ class OtherDataSource(DataSourceBase):
         all_signals: list[Signal] = []
         loaded_files: list[Path] = []
         grouped_fields: dict = {}
-        derived_sections: dict[str, dict] = {key: {} for key in PER_FILE_DERIVED_SECTIONS}
 
         for file_path in file_paths:
             try:
@@ -280,28 +244,15 @@ class OtherDataSource(DataSourceBase):
                             file_path.name,
                         )
 
-                if file_signal_raw_names:
-                    # Grouping: prefer user-defined groups, fall back to group-by-file
-                    file_grouped = file_config.get(cst.DatabaseOptions.GROUPED_FIELDS, {})
-                    if file_grouped:
-                        for group_name, bare_columns in file_grouped.items():
-                            qualified = [
-                                _qualify(file_stem, bare_column) for bare_column in bare_columns
-                            ]
-                            grouped_fields[_qualify(file_stem, group_name)] = [
-                                raw for raw in qualified if raw in file_signal_raw_names
-                            ]
-                    elif group_by_file:
-                        grouped_fields[file_stem] = file_signal_raw_names
-
-                    # Both the entry name and the signal references it holds are scoped to the
-                    # file: two files may each declare a loop called "PV" without one erasing
-                    # the other, and each keeps pointing at its own columns.
-                    for section_key, qualify_entry in PER_FILE_DERIVED_SECTIONS.items():
-                        for entry_name, entry in file_config.get(section_key, {}).items():
-                            derived_sections[section_key][_qualify(file_stem, entry_name)] = (
-                                qualify_entry(file_stem, entry)
-                            )
+                # One group per file, when the file configures none of its own. Injected
+                # rather than read from the config because it is the *loaded columns* --
+                # everything a config file states is scoped by assembly instead.
+                if (
+                    file_signal_raw_names
+                    and group_by_file
+                    and not file_config.get(cst.DatabaseOptions.GROUPED_FIELDS)
+                ):
+                    grouped_fields[file_stem] = file_signal_raw_names
 
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
@@ -313,12 +264,12 @@ class OtherDataSource(DataSourceBase):
             output_root = patient_options.get(cst.PatientOptions.OutputRoot.NAME) or None
             cls._create_source_symlink(loaded_files, get_output_folder(folder_path, output_root))
 
-        # Inject the collected sections into database_options for the wrapper to use
+        # Merged, not assigned: a 'other' section may carry groups of its own, and they are
+        # the caller's, not ours to drop.
         if grouped_fields:
-            database_options[cst.DatabaseOptions.GROUPED_FIELDS] = grouped_fields
-        for section_key, entries in derived_sections.items():
-            if entries:
-                database_options[section_key] = entries
+            database_options.setdefault(cst.DatabaseOptions.GROUPED_FIELDS, {}).update(
+                grouped_fields
+            )
 
         return all_signals
 

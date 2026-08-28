@@ -19,6 +19,10 @@ from clinical_scope.signal_container import (
     merge_y_ranges,
 )
 from clinical_scope.io.export import print_out_figure
+from clinical_scope.plot_assembly import assemble_plot_models
+from clinical_scope.plot_types.loop.plot import loop_from_signals
+from clinical_scope.plot_types.psd.plot import psd_from_signal
+from clinical_scope.plot_types.spectrogram.plot import spectrogram_from_signal
 from clinical_scope.spectral import SpectralRefusalError
 
 # ---------------------------------------------------------------------------
@@ -34,7 +38,7 @@ def _make_df(n=50, tz="UTC", columns=None):
     return pd.DataFrame(data, index=idx)
 
 
-def _make_signal(raw_name="sig_a", name=None, n=50, unit="mmHg", plot_type="time_series"):
+def _make_signal(raw_name="sig_a", name=None, n=50, unit="mmHg"):
     """Create a minimal Signal using time_series_from_dataframe."""
     df = _make_df(n=n, columns=[raw_name])
     db_opts = {
@@ -241,178 +245,6 @@ class TestTraceOptionsPrecedence:
 
 
 # ---------------------------------------------------------------------------
-# Signal.loop_from_signals
-# ---------------------------------------------------------------------------
-
-
-class TestSignalLoop:
-    def test_basic_loop(self):
-        sig_x = _make_signal(raw_name="sig_a", unit="cmH2O")
-        sig_y = _make_signal(raw_name="sig_a", name="Vol", unit="mL")
-        loop = Signal.loop_from_signals(sig_x, sig_y, name="PV loop")
-        assert loop.trace_options.plot_options.plot_type == "loop"
-        assert loop.trace_options.plot_options.square_plot is True
-        assert loop.data.loop_time_axis is not None
-        assert len(loop.data.x) == len(loop.data.y)
-        assert loop.name == "PV loop"
-
-    def test_no_overlap_raises(self):
-        df1 = pd.DataFrame(
-            {"a": [1.0, 2.0]},
-            index=pd.date_range("2024-01-01", periods=2, freq="1s", tz="UTC"),
-        )
-        df2 = pd.DataFrame(
-            {"b": [3.0, 4.0]},
-            index=pd.date_range("2025-01-01", periods=2, freq="1s", tz="UTC"),
-        )
-        sig_x = Signal.time_series_from_dataframe(df1, "a")
-        sig_y = Signal.time_series_from_dataframe(df2, "b")
-        with pytest.raises(ValueError, match="overlapping"):
-            Signal.loop_from_signals(sig_x, sig_y)
-
-    def test_empty_signal_raises(self):
-        # All-NaN column → empty after pruning
-        df1 = pd.DataFrame(
-            {"a": [np.nan, np.nan]},
-            index=pd.date_range("2024-01-01", periods=2, freq="1s", tz="UTC"),
-        )
-        df2 = _make_df(columns=["b"])
-        sig_x = Signal.time_series_from_dataframe(df1, "a")
-        sig_y = Signal.time_series_from_dataframe(df2, "b")
-        with pytest.raises(ValueError, match="no data"):
-            Signal.loop_from_signals(sig_x, sig_y)
-
-
-class TestSignalSpectrogram:
-    def test_basic_spectrogram(self):
-        source = _make_spectrogram_source_signal()
-        spec = Signal.spectrogram_from_signal(
-            source, name="EEG spectrogram", freq_range=(1.0, 30.0)
-        )
-        assert spec.trace_options.plot_options.plot_type == cst.PlotType.SPECTROGRAM
-        assert spec.name == "EEG spectrogram"
-        assert isinstance(spec.trace, go.Heatmap)
-        assert spec.data.spectrogram_freq_axis is not None
-        assert spec.data.y.shape == (len(spec.data.x), len(spec.data.spectrogram_freq_axis))
-
-    def test_decimated_signal_refuses(self):
-        source = _make_spectrogram_source_signal(period_resampling=0.5)
-        with pytest.raises(SpectralRefusalError, match="decimated"):
-            Signal.spectrogram_from_signal(source, name="x", freq_range=(1.0, 30.0))
-
-    def test_non_time_series_input_raises(self):
-        loop = Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
-        with pytest.raises(ValueError, match="time_series"):
-            Signal.spectrogram_from_signal(loop, name="x", freq_range=(1.0, 30.0))
-
-    def test_db_range_override(self):
-        source = _make_spectrogram_source_signal()
-        spec = Signal.spectrogram_from_signal(
-            source, name="x", freq_range=(1.0, 30.0), db_range=[-20, 10]
-        )
-        assert spec.trace_options.plot_options.color_range == [-20, 10]
-        assert (spec.trace.zmin, spec.trace.zmax) == (-20, 10)
-
-    def test_db_range_falls_back_to_display_fallbacks(self):
-        df = pd.DataFrame(
-            {"eeg": np.sin(2 * np.pi * 10.0 * np.arange(1280) / 128.0)},
-            index=pd.date_range("2024-01-01", periods=1280, freq="7.8125ms", tz="UTC"),
-        )
-        fallbacks = DisplayFallbacks(spectrogram_db_range=(-5.0, 15.0))
-        source = Signal.time_series_from_dataframe(df, "eeg", display_fallbacks=fallbacks)
-        spec = Signal.spectrogram_from_signal(source, name="x", freq_range=(1.0, 30.0))
-        assert spec.trace_options.plot_options.color_range == [-5.0, 15.0]
-
-
-class TestSignalPsd:
-    def test_basic_psd(self):
-        source = _make_spectrogram_source_signal()
-        psd_signal = Signal.psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
-        assert psd_signal.trace_options.plot_options.plot_type == "psd"
-        assert isinstance(psd_signal.trace, go.Scatter)
-        # One power value per frequency, both 1-D: frequency is the x-axis, not a separate axis.
-        assert psd_signal.data.x.ndim == 1
-        assert psd_signal.data.y.shape == psd_signal.data.x.shape
-        assert psd_signal.data.spectrogram_freq_axis is None
-
-    def test_name_is_the_source_signal_but_raw_name_is_qualified(self):
-        source = _make_spectrogram_source_signal(raw_name="eeg")
-        psd_signal = Signal.psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
-        # name is the legend entry; the qualified raw_name keeps wrapper.main's single-signal
-        # group prune from swallowing the PSD.
-        assert psd_signal.name == source.name
-        assert psd_signal.raw_name == "EEG PSD::eeg"
-
-    def test_axes_are_frequency_and_decibels(self):
-        source = _make_spectrogram_source_signal()
-        psd_signal = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0))
-        plot_options = psd_signal.trace_options.plot_options
-        assert plot_options.x_axis_title == "Frequency (Hz)"
-        assert plot_options.x_axis_range == [1.0, 30.0]
-        assert plot_options.y_unit_name == "dB"
-        assert plot_options.y_axis_range is None
-
-    def test_db_range_sets_the_power_axis(self):
-        source = _make_spectrogram_source_signal()
-        psd_signal = Signal.psd_from_signal(
-            source, psd_name="x", freq_range=(1.0, 30.0), db_range=[40, 90]
-        )
-        assert psd_signal.trace_options.plot_options.y_axis_range == [40, 90]
-
-    def test_inherits_source_signal_color(self):
-        source = _make_spectrogram_source_signal()
-        source.trace_options.line_color = "seagreen"
-        psd_signal = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0))
-        assert psd_signal.trace_options.line_color == "seagreen"
-
-    def test_decimated_signal_refuses(self):
-        source = _make_spectrogram_source_signal(period_resampling=0.5)
-        with pytest.raises(SpectralRefusalError, match="decimated"):
-            Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0))
-
-    def test_non_time_series_input_raises(self):
-        loop = Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
-        with pytest.raises(ValueError, match="time_series"):
-            Signal.psd_from_signal(loop, psd_name="x", freq_range=(1.0, 30.0))
-
-    def test_label_overrides_name_and_raw_name(self):
-        """Two traces built from the same source (e.g. comparing window_s) need distinct
-        identities; a label is the only way to tell them apart on legend/hover and raw_name."""
-        source = _make_spectrogram_source_signal(raw_name="eeg")
-        psd_signal = Signal.psd_from_signal(
-            source, psd_name="EEG PSD", freq_range=(1.0, 30.0), label="wide window"
-        )
-        assert psd_signal.name == "wide window"
-        assert psd_signal.raw_name == "EEG PSD::wide window"
-
-    def test_window_s_changes_the_output(self):
-        source = _make_spectrogram_source_signal()
-        narrow = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0), window_s=2.0)
-        wide = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0), window_s=8.0)
-        assert narrow.data.x.shape != wide.data.x.shape
-
-    def test_color_and_line_dash_default_to_the_source_signal(self):
-        source = _make_spectrogram_source_signal()
-        source.trace_options.line_color = "seagreen"
-        source.trace_options.line_dash = "dot"
-        psd_signal = Signal.psd_from_signal(source, psd_name="x", freq_range=(1.0, 30.0))
-        assert psd_signal.trace_options.line_color == "seagreen"
-        assert psd_signal.trace_options.line_dash == "dot"
-
-    def test_color_and_line_dash_are_overridable(self):
-        """Two traces from the same source (e.g. comparing window_s) would otherwise be
-        drawn identically, since color/line_dash both default to the source signal's own."""
-        source = _make_spectrogram_source_signal()
-        source.trace_options.line_color = "seagreen"
-        psd_signal = Signal.psd_from_signal(
-            source, psd_name="x", freq_range=(1.0, 30.0), color="red", line_dash="dash"
-        )
-        assert psd_signal.trace_options.line_color == "red"
-        assert psd_signal.trace_options.marker_color == "red"
-        assert psd_signal.trace_options.line_dash == "dash"
-
-
-# ---------------------------------------------------------------------------
 # PlotOptions.combine_from_signals
 # ---------------------------------------------------------------------------
 
@@ -442,7 +274,7 @@ class TestPlotOptionsCombine:
         """Overlaid PSDs share one frequency axis, so the group must keep its x labelling."""
         source = _make_spectrogram_source_signal(raw_name="eeg")
         psd_signals = [
-            Signal.psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
+            psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
             for _ in range(2)
         ]
         combined = PlotOptions.combine_from_signals(psd_signals, "EEG PSD")
@@ -505,7 +337,7 @@ class TestPlotModel:
         sig_ts = _make_signal()
         pg_ts = PlotGroup.from_single_signal(sig_ts)
 
-        models = PlotModel.assign_plot_model([pg_ts])
+        models = assemble_plot_models([pg_ts])
         assert len(models) == 1
         assert models[0].plot_type == "time_series"
 
@@ -515,10 +347,10 @@ class TestPlotModel:
         # Page order must stay deterministic: time_series model before loop model.
         sig_x = _make_signal(raw_name="sig_x")
         sig_y = _make_signal(raw_name="sig_y")
-        pg_loop = PlotGroup.from_single_signal(Signal.loop_from_signals(sig_x, sig_y, name="PV"))
+        pg_loop = PlotGroup.from_single_signal(loop_from_signals(sig_x, sig_y, name="PV"))
         pg_ts = PlotGroup.from_single_signal(_make_signal())
 
-        models = PlotModel.assign_plot_model([pg_loop, pg_ts])
+        models = assemble_plot_models([pg_loop, pg_ts])
         assert [m.plot_type for m in models] == ["time_series", "loop"]
 
     def test_to_figure_returns_go_figure(self):
@@ -560,7 +392,7 @@ class TestSubplotHeightPrecedence:
         pg = PlotGroup.from_single_signal(_make_signal())
         assert pg.plot_options.plot_height is None  # nothing configured it
 
-        PlotModel.assign_plot_model([pg], DisplayFallbacks(subplot_height=512))
+        assemble_plot_models([pg], DisplayFallbacks(subplot_height=512))
         assert pg.plot_options.plot_height == 512
 
     def test_database_height_wins_over_user_height(self):
@@ -568,16 +400,16 @@ class TestSubplotHeightPrecedence:
         pg = PlotGroup.from_single_signal(_make_signal())
         pg.plot_options.plot_height = 250  # as set through source/database options
 
-        PlotModel.assign_plot_model([pg], DisplayFallbacks(subplot_height=512))
+        assemble_plot_models([pg], DisplayFallbacks(subplot_height=512))
         assert pg.plot_options.plot_height == 250
 
     def test_loop_height_is_separate_from_time_series_height(self):
         pg_ts = PlotGroup.from_single_signal(_make_signal())
         pg_loop = PlotGroup.from_single_signal(
-            Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
+            loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
         )
 
-        PlotModel.assign_plot_model(
+        assemble_plot_models(
             [pg_ts, pg_loop], DisplayFallbacks(subplot_height=400, loop_subplot_height=800)
         )
         assert pg_ts.plot_options.plot_height == 400
@@ -654,7 +486,7 @@ class TestHoverFallbacks:
         assert model.figure.layout.xaxis.hoverformat == "%Y-%m-%d %H:%M:%S.%3f"
 
     def test_loops_keep_plotly_hovermode(self):
-        loop = Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
+        loop = loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
         model = PlotModel(
             groups=[PlotGroup.from_single_signal(loop)],
             display_fallbacks=DisplayFallbacks(hovermode=cst.HoverMode.X_UNIFIED),
@@ -662,7 +494,7 @@ class TestHoverFallbacks:
         assert model.figure.layout.hovermode is None
 
     def test_spectrograms_keep_plotly_hovermode(self):
-        spec = Signal.spectrogram_from_signal(
+        spec = spectrogram_from_signal(
             _make_spectrogram_source_signal(), name="x", freq_range=(1.0, 30.0)
         )
         model = PlotModel(
@@ -692,7 +524,7 @@ class TestLoopGrid:
     def _loop_groups(self, count):
         return [
             PlotGroup.from_single_signal(
-                Signal.loop_from_signals(
+                loop_from_signals(
                     _make_signal(raw_name="x"), _make_signal(raw_name="y"), name=f"loop_{index}"
                 )
             )
@@ -701,7 +533,7 @@ class TestLoopGrid:
 
     def test_loops_per_row_drives_the_grid(self):
         groups = self._loop_groups(4)
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             groups, DisplayFallbacks(loops_per_row=1, loop_subplot_height=200)
         )[0]
         # 4 loops in one column → 4 rows.
@@ -709,33 +541,33 @@ class TestLoopGrid:
 
     def test_three_per_row_packs_into_two_rows(self):
         groups = self._loop_groups(4)
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             groups, DisplayFallbacks(loops_per_row=3, loop_subplot_height=200)
         )[0]
         assert model.computed_height == 2 * 200
 
     def test_loop_figure_width_follows_columns(self):
         groups = self._loop_groups(4)
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             groups, DisplayFallbacks(loops_per_row=3, loop_subplot_height=200)
         )[0]
         assert model.figure.layout.width == 3 * 200
 
     def test_n_cols_exposes_the_grid_to_the_ui(self):
         """The UI maps traces to subplots with n_cols, so it must follow the setting."""
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             self._loop_groups(4), DisplayFallbacks(loops_per_row=3)
         )[0]
         assert model.n_cols == 3
 
     def test_single_loop_stays_one_column(self):
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             self._loop_groups(1), DisplayFallbacks(loops_per_row=3)
         )[0]
         assert model.n_cols == 1
 
     def test_time_series_is_always_one_column(self):
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             [PlotGroup.from_single_signal(_make_signal(raw_name=name)) for name in ("a", "b")],
             DisplayFallbacks(loops_per_row=3),
         )[0]
@@ -746,7 +578,7 @@ class TestSpectrogramFigure:
     def _spectrogram_groups(self, count):
         return [
             PlotGroup.from_single_signal(
-                Signal.spectrogram_from_signal(
+                spectrogram_from_signal(
                     _make_spectrogram_source_signal(raw_name=f"eeg_{index}"),
                     name=f"spectrogram_{index}",
                     freq_range=(1.0, 30.0),
@@ -756,12 +588,12 @@ class TestSpectrogramFigure:
         ]
 
     def test_stacks_in_one_column_like_time_series(self):
-        model = PlotModel.assign_plot_model(self._spectrogram_groups(3))[0]
+        model = assemble_plot_models(self._spectrogram_groups(3))[0]
         assert model.n_cols == 1
 
     def test_colorbars_are_scoped_to_their_own_row(self):
         """Each heatmap's colorbar must fit its own subplot row, not span the whole figure."""
-        model = PlotModel.assign_plot_model(self._spectrogram_groups(2))[0]
+        model = assemble_plot_models(self._spectrogram_groups(2))[0]
         colorbars = [trace.colorbar for trace in model.figure.data]
         assert len(colorbars) == 2
         # Stacked top-to-bottom: the first group's row sits above the second's.
@@ -771,7 +603,7 @@ class TestSpectrogramFigure:
 
     def test_shares_x_axis_across_stacked_spectrograms(self):
         """Zooming one spectrogram should keep the others aligned, like time-series subplots."""
-        model = PlotModel.assign_plot_model(self._spectrogram_groups(2))[0]
+        model = assemble_plot_models(self._spectrogram_groups(2))[0]
         assert model.figure.layout.xaxis2.matches == "x"
 
 
@@ -781,26 +613,26 @@ class TestPsdFigure:
         return PlotGroup(
             name=name,
             signals=[
-                Signal.psd_from_signal(source, psd_name=name, freq_range=(1.0, 30.0))
+                psd_from_signal(source, psd_name=name, freq_range=(1.0, 30.0))
                 for _ in range(signal_count)
             ],
             allow_secondary_y=False,
         )
 
     def test_overlaid_signals_share_one_subplot(self):
-        model = PlotModel.assign_plot_model([self._psd_group("EEG PSD", 3)])[0]
+        model = assemble_plot_models([self._psd_group("EEG PSD", 3)])[0]
         assert model.plot_type == "psd"
         assert len(model.figure.data) == 3
         assert all(isinstance(trace, go.Scatter) for trace in model.figure.data)
 
     def test_stacks_in_one_column(self):
         groups = [self._psd_group(f"psd_{index}", 1) for index in range(3)]
-        assert PlotModel.assign_plot_model(groups)[0].n_cols == 1
+        assert assemble_plot_models(groups)[0].n_cols == 1
 
     def test_does_not_share_x_axis_across_subplots(self):
         """Two psd entries may cover different bands, so linking their frequency axes is wrong."""
         groups = [self._psd_group(f"psd_{index}", 1) for index in range(2)]
-        model = PlotModel.assign_plot_model(groups)[0]
+        model = assemble_plot_models(groups)[0]
         assert model.figure.layout.xaxis2.matches is None
 
     def test_keeps_plotly_hovermode(self):
@@ -813,12 +645,12 @@ class TestPsdFigure:
     def test_page_order_puts_psd_between_spectrogram_and_loop(self):
         groups = [
             PlotGroup.from_single_signal(
-                Signal.loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
+                loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
             ),
             self._psd_group("EEG PSD", 1),
             PlotGroup.from_single_signal(_make_signal()),
         ]
-        models = PlotModel.assign_plot_model(groups)
+        models = assemble_plot_models(groups)
         assert [model.plot_type for model in models] == ["time_series", "psd", "loop"]
 
 

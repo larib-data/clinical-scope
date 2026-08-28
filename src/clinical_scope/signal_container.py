@@ -11,16 +11,16 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import clinical_scope.constants as cst
-from clinical_scope import hover_formatters, spectral
+from clinical_scope import hover_formatters
 from clinical_scope.datasource.formatting.timezone import (
     change_ndarray_timezone,
-    loop_time_to_display_strings,
     resolve_display_timezone,
     to_float_seconds,
 )
 from clinical_scope.io.column_patterns import get_column_name_from_pattern
 from clinical_scope.io.export import print_out_figure
 from clinical_scope.io.paths import get_visualization_path
+from clinical_scope.plot_types.base import PlotTypeDefinition, RenderSpec, TimeSeries, Unknown
 
 logger = logging.getLogger(__name__)
 
@@ -136,14 +136,14 @@ class DisplayFallbacks:
         """Plotly hover format for one axis value, e.g. ``%{y:.4g}``."""
         return f"%{{{axis}:.{self.y_significant_digits}g}}"
 
-    def subplot_height_for(self, plot_type: str) -> int:
+    def subplot_height_for(self, definition: type[PlotTypeDefinition]) -> int:
         """
-        Subplot height fallback for *plot_type*.
+        Subplot height fallback for the plot type *definition* stands for.
 
         Grid-laid-out types get their own setting because their subplots are square, so height
         also sets width — one read site, so a new height fallback stays a one-line change.
         """
-        if plot_type in cst.PlotType.GRID_LAYOUT:
+        if definition.GRID_LAYOUT:
             return self.loop_subplot_height
         return self.subplot_height
 
@@ -153,7 +153,9 @@ class Data:
     x: np.ndarray | None = None
     y: np.ndarray | None = None
     timezone: str | None = None  # Stored here, not per-value in x, for efficiency.
-    loop_time_axis: np.ndarray | None = None  # UTC epoch seconds (float64), only for loops
+    # UTC epoch seconds (float64), for any POINT_TIMESTAMPS type: when each drawn point
+    # was recorded, on a plot whose x is not time.
+    point_time_axis: np.ndarray | None = None
     # Hz, only for spectrograms. y then holds the 2-D power (dB), shaped (len(x), len(freq axis)).
     spectrogram_freq_axis: np.ndarray | None = None
 
@@ -179,9 +181,10 @@ class PlotOptions:
     legend_name: str | None = None
     fill_color: str | None = None
     fill_pattern: str | None = None
-    square_plot: bool = False
     plot_height: int | None = None
-    plot_type: str | None = None
+    # The plot type itself, not its name: every capability question is answered off this, so
+    # nothing downstream has to look a plot type up by name.
+    definition: type[PlotTypeDefinition] = Unknown
     plot_priority: float | None = None
     display_timezone: str = field(default_factory=lambda: cst.DISPLAY_TIMEZONE)
     color_range: list[float] | None = None  # Heatmap zmin/zmax (dB), spectrogram only
@@ -191,10 +194,15 @@ class PlotOptions:
             self.y_unit_name = (
                 cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
             )  # a None unit produces terrible results downstream
-        if self.plot_type is None:
-            logger.warning("PlotOptions.plot_type should not be initialized to None")
+        if self.definition is Unknown:
+            logger.warning("PlotOptions.definition should not be left unset")
         if self.plot_priority is None:
             self.plot_priority = cst.DEFAULT_PLOT_PRIORITY
+
+    @property
+    def plot_type(self) -> str:
+        """The plot type's name — for logs, figure titles and anything crossing to JSON."""
+        return self.definition.NAME
 
     @staticmethod
     def combine_from_signals(signals: list["Signal"], group_name: str) -> "PlotOptions":
@@ -228,15 +236,10 @@ class PlotOptions:
         y_axis_range = merge_y_ranges(signals, primary_unit)
         y2_axis_range = merge_y_ranges(signals, secondary_unit)
 
-        # --- Determine plot_type and square_plot ---
-        plot_type = get_unique_or_raise(
-            [signal.trace_options.plot_options.plot_type for signal in signals],
-            "plot_type",
-            context="PlotOptions from signals",
-        )
-        square_plot = get_unique_or_raise(
-            [signal.trace_options.plot_options.square_plot for signal in signals],
-            "square_plot",
+        # --- Determine the plot type ---
+        definition = get_unique_or_raise(
+            [signal.trace_options.plot_options.definition for signal in signals],
+            "definition",
             context="PlotOptions from signals",
         )
 
@@ -266,8 +269,7 @@ class PlotOptions:
             y_axis_range=y_axis_range,
             y2_axis_range=y2_axis_range,
             show_legend=True,
-            plot_type=plot_type,
-            square_plot=square_plot,
+            definition=definition,
             plot_priority=plot_priority,
             display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
         )
@@ -320,13 +322,13 @@ class Quality:
     quality_score: float = 1.0
 
 
-def _signal_utc_float_seconds(signal: "Signal") -> np.ndarray:
+def signal_utc_float_seconds(signal: "Signal") -> np.ndarray:
     """
     Return true UTC epoch float seconds for a signal's time axis.
 
     to_plotly_trace() shifts data.x in-place from its source timezone to naive
-    DISPLAY_TIMEZONE values.  loop_from_signals() is called after that mutation,
-    so data.x no longer holds UTC values.  Re-localise to data.timezone then
+    DISPLAY_TIMEZONE values, and a derived plot type builds from the signal after that
+    mutation, so data.x no longer holds UTC values.  Re-localise to data.timezone then
     convert to UTC nanoseconds via .asi8 (avoids np.issubdtype on tz-aware dtype).
     """
     if signal.data.timezone is None:
@@ -350,8 +352,11 @@ class Signal:
     metadata: Metadata = field(default_factory=Metadata)
     quality: Quality = field(default_factory=Quality)
     kwargs: dict = field(default_factory=dict)
-    # Read by to_plotly_trace, which __post_init__ calls — so it has to be a constructor field.
+    # Both are read by to_plotly_trace, which __post_init__ calls — so they have to be
+    # constructor fields. `render` is how a derived plot type says how it wants drawing;
+    # a plain time_series installs nothing and gets the defaults.
     display_fallbacks: DisplayFallbacks = field(default_factory=DisplayFallbacks)
+    render: RenderSpec = field(default_factory=RenderSpec)
     timing: dict = field(default_factory=dict, init=False)
 
     @staticmethod
@@ -359,7 +364,7 @@ class Signal:
         raw_signal_name: str,
         database_options_specific: dict[str, Any],
         source_options: dict[str, Any],
-        plot_type: str,
+        definition: type[PlotTypeDefinition],
         display_timezone: str | None = None,
     ) -> "TraceOptions":
         """Build trace options from database and source options."""
@@ -403,7 +408,7 @@ class Signal:
             y_axis_range=range_signal_plot,
             y_axis_title=y_axis_title,
             y_unit_name=y_unit_name,
-            plot_type=plot_type,
+            definition=definition,
             plot_priority=plot_priority,
             display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
             **additional_plot_options,
@@ -484,7 +489,7 @@ class Signal:
             raw_signal_name,
             database_options_specific,
             source_options,
-            plot_type=cst.PlotType.TIME_SERIES,
+            definition=TimeSeries,
             display_timezone=display_fallbacks.display_timezone,
         )
         metadata = Metadata(
@@ -513,224 +518,17 @@ class Signal:
         )
         return obj
 
-    @classmethod
-    def loop_from_signals(
-        cls, signal_x: "Signal", signal_y: "Signal", name: str | None = None
-    ) -> "Signal":
-        """Build a loop signal from two time-series; display fallbacks come from *signal_x*."""
-        start_total = time.perf_counter()
-        timing = {}
-
-        if (
-            signal_x.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES
-            or signal_y.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES
-        ):
-            msg = "Both input signals must be of type 'time_series'."
-            raise ValueError(msg)
-
-        x_x = _signal_utc_float_seconds(signal_x)
-        x_y = _signal_utc_float_seconds(signal_y)
-
-        if len(x_x) == 0 or len(x_y) == 0:
-            msg = "One or both input signals have no data points."
-            raise ValueError(msg)
-
-        t_min = max(x_x.min(), x_y.min())
-        t_max = min(x_x.max(), x_y.max())
-
-        if t_min >= t_max:
-            msg = "Signals do not have overlapping time intervals."
-            raise ValueError(msg)
-
-        start = time.perf_counter()
-        x_common = np.union1d(
-            x_x[(x_x >= t_min) & (x_x <= t_max)], x_y[(x_y >= t_min) & (x_y <= t_max)]
-        ).astype(np.float64)
-        timing["x_common"] = time.perf_counter() - start
-
-        start = time.perf_counter()
-
-        y_x = np.interp(x_common, x_x, signal_x.data.y)
-        y_y = np.interp(x_common, x_y, signal_y.data.y)
-
-        timing["interpolation"] = time.perf_counter() - start
-        start = time.perf_counter()
-        data = Data(x=y_x, y=y_y, timezone=None, loop_time_axis=x_common)
-        display_timezone = get_unique_or_raise(
-            [
-                signal_x.trace_options.plot_options.display_timezone,
-                signal_y.trace_options.plot_options.display_timezone,
-            ],
-            "display_timezone",
-            context="loop_from_signals",
-        )
-        plot_options = PlotOptions(
-            plot_type=cst.PlotType.LOOP,
-            x_unit_name=signal_x.trace_options.plot_options.y_unit_name,
-            y_unit_name=signal_y.trace_options.plot_options.y_unit_name,
-            x_axis_range=signal_x.trace_options.plot_options.y_axis_range,
-            y_axis_range=signal_y.trace_options.plot_options.y_axis_range,
-            x_axis_title=f"{signal_x.name} ({signal_x.trace_options.plot_options.y_unit_name})",
-            y_axis_title=f"{signal_y.name} ({signal_y.trace_options.plot_options.y_unit_name})",
-            show_legend=False,
-            square_plot=True,
-            display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
-        )
-        trace_options = TraceOptions(plot_options=plot_options)
-        timing["data_trace_initialization"] = time.perf_counter() - start
-        start = time.perf_counter()
-        obj = cls(
-            raw_name=name or f"{signal_x.raw_name}_vs_{signal_y.raw_name}",
-            name=name or f"{signal_x.name} vs {signal_y.name}",
-            data=data,
-            trace_options=trace_options,
-            metadata=Metadata(),
-            display_fallbacks=signal_x.display_fallbacks,
-        )
-        timing["signal_initialization"] = time.perf_counter() - start
-        timing["total_loop_from_signals"] = time.perf_counter() - start_total
-        obj.timing = timing
-        logger.debug(
-            "⏳ %ss for loop signal '%s' timing details: %s",
-            f"{timing['total_loop_from_signals']:.4f}",
-            obj.raw_name,
-            {key: f"{value:.4f}s" for key, value in timing.items()},
-        )
-        return obj
-
-    @staticmethod
-    def _require_time_series(signal: "Signal") -> None:
-        if signal.trace_options.plot_options.plot_type != cst.PlotType.TIME_SERIES:
-            msg = "Input signal must be of type 'time_series'."
-            raise ValueError(msg)
-
-    @staticmethod
-    def _spectral_params(window_s: float | None, overlap: float | None) -> spectral.SpectralParams:
-        """Build the DSP knobs, letting *None* mean "keep the SpectralParams default"."""
-        defaults = spectral.SpectralParams()
-        return spectral.SpectralParams(
-            window_s=window_s,
-            overlap=overlap if overlap is not None else defaults.overlap,
-        )
-
-    @classmethod
-    def spectrogram_from_signal(
-        cls,
-        signal: "Signal",
-        name: str,
-        freq_range: tuple[float, float],
-        db_range: list[float] | None = None,
-        window_s: float | None = None,
-        overlap: float | None = None,
-    ) -> "Signal":
-        """
-        Build a spectrogram signal from one time-series; display fallbacks come from *signal*.
-
-        Raises ``spectral.SpectralRefusalError`` when the source Signal's grid can't be safely
-        turned into a spectrogram (too short, decimated, out-of-range) — callers decide whether
-        that is a warning or an error.
-        """
-        cls._require_time_series(signal)
-
-        times, freqs, power_db = spectral.spectrogram(
-            signal.data.x,
-            signal.data.y,
-            freq_range=freq_range,
-            period_resampling=signal.metadata.period_resampling,
-            params=cls._spectral_params(window_s, overlap),
-        )
-
-        color_range = (
-            list(db_range) if db_range else list(signal.display_fallbacks.spectrogram_db_range)
-        )
-
-        # signal.data.x/timezone were already converted to display timezone by signal's own
-        # to_plotly_trace() (__post_init__ runs it eagerly) -- nothing left to convert here,
-        # same reasoning as loop_from_signals leaving timezone unset above.
-        data = Data(x=times, y=power_db, timezone=None, spectrogram_freq_axis=freqs)
-        plot_options = PlotOptions(
-            plot_type=cst.PlotType.SPECTROGRAM,
-            y_axis_title="Frequency (Hz)",
-            show_legend=False,
-            color_range=color_range,
-            display_timezone=signal.trace_options.plot_options.display_timezone,
-        )
-        trace_options = TraceOptions(plot_options=plot_options)
-        return cls(
-            raw_name=name,
-            name=name,
-            data=data,
-            trace_options=trace_options,
-            metadata=Metadata(),
-            display_fallbacks=signal.display_fallbacks,
-        )
-
-    @classmethod
-    def psd_from_signal(
-        cls,
-        signal: "Signal",
-        psd_name: str,
-        freq_range: tuple[float, float],
-        db_range: list[float] | None = None,
-        window_s: float | None = None,
-        overlap: float | None = None,
-        label: str | None = None,
-        color: str | None = None,
-        line_dash: str | None = None,
-    ) -> "Signal":
-        """
-        Build one PSD signal from one time-series; display fallbacks come from *signal*.
-
-        One trace, not one subplot: several PSDs share a subplot when a ``psd`` entry names
-        several signals, so the caller groups them. Raises ``spectral.SpectralRefusalError``
-        on a grid that can't be safely analysed, like ``spectrogram_from_signal``. *label*
-        distinguishes two traces built from the same *signal* (e.g. compared with different
-        *window_s*) that would otherwise share both name and raw_name; *color*/*line_dash*
-        do the same visually, since both otherwise default to the source signal's own.
-        """
-        cls._require_time_series(signal)
-
-        freqs, power_db = spectral.psd(
-            signal.data.x,
-            signal.data.y,
-            freq_range=freq_range,
-            period_resampling=signal.metadata.period_resampling,
-            params=cls._spectral_params(window_s, overlap),
-        )
-
-        data = Data(x=freqs, y=power_db, timezone=None)
-        plot_options = PlotOptions(
-            plot_type=cst.PlotType.PSD,
-            x_axis_title="Frequency (Hz)",
-            x_unit_name="Hz",
-            x_axis_range=list(freq_range),
-            y_axis_title="Power spectral density (dB)",
-            y_unit_name="dB",
-            y_axis_range=list(db_range) if db_range else None,
-            show_legend=False,
-            display_timezone=signal.trace_options.plot_options.display_timezone,
-        )
-        trace_options = TraceOptions(
-            plot_options=plot_options,
-            # Match the source signal's colour/dash by default, so an overlay reads as the
-            # same channel; both are overridable to tell apart 2 traces sharing a signal.
-            line_color=color or signal.trace_options.line_color,
-            marker_color=color or signal.trace_options.marker_color,
-            line_dash=line_dash or signal.trace_options.line_dash,
-        )
-        return cls(
-            # Qualified by the PSD's own name: two entries built from one source signal with
-            # different window_s would otherwise share a raw_name as well as a display name.
-            raw_name=f"{psd_name}{cst.QUALIFIED_NAME_SEPARATOR}{label or signal.raw_name}",
-            name=label or signal.name,
-            data=data,
-            trace_options=trace_options,
-            metadata=Metadata(),
-            display_fallbacks=signal.display_fallbacks,
-        )
-
     # ---------------- Regular Methods ----------------
     def to_plotly_trace(self) -> go.Scatter | go.Heatmap:
+        """
+        Draw this signal.
+
+        The default is a time-series Scatter with a compact tooltip; a derived plot type
+        installs its own hover -- or, for a spectrogram, its own trace primitive -- through
+        ``render`` at construction. It cannot be looked up here instead: reaching for the
+        plot type's own module would have ``signal_container`` import a ``plot.py``, which
+        the datasource import cycle turns into an ImportError.
+        """
         start = time.perf_counter()
         if self.trace is not None:
             logger.warning("Trace of %s will be overwritten", self.name)
@@ -740,30 +538,13 @@ class Signal:
                 self.data.x, self.data.timezone, display_tz
             )
 
-        if self.trace_options.plot_options.plot_type == cst.PlotType.SPECTROGRAM:
-            color_range = self.trace_options.plot_options.color_range
-            # z is (freq, time): the transpose of data.y's (time, freq) shape from spectral.py,
-            # since go.Heatmap indexes z as [row=y value][col=x value].
-            trace = go.Heatmap(
-                x=self.data.x,
-                y=self.data.spectrogram_freq_axis,
-                z=self.data.y.T if self.data.y is not None else None,
-                colorscale=cst.Spectral.COLORSCALE,
-                zmin=color_range[0] if color_range else None,
-                zmax=color_range[1] if color_range else None,
-                colorbar={"title": {"text": "dB"}},
-                hovertemplate=(
-                    f"<b>{self.name}</b><br>%{{x}}"
-                    f"<br>%{{y:{cst.Spectral.HOVER_HEATMAP_FREQ_FORMAT}}} Hz"
-                    f"<br>%{{z:{cst.Spectral.HOVER_DB_FORMAT}}} dB<extra></extra>"
-                ),
-            )
+        if self.render.trace_factory is not None:
+            trace = self.render.trace_factory(self)
             elapsed = time.perf_counter() - start
             self.timing["to_plotly_trace"] = elapsed
             logger.debug("⏳ %.4fs for to_plotly_trace for signal '%s'", elapsed, self.name)
             return trace
 
-        x = self.data.x
         line_dict = (
             {
                 "color": self.trace_options.line_color,
@@ -799,53 +580,17 @@ class Signal:
 
         if _template is not None and not _is_keyword:
             hovertemplate = _template
-        elif self.trace_options.plot_options.plot_type == cst.PlotType.TIME_SERIES:
+        elif self.render.hover_template is not None:
+            hovertemplate = self.render.hover_template
+            if self.render.hover_customdata is not None:
+                customdata = self.render.hover_customdata
+        else:
             # Compact single-line template: time is shown once in the "x unified"
             # header, so each trace only needs name + value.
             hovertemplate = f"<b>{self.name}</b>: {_y_fmt}{y_unit_suffix}<extra></extra>"
-        elif self.trace_options.plot_options.plot_type == cst.PlotType.PSD:
-            # x is frequency and y always dB, so neither unit comes from the signal itself.
-            hovertemplate = (
-                f"<b>{self.name}</b>"
-                f"<br>%{{x:{cst.Spectral.HOVER_PSD_FREQ_FORMAT}}} Hz"
-                f"<br>%{{y:{cst.Spectral.HOVER_DB_FORMAT}}} dB<extra></extra>"
-            )
-        elif self.trace_options.plot_options.plot_type == cst.PlotType.LOOP:
-            x_unit_name = self.trace_options.plot_options.x_unit_name
-            _x_unit_suffix = (
-                f" {x_unit_name}"
-                if x_unit_name != cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
-                else ""
-            )
-            # Keyword formatters (fraction, percentage, …) only cover one axis,
-            # so they are intentionally ignored for loops to avoid asymmetric display.
-            _x_fmt = self.display_fallbacks.value_format("x")
-            _loop_y_fmt = self.display_fallbacks.value_format("y")
-            if self.data.loop_time_axis is not None and len(self.data.loop_time_axis) > 0:
-                customdata = loop_time_to_display_strings(
-                    self.data.loop_time_axis, display_timezone=display_tz
-                )
-                _tz_abbr = (
-                    pd.to_datetime(self.data.loop_time_axis[0], unit="s", utc=True)
-                    .tz_convert(display_tz)
-                    .tzname()
-                )
-                hovertemplate = (
-                    f"<b>{self.name}</b><br>"
-                    f"{_x_fmt}{_x_unit_suffix} | {_loop_y_fmt}{y_unit_suffix}<br>"
-                    f"%{{customdata}} ({_tz_abbr})<br>"
-                    "<extra></extra>"
-                )
-            else:
-                hovertemplate = (
-                    f"<b>{self.name}</b><br>"
-                    f"{_x_fmt}{_x_unit_suffix} | {_loop_y_fmt}{y_unit_suffix}<br>"
-                    "<extra></extra>"
-                )
-        else:
-            hovertemplate = None
+
         trace = go.Scatter(
-            x=x,
+            x=self.data.x,
             y=self.data.y,
             name=self.name,
             mode=self.trace_options.mode,
@@ -909,8 +654,7 @@ class PlotGroup:
 @dataclass
 class PlotModel:
     groups: list[PlotGroup]
-    square_plot: bool = False
-    plot_type: str | None = None
+    definition: type[PlotTypeDefinition] = Unknown
     figure: go.Figure | None = None
     computed_height: float | None = None
     timing: dict = field(default_factory=dict)
@@ -926,7 +670,7 @@ class PlotModel:
         Only loops pack side by side; everything else stacks in one column. The UI reads this
         to map a trace back to its subplot, so it must agree with what to_figure() builds.
         """
-        if self.plot_type in cst.PlotType.GRID_LAYOUT and len(self.groups) > 1:
+        if self.definition.GRID_LAYOUT and len(self.groups) > 1:
             return self.display_fallbacks.loops_per_row
         return 1
 
@@ -940,12 +684,12 @@ class PlotModel:
         """
         start = time.perf_counter()
         n_groups = len(self.groups)
-        default_height = self.display_fallbacks.subplot_height_for(self.plot_type)
+        default_height = self.display_fallbacks.subplot_height_for(self.definition)
         n_cols = self.n_cols
 
         # Grid-laid-out plots with multiple subplots use a multi-column grid so square subplots
         # sit side-by-side instead of stacking vertically.
-        if self.plot_type in cst.PlotType.GRID_LAYOUT and n_groups > 1:
+        if self.definition.GRID_LAYOUT and n_groups > 1:
             n_rows = int(np.ceil(n_groups / n_cols))
             subplot_height = self.groups[0].plot_options.plot_height or default_height
             total_fig_height = n_rows * subplot_height
@@ -970,7 +714,7 @@ class PlotModel:
             row_heights = [height / total_fig_height for height in group_heights]
             specs = [[{"secondary_y": True}] for _ in range(n_rows)]
             subplot_titles = [group.name for group in self.groups]
-            fig_width = total_fig_height / n_rows if self.square_plot else None
+            fig_width = total_fig_height / n_rows if self.definition.GRID_LAYOUT else None
             extra_subplot_kwargs = {}
             # Aim for ~80 px between subplots to leave room for subplot titles.
             # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
@@ -1002,7 +746,7 @@ class PlotModel:
             traces_with_axes = group.assign_axes()
             for trace, secondary_y in traces_with_axes:
                 fig.add_trace(trace, row=plotly_row, col=plotly_col, secondary_y=secondary_y)
-                if self.plot_type in cst.PlotType.HAS_COLORBAR:
+                if self.definition.HAS_COLORBAR:
                     # Scope this trace's colorbar to its own row, else it spans the whole figure.
                     added_trace = fig.data[-1]
                     axis_suffix = added_trace.yaxis[1:] if added_trace.yaxis else ""
@@ -1041,7 +785,7 @@ class PlotModel:
 
             # Shared x-axis only applies where x is time. A loop's x is another signal's
             # values and a PSD's is frequency, so each of their subplots stands alone.
-            if self.plot_type in cst.PlotType.TIME_AXIS:
+            if self.definition.TIME_AXIS:
                 x_data_type = type(group.signals[0].data.x)
                 if x_data_type in x_type_to_master_row:
                     master_row = x_type_to_master_row[x_data_type]
@@ -1050,12 +794,12 @@ class PlotModel:
                 else:
                     x_type_to_master_row[x_data_type] = plotly_row
 
-            if self.plot_type in cst.PlotType.RESAMPLED:
+            if self.definition.RESAMPLED:
                 fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
         # Hover header format and panel style are user fallbacks: no database option speaks
         # about either, so they apply unconditionally to the types that want them.
-        if self.plot_type in cst.PlotType.UNIFIED_HOVER:
+        if self.definition.UNIFIED_HOVER:
             fig.update_xaxes(hoverformat=self.display_fallbacks.hover_time_format)
             fig.update_layout(hovermode=self.display_fallbacks.hovermode)
 
@@ -1094,53 +838,27 @@ class PlotModel:
         )
         return fig
 
+    @property
+    def plot_type(self) -> str:
+        """The plot type's name — for logs, figure titles and anything crossing to JSON."""
+        return self.definition.NAME
+
     def __post_init__(self) -> None:
-        """Validate plot_type/square_plot consistency across groups, and build the figure."""
+        """Check every group is the same plot type, then build the figure."""
         groups = self.groups
 
-        plot_type = get_unique_or_raise(
-            [group.plot_options.plot_type for group in groups],
-            "plot_options.plot_type",
-            context="PlotGroups",
+        self.definition = (
+            get_unique_or_raise(
+                [group.plot_options.definition for group in groups],
+                "plot_options.definition",
+                context="PlotGroups",
+            )
+            or Unknown
         )
-        square_plot = get_unique_or_raise(
-            [group.plot_options.square_plot for group in groups],
-            "square_plot",
-            context="PlotGroups",
-        )
-
-        self.name = plot_type
-        self.plot_type = plot_type
-        self.square_plot = square_plot
+        self.name = self.plot_type
 
         self.groups = sorted(groups, key=lambda group: group.plot_options.plot_priority)
         self.figure = self.to_figure()
-
-    @staticmethod
-    def assign_plot_model(
-        plot_group_list: list[PlotGroup], display_fallbacks: DisplayFallbacks | None = None
-    ) -> list["PlotModel"]:
-        """Assign plot groups to plot models by plot type, ordered."""
-        fallbacks = display_fallbacks or DisplayFallbacks()
-        groups = {}
-        for plot_group in plot_group_list:
-            plot_options = plot_group.plot_options
-            # ADR-0005: a height from the database configuration wins; None means it was silent,
-            # so the user's per-plot-type fallback fills the gap.
-            if plot_options.plot_height is None:
-                plot_options.plot_height = fallbacks.subplot_height_for(plot_options.plot_type)
-            groups.setdefault(plot_options.plot_type, []).append(plot_group)
-        page_order = cst.PlotType.PAGE_ORDER
-        ordered = sorted(
-            groups,
-            key=lambda plot_type: (
-                page_order.index(plot_type) if plot_type in page_order else len(page_order)
-            ),
-        )
-        return [
-            PlotModel(groups=groups[plot_type], display_fallbacks=fallbacks)
-            for plot_type in ordered
-        ]
 
     @staticmethod
     def to_html(
