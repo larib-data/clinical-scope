@@ -92,19 +92,17 @@ class PsdSchema(PlotTypeSchema):
     @classmethod
     def validate_entry(cls, entry: Any, path: str) -> list[ValidationIssue]:
         if not isinstance(entry, dict):
-            return []
+            return [
+                ValidationIssue(
+                    severity="error",
+                    path=path,
+                    message=f"Must be a dict of options, got {type(entry).__name__}",
+                )
+            ]
         issues: list[ValidationIssue] = []
         unknown = set(entry) - cls.KNOWN_KEYS
         if unknown:
-            issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    path=path,
-                    message=(
-                        f"Unknown keys: {sorted(unknown)}. Expected: {sorted(cls.KNOWN_KEYS)}"
-                    ),
-                )
-            )
+            issues.append(ValidationIssue.unknown_keys(path, unknown, cls.KNOWN_KEYS))
 
         names = entry.get(cls.Config.SIGNALS)
         if not (isinstance(names, list) and names):
@@ -152,14 +150,7 @@ class PsdSchema(PlotTypeSchema):
             unknown_item = set(item) - entry_config.KNOWN_KEYS
             if unknown_item:
                 issues.append(
-                    ValidationIssue(
-                        severity="warning",
-                        path=item_path,
-                        message=(
-                            f"Unknown keys: {sorted(unknown_item)}. "
-                            f"Expected: {sorted(entry_config.KNOWN_KEYS)}"
-                        ),
-                    )
+                    ValidationIssue.unknown_keys(item_path, unknown_item, entry_config.KNOWN_KEYS)
                 )
         return issues
 
@@ -202,20 +193,20 @@ class PsdSchema(PlotTypeSchema):
         membership: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row_idx, row in rows.iterrows():
             try:
-                datasource = str(row.get("datasource", "")).strip()
-                signal = str(row.get("signal", "")).strip()
+                datasource = cells.text(row, "datasource")
+                signal = cells.text(row, "signal")
                 groups_list = cells.parse_groups(row.get("groups", ""))
 
                 if cells.is_empty(datasource) or cells.is_empty(signal) or not groups_list:
                     continue
 
+                db_range, db_half_written = cells.pair(row, "db_min", "db_max")
                 contribution: dict[str, Any] = {
                     "row_idx": row_idx,
                     entry_config.SIGNAL: signal,
-                    "freq_min": cells.to_float(row.get("freq_min", "")),
-                    "freq_max": cells.to_float(row.get("freq_max", "")),
-                    "db_min": cells.to_float(row.get("db_min", "")),
-                    "db_max": cells.to_float(row.get("db_max", "")),
+                    "freq_range": cells.pair(row, "freq_min", "freq_max")[0],
+                    "db_range": db_range,
+                    "db_half_written": db_half_written,
                 }
                 window_s = cells.to_float(row.get("window_s", ""))
                 if window_s is not None:
@@ -223,13 +214,13 @@ class PsdSchema(PlotTypeSchema):
                 overlap = cells.to_float(row.get("overlap", ""))
                 if overlap is not None:
                     contribution[entry_config.OVERLAP] = overlap
-                label = str(row.get("label", "")).strip()
+                label = cells.text(row, "label")
                 if label:
                     contribution[entry_config.LABEL] = label
-                color = str(row.get("color", "")).strip()
+                color = cells.text(row, "color")
                 if color:
                     contribution[entry_config.COLOR] = color
-                line_dash = str(row.get("line_dash", "")).strip()
+                line_dash = cells.text(row, "line_dash")
                 if line_dash:
                     contribution[entry_config.LINE_DASH] = line_dash
 
@@ -253,32 +244,29 @@ class PsdSchema(PlotTypeSchema):
         for contribution in contributions:
             row_idx = contribution["row_idx"]
 
-            freq_min, freq_max = contribution["freq_min"], contribution["freq_max"]
-            freq_candidate = (
-                [freq_min, freq_max] if freq_min is not None and freq_max is not None else None
-            )
             freq_range = _resolve_shared_range(
                 freq_range,
-                freq_candidate,
+                contribution["freq_range"],
                 label="freq_range",
                 row_idx=row_idx,
                 group_name=group_name,
                 datasource=datasource,
             )
 
-            db_min, db_max = contribution["db_min"], contribution["db_max"]
-            if db_min is not None and db_max is not None:
+            if contribution["db_range"] is not None:
                 db_range = _resolve_shared_range(
                     db_range,
-                    [db_min, db_max],
+                    contribution["db_range"],
                     label="db_range",
                     row_idx=row_idx,
                     group_name=group_name,
                     datasource=datasource,
                 )
-            elif db_min is not None or db_max is not None:
+            elif contribution["db_half_written"]:
                 logger.warning(
-                    "Skipping db_range for psds row %s: db_min/db_max must both be set.", row_idx
+                    "Skipping db_range for %s row %s: db_min/db_max must both be set.",
+                    cls.SHEET_NAME,
+                    row_idx,
                 )
 
             # Shorthand: a plain ref string when the row set no per-entry override.

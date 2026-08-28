@@ -18,7 +18,7 @@ def build(all_signals: list[Signal], fake_name: str, config: Any) -> Signal:
         data=Data(x=source.data.x, y=source.data.y, timezone=source.data.timezone),
         trace_options=TraceOptions(
             plot_options=PlotOptions(
-                plot_type=FakeSchema.NAME,
+                schema=FakeSchema,
                 display_timezone=source.trace_options.plot_options.display_timezone,
             )
         ),

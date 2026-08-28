@@ -22,21 +22,11 @@ from clinical_scope.database_options_parser import (
     validate_database_options,
 )
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
-from clinical_scope.plot_assembly import assemble_plot_groups
+from clinical_scope.plot_assembly import assemble_plot_groups, assemble_plot_models
 from clinical_scope.plot_types import builders, registry
-from clinical_scope.signal_container import PlotModel
 
 from tests.plot_types.fake.plot import BUILDER as FAKE_BUILDER
 from tests.plot_types.fake.schema import FakeSchema
-
-CAPABILITIES = (
-    "TIME_AXIS",
-    "UNIFIED_HOVER",
-    "RESAMPLED",
-    "GRID_LAYOUT",
-    "HAS_COLORBAR",
-    "POINT_TIMESTAMPS",
-)
 
 
 @pytest.fixture
@@ -46,7 +36,8 @@ def fake_plot_type(monkeypatch):
 
     Mirrors how ``registry`` derives its collections from AVAILABLE. The duplication is the
     point: production registers at import, so a runtime registration has to restate the
-    derivation, and this test fails the day the two disagree.
+    derivation, and this test fails the day the two disagree. Capabilities are not among them
+    -- they are read off the schema a Signal carries, so registering the type is enough.
     """
     available = (*registry.AVAILABLE, FakeSchema)
     derived = tuple(schema for schema in available if schema.SECTION_KEY)
@@ -56,15 +47,8 @@ def fake_plot_type(monkeypatch):
     monkeypatch.setattr(registry, "DERIVED", derived)
     monkeypatch.setattr(registry, "SECTION_KEYS", frozenset(s.SECTION_KEY for s in derived))
     monkeypatch.setattr(registry, "NAMES", frozenset(s.NAME for s in available))
-    for capability in CAPABILITIES:
-        monkeypatch.setattr(
-            registry,
-            capability,
-            frozenset(s.NAME for s in available if getattr(s, capability)),
-        )
-    monkeypatch.setattr(
-        builders, "BUILDERS", {**builders.BUILDERS, FakeSchema: FAKE_BUILDER}
-    )
+    monkeypatch.setattr(registry, "_BY_NAME", {s.NAME: s for s in available})
+    monkeypatch.setattr(builders, "BUILDERS", {**builders.BUILDERS, FakeSchema: FAKE_BUILDER})
     return FakeSchema
 
 
@@ -149,7 +133,7 @@ class TestBuildAndRender:
         signal.metadata.datasource_name = "eit"
 
         groups = assemble_plot_groups([signal], {"eit": {"fake": {"F": "sig_a"}}})
-        models = PlotModel.assign_plot_model(groups)
+        models = assemble_plot_models(groups)
 
         fake_model = next(m for m in models if m.plot_type == FakeSchema.NAME)
         assert fake_model.figure.data
@@ -167,7 +151,20 @@ class TestBuildAndRender:
         groups = assemble_plot_groups(
             signals, {"eit": {"fake": {"F1": "sig_a", "F2": "sig_b"}}}
         )
-        models = PlotModel.assign_plot_model(groups)
+        models = assemble_plot_models(groups)
 
         fake_model = next(m for m in models if m.plot_type == FakeSchema.NAME)
         assert fake_model.n_cols > 1
+
+    def test_a_single_grid_subplot_is_still_square(self, fake_plot_type, make_signal):
+        """A grid type with one subplot gets a figure width, from GRID_LAYOUT and nothing else."""
+        del fake_plot_type
+        signal = make_signal(raw_name="sig_a")
+        signal.metadata.datasource_name = "eit"
+
+        groups = assemble_plot_groups([signal], {"eit": {"fake": {"F": "sig_a"}}})
+        models = assemble_plot_models(groups)
+
+        fake_model = next(m for m in models if m.plot_type == FakeSchema.NAME)
+        assert fake_model.n_cols == 1
+        assert fake_model.figure.layout.width is not None

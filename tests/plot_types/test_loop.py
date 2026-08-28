@@ -14,8 +14,8 @@ class TestLoopFromSignals:
         sig_y = make_signal(raw_name="sig_a", name="Vol", unit="mL")
         loop = loop_from_signals(sig_x, sig_y, name="PV loop")
         assert loop.trace_options.plot_options.plot_type == "loop"
-        assert loop.trace_options.plot_options.square_plot is True
-        assert loop.data.loop_time_axis is not None
+        assert loop.trace_options.plot_options.schema.GRID_LAYOUT is True
+        assert loop.data.point_time_axis is not None
         assert len(loop.data.x) == len(loop.data.y)
         assert loop.name == "PV loop"
 

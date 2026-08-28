@@ -222,7 +222,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 if numerics:
                     result[ds].setdefault(cst.DatabaseOptions.NUMERICS, {}).update(numerics)
 
-                timezone = str(row.get("timezone", "")).strip()
+                timezone = _CELL_READER.text(row, "timezone")
                 if timezone:
                     result[ds].setdefault(cst.DatabaseOptions.ADDITIONAL_INFORMATIONS, {})[
                         cst.DatabaseOptions.AdditionalInformations.TIMEZONE
@@ -230,7 +230,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
 
                 trace_config = cst.DatabaseOptions.TraceOptionsConfig
                 trace_options = {}
-                trace_mode = str(row.get("trace_mode", "")).strip()
+                trace_mode = _CELL_READER.text(row, "trace_mode")
                 if trace_mode:
                     trace_options[trace_config.MODE] = trace_mode
                 line_width = _to_float(row.get("line_width", ""))
@@ -239,7 +239,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 opacity = _to_float(row.get("opacity", ""))
                 if opacity is not None:
                     trace_options[trace_config.OPACITY] = opacity
-                marker_symbol = str(row.get("marker_symbol", "")).strip()
+                marker_symbol = _CELL_READER.text(row, "marker_symbol")
                 if marker_symbol:
                     trace_options[trace_config.MARKER_SYMBOL] = marker_symbol
                 if trace_options:
@@ -255,11 +255,11 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             signal_config = cst.DatabaseOptions.SignalConfig
             signal_options = {}
 
-            label = str(row.get("label", "")).strip()
+            label = _CELL_READER.text(row, "label")
             if label and label != signal:
                 signal_options[signal_config.LABEL] = label
 
-            unit = str(row.get("unit", "")).strip()
+            unit = _CELL_READER.text(row, "unit")
             if unit:
                 signal_options[signal_config.UNIT] = unit
 
@@ -276,15 +276,15 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             if priority is not None:
                 signal_options[signal_config.PRIORITY] = priority
 
-            color = str(row.get("color", "")).strip()
+            color = _CELL_READER.text(row, "color")
             if color:
                 signal_options[signal_config.COLOR] = color
 
-            visible_raw = str(row.get("visible", "")).strip()
+            visible_raw = _CELL_READER.text(row, "visible")
             if not _is_empty(visible_raw) and not _is_truthy(visible_raw):
                 signal_options[signal_config.VISIBLE] = False
 
-            line_dash = str(row.get("line_dash", "")).strip()
+            line_dash = _CELL_READER.text(row, "line_dash")
             if line_dash:
                 signal_options[signal_config.LINE_DASH] = line_dash
 
@@ -292,7 +292,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             if period_resampling is not None:
                 signal_options[signal_config.PERIOD_RESAMPLING] = period_resampling
 
-            hover_template = str(row.get("hover_template", "")).strip()
+            hover_template = _CELL_READER.text(row, "hover_template")
             if hover_template:
                 signal_options[signal_config.HOVER_TEMPLATE] = hover_template
 
@@ -305,7 +305,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
                 "marker_symbol",
             )
             for column_name in sentinel_only_columns:
-                if str(row.get(column_name, "")).strip():
+                if _CELL_READER.text(row, column_name):
                     logger.warning(
                         "Row %s (datasource=%r, signal=%r): '%s' is only valid in the "
                         "sentinel ('*') row — ignored for per-signal rows.",
@@ -322,7 +322,7 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             # ----------------------------------------------------------
             # display column → field_display list
             # ----------------------------------------------------------
-            display_raw = str(row.get("display", "")).strip()
+            display_raw = _CELL_READER.text(row, "display")
             field_display = result[ds].setdefault(cst.DatabaseOptions.FIELD_DISPLAY, [])
             if _is_truthy(display_raw) and signal not in field_display:
                 field_display.append(signal)

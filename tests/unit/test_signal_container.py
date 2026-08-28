@@ -19,6 +19,7 @@ from clinical_scope.signal_container import (
     merge_y_ranges,
 )
 from clinical_scope.io.export import print_out_figure
+from clinical_scope.plot_assembly import assemble_plot_models
 from clinical_scope.plot_types.loop.plot import loop_from_signals
 from clinical_scope.plot_types.psd.plot import psd_from_signal
 from clinical_scope.plot_types.spectrogram.plot import spectrogram_from_signal
@@ -37,7 +38,7 @@ def _make_df(n=50, tz="UTC", columns=None):
     return pd.DataFrame(data, index=idx)
 
 
-def _make_signal(raw_name="sig_a", name=None, n=50, unit="mmHg", plot_type="time_series"):
+def _make_signal(raw_name="sig_a", name=None, n=50, unit="mmHg"):
     """Create a minimal Signal using time_series_from_dataframe."""
     df = _make_df(n=n, columns=[raw_name])
     db_opts = {
@@ -336,7 +337,7 @@ class TestPlotModel:
         sig_ts = _make_signal()
         pg_ts = PlotGroup.from_single_signal(sig_ts)
 
-        models = PlotModel.assign_plot_model([pg_ts])
+        models = assemble_plot_models([pg_ts])
         assert len(models) == 1
         assert models[0].plot_type == "time_series"
 
@@ -349,7 +350,7 @@ class TestPlotModel:
         pg_loop = PlotGroup.from_single_signal(loop_from_signals(sig_x, sig_y, name="PV"))
         pg_ts = PlotGroup.from_single_signal(_make_signal())
 
-        models = PlotModel.assign_plot_model([pg_loop, pg_ts])
+        models = assemble_plot_models([pg_loop, pg_ts])
         assert [m.plot_type for m in models] == ["time_series", "loop"]
 
     def test_to_figure_returns_go_figure(self):
@@ -391,7 +392,7 @@ class TestSubplotHeightPrecedence:
         pg = PlotGroup.from_single_signal(_make_signal())
         assert pg.plot_options.plot_height is None  # nothing configured it
 
-        PlotModel.assign_plot_model([pg], DisplayFallbacks(subplot_height=512))
+        assemble_plot_models([pg], DisplayFallbacks(subplot_height=512))
         assert pg.plot_options.plot_height == 512
 
     def test_database_height_wins_over_user_height(self):
@@ -399,7 +400,7 @@ class TestSubplotHeightPrecedence:
         pg = PlotGroup.from_single_signal(_make_signal())
         pg.plot_options.plot_height = 250  # as set through source/database options
 
-        PlotModel.assign_plot_model([pg], DisplayFallbacks(subplot_height=512))
+        assemble_plot_models([pg], DisplayFallbacks(subplot_height=512))
         assert pg.plot_options.plot_height == 250
 
     def test_loop_height_is_separate_from_time_series_height(self):
@@ -408,7 +409,7 @@ class TestSubplotHeightPrecedence:
             loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
         )
 
-        PlotModel.assign_plot_model(
+        assemble_plot_models(
             [pg_ts, pg_loop], DisplayFallbacks(subplot_height=400, loop_subplot_height=800)
         )
         assert pg_ts.plot_options.plot_height == 400
@@ -532,7 +533,7 @@ class TestLoopGrid:
 
     def test_loops_per_row_drives_the_grid(self):
         groups = self._loop_groups(4)
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             groups, DisplayFallbacks(loops_per_row=1, loop_subplot_height=200)
         )[0]
         # 4 loops in one column → 4 rows.
@@ -540,33 +541,33 @@ class TestLoopGrid:
 
     def test_three_per_row_packs_into_two_rows(self):
         groups = self._loop_groups(4)
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             groups, DisplayFallbacks(loops_per_row=3, loop_subplot_height=200)
         )[0]
         assert model.computed_height == 2 * 200
 
     def test_loop_figure_width_follows_columns(self):
         groups = self._loop_groups(4)
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             groups, DisplayFallbacks(loops_per_row=3, loop_subplot_height=200)
         )[0]
         assert model.figure.layout.width == 3 * 200
 
     def test_n_cols_exposes_the_grid_to_the_ui(self):
         """The UI maps traces to subplots with n_cols, so it must follow the setting."""
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             self._loop_groups(4), DisplayFallbacks(loops_per_row=3)
         )[0]
         assert model.n_cols == 3
 
     def test_single_loop_stays_one_column(self):
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             self._loop_groups(1), DisplayFallbacks(loops_per_row=3)
         )[0]
         assert model.n_cols == 1
 
     def test_time_series_is_always_one_column(self):
-        model = PlotModel.assign_plot_model(
+        model = assemble_plot_models(
             [PlotGroup.from_single_signal(_make_signal(raw_name=name)) for name in ("a", "b")],
             DisplayFallbacks(loops_per_row=3),
         )[0]
@@ -587,12 +588,12 @@ class TestSpectrogramFigure:
         ]
 
     def test_stacks_in_one_column_like_time_series(self):
-        model = PlotModel.assign_plot_model(self._spectrogram_groups(3))[0]
+        model = assemble_plot_models(self._spectrogram_groups(3))[0]
         assert model.n_cols == 1
 
     def test_colorbars_are_scoped_to_their_own_row(self):
         """Each heatmap's colorbar must fit its own subplot row, not span the whole figure."""
-        model = PlotModel.assign_plot_model(self._spectrogram_groups(2))[0]
+        model = assemble_plot_models(self._spectrogram_groups(2))[0]
         colorbars = [trace.colorbar for trace in model.figure.data]
         assert len(colorbars) == 2
         # Stacked top-to-bottom: the first group's row sits above the second's.
@@ -602,7 +603,7 @@ class TestSpectrogramFigure:
 
     def test_shares_x_axis_across_stacked_spectrograms(self):
         """Zooming one spectrogram should keep the others aligned, like time-series subplots."""
-        model = PlotModel.assign_plot_model(self._spectrogram_groups(2))[0]
+        model = assemble_plot_models(self._spectrogram_groups(2))[0]
         assert model.figure.layout.xaxis2.matches == "x"
 
 
@@ -619,19 +620,19 @@ class TestPsdFigure:
         )
 
     def test_overlaid_signals_share_one_subplot(self):
-        model = PlotModel.assign_plot_model([self._psd_group("EEG PSD", 3)])[0]
+        model = assemble_plot_models([self._psd_group("EEG PSD", 3)])[0]
         assert model.plot_type == "psd"
         assert len(model.figure.data) == 3
         assert all(isinstance(trace, go.Scatter) for trace in model.figure.data)
 
     def test_stacks_in_one_column(self):
         groups = [self._psd_group(f"psd_{index}", 1) for index in range(3)]
-        assert PlotModel.assign_plot_model(groups)[0].n_cols == 1
+        assert assemble_plot_models(groups)[0].n_cols == 1
 
     def test_does_not_share_x_axis_across_subplots(self):
         """Two psd entries may cover different bands, so linking their frequency axes is wrong."""
         groups = [self._psd_group(f"psd_{index}", 1) for index in range(2)]
-        model = PlotModel.assign_plot_model(groups)[0]
+        model = assemble_plot_models(groups)[0]
         assert model.figure.layout.xaxis2.matches is None
 
     def test_keeps_plotly_hovermode(self):
@@ -649,7 +650,7 @@ class TestPsdFigure:
             self._psd_group("EEG PSD", 1),
             PlotGroup.from_single_signal(_make_signal()),
         ]
-        models = PlotModel.assign_plot_model(groups)
+        models = assemble_plot_models(groups)
         assert [model.plot_type for model in models] == ["time_series", "psd", "loop"]
 
 

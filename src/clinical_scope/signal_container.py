@@ -20,8 +20,7 @@ from clinical_scope.datasource.formatting.timezone import (
 from clinical_scope.io.column_patterns import get_column_name_from_pattern
 from clinical_scope.io.export import print_out_figure
 from clinical_scope.io.paths import get_visualization_path
-from clinical_scope.plot_types import registry as plot_types
-from clinical_scope.plot_types.base import RenderSpec, TimeSeries
+from clinical_scope.plot_types.base import PlotTypeSchema, RenderSpec, TimeSeries, Unknown
 
 logger = logging.getLogger(__name__)
 
@@ -137,14 +136,14 @@ class DisplayFallbacks:
         """Plotly hover format for one axis value, e.g. ``%{y:.4g}``."""
         return f"%{{{axis}:.{self.y_significant_digits}g}}"
 
-    def subplot_height_for(self, plot_type: str) -> int:
+    def subplot_height_for(self, schema: type[PlotTypeSchema]) -> int:
         """
-        Subplot height fallback for *plot_type*.
+        Subplot height fallback for the plot type *schema* describes.
 
         Grid-laid-out types get their own setting because their subplots are square, so height
         also sets width — one read site, so a new height fallback stays a one-line change.
         """
-        if plot_type in plot_types.GRID_LAYOUT:
+        if schema.GRID_LAYOUT:
             return self.loop_subplot_height
         return self.subplot_height
 
@@ -154,7 +153,9 @@ class Data:
     x: np.ndarray | None = None
     y: np.ndarray | None = None
     timezone: str | None = None  # Stored here, not per-value in x, for efficiency.
-    loop_time_axis: np.ndarray | None = None  # UTC epoch seconds (float64), only for loops
+    # UTC epoch seconds (float64), for any POINT_TIMESTAMPS type: when each drawn point
+    # was recorded, on a plot whose x is not time.
+    point_time_axis: np.ndarray | None = None
     # Hz, only for spectrograms. y then holds the 2-D power (dB), shaped (len(x), len(freq axis)).
     spectrogram_freq_axis: np.ndarray | None = None
 
@@ -180,9 +181,10 @@ class PlotOptions:
     legend_name: str | None = None
     fill_color: str | None = None
     fill_pattern: str | None = None
-    square_plot: bool = False
     plot_height: int | None = None
-    plot_type: str | None = None
+    # The plot type itself, not its name: every capability question is answered off this, so
+    # nothing downstream has to look a plot type up by name.
+    schema: type[PlotTypeSchema] = Unknown
     plot_priority: float | None = None
     display_timezone: str = field(default_factory=lambda: cst.DISPLAY_TIMEZONE)
     color_range: list[float] | None = None  # Heatmap zmin/zmax (dB), spectrogram only
@@ -192,10 +194,15 @@ class PlotOptions:
             self.y_unit_name = (
                 cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT
             )  # a None unit produces terrible results downstream
-        if self.plot_type is None:
-            logger.warning("PlotOptions.plot_type should not be initialized to None")
+        if self.schema is Unknown:
+            logger.warning("PlotOptions.schema should not be left unset")
         if self.plot_priority is None:
             self.plot_priority = cst.DEFAULT_PLOT_PRIORITY
+
+    @property
+    def plot_type(self) -> str:
+        """The plot type's name — for logs, figure titles and anything crossing to JSON."""
+        return self.schema.NAME
 
     @staticmethod
     def combine_from_signals(signals: list["Signal"], group_name: str) -> "PlotOptions":
@@ -229,15 +236,10 @@ class PlotOptions:
         y_axis_range = merge_y_ranges(signals, primary_unit)
         y2_axis_range = merge_y_ranges(signals, secondary_unit)
 
-        # --- Determine plot_type and square_plot ---
-        plot_type = get_unique_or_raise(
-            [signal.trace_options.plot_options.plot_type for signal in signals],
-            "plot_type",
-            context="PlotOptions from signals",
-        )
-        square_plot = get_unique_or_raise(
-            [signal.trace_options.plot_options.square_plot for signal in signals],
-            "square_plot",
+        # --- Determine the plot type ---
+        schema = get_unique_or_raise(
+            [signal.trace_options.plot_options.schema for signal in signals],
+            "schema",
             context="PlotOptions from signals",
         )
 
@@ -267,8 +269,7 @@ class PlotOptions:
             y_axis_range=y_axis_range,
             y2_axis_range=y2_axis_range,
             show_legend=True,
-            plot_type=plot_type,
-            square_plot=square_plot,
+            schema=schema,
             plot_priority=plot_priority,
             display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
         )
@@ -363,7 +364,7 @@ class Signal:
         raw_signal_name: str,
         database_options_specific: dict[str, Any],
         source_options: dict[str, Any],
-        plot_type: str,
+        schema: type[PlotTypeSchema],
         display_timezone: str | None = None,
     ) -> "TraceOptions":
         """Build trace options from database and source options."""
@@ -407,7 +408,7 @@ class Signal:
             y_axis_range=range_signal_plot,
             y_axis_title=y_axis_title,
             y_unit_name=y_unit_name,
-            plot_type=plot_type,
+            schema=schema,
             plot_priority=plot_priority,
             display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
             **additional_plot_options,
@@ -488,7 +489,7 @@ class Signal:
             raw_signal_name,
             database_options_specific,
             source_options,
-            plot_type=TimeSeries.NAME,
+            schema=TimeSeries,
             display_timezone=display_fallbacks.display_timezone,
         )
         metadata = Metadata(
@@ -653,8 +654,7 @@ class PlotGroup:
 @dataclass
 class PlotModel:
     groups: list[PlotGroup]
-    square_plot: bool = False
-    plot_type: str | None = None
+    schema: type[PlotTypeSchema] = Unknown
     figure: go.Figure | None = None
     computed_height: float | None = None
     timing: dict = field(default_factory=dict)
@@ -670,7 +670,7 @@ class PlotModel:
         Only loops pack side by side; everything else stacks in one column. The UI reads this
         to map a trace back to its subplot, so it must agree with what to_figure() builds.
         """
-        if self.plot_type in plot_types.GRID_LAYOUT and len(self.groups) > 1:
+        if self.schema.GRID_LAYOUT and len(self.groups) > 1:
             return self.display_fallbacks.loops_per_row
         return 1
 
@@ -684,12 +684,12 @@ class PlotModel:
         """
         start = time.perf_counter()
         n_groups = len(self.groups)
-        default_height = self.display_fallbacks.subplot_height_for(self.plot_type)
+        default_height = self.display_fallbacks.subplot_height_for(self.schema)
         n_cols = self.n_cols
 
         # Grid-laid-out plots with multiple subplots use a multi-column grid so square subplots
         # sit side-by-side instead of stacking vertically.
-        if self.plot_type in plot_types.GRID_LAYOUT and n_groups > 1:
+        if self.schema.GRID_LAYOUT and n_groups > 1:
             n_rows = int(np.ceil(n_groups / n_cols))
             subplot_height = self.groups[0].plot_options.plot_height or default_height
             total_fig_height = n_rows * subplot_height
@@ -714,7 +714,7 @@ class PlotModel:
             row_heights = [height / total_fig_height for height in group_heights]
             specs = [[{"secondary_y": True}] for _ in range(n_rows)]
             subplot_titles = [group.name for group in self.groups]
-            fig_width = total_fig_height / n_rows if self.square_plot else None
+            fig_width = total_fig_height / n_rows if self.schema.GRID_LAYOUT else None
             extra_subplot_kwargs = {}
             # Aim for ~80 px between subplots to leave room for subplot titles.
             # Falls back to min_spacing so very tall figures don't get absurdly large gaps.
@@ -746,7 +746,7 @@ class PlotModel:
             traces_with_axes = group.assign_axes()
             for trace, secondary_y in traces_with_axes:
                 fig.add_trace(trace, row=plotly_row, col=plotly_col, secondary_y=secondary_y)
-                if self.plot_type in plot_types.HAS_COLORBAR:
+                if self.schema.HAS_COLORBAR:
                     # Scope this trace's colorbar to its own row, else it spans the whole figure.
                     added_trace = fig.data[-1]
                     axis_suffix = added_trace.yaxis[1:] if added_trace.yaxis else ""
@@ -785,7 +785,7 @@ class PlotModel:
 
             # Shared x-axis only applies where x is time. A loop's x is another signal's
             # values and a PSD's is frequency, so each of their subplots stands alone.
-            if self.plot_type in plot_types.TIME_AXIS:
+            if self.schema.TIME_AXIS:
                 x_data_type = type(group.signals[0].data.x)
                 if x_data_type in x_type_to_master_row:
                     master_row = x_type_to_master_row[x_data_type]
@@ -794,12 +794,12 @@ class PlotModel:
                 else:
                     x_type_to_master_row[x_data_type] = plotly_row
 
-            if self.plot_type in plot_types.RESAMPLED:
+            if self.schema.RESAMPLED:
                 fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
         # Hover header format and panel style are user fallbacks: no database option speaks
         # about either, so they apply unconditionally to the types that want them.
-        if self.plot_type in plot_types.UNIFIED_HOVER:
+        if self.schema.UNIFIED_HOVER:
             fig.update_xaxes(hoverformat=self.display_fallbacks.hover_time_format)
             fig.update_layout(hovermode=self.display_fallbacks.hovermode)
 
@@ -838,53 +838,27 @@ class PlotModel:
         )
         return fig
 
+    @property
+    def plot_type(self) -> str:
+        """The plot type's name — for logs, figure titles and anything crossing to JSON."""
+        return self.schema.NAME
+
     def __post_init__(self) -> None:
-        """Validate plot_type/square_plot consistency across groups, and build the figure."""
+        """Check every group is the same plot type, then build the figure."""
         groups = self.groups
 
-        plot_type = get_unique_or_raise(
-            [group.plot_options.plot_type for group in groups],
-            "plot_options.plot_type",
-            context="PlotGroups",
+        self.schema = (
+            get_unique_or_raise(
+                [group.plot_options.schema for group in groups],
+                "plot_options.schema",
+                context="PlotGroups",
+            )
+            or Unknown
         )
-        square_plot = get_unique_or_raise(
-            [group.plot_options.square_plot for group in groups],
-            "square_plot",
-            context="PlotGroups",
-        )
-
-        self.name = plot_type
-        self.plot_type = plot_type
-        self.square_plot = square_plot
+        self.name = self.plot_type
 
         self.groups = sorted(groups, key=lambda group: group.plot_options.plot_priority)
         self.figure = self.to_figure()
-
-    @staticmethod
-    def assign_plot_model(
-        plot_group_list: list[PlotGroup], display_fallbacks: DisplayFallbacks | None = None
-    ) -> list["PlotModel"]:
-        """Assign plot groups to plot models by plot type, ordered."""
-        fallbacks = display_fallbacks or DisplayFallbacks()
-        groups = {}
-        for plot_group in plot_group_list:
-            plot_options = plot_group.plot_options
-            # ADR-0005: a height from the database configuration wins; None means it was silent,
-            # so the user's per-plot-type fallback fills the gap.
-            if plot_options.plot_height is None:
-                plot_options.plot_height = fallbacks.subplot_height_for(plot_options.plot_type)
-            groups.setdefault(plot_options.plot_type, []).append(plot_group)
-        page_order = plot_types.PAGE_ORDER
-        ordered = sorted(
-            groups,
-            key=lambda plot_type: (
-                page_order.index(plot_type) if plot_type in page_order else len(page_order)
-            ),
-        )
-        return [
-            PlotModel(groups=groups[plot_type], display_fallbacks=fallbacks)
-            for plot_type in ordered
-        ]
 
     @staticmethod
     def to_html(

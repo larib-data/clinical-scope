@@ -75,13 +75,7 @@ def _check_unknown_keys(section: dict, path_prefix: str, issues: list[Validation
     known = _known_section_keys()
     unknown = set(section.keys()) - known
     if unknown:
-        issues.append(
-            ValidationIssue(
-                severity="warning",
-                path=path_prefix,
-                message=(f"Unknown keys: {sorted(unknown)}. Expected: {sorted(known)}"),
-            )
-        )
+        issues.append(ValidationIssue.unknown_keys(path_prefix, unknown, known))
     signals = section.get(cst.DatabaseOptions.SIGNALS)
     if signals and isinstance(signals, dict):
         for raw_name, signal_options in signals.items():
@@ -90,13 +84,10 @@ def _check_unknown_keys(section: dict, path_prefix: str, issues: list[Validation
             unknown_sig = set(signal_options.keys()) - cst.DatabaseOptions.SignalConfig.KNOWN_KEYS
             if unknown_sig:
                 issues.append(
-                    ValidationIssue(
-                        severity="warning",
-                        path=f"{path_prefix}.signals.{raw_name}",
-                        message=(
-                            f"Unknown keys: {sorted(unknown_sig)}. "
-                            f"Expected: {sorted(cst.DatabaseOptions.SignalConfig.KNOWN_KEYS)}"
-                        ),
+                    ValidationIssue.unknown_keys(
+                        f"{path_prefix}.signals.{raw_name}",
+                        unknown_sig,
+                        cst.DatabaseOptions.SignalConfig.KNOWN_KEYS,
                     )
                 )
 
@@ -161,13 +152,8 @@ def _check_types(section: dict, path_prefix: str, issues: list[ValidationIssue])
         unknown_trace = set(trace_options) - known_trace_keys
         if unknown_trace:
             issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    path=f"{path_prefix}.trace_options",
-                    message=(
-                        f"Unknown keys: {sorted(unknown_trace)}. "
-                        f"Expected: {sorted(known_trace_keys)}"
-                    ),
+                ValidationIssue.unknown_keys(
+                    f"{path_prefix}.trace_options", unknown_trace, known_trace_keys
                 )
             )
 

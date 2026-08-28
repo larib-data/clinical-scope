@@ -14,7 +14,7 @@ from clinical_scope.database_options_parser import (
 from clinical_scope.datasource import registry as datasource_list
 from clinical_scope.datasource.inspection import DataSourceInspection
 from clinical_scope.io.paths import get_annotations_path
-from clinical_scope.plot_assembly import assemble_plot_groups
+from clinical_scope.plot_assembly import assemble_plot_groups, assemble_plot_models
 from clinical_scope.signal_container import (
     DisplayFallbacks,
     PlotModel,
@@ -148,9 +148,7 @@ def main(
     plot_group_list = assemble_plot_groups(all_signal_list, database_options_global)
 
     try:
-        plot_model_list = PlotModel.assign_plot_model(
-            plot_group_list, display_fallbacks=display_fallbacks
-        )
+        plot_model_list = assemble_plot_models(plot_group_list, display_fallbacks=display_fallbacks)
     except Exception:
         logger.exception("❌ Failed to assign PlotModel list.")
         return []

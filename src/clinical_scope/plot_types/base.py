@@ -3,25 +3,30 @@ What a plot type is, independently of any one of them.
 
 A plot type is a module: everything that varies by plot type lives in that type's package,
 and nothing outside ``plot_types/`` branches on plot type. Each package has two halves, split
-by *who may import it* rather than by declarative-versus-machinery:
+by what they are allowed to import:
 
-* ``schema.py`` -- the leaf half. Name, config keys, validation, reference rewriting, xlsx
-  sheet, and the capability flags. Imports nothing above ``constants``.
-* ``plot.py`` -- the top half. Builds Signals, does the maths, installs the rendering.
-  Imports ``signal_container``.
+* ``schema.py`` -- the config half. Name, config keys, validation, reference rewriting, xlsx
+  sheet, and the capability flags. Imports nothing but ``validation``, so reading or checking
+  a configuration never loads a plotting library.
+* ``plot.py`` -- the render half. Builds Signals, does the maths, installs the rendering.
+  Imports ``signal_container``, numpy and plotly.
 
-Capabilities are pure booleans, yet they live in the leaf half, because ``signal_container``
-reads them and may never import a ``plot.py``: ``signal_container`` is reachable from a
-half-initialised ``datasource`` package, so a ``plot.py`` importing ``Signal`` back out of it
-raises ImportError for some entry points and not others. The same constraint is why rendering
-is *pushed* onto a Signal at construction -- see :class:`RenderSpec`.
+Everything a plot type knows travels *on the object*. A Signal carries its schema, which
+answers every capability question, and its :class:`RenderSpec`, which says how to draw it --
+so no render site ever looks a plot type up by name. ``registry.schema_for`` marks the one
+boundary where a name is all there is: a plot type that has been through a Dash store.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from clinical_scope.validation import ValidationIssue
+
+if TYPE_CHECKING:  # never executed, so naming Signal here closes no import cycle
+    import pandas as pd
+
+    from clinical_scope.signal_container import Signal
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,23 @@ class CellReader:
     to_float: Callable[[Any], float | None]
     parse_groups: Callable[[Any], list[str]]
 
+    def text(self, row: Any, column: str) -> str:
+        """One cell as a stripped string, empty when the column is absent."""
+        return str(row.get(column, "")).strip()
+
+    def pair(self, row: Any, low: str, high: str) -> tuple[list[float] | None, bool]:
+        """
+        Read a two-column bound as ``[low, high]``, and say whether only one half was given.
+
+        Both spectral sheets spell the same rule: a half-written pair is a mistake worth
+        reporting, never a bound worth guessing the other end of.
+        """
+        low_value = self.to_float(row.get(low, ""))
+        high_value = self.to_float(row.get(high, ""))
+        if low_value is not None and high_value is not None:
+            return [low_value, high_value], False
+        return None, low_value is not None or high_value is not None
+
 
 @dataclass(frozen=True)
 class PlotBuilder:
@@ -66,7 +88,7 @@ class PlotBuilder:
     names the exceptions it raises as a deliberate, reportable "no" rather than a bug.
     """
 
-    build: Callable[[list, str, Any], Any]
+    build: Callable[[list["Signal"], str, Any], "Signal | list[Signal]"]
     refusals: tuple[type[Exception], ...] = ()
 
 
@@ -118,11 +140,13 @@ class PlotTypeSchema:
     HAS_COLORBAR = False
 
     # Every drawn point carries the instant it was recorded even though x is not time, as
-    # hover customdata and on ``data.loop_time_axis``. The UI offers a time slider over the
+    # hover customdata and on ``data.point_time_axis``. The UI offers a time slider over the
     # plot, and a point annotation on it records a timestamp.
     POINT_TIMESTAMPS = False
 
     # --- Config ------------------------------------------------------------------------------
+    # ``entries``, ``entry`` and ``config`` below are typed Any on purpose: they are raw user
+    # JSON, of whatever shape the file happened to hold. Narrowing them is validate()'s job.
 
     # Keys one configured entry may set; empty when an entry is not a dict of options at all.
     KNOWN_KEYS: frozenset[str] = frozenset()
@@ -174,7 +198,11 @@ class PlotTypeSchema:
         return config
 
     @classmethod
-    def read_sheet(cls, rows: Any, cells: Any) -> dict[str, dict[str, Any]]:  # noqa: ARG003
+    def read_sheet(
+        cls,
+        rows: "pd.DataFrame",  # noqa: ARG003
+        cells: CellReader,  # noqa: ARG003
+    ) -> dict[str, dict[str, Any]]:
         """
         Interpret this type's xlsx sheet as ``{datasource: {entry_name: config}}``.
 
@@ -197,9 +225,26 @@ class TimeSeries(PlotTypeSchema):
     NAME = "time_series"
 
 
+class Unknown(PlotTypeSchema):
+    """
+    A plot type name nothing recognises -- a typo, or a figure built before a type was removed.
+
+    Every capability off, deliberately *not* the time_series defaults: a name the app cannot
+    place should render nothing plausible rather than something that looks almost right.
+    """
+
+    NAME = ""
+    TIME_AXIS = False
+    UNIFIED_HOVER = False
+    RESAMPLED = False
+    GRID_LAYOUT = False
+    HAS_COLORBAR = False
+    POINT_TIMESTAMPS = False
+
+
 # The roster of capability flags, so a seventh is declared in exactly one place. ``registry``
-# derives its sets from this and refuses to import a flag no set exposes -- a capability
-# declared here and missed there would be readable by nothing, silently.
+# checks Unknown turns every one of them off; a flag added here and missed there would be
+# silently on for a name the app does not know.
 CAPABILITIES: tuple[str, ...] = (
     "TIME_AXIS",
     "UNIFIED_HOVER",
@@ -234,8 +279,8 @@ def check_freq_range(freq_range: Any, path: str) -> list[ValidationIssue]:
     ]
 
 
-def require_time_series(signal: Any) -> None:
+def require_time_series(signal: "Signal") -> None:
     """Refuse to derive a plot from anything but a raw time-series."""
-    if signal.trace_options.plot_options.plot_type != TimeSeries.NAME:
+    if signal.trace_options.plot_options.schema is not TimeSeries:
         msg = f"Input signal must be of type '{TimeSeries.NAME}'."
         raise ValueError(msg)

@@ -73,7 +73,7 @@ def spectrogram_from_signal(
     # same reasoning as loop_from_signals leaving timezone unset.
     data = Data(x=times, y=power_db, timezone=None, spectrogram_freq_axis=freqs)
     plot_options = PlotOptions(
-        plot_type=SpectrogramSchema.NAME,
+        schema=SpectrogramSchema,
         y_axis_title="Frequency (Hz)",
         show_legend=False,
         color_range=color_range,

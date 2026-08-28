@@ -37,7 +37,7 @@ this, and stop:
 
 > What you want is new maths on a signal, still drawn against time and sharing a zoom with the
 > signal it came from — a compliance curve, a moving average. There is no home for that today:
-> every builder sets its own `plot_type=`, and nothing builds a derived Signal that renders
+> every builder sets its own `schema=`, and nothing builds a derived Signal that renders
 > *as* a time-series. Making it a plot type would park it on a page section of its own, away
 > from its source. This is a gap worth an issue, not a package.
 
@@ -119,15 +119,16 @@ The top's **contract**, which is where the import cycle shows through:
   is already graded as a warning, so a config naming a signal that never loaded reports as the
   config problem it is.
 - Guard the source with `require_time_series()` — a derived plot derives from a raw signal.
-- Set `PlotOptions(plot_type=<Schema>.NAME, …)`. This is what puts the plot on its own page
-  section.
+- Set `PlotOptions(schema=<Schema>, …)` — the class, not its name. This is what puts the plot
+  on its own page section, and it is also how every capability question about it gets answered
+  downstream: the render layer reads `schema.GRID_LAYOUT`, never a name.
 - **Push** the rendering with `RenderSpec`: a `hover_template` when the trace is a Scatter, a
   `trace_factory` when it is not one at all (a spectrogram is a `go.Heatmap`).
   `to_plotly_trace` cannot reach into the package to pull it.
 - `BUILDER = PlotBuilder(build=build, refusals=(<the Step 4 exception>,))`.
 
 Two things cost more than a package, because they are shared mechanism rather than plot type.
-An axis payload that is neither x nor y is a field on `Data` (`loop_time_axis` and
+An axis payload that is neither x nor y is a field on `Data` (`point_time_axis` and
 `spectrogram_freq_axis` are the two). A user-tunable display default is a `UserOptions` class
 in `constants.py` plus a `DisplayFallbacks` field. Raise either with the user before adding it.
 

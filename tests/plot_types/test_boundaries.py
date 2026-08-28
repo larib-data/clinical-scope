@@ -8,12 +8,11 @@ is a plot type that validates cleanly and renders nothing, and a forgotten branc
 module is what that looks like from the inside. The Dash callbacks are the point of this
 check: the least-tested layer, and the easiest place for a type branch to grow back.
 
-**``signal_container`` imports no ``plot.py``.** The load-bearing one, and what a written
-decision record would otherwise have to hold up. ``signal_container`` is reachable
-from a half-initialised ``datasource`` package, so a ``plot.py`` importing ``Signal`` back out
-of it raises ImportError for some entry points and not others -- a non-deterministic failure
-invisible at the point of violation. It is why rendering is pushed onto a Signal at
-construction rather than pulled at draw time; break the rule and the reason for that is gone.
+**``signal_container`` imports nothing from ``plot_types`` but ``base``.** The data model is
+below every plot type, not beside them: a Signal carries its schema and its RenderSpec, so
+every capability question is answered from the object rather than looked up in the registry.
+Reaching for the registry here is how that inverts -- the core starts knowing the roster, and
+a plot type can no longer be added without editing it.
 
 **No datasource imports ``plot_types`` at all.** A datasource reads a device's files; which
 plot a signal ends up on is nobody's business at load time. ``other`` broke this by scoping
@@ -24,7 +23,7 @@ every level -- a stem is a namespace exactly as a datasource is.
 What the first rule does **not** catch, so a green run is not read as more than it is: a name
 reached through the registry (``registry.LoopSchema.NAME``) rather than written out, and any
 string merely *containing* a type's name rather than equal to it -- ``loops_per_row``,
-``loop_time_axis``, ``spectrogram_freq_axis``. Those are the shared display and payload
+``point_time_axis``, ``spectrogram_freq_axis``. Those are the shared display and payload
 mechanisms, which a plot type uses rather than owns.
 """
 
@@ -69,8 +68,8 @@ def test_no_module_outside_plot_types_names_a_plot_type(module_path):
     )
 
 
-def test_signal_container_imports_no_plot_module():
-    """The rule that keeps the datasource import cycle survivable."""
+def test_signal_container_reaches_no_further_than_plot_types_base():
+    """The data model sits below every plot type, so it never consults the roster."""
     tree = ast.parse((SRC_ROOT / "signal_container.py").read_text(encoding="utf-8"))
 
     imported = set()
@@ -79,13 +78,16 @@ def test_signal_container_imports_no_plot_module():
             imported.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module)
-            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
 
-    offending = sorted(name for name in imported if name.endswith(".plot"))
+    offending = sorted(
+        name
+        for name in imported
+        if "plot_types" in name and name != "clinical_scope.plot_types.base"
+    )
     assert not offending, (
-        f"signal_container imports {offending}. A plot.py imports Signal, so importing one "
-        f"back makes Signal's own module depend on Signal already existing -- push the "
-        f"rendering onto the Signal from build() instead (see plot_types.base.RenderSpec)."
+        f"signal_container imports {offending}. Everything a plot type knows travels on the "
+        f"object -- read the flag off plot_options.schema, or push it from build() as a "
+        f"RenderSpec. Reaching for the registry here makes the data model know the roster."
     )
 
 

@@ -82,10 +82,10 @@ class LoopSchema(PlotTypeSchema):
         by_datasource: dict[str, dict[str, Any]] = {}
         for row_idx, row in rows.iterrows():
             try:
-                datasource = str(row.get("datasource", "")).strip()
-                loop_name = str(row.get("loop_name", "")).strip()
-                x_signal = str(row.get("x_signal", "")).strip()
-                y_signal = str(row.get("y_signal", "")).strip()
+                datasource = cells.text(row, "datasource")
+                loop_name = cells.text(row, "loop_name")
+                x_signal = cells.text(row, "x_signal")
+                y_signal = cells.text(row, "y_signal")
 
                 if any(
                     cells.is_empty(value) for value in (datasource, loop_name, x_signal, y_signal)

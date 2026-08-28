@@ -28,7 +28,7 @@ from clinical_scope import constants as cst
 from clinical_scope.plot_types import builders
 from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.plot_types.base import PlotTypeSchema, SourceSignalNotFoundError
-from clinical_scope.signal_container import PlotGroup, Signal
+from clinical_scope.signal_container import DisplayFallbacks, PlotGroup, PlotModel, Signal
 from clinical_scope.signal_reference import resolve_signal_references
 
 # ==================================================================================================
@@ -341,3 +341,41 @@ def assemble_plot_groups(signals: list[Signal], database_options_global: dict) -
             )
 
     return plot_group_list
+
+
+def assemble_plot_models(
+    plot_group_list: list[PlotGroup], display_fallbacks: DisplayFallbacks | None = None
+) -> list[PlotModel]:
+    """
+    Bucket plot groups into one PlotModel per plot type, in page order.
+
+    Lives here rather than on PlotModel because page order is a fact about the *collection* of
+    plot types, the one thing a single schema cannot carry -- and reading it is what would tie
+    the data model to the registry.
+
+    Args:
+        plot_group_list: Every plot group the run produced, in assembly order.
+        display_fallbacks: Per-person display defaults; a fresh set of defaults if omitted.
+
+    Returns:
+        One PlotModel per plot type present, ordered by ``registry.PAGE_ORDER``.
+
+    """
+    fallbacks = display_fallbacks or DisplayFallbacks()
+    groups: dict[type[PlotTypeSchema], list[PlotGroup]] = {}
+    for plot_group in plot_group_list:
+        plot_options = plot_group.plot_options
+        # ADR-0005: a height from the database configuration wins; None means it was silent,
+        # so the user's per-plot-type fallback fills the gap.
+        if plot_options.plot_height is None:
+            plot_options.plot_height = fallbacks.subplot_height_for(plot_options.schema)
+        groups.setdefault(plot_options.schema, []).append(plot_group)
+
+    page_order = plot_types.PAGE_ORDER
+    ordered = sorted(
+        groups,
+        key=lambda schema: (
+            page_order.index(schema.NAME) if schema.NAME in page_order else len(page_order)
+        ),
+    )
+    return [PlotModel(groups=groups[schema], display_fallbacks=fallbacks) for schema in ordered]

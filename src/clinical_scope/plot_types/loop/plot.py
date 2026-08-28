@@ -108,7 +108,7 @@ def loop_from_signals(signal_x: Signal, signal_y: Signal, name: str | None = Non
 
     timing["interpolation"] = time.perf_counter() - start
     start = time.perf_counter()
-    data = Data(x=y_x, y=y_y, timezone=None, loop_time_axis=x_common)
+    data = Data(x=y_x, y=y_y, timezone=None, point_time_axis=x_common)
     display_timezone = get_unique_or_raise(
         [
             signal_x.trace_options.plot_options.display_timezone,
@@ -118,7 +118,7 @@ def loop_from_signals(signal_x: Signal, signal_y: Signal, name: str | None = Non
         context="loop_from_signals",
     )
     plot_options = PlotOptions(
-        plot_type=LoopSchema.NAME,
+        schema=LoopSchema,
         x_unit_name=signal_x.trace_options.plot_options.y_unit_name,
         y_unit_name=signal_y.trace_options.plot_options.y_unit_name,
         x_axis_range=signal_x.trace_options.plot_options.y_axis_range,
@@ -126,7 +126,6 @@ def loop_from_signals(signal_x: Signal, signal_y: Signal, name: str | None = Non
         x_axis_title=f"{signal_x.name} ({signal_x.trace_options.plot_options.y_unit_name})",
         y_axis_title=f"{signal_y.name} ({signal_y.trace_options.plot_options.y_unit_name})",
         show_legend=False,
-        square_plot=True,
         display_timezone=display_timezone or cst.DISPLAY_TIMEZONE,
     )
     trace_options = TraceOptions(plot_options=plot_options)

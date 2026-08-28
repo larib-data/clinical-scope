@@ -409,10 +409,12 @@ def handle_graph_click(
     no_update_patches = [no_update] * len(graph_ids)
 
     plot_type = subplots_data.get("plot_type")
-    # A plot type can have a non-time x-axis and still know when each point was recorded;
-    # the tooltip carries that timestamp, so the two capabilities are asked separately.
-    point_is_timestamped = plot_type in plot_types.POINT_TIMESTAMPS
-    has_time_axis = plot_type in plot_types.TIME_AXIS
+    # The store holds JSON, so the schema could not be carried across — this is the one place
+    # a name is converted back. A plot type can have a non-time x-axis and still know when each
+    # point was recorded, so the two capabilities are asked separately.
+    schema = plot_types.schema_for(plot_type)
+    point_is_timestamped = schema.POINT_TIMESTAMPS
+    has_time_axis = schema.TIME_AXIS
     if not has_time_axis and annotation_type in TIME_BASED_ANNOTATION_TYPES:
         logger.warning(
             "User attempted to create %s annotation on a '%s' plot. Its x-axis is not time, "
@@ -857,10 +859,10 @@ def render_annotations(
         # subplot-annotations store is still unpopulated, so leave them untouched instead.
         if all_annotations:
             patch.layout.annotations = all_annotations
-        # Same capability set PlotModel.to_figure reads, so the two stay in step. Point mode
+        # Same capability PlotModel.to_figure reads, so the two stay in step. Point mode
         # forces the nearest point; otherwise restore the user's own panel style, since this
         # patch runs after to_figure and would otherwise silently discard it.
-        if subplots_data.get("plot_type") in plot_types.UNIFIED_HOVER:
+        if plot_types.schema_for(subplots_data.get("plot_type")).UNIFIED_HOVER:
             patch.layout.hovermode = (
                 cst.HoverMode.CLOSEST if point_mode_active else display_fallbacks.hovermode
             )

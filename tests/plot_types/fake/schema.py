@@ -48,9 +48,9 @@ class FakeSchema(PlotTypeSchema):
     def read_sheet(cls, rows: Any, cells: Any) -> dict[str, dict[str, Any]]:
         by_datasource: dict[str, dict[str, Any]] = {}
         for _, row in rows.iterrows():
-            datasource = str(row.get("datasource", "")).strip()
-            fake_name = str(row.get("fake_name", "")).strip()
-            signal = str(row.get("signal", "")).strip()
+            datasource = cells.text(row, "datasource")
+            fake_name = cells.text(row, "fake_name")
+            signal = cells.text(row, "signal")
             if any(cells.is_empty(value) for value in (datasource, fake_name, signal)):
                 continue
             by_datasource.setdefault(datasource, {})[fake_name] = signal

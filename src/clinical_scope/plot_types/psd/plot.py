@@ -62,7 +62,7 @@ def psd_from_signal(
 
     data = Data(x=freqs, y=power_db, timezone=None)
     plot_options = PlotOptions(
-        plot_type=PsdSchema.NAME,
+        schema=PsdSchema,
         x_axis_title="Frequency (Hz)",
         x_unit_name="Hz",
         x_axis_range=list(freq_range),

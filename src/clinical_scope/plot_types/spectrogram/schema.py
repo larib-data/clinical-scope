@@ -50,19 +50,17 @@ class SpectrogramSchema(PlotTypeSchema):
     @classmethod
     def validate_entry(cls, entry: Any, path: str) -> list[ValidationIssue]:
         if not isinstance(entry, dict):
-            return []
+            return [
+                ValidationIssue(
+                    severity="error",
+                    path=path,
+                    message=f"Must be a dict of options, got {type(entry).__name__}",
+                )
+            ]
         issues: list[ValidationIssue] = []
         unknown = set(entry) - cls.KNOWN_KEYS
         if unknown:
-            issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    path=path,
-                    message=(
-                        f"Unknown keys: {sorted(unknown)}. Expected: {sorted(cls.KNOWN_KEYS)}"
-                    ),
-                )
-            )
+            issues.append(ValidationIssue.unknown_keys(path, unknown, cls.KNOWN_KEYS))
         if cls.Config.SIGNAL not in entry:
             issues.append(
                 ValidationIssue(
@@ -86,34 +84,33 @@ class SpectrogramSchema(PlotTypeSchema):
         by_datasource: dict[str, dict[str, Any]] = {}
         for row_idx, row in rows.iterrows():
             try:
-                datasource = str(row.get("datasource", "")).strip()
-                spectrogram_name = str(row.get("spectrogram_name", "")).strip()
-                signal = str(row.get("signal", "")).strip()
-                freq_min = cells.to_float(row.get("freq_min", ""))
-                freq_max = cells.to_float(row.get("freq_max", ""))
+                datasource = cells.text(row, "datasource")
+                spectrogram_name = cells.text(row, "spectrogram_name")
+                signal = cells.text(row, "signal")
+                freq_range, _ = cells.pair(row, "freq_min", "freq_max")
 
                 if any(cells.is_empty(value) for value in (datasource, spectrogram_name, signal)):
                     continue
-                if freq_min is None or freq_max is None:
+                if freq_range is None:
                     logger.warning(
-                        "Skipping spectrograms row %s: freq_min/freq_max must both be set.",
+                        "Skipping %s row %s: freq_min/freq_max must both be set.",
+                        cls.SHEET_NAME,
                         row_idx,
                     )
                     continue
 
                 options: dict[str, Any] = {
                     cls.Config.SIGNAL: signal,
-                    cls.Config.FREQ_RANGE: [freq_min, freq_max],
+                    cls.Config.FREQ_RANGE: freq_range,
                 }
 
-                db_min = cells.to_float(row.get("db_min", ""))
-                db_max = cells.to_float(row.get("db_max", ""))
-                if db_min is not None and db_max is not None:
-                    options[cls.Config.DB_RANGE] = [db_min, db_max]
-                elif db_min is not None or db_max is not None:
+                db_range, db_half_written = cells.pair(row, "db_min", "db_max")
+                if db_range is not None:
+                    options[cls.Config.DB_RANGE] = db_range
+                elif db_half_written:
                     logger.warning(
-                        "Skipping db_range for spectrograms row %s: "
-                        "db_min/db_max must both be set.",
+                        "Skipping db_range for %s row %s: db_min/db_max must both be set.",
+                        cls.SHEET_NAME,
                         row_idx,
                     )
 

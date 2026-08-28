@@ -1,9 +1,12 @@
 """
-The builders behind each derived plot type -- the half only the top of the stack may import.
+The builders behind each derived plot type -- the render halves, collected.
 
-Kept apart from ``registry`` because every ``plot.py`` imports ``signal_container``, and
-``signal_container`` imports ``registry``: folding the two together would make importing a
-Signal depend on Signal already existing. Only ``plot_assembly`` reads this module.
+Kept apart from ``registry`` so the two layers stay separable: ``registry`` holds schemas and
+is what the config readers import, while every ``plot.py`` here pulls numpy, plotly and
+``signal_container``. Only ``plot_assembly`` reads this module.
+
+Registering a schema without a builder here raises at import; the reverse cannot happen, since
+a builder is keyed by the schema itself.
 """
 
 from clinical_scope.plot_types import registry

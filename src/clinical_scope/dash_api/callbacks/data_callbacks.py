@@ -52,7 +52,6 @@ from clinical_scope.io.paths import (
     get_output_base,
     get_patient_options_path,
 )
-from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.signal_container import PlotModel
 from clinical_scope.validation import ValidationIssue
 
@@ -1268,7 +1267,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         fig = plot_model.figure
 
         uid = None
-        if plot_model.name in plot_types.RESAMPLED:
+        if plot_model.schema.RESAMPLED:
             uid = str(uuid4())
             fig = FigureResampler(fig)
             FIGURE_RESAMPLER_CACHE[uid] = fig
@@ -1390,7 +1389,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         ]
 
         # --- Time-range slider, for a plot whose points carry a time but whose x does not ---
-        if plot_model.plot_type in plot_types.POINT_TIMESTAMPS:
+        if plot_model.schema.POINT_TIMESTAMPS:
             loop_uid = str(uuid4())
 
             # Traces with no data get a null placeholder rather than being dropped, so cache
@@ -1400,7 +1399,7 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             time_max_global = -np.inf
             for group in plot_model.groups:
                 for signal_obj in group.signals:
-                    time_array = signal_obj.data.loop_time_axis
+                    time_array = signal_obj.data.point_time_axis
                     if time_array is None or signal_obj.data.x is None or signal_obj.data.y is None:
                         trace_data.append({"x": None, "y": None, "time_axis": None})
                         continue
