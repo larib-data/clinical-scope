@@ -44,7 +44,7 @@ class FluxmedSignalsDataSource(DataSourceBase):
             with Path.open(file_path, "r", encoding="utf-8") as file:
                 lines = [line.strip() for line in file]
 
-            # Find header row (accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
+            # Accept multilingual "Time" variants, e.g. "Tiempo", "Tempo".
             header_line_index = None
             for line_index, line in enumerate(lines):
                 if _is_time_header(line):
@@ -57,7 +57,9 @@ class FluxmedSignalsDataSource(DataSourceBase):
                 raise RuntimeError(msg)
 
             units_line_index = header_line_index + 1
-            data_start_index = units_line_index + 6  # skip 6 lines after units
+            # Fixed pre-skip; what these six lines hold is unverified. The numeric-row
+            # filter below drops leftover preamble, but too large a count loses data.
+            data_start_index = units_line_index + 6
 
             column_names = re.split(r"\s+", lines[header_line_index])
             column_units = re.split(r"\s+", lines[units_line_index])

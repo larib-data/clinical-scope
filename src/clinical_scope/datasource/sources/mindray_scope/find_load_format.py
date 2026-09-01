@@ -60,7 +60,11 @@ def _get_name_time_series(file_path: Path) -> str:
 
 
 def _is_float(value: Any) -> bool:
-    """Check if value is a valid float."""
+    """
+    Return True if float(*value*) succeeds.
+
+    ValueError and TypeError give False; anything else (OverflowError) propagates.
+    """
     try:
         float(value)
     except (ValueError, TypeError):
@@ -70,7 +74,11 @@ def _is_float(value: Any) -> bool:
 
 
 def _remove_polluted_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Remove polluted columns where at least one cell contains non-numeric data."""
+    """
+    Drop columns holding a non-numeric cell or a device marker.
+
+    Markers are SampleRate:, TimeStamp(, Beep_Pulse and HeartBeat_.
+    """
     good_columns = [0]  # Keep timestamp column
 
     for column in df.columns[1:]:
@@ -96,7 +104,7 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     tree = parse_xml(path_xml)
     root = tree.getroot()
 
-    # Extract patient info (elements may be absent in some file variants)
+    # Elements may be absent in some file variants.
     def _safe_text(element: Any) -> str | None:
         return element.text if element is not None else None
 
@@ -154,7 +162,12 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
-    """Format waveform data with proper dtypes and precise timestamps."""
+    """
+    Collapse the long-form XML frame into a single value column, indexed per sample.
+
+    Sample time is the segment Time plus SampleIndex / SampleRate. Raises if the file
+    carries more than one waveform type or unit.
+    """
     df = df_waveform.copy()
 
     df["SampleRate"] = df["SampleRate"].astype(int)
@@ -219,7 +232,6 @@ class MindRayScopeDataSource(DataSourceBase):
             if base_name not in file_dict:
                 file_dict[base_name] = file_path
             else:
-                # Compare extensions by preference order
                 existing_ext = file_dict[base_name].suffix.lower()
 
                 try:
@@ -232,7 +244,7 @@ class MindRayScopeDataSource(DataSourceBase):
                 except ValueError:
                     existing_priority = len(extension_preference)
 
-                # Keep file with higher priority (lower index)
+                # Lower index = preferred extension.
                 if current_priority < existing_priority:
                     logger.debug(
                         "Replacing '%s' with '%s' (higher priority extension)",

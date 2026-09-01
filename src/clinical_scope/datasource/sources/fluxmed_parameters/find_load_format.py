@@ -44,7 +44,7 @@ class FluxmedParametersDataSource(DataSourceBase):
             with Path.open(file_path, "r", encoding="utf-8") as file:
                 lines = [line.strip() for line in file.readlines()]
 
-            # Find the column names row(accept multilingual "Time" variants, e.g. "Tiempo", "Tempo")
+            # Accept multilingual "Time" variants, e.g. "Tiempo", "Tempo".
             header_line_index = None
             for line_index, line in enumerate(lines):
                 if _is_time_header(line):
@@ -77,7 +77,6 @@ class FluxmedParametersDataSource(DataSourceBase):
 
             columns = make_unique(columns)
 
-            # Read the data starting from the row after units
             data_start_index = header_line_index + 2
             df = pd.read_csv(
                 file_path,
@@ -93,7 +92,6 @@ class FluxmedParametersDataSource(DataSourceBase):
             df.columns = df.columns.str.strip()
             df = df.apply(pd.to_numeric, errors="coerce")
 
-            # Compute datetime index from the first column (the time-offset column)
             time_column = columns[0]
             timestamps = [
                 start_time + timedelta(seconds=offset_seconds) for offset_seconds in df[time_column]

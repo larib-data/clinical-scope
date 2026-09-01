@@ -1,1 +1,0 @@
-# Mindray scope datasource module

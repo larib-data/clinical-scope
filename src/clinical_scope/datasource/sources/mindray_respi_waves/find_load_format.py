@@ -23,15 +23,11 @@ class MindRayRespiWavesDataSource(DataSourceBase):
     @time_it
     def _load(cls, file_path: Path) -> pd.DataFrame:
         """
-        Load and parse MindRay Respi Waves data.
+        Load a MindRay Respi Waves export, one waveform block per row.
 
-        The data has one row per waveform block (not per timestamp).
-        We need to:
-        1. Create a composite column "full_label_name" = f"{waveform_label}-{waveform_unit}"
-        2. Parse the waveform_samples list and apply scale_factor
-        3. Expand timestamps to nanosecond precision using sampling_rate
-        4. Pivot the data to have one column per unique waveform
-        5. Set the expanded timestamps as the index
+        Each block expands to one row per sample, spaced by 1 / sampling_rate; sample values
+        are scaled by scale_factor. Columns are one per "{waveform_label}-{waveform_unit}"
+        pair, indexed by the expanded timestamps.
 
         Only the file's own offset reaches the index; a naive timestamp stays naive
         here and is localized by _format instead (ADR-0010).
@@ -102,7 +98,6 @@ class MindRayRespiWavesDataSource(DataSourceBase):
                 index=pd.DatetimeIndex([], tz=base_timezone_str, name=cst.DATETIME_INDEX_NAME)
             )
 
-        # Build expanded DataFrame from concatenated arrays (avoids list-of-dicts overhead)
         df_expanded = pd.DataFrame(
             {
                 "event_timestamp": pd.DatetimeIndex(

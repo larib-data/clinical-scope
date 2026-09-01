@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_header_info(lines: list[str]) -> dict[str, datetime]:
-    """Parse header metadata from Servo U file."""
+    """Return the '%% Field: value' header entries whose value parses as a naive datetime."""
     header_info = {}
     for line in lines:
         match = re.match(r"%%\s+(.*?):\s+([\d\-:.\s]+)", line)
@@ -46,7 +46,11 @@ MAPPING_PARTS_EXPECTED = 2
 def extract_column_mapping_from_section(
     lines: list[str],
 ) -> dict[str, str]:
-    """Extract mapping from the section between the 2nd and 3rd '%%%%%%...' separator."""
+    """
+    Map short column codes to their "measurement (unit)" labels.
+
+    The mapping sits between the 2nd and 3rd '%%%%%%' separator lines.
+    """
     separator_indices = [
         line_index
         for line_index, line in enumerate(lines)
@@ -83,7 +87,12 @@ def parse_file(
     first_file: bool = False,
     rename_map: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, datetime, dict[str, str] | None]:
-    """Parse a single Servo U file."""
+    """
+    Parse one Servo U file into a frame indexed by absolute time.
+
+    Set *first_file* for the folder's first file: only that one carries the %% header, so
+    it returns the *start_time* and *rename_map* the caller must pass into every later call.
+    """
     with Path.open(filepath, "r", encoding="utf-8") as file:
         lines = file.readlines()
 

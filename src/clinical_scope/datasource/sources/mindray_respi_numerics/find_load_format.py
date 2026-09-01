@@ -21,12 +21,10 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
     @time_it
     def _load(cls, file_path: Path) -> pd.DataFrame:
         """
-        Load and parse MindRay Respi Numerics data.
+        Load a MindRay Respi Numerics export, one measurement per row.
 
-        The data has one row per measurement (not per timestamp), so we need to:
-        1. Create a composite column "full_label_name" = f"{measurement_label}-{measurement_unit}"
-        2. Pivot the data to have one column per unique measurement
-        3. Set "event_timestamp" as the index
+        Columns are one per "{measurement_label}-{measurement_unit}" pair, indexed by
+        "event_timestamp".
         """
         if file_path.suffix.lower() == ".parquet":
             df = pd.read_parquet(file_path)
@@ -50,7 +48,6 @@ class MindRayRespiNumericsDataSource(DataSourceBase):
             aggfunc="first",
         )
 
-        # Flatten multi-index columns - keep the full label name
         df_pivoted.columns = df_pivoted.columns.get_level_values(0)
 
         df_pivoted.index = pd.to_datetime(df_pivoted.index)
