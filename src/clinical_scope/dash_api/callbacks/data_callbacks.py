@@ -54,7 +54,7 @@ from clinical_scope.io.paths import (
     get_patient_options_path,
 )
 from clinical_scope.signal_container import PlotModel
-from clinical_scope.validation import ValidationIssue
+from clinical_scope.validation import ValidationIssue, log_database_options_issues
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +98,7 @@ def _parse_database_options_file(
         raise ValueError(msg)
 
     issues = validate_database_options(database_options)
-    for issue in issues:
-        if issue.severity == "error":
-            logger.error("database_options [%s]: %s", issue.path, issue.message)
-        elif issue.severity == "warning":
-            logger.warning("database_options [%s]: %s", issue.path, issue.message)
-        else:
-            logger.info("database_options [%s]: %s", issue.path, issue.message)
+    log_database_options_issues(issues, logger)
 
     return database_options, issues
 
