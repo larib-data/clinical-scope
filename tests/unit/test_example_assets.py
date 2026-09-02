@@ -9,6 +9,7 @@ template lost its ``edf/`` folder.
 
 import json
 
+from clinical_scope.database_options_parser import validate_database_options
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 from clinical_scope.datasource.registry import DataSource, detect_datasource_from_folder
 from clinical_scope.plot_types import registry as plot_type_registry
@@ -123,4 +124,23 @@ class TestDemoLayoutTheCliPrints:
         assert (demo / "database_options.json").is_file(), (
             "`clinical-scope --demo` prints this as the app's Database options — see "
             "cst.DEMO_DATABASE_OPTIONS_FILE_NAME"
+        )
+
+
+class TestDemoConfigValidates:
+    """The demo config is the one users copy, so a mistake in it is a mistake they inherit."""
+
+    def test_no_validation_warnings(self, project_root):
+        """A mis-named section here would ship a device whose data the demo never loads."""
+        demo = project_root / "example" / "demo_database"
+        with (demo / "database_options.json").open(encoding="utf-8") as f:
+            config = json.load(f)
+
+        warnings = [
+            issue for issue in validate_database_options(config) if issue.severity == "warning"
+        ]
+
+        assert not warnings, (
+            "the demo config no longer validates cleanly: "
+            f"{[(issue.path, issue.message) for issue in warnings]}\n{REGENERATE_HINT}"
         )

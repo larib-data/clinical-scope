@@ -3,6 +3,7 @@
 import logging
 
 import clinical_scope.constants as cst
+from clinical_scope.datasource.registry import DataSource
 from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.validation import ValidationIssue
 
@@ -12,6 +13,11 @@ logger = logging.getLogger(__name__)
 def _known_section_keys() -> frozenset[str]:
     """Every section key a config may set: the fixed ones, plus one per registered type."""
     return cst.DatabaseOptions.KNOWN_SECTION_KEYS | plot_types.SECTION_KEYS
+
+
+def _known_datasource_names() -> frozenset[str]:
+    """The registered datasource names -- one of the three spellings a section name may take."""
+    return frozenset(datasource.NAME for datasource in DataSource.AVAILABLE)
 
 
 def normalize_database_options(database_options: dict) -> None:
@@ -53,6 +59,24 @@ def validate_database_options(database_options: dict) -> list[ValidationIssue]:
             if isinstance(section, dict):
                 file_stem = section_name[len(cst.OTHER_FILE_PREFIX) :]
                 _validate_section(section, f"other.files.{file_stem}", issues)
+            continue
+        if section_name not in _known_datasource_names():
+            # Reported instead of the key-level complaints below: a cascade about keys no
+            # datasource reads buries the one message that explains why nothing loads.
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    path=section_name,
+                    message=(
+                        f"No datasource is named '{section_name}', so no data is loaded for "
+                        f"this section. Expected a datasource name "
+                        f"({sorted(_known_datasource_names())}), "
+                        f"'{cst.DatabaseOptions.GLOBAL}' for settings shared across "
+                        f"datasources, or '{cst.OTHER_FILE_PREFIX}<file stem>' for a "
+                        f"single file."
+                    ),
+                )
+            )
             continue
         if not isinstance(section, dict):
             continue
