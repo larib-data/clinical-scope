@@ -371,3 +371,38 @@ class AnnotationSet:
                 for annotation in self._annotations
             ]
         )
+
+    def with_moved(
+        self,
+        annotation_id: str,
+        *,
+        data: dict,
+        plot_name: str,
+        subplot_name: str | None,
+        trace_metadata: dict | None,
+    ) -> AnnotationSet:
+        """
+        Re-place the annotation with this id, keeping everything that is not its position.
+
+        Position, plot, scope and the trace it sits on are all re-derived from the new click, so a
+        point dragged into another subplot takes that subplot's axis refs instead of reading its y
+        off one scale and drawing it against another.
+
+        A global annotation stays global: an absent ``subplot_name`` is a choice the user made in
+        the creation modal, not a fact about coordinates, so re-deriving it would silently demote
+        every global annotation the first time anyone nudged it.
+        """
+        return AnnotationSet(
+            [
+                replace(
+                    annotation,
+                    data=data,
+                    plot_name=plot_name,
+                    subplot_name=None if annotation.subplot_name is None else subplot_name,
+                    trace_metadata=trace_metadata,
+                )
+                if annotation.id == annotation_id
+                else annotation
+                for annotation in self._annotations
+            ]
+        )

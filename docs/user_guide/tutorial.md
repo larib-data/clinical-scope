@@ -530,6 +530,12 @@ A creation modal appears where you can set a **label** and **color** before conf
 Spectrograms have a time axis like a time-series plot, so all three types can be placed on them.
 Loop and PSD plots take Point annotations only, because their x-axis is a signal value and a frequency respectively, not a time.
 
+## Moving an Annotation
+
+Each annotation in the list below the toolbar carries a **Move** button. Click it, then click the new position on the plot — a Time Window takes two clicks, the new start and then the new end, exactly like placing one. The annotation keeps its label, colour and group; only its position changes. An annotation placed on all subplots stays on all subplots.
+
+Arming a move leaves the active group, so annotations you place afterwards are ungrouped until you click **▶ Continue** on that group again. **Exit mode** cancels a move you have armed but not finished.
+
 ## Groups
 
 Annotations can be organised into named groups. Click **New Group**, enter a name, and all

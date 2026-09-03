@@ -381,3 +381,107 @@ def test_group_carries_the_annotation_type_as_an_enum():
     group = annotation_set.groups()[0]
     assert isinstance(group, Group)
     assert group.type is AnnotationType.TIME_WINDOW
+
+
+# ==================================================================================================
+# Moving an annotation
+# ==================================================================================================
+
+
+class TestMove:
+    """A move re-derives position, plot, scope and trace from the new click — and nothing else."""
+
+    NEW_DATA = {"x": "2024-06-01T12:00:00+00:00", "xaxis": "x2"}
+
+    @pytest.fixture
+    def annotation_set(self) -> AnnotationSet:
+        return AnnotationSet(
+            [
+                Annotation(
+                    id="a",
+                    type=AnnotationType.TIME_EVENT,
+                    plot_name="time_series",
+                    data={"x": "2024-01-01T00:00:00+00:00", "xaxis": "x"},
+                    label="Intubation",
+                    color="#3498db",
+                    subplot_name="Pressure",
+                    group_id="g1",
+                    group_name="Events",
+                    label_hidden=True,
+                    created_at="2024-01-01T00:00:00+00:00",
+                    extra={"reviewer": "AJ"},
+                ),
+                make_annotation("b"),
+            ]
+        )
+
+    def _moved(self, annotation_set: AnnotationSet, **overrides) -> AnnotationSet:
+        return annotation_set.with_moved(
+            "a",
+            **{
+                "data": self.NEW_DATA,
+                "plot_name": "time_series",
+                "subplot_name": "Flow",
+                "trace_metadata": {"display_name": "Paw"},
+                **overrides,
+            },
+        )
+
+    def test_position_comes_from_the_new_click(self, annotation_set):
+        moved = self._moved(annotation_set).annotations[0]
+        assert moved.data == {"x": "2024-06-01T12:00:00+00:00", "xaxis": "x2"}
+
+    def test_scope_and_trace_are_re_derived(self, annotation_set):
+        """A point moved into another subplot must take that subplot's axis, not keep the old."""
+        moved = self._moved(annotation_set).annotations[0]
+        assert moved.subplot_name == "Flow"
+        assert moved.trace_metadata == {"display_name": "Paw"}
+
+    def test_the_plot_can_change(self, annotation_set):
+        assert self._moved(annotation_set, plot_name="loop").annotations[0].plot_name == "loop"
+
+    def test_identity_and_metadata_survive(self, annotation_set):
+        moved = self._moved(annotation_set).annotations[0]
+        assert moved.id == "a"
+        assert moved.label == "Intubation"
+        assert moved.color == "#3498db"
+        assert moved.group_id == "g1"
+        assert moved.group_name == "Events"
+        assert moved.label_hidden is True
+        assert moved.created_at == "2024-01-01T00:00:00+00:00"
+
+    def test_unowned_keys_survive_a_move(self, annotation_set):
+        """A hand-written annotations.json round-trips through a move (ADR-0012)."""
+        assert self._moved(annotation_set).to_dicts()[0]["reviewer"] == "AJ"
+
+    def test_a_global_annotation_stays_global(self):
+        """Globalness is a modal choice, not a fact about coordinates: a nudge cannot demote it."""
+        annotation_set = AnnotationSet([make_annotation("a", subplot_name=None)])
+        moved = annotation_set.with_moved(
+            "a",
+            data=self.NEW_DATA,
+            plot_name="time_series",
+            subplot_name="Flow",
+            trace_metadata=None,
+        )
+        assert moved.annotations[0].subplot_name is None
+
+    def test_other_annotations_are_untouched(self, annotation_set):
+        untouched = self._moved(annotation_set).annotations[1]
+        assert untouched.data == {"x": "2024-01-01T00:00:00+00:00"}
+        assert untouched.subplot_name == "Pressure"
+
+    def test_moving_an_unknown_id_is_a_no_op(self, annotation_set):
+        moved = annotation_set.with_moved(
+            "missing",
+            data=self.NEW_DATA,
+            plot_name="loop",
+            subplot_name=None,
+            trace_metadata=None,
+        )
+        assert moved.to_dicts() == annotation_set.to_dicts()
+
+    def test_source_set_is_unchanged(self, annotation_set):
+        before = annotation_set.to_dicts()
+        self._moved(annotation_set)
+        assert annotation_set.to_dicts() == before
