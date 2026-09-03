@@ -242,7 +242,8 @@ class TestAnnotationVisibility:
                 make_annotation("b", group_id="g1", hidden=False),
             ]
         )
-        assert all(annotation.hidden for annotation in annotation_set.with_group_hidden_toggled("g1"))
+        hidden = annotation_set.with_group_hidden_toggled("g1")
+        assert all(annotation.hidden for annotation in hidden)
 
     def test_toggling_a_group_leaves_other_groups_alone(self):
         annotation_set = AnnotationSet(

@@ -207,7 +207,8 @@ def _git_revision() -> str:
     if git is None:
         return "unknown"
     try:
-        sha = subprocess.check_output(  # noqa: S603 — git path from shutil.which, args are literals
+        # S603: the git path comes from shutil.which and every argument is a literal.
+        sha = subprocess.check_output(  # noqa: S603
             [git, "rev-parse", "--short", "HEAD"], text=True, stderr=subprocess.DEVNULL
         ).strip()
         dirty = subprocess.call(  # noqa: S603
@@ -304,7 +305,10 @@ def _diff(before_path: str, after_path: str) -> None:
     print(f"before: {before['git_revision']}   after: {after['git_revision']}\n")
 
     index = {(row["count"], row["arm"]): row for row in before["render"]}
-    header = f"{'count':>7}{'arm':>12}{'render x':>11}{'wire x':>9}{'before_KiB':>12}{'after_KiB':>11}"
+    header = (
+        f"{'count':>7}{'arm':>12}{'render x':>11}"
+        f"{'wire x':>9}{'before_KiB':>12}{'after_KiB':>11}"
+    )
     print(header)
     print("-" * len(header))
     for row in after["render"]:

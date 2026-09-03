@@ -26,6 +26,7 @@ Design notes
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 
 from clinical_scope.dash_api.annotations.model import Annotation, AnnotationType
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
@@ -340,7 +341,7 @@ def _overlay_parts(
 def shape_owner_ids(
     annotations: list[Annotation],
     plot_name: str,
-    subplot_rows: list[dict] = (),
+    subplot_rows: Sequence[dict] = (),
     pending_x0: str | None = None,
 ) -> list[str | None]:
     """
@@ -360,7 +361,7 @@ def label_owner_ids(
     annotations: list[Annotation],
     plot_name: str,
     subplot_annotation_count: int,
-    subplot_rows: list[dict] = (),
+    subplot_rows: Sequence[dict] = (),
 ) -> list[str | None]:
     """
     Return the annotation id behind each entry of this plot's ``layout.annotations``.
@@ -379,7 +380,7 @@ def build_figure_overlays(
     annotations: list[Annotation],
     plot_name: str,
     subplot_annotations: list[dict],
-    subplot_rows: list[dict] = (),
+    subplot_rows: Sequence[dict] = (),
     pending_x0: str | None = None,
     pending_xref: str = "x",
 ) -> tuple[list[dict], list[dict]]:
