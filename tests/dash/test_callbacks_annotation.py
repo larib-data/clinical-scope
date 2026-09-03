@@ -12,7 +12,9 @@ from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     activate_group,
     arm_graph_editors,
     cancel_annotation,
+    create_annotation,
     default_mode,
+    delete_group,
     handle_graph_click,
     handle_shape_drag,
     leave_adjust_when_placing,
@@ -183,7 +185,9 @@ class TestMoveMode:
     MODE = 0
     WARNING = 4
     STORE = 5
-    DISPLAY = 6
+    TYPE_BUTTONS = slice(6, 9)
+    DEACTIVATE = 9
+    DISPLAY = 10
 
     @pytest.fixture
     def arm(self, monkeypatch):
@@ -310,6 +314,13 @@ class TestMoveMode:
         assert result[self.MODE]["moving_id"] is None
         assert result[self.MODE]["active"] is False
         assert result[self.DISPLAY] == ""
+        assert result[self.DEACTIVATE]["display"] == "none"
+
+    def test_a_completed_move_unlights_the_type_button(self, arm, click):
+        """Arming lit it; a toolbar over a mode that is off must not still advertise one."""
+        stored = [_stored("time_event")]
+        result = click(arm(stored)[0], stored)
+        assert all("boxShadow" not in style for style in result[self.TYPE_BUTTONS])
 
     def test_a_window_move_needs_two_clicks(self, arm, click):
         stored = [_stored("time_window", data={"x0": "a", "x1": "b", "xaxis": "x"})]
@@ -342,8 +353,13 @@ class TestMoveMode:
         assert result[self.DISPLAY] == ""
 
 
-class TestMovingIdIsClearedByEveryModeWriter:
-    """`moving_id` rides on every ``{**mode}`` copy, so each writer must drop it explicitly."""
+class TestModeTransitionsStartFromTheDefault:
+    """
+    A transition names the fields it keeps; every other one comes back from ``default_mode``.
+
+    ``moving_id`` is the field these were written for, but the guarantee is the general one:
+    a field nobody keeps is cleared, so adding one does not mean revisiting every writer.
+    """
 
     @pytest.fixture
     def armed(self) -> dict:
@@ -395,6 +411,57 @@ class TestMovingIdIsClearedByEveryModeWriter:
             armed, "2024-03-01T10:00:00+00:00", "time_series"
         )
         assert mode["moving_id"] == "a1"
+
+    def test_creating_an_annotation_clears_it(self, armed):
+        """A move never opens the modal, so reaching here means the move is over."""
+        modal_data = {
+            "type": "time_event",
+            "plot_name": "time_series",
+            "x": "2024-03-01T10:00:00+00:00",
+            "xaxis": "x",
+            "subplot_name": "Pressure",
+        }
+        mode = create_annotation(1, modal_data, "Intubation", "#3498db", [], [], armed)[1]
+        assert mode["moving_id"] is None
+
+    def test_starting_a_new_group_cancels_a_pending_move(self, armed, monkeypatch):
+        self._with_ctx(monkeypatch, "create-group-btn")
+        mode = activate_group(1, [], "Suctioning", "time_event", "#000000", [], [], armed)[0]
+        assert mode["moving_id"] is None
+        assert mode["group_name"] == "Suctioning"
+
+    def test_deleting_the_active_group_clears_it(self, armed, monkeypatch):
+        """Defensive: arming a move clears the group, so this pairing is hand-built."""
+        self._with_ctx(monkeypatch, {"type": "group-delete-btn", "id": "g1"})
+        stored = [_stored("time_event", group_id="g1", group_name="Suctioning")]
+        mode = delete_group([1], stored, [], {**armed, "group_id": "g1"})[2]
+        assert mode["moving_id"] is None
+
+    def test_leaving_a_group_clears_its_name_colour_and_scope_too(self, monkeypatch):
+        """Only `group_id` used to be cleared, leaving the rest to be read by a later feature."""
+        self._with_ctx(monkeypatch, "annotation-mode-deactivate")
+        grouped = {
+            **default_mode(),
+            "active": True,
+            "group_id": "g1",
+            "group_name": "Suctioning",
+            "group_color": "#000000",
+            "group_is_global": True,
+        }
+        mode = toggle_annotation_mode(0, 0, 0, 1, grouped)[0]
+        assert mode["group_name"] is None
+        assert mode["group_color"] is None
+        assert mode["group_is_global"] is False
+
+    def test_a_field_no_writer_keeps_comes_back_from_the_default(self):
+        """What makes the table above structural rather than a list somebody must maintain."""
+        stale = {
+            **default_mode(),
+            "moving_id": "a1",
+            "group_name": "Suctioning",
+            "pending_x0": "2024-03-01T10:00:00+00:00",
+        }
+        assert annotation_callbacks._mode_reset(stale, "type") == default_mode()
 
 
 # ==================================================================================================
