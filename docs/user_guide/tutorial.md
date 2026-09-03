@@ -512,6 +512,7 @@ After a successful visualization, the **annotation toolbar** appears above the p
 
 - **Type buttons** — select the annotation type to place next: *Time Event*, *Time Window*, or *Point*.
 - **New Group** — create a named group to organise related annotations.
+- **✥ Adjust** — switch to nudging existing annotations with the mouse instead of placing new ones.
 - **Active group display** — shows which group new annotations will belong to.
 - **Save** — writes all annotations to disk.
 - **Exit mode** — visible while a type is active; click to stop placing annotations without saving.
@@ -534,14 +535,22 @@ Loop and PSD plots take Point annotations only, because their x-axis is a signal
 
 Each annotation in the list below the toolbar carries a **Move** button. Click it, then click the new position on the plot — a Time Window takes two clicks, the new start and then the new end, exactly like placing one. The annotation keeps its label, colour and group; only its position changes. An annotation placed on all subplots stays on all subplots.
 
-Arming a move leaves the active group, so annotations you place afterwards are ungrouped until you click **▶ Continue** on that group again. **Exit mode** cancels a move you have armed but not finished.
+Starting a move leaves the active group, so annotations you place afterwards are ungrouped until you click **▶ Continue** on that group again. **Exit mode** cancels a move you have started but not finished.
+
+## Adjusting an Annotation with the Mouse
+
+**✥ Adjust** turns the annotations already on the plots into handles you can drag: grab a Time Window's edge to stretch it, its body to slide it whole while keeping its length, a Time Event to move it, or a Point to reposition it. For a mark that is a few seconds out, this is quicker than **Move**.
+
+It is a mode you switch on and off, because while it is on the annotations sit over the plots and take the clicks and hover that would otherwise reach the signals underneath — click **✥ Adjust** again when you are done. Placing new annotations and adjusting existing ones cannot both be on: turning one on turns the other off.
+
+A drag only ever changes position along the time axis, and a Point's value. Dragging up or down does nothing — release the mouse and the annotation snaps back to where it belongs. Use **Move** to put an annotation on a different subplot. One thing to watch: a Point on a loop plot carries the time it was taken from, and a drag cannot work that time out again, so a dragged Point loses it. The annotation list shows each Point's time, so you can see when that has happened.
 
 ## Hiding an Annotation
 
 A busy plot — a group of several hundred time windows, say — can be harder to read than the signals underneath it. Two buttons on each annotation in the list control how much of it is drawn:
 
 - **L:on / L:off** hides just the text label, leaving the line, rectangle or point marker in place. Useful when you want to see *where* your marks are without reading them.
-- **V:on / V:off** hides the annotation completely — label, shape and marker alike. Nothing is drawn and nothing is sent to the plot, so hiding a large group is also what makes it redraw quickly again.
+- **V:on / V:off** hides the annotation completely — label, shape and marker alike. Hiding a large group also makes the plot redraw noticeably faster.
 
 Group headers carry the same pair, **Labels: on/off** and **Visible: on/off**, which apply to every annotation in the group at once. If only some members are hidden, the group reads as shown, so one click hides all of it.
 
