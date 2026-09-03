@@ -6,6 +6,7 @@ from dash.exceptions import PreventUpdate
 
 import clinical_scope.constants as cst
 from clinical_scope.dash_api.annotations.model import AnnotationSet, AnnotationType
+from clinical_scope.dash_api.annotations.renderer import label_owner_ids, shape_owner_ids
 from clinical_scope.dash_api.callbacks import annotation_callbacks
 from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     activate_group,
@@ -193,9 +194,7 @@ class TestMoveMode:
                     },
                 ),
             )
-            return start_move(
-                _n=[1], annotations_raw=annotations_raw, mode=mode or default_mode()
-            )
+            return start_move(_n=[1], annotations_raw=annotations_raw, mode=mode or default_mode())
 
         return _arm
 
@@ -424,11 +423,25 @@ class TestHiddenIsNotDrawn:
     """The renderer guard: whatever reaches it, a hidden annotation produces nothing."""
 
     def test_a_visible_time_window_draws_a_shape(self):
-        assert len(_shapes(_render([_stored("time_window", data={
-            "x0": "2024-01-01T00:00:00+00:00",
-            "x1": "2024-01-01T00:01:00+00:00",
-            "xaxis": "x",
-        })])[0])) == 1
+        assert (
+            len(
+                _shapes(
+                    _render(
+                        [
+                            _stored(
+                                "time_window",
+                                data={
+                                    "x0": "2024-01-01T00:00:00+00:00",
+                                    "x1": "2024-01-01T00:01:00+00:00",
+                                    "xaxis": "x",
+                                },
+                            )
+                        ]
+                    )[0]
+                )
+            )
+            == 1
+        )
 
     def test_a_hidden_time_window_draws_nothing(self):
         stored = _stored(
@@ -559,3 +572,112 @@ class TestAnnotationListAtScale:
         stored = _group_of(1000)
         restored = AnnotationSet.from_dicts(stored).to_dicts()
         assert [item["id"] for item in restored] == [item["id"] for item in stored]
+
+
+# ==================================================================================================
+# Shape and label index -> annotation id
+# ==================================================================================================
+
+
+def _window(annotation_id: str, x0: str, x1: str, **overrides) -> dict:
+    return _stored(
+        "time_window",
+        id=annotation_id,
+        data={"x0": x0, "x1": x1, "xaxis": "x"},
+        **overrides,
+    )
+
+
+class TestShapeIndexToAnnotationId:
+    """`shapes[i]` is a position; only the draw order turns it back into an identity."""
+
+    def test_the_order_is_the_order_shapes_were_drawn_in(self):
+        stored = [_stored("time_event", id="a1"), _window("a2", "x0", "x1")]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        owners = shape_owner_ids(annotations, "time_series", _subplots_with_axes()["rows"])
+        assert owners == ["a1", "a2"]
+
+    def test_a_hidden_annotation_takes_no_index(self):
+        stored = [_stored("time_event", id="a1", hidden=True), _stored("time_event", id="a2")]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        owners = shape_owner_ids(annotations, "time_series", _subplots_with_axes()["rows"])
+        assert owners == ["a2"]
+
+    def test_an_annotation_whose_subplot_is_gone_takes_no_index(self):
+        stored = [
+            _stored("time_event", id="a1", subplot_name="Deleted"),
+            _stored("time_event", id="a2"),
+        ]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        owners = shape_owner_ids(annotations, "time_series", _subplots_with_axes()["rows"])
+        assert owners == ["a2"]
+
+    def test_a_point_takes_no_index(self):
+        """Points are layout.annotations, never shapes, so they must not consume an index."""
+        stored = [
+            _stored("point", id="a1", data={"x": "2024-01-01T00:00:00+00:00", "y": 1.0}),
+            _stored("time_event", id="a2"),
+        ]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        owners = shape_owner_ids(annotations, "time_series", _subplots_with_axes()["rows"])
+        assert owners == ["a2"]
+
+    def test_the_pending_preview_is_owned_by_nobody(self):
+        annotations = AnnotationSet.from_dicts([_stored("time_event", id="a1")]).annotations
+        owners = shape_owner_ids(
+            annotations,
+            "time_series",
+            _subplots_with_axes()["rows"],
+            pending_x0="2024-01-01 00:00:00",
+        )
+        assert owners == ["a1", None]
+
+    def test_another_plot_s_annotations_take_no_index(self):
+        stored = [_stored("time_event", id="a1", plot_name="spectrogram")]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        assert shape_owner_ids(annotations, "time_series", []) == []
+
+
+class TestLabelIndexToAnnotationId:
+    """The same inverse for `layout.annotations`, which starts with the subplot titles."""
+
+    def test_the_subplot_titles_are_owned_by_nobody(self):
+        annotations = AnnotationSet.from_dicts([_stored("time_event", id="a1")]).annotations
+        owners = label_owner_ids(annotations, "time_series", 2, _subplots_with_axes()["rows"])
+        assert owners == [None, None, "a1"]
+
+    def test_a_hidden_label_takes_no_index(self):
+        stored = [
+            _stored("time_event", id="a1", label_hidden=True),
+            _stored("time_event", id="a2"),
+        ]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        owners = label_owner_ids(annotations, "time_series", 0, _subplots_with_axes()["rows"])
+        assert owners == ["a2"]
+
+    def test_a_point_owns_both_its_dot_and_its_label(self):
+        stored = [
+            _stored(
+                "point",
+                id="a1",
+                data={"x": "2024-01-01T00:00:00+00:00", "y": 1.0},
+                label_hidden=False,
+            )
+        ]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        owners = label_owner_ids(annotations, "time_series", 0, _subplots_with_axes()["rows"])
+        assert owners == ["a1", "a1"]
+
+    def test_a_point_whose_label_is_hidden_owns_only_its_dot(self):
+        """The dot is drawn either way, so hiding the label drops one entry, not both."""
+        stored = [
+            _stored(
+                "point",
+                id="a1",
+                data={"x": "2024-01-01T00:00:00+00:00", "y": 1.0},
+                label_hidden=True,
+            )
+        ]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        owners = label_owner_ids(annotations, "time_series", 0, _subplots_with_axes()["rows"])
+        assert owners == ["a1"]

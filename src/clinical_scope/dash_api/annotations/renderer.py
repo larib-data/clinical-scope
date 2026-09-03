@@ -281,6 +281,100 @@ def annotation_to_plotly_annotation(
     return None
 
 
+def _overlay_parts(
+    annotations: list[Annotation],
+    plot_name: str,
+    subplot_rows: list[dict],
+    pending_x0: str | None,
+    pending_xref: str,
+) -> tuple[list[dict], list[str | None], list[dict], list[str | None]]:
+    """
+    Build the shapes, the labels, and the annotation id behind each of them, in one walk.
+
+    Plotly reports a drag as a *position* (``shapes[3].x0``, ``annotations[5].x``), never an
+    identity, so the only thing that can turn that index back into an annotation is the order
+    the list was built in.  Deriving both here is what stops the two from drifting: a skip rule
+    added to one is a skip rule added to the other, because there is only one loop.
+    """
+    relevant = [candidate for candidate in annotations if candidate.plot_name == plot_name]
+
+    shapes: list[dict] = []
+    shape_owners: list[str | None] = []
+    our_annotations: list[dict] = []
+    label_owners: list[str | None] = []
+
+    for annotation in relevant:
+        # Ahead of the subplot lookup, so a hidden group of any size costs nothing to render.
+        if annotation.hidden:
+            continue
+        yaxis = _resolve_subplot_yaxis(annotation, subplot_rows)
+        if yaxis == _SUBPLOT_REMOVED:
+            continue
+        annotation_shapes = annotation_to_shapes(annotation, yaxis)
+        shapes.extend(annotation_shapes)
+        shape_owners.extend([annotation.id] * len(annotation_shapes))
+
+        label_hidden = annotation.label_hidden
+
+        if annotation.type == AnnotationType.POINT:
+            # Dot marker always visible (mirrors time-event bar always appearing).
+            our_annotations.append(_point_dot(annotation))
+            label_owners.append(annotation.id)
+            if not label_hidden:
+                our_annotations.append(_point_label(annotation))
+                label_owners.append(annotation.id)
+        elif not label_hidden:
+            label = annotation_to_plotly_annotation(annotation, yaxis)
+            if label is not None:
+                our_annotations.append(label)
+                label_owners.append(annotation.id)
+
+    if pending_x0 is not None:
+        # Last, and owned by nobody: a drag landing on this index belongs to no annotation.
+        shapes.append(make_preview_shape(pending_x0, xref=pending_xref))
+        shape_owners.append(None)
+
+    return shapes, shape_owners, our_annotations, label_owners
+
+
+def shape_owner_ids(
+    annotations: list[Annotation],
+    plot_name: str,
+    subplot_rows: list[dict] = (),
+    pending_x0: str | None = None,
+) -> list[str | None]:
+    """
+    Return the annotation id behind each entry of this plot's ``layout.shapes``, in draw order.
+
+    The inverse of what :func:`build_figure_overlays` draws, for a caller holding a plotly
+    ``shapes[i].x0`` key and needing the annotation it moved.  ``None`` marks a shape no
+    annotation owns (the pending time-window preview).
+    """
+    _shapes, owners, _labels, _label_owners = _overlay_parts(
+        annotations, plot_name, list(subplot_rows), pending_x0, "x"
+    )
+    return owners
+
+
+def label_owner_ids(
+    annotations: list[Annotation],
+    plot_name: str,
+    subplot_annotation_count: int,
+    subplot_rows: list[dict] = (),
+) -> list[str | None]:
+    """
+    Return the annotation id behind each entry of this plot's ``layout.annotations``.
+
+    The same inverse as :func:`shape_owner_ids`, for the other list.  The subplot titles
+    ``make_subplots`` puts at the front are owned by nobody, which is exactly what makes a
+    drag on one of them identifiable as not ours.
+    """
+    _shapes, _owners, _labels, label_owners = _overlay_parts(
+        annotations, plot_name, list(subplot_rows), None, "x"
+    )
+    return [None] * subplot_annotation_count + label_owners
+
+
 def build_figure_overlays(
     annotations: list[Annotation],
     plot_name: str,
@@ -318,33 +412,7 @@ def build_figure_overlays(
         Two lists ready to assign to ``figure.layout``.
 
     """
-    relevant = [candidate for candidate in annotations if candidate.plot_name == plot_name]
-
-    shapes: list[dict] = []
-    our_annotations: list[dict] = []
-
-    for annotation in relevant:
-        # Ahead of the subplot lookup, so a hidden group of any size costs nothing to render.
-        if annotation.hidden:
-            continue
-        yaxis = _resolve_subplot_yaxis(annotation, subplot_rows)
-        if yaxis == _SUBPLOT_REMOVED:
-            continue
-        shapes.extend(annotation_to_shapes(annotation, yaxis))
-
-        label_hidden = annotation.label_hidden
-
-        if annotation.type == AnnotationType.POINT:
-            # Dot marker always visible (mirrors time-event bar always appearing).
-            our_annotations.append(_point_dot(annotation))
-            if not label_hidden:
-                our_annotations.append(_point_label(annotation))
-        elif not label_hidden:
-            label = annotation_to_plotly_annotation(annotation, yaxis)
-            if label is not None:
-                our_annotations.append(label)
-
-    if pending_x0 is not None:
-        shapes.append(make_preview_shape(pending_x0, xref=pending_xref))
-
+    shapes, _owners, our_annotations, _label_owners = _overlay_parts(
+        annotations, plot_name, list(subplot_rows), pending_x0, pending_xref
+    )
     return shapes, subplot_annotations + our_annotations
