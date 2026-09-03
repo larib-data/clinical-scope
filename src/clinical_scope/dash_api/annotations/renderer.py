@@ -17,6 +17,10 @@ Design notes
 * Subplot title annotations created by ``make_subplots`` live in
   ``layout.annotations`` alongside ours.  Callers must merge them; this module
   only produces the *annotation* portion.
+* A ``hidden`` annotation produces nothing — no shape, no label, no point marker — and is
+  skipped before its subplot is even resolved.  ``label_hidden`` is the narrower control,
+  suppressing only the text.  This is the correctness boundary for hiding: whatever the
+  caller passes in, a hidden annotation is never drawn.
 """
 
 from __future__ import annotations
@@ -291,8 +295,8 @@ def build_figure_overlays(
     Parameters
     ----------
     annotations
-        All annotations (filtered here to this ``plot_name``).  Callers must pre-normalise
-        their timestamps to naive display-TZ wall-clock strings via
+        All annotations (filtered here to this ``plot_name``, and to those not ``hidden``).
+        Callers must pre-normalise their timestamps to naive display-TZ wall-clock strings via
         :func:`normalize_annotation_for_display`.
     plot_name
         Name of the target PlotModel.
@@ -320,6 +324,9 @@ def build_figure_overlays(
     our_annotations: list[dict] = []
 
     for annotation in relevant:
+        # Ahead of the subplot lookup, so a hidden group of any size costs nothing to render.
+        if annotation.hidden:
+            continue
         yaxis = _resolve_subplot_yaxis(annotation, subplot_rows)
         if yaxis == _SUBPLOT_REMOVED:
             continue

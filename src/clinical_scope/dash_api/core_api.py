@@ -24,6 +24,7 @@ from clinical_scope.dash_api.helper_api import get_cached_database_options_path,
 from clinical_scope.dash_api.styles import (
     ACTION_CARD,
     ACTION_PANEL_ROW,
+    ANNOTATION_LIST_PANEL_HIDDEN,
     ANNOTATION_MODAL_PANEL,
     ANNOTATION_MODAL_STYLE_HIDDEN,
     ANNOTATION_TOOLBAR_STYLE,
@@ -512,9 +513,10 @@ _annotation_group_modal = html.Div(
 # ---------------------------------------------------------------------------
 # Annotation list panel (shown below toolbar when annotations exist)
 # ---------------------------------------------------------------------------
+# Carries the scroll box itself so it survives every list rebuild (see ANNOTATION_LIST_PANEL).
 _annotation_list_panel = html.Div(
     id="annotation-list-panel",
-    style={"marginBottom": "16px"},
+    style=ANNOTATION_LIST_PANEL_HIDDEN,
     children=[],
 )
 

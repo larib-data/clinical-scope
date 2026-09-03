@@ -50,10 +50,13 @@ pytest tests/datasource/ --update-snapshots -m snapshot
 
 ## Benchmarks
 
-`tests/benchmarks/` holds performance harnesses, not tests — pytest never collects them (they aren't named `test_*.py`), and they take minutes and gigabytes to run. Invoke one directly:
+`tests/benchmarks/` holds performance harnesses, not tests — pytest never collects them (they aren't named `test_*.py`). Invoke one directly:
 
 ```bash
 python tests/benchmarks/bench_pushdown.py --size-gb 2 --out after.json
+python tests/benchmarks/bench_annotations.py --counts 100,1000,5000
 ```
 
-`bench_pushdown.py` measures parquet read pruning (datetime row pushdown + column pruning) as a before/after A/B; its docstring carries the methodology and the design constraints that keep the comparison valid ([ADR-0007](../docs/adr/0007-read-time-pruning-is-an-optimization.md)).
+`bench_pushdown.py` measures parquet read pruning (datetime row pushdown + column pruning) as a before/after A/B; its docstring carries the methodology and the design constraints that keep the comparison valid ([ADR-0007](../docs/adr/0007-read-time-pruning-is-an-optimization.md)). It takes minutes and gigabytes.
+
+`bench_annotations.py` measures what a large annotation set costs to render, across three arms of the same fixture — everything drawn, labels hidden, wholly hidden — so the two visibility controls can be compared. It needs no fixtures on disk and runs in seconds. Both scripts share the same CLI shape (`--out`, `--diff`).

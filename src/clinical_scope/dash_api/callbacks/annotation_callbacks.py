@@ -33,13 +33,18 @@ from clinical_scope.dash_api.annotations.renderer import (
     normalize_annotation_for_display,
 )
 from clinical_scope.dash_api.styles import (
+    ANNOTATION_LIST_PANEL,
+    ANNOTATION_LIST_PANEL_HIDDEN,
     ANNOTATION_LIST_ROW,
     ANNOTATION_MODAL_STYLE_HIDDEN,
     ANNOTATION_MODAL_STYLE_SHOWN,
     ANNOTATION_TOOLBAR_STYLE,
     BUTTON_ANNOTATION_ACTIVE,
     BUTTON_ANNOTATION_INACTIVE,
+    BUTTON_ANNOTATION_ROW,
     BUTTON_ANNOTATION_SAVE,
+    BUTTON_ANNOTATION_SMALL,
+    BUTTON_DISABLED_OVERLAY,
     BUTTON_MODAL_CLOSE,
     COLOR_PREVIEW_SWATCH,
 )
@@ -63,12 +68,6 @@ _TYPE_ICONS = {
     AnnotationType.TIME_EVENT.value: "│",
     AnnotationType.TIME_WINDOW.value: "▭",
     AnnotationType.POINT.value: "•",
-}
-
-_SMALL_BTN: dict = {
-    **BUTTON_ANNOTATION_INACTIVE,
-    "padding": "2px 7px",
-    "fontSize": "11px",
 }
 
 
@@ -214,12 +213,18 @@ def _annotation_list_row(
     info_parts = [part for part in [time_str, trace_str, scope_str] if part]
     info_line = " · ".join(info_parts)
 
+    # Hiding dominates: while it is on, the label toggle can have no visible effect and a
+    # move could not be verified, so both are disabled rather than left to act invisibly.
     label_text = "L:off" if annotation.label_hidden else "L:on"
     label_style = {
-        **_SMALL_BTN,
+        **BUTTON_ANNOTATION_ROW,
         "backgroundColor": "#6c757d" if annotation.label_hidden else "#adb5bd",
-        "padding": "1px 5px",
-        "fontSize": "10px",
+        **(BUTTON_DISABLED_OVERLAY if annotation.hidden else {}),
+    }
+    visible_text = "V:off" if annotation.hidden else "V:on"
+    visible_style = {
+        **BUTTON_ANNOTATION_ROW,
+        "backgroundColor": "#6c757d" if annotation.hidden else "#adb5bd",
     }
 
     return html.Div(
@@ -253,14 +258,27 @@ def _annotation_list_row(
                 label_text,
                 id={"type": "annotation-label-toggle-btn", "id": annotation.id},
                 n_clicks=0,
+                disabled=annotation.hidden,
+                title="Show or hide this annotation's text label",
                 style=label_style,
+            ),
+            html.Button(
+                visible_text,
+                id={"type": "annotation-hidden-toggle-btn", "id": annotation.id},
+                n_clicks=0,
+                title="Show or hide this annotation entirely",
+                style=visible_style,
             ),
             html.Button(
                 "Move",
                 id={"type": "annotation-move-btn", "id": annotation.id},
                 n_clicks=0,
+                disabled=annotation.hidden,
                 title="Click here, then click the new position on the plot",
-                style={**_SMALL_BTN, "padding": "1px 5px", "fontSize": "10px"},
+                style={
+                    **BUTTON_ANNOTATION_ROW,
+                    **(BUTTON_DISABLED_OVERLAY if annotation.hidden else {}),
+                },
             ),
             html.Button(
                 "×",  # noqa: RUF001
@@ -1029,8 +1047,17 @@ def render_annotations(
 def _group_header_row(group: Group, is_expanded: bool) -> html.Div:
     """Build a collapsible group header row with per-group action buttons."""
     toggle_icon = "▼" if is_expanded else "▶"
-    labels_label = "Labels: off" if group.is_hidden else "Labels: on"
-    labels_style = {**_SMALL_BTN, "backgroundColor": "#6c757d" if group.is_hidden else "#adb5bd"}
+    labels_label = "Labels: off" if group.labels_hidden else "Labels: on"
+    labels_style = {
+        **BUTTON_ANNOTATION_SMALL,
+        "backgroundColor": "#6c757d" if group.labels_hidden else "#adb5bd",
+        **(BUTTON_DISABLED_OVERLAY if group.hidden else {}),
+    }
+    visible_label = "Visible: off" if group.hidden else "Visible: on"
+    visible_style = {
+        **BUTTON_ANNOTATION_SMALL,
+        "backgroundColor": "#6c757d" if group.hidden else "#adb5bd",
+    }
 
     type_icon = _TYPE_ICONS.get(group.type, "?")
     type_label = _TYPE_LABELS.get(group.type, group.type)
@@ -1097,19 +1124,26 @@ def _group_header_row(group: Group, is_expanded: bool) -> html.Div:
                 "▶ Continue",
                 id={"type": "group-continue-btn", "id": group.id},
                 n_clicks=0,
-                style=_SMALL_BTN,
+                style=BUTTON_ANNOTATION_SMALL,
             ),
             html.Button(
                 labels_label,
-                id={"type": "group-hide-btn", "id": group.id},
+                id={"type": "group-labels-btn", "id": group.id},
                 n_clicks=0,
+                disabled=group.hidden,
                 style=labels_style,
+            ),
+            html.Button(
+                visible_label,
+                id={"type": "group-hidden-btn", "id": group.id},
+                n_clicks=0,
+                style=visible_style,
             ),
             html.Button(
                 "Delete all",
                 id={"type": "group-delete-btn", "id": group.id},
                 n_clicks=0,
-                style={**_SMALL_BTN, "backgroundColor": "#dc3545"},
+                style={**BUTTON_ANNOTATION_SMALL, "backgroundColor": "#dc3545"},
             ),
         ],
         style={
@@ -1125,6 +1159,7 @@ def _group_header_row(group: Group, is_expanded: bool) -> html.Div:
 
 @callback(
     Output("annotation-list-panel", "children"),
+    Output("annotation-list-panel", "style"),
     Output("annotation-count-badge", "children"),
     Input("annotation-store", "data"),
     Input("annotation-expanded-groups-store", "data"),
@@ -1135,11 +1170,16 @@ def update_annotation_list(
     annotations_raw: list,
     expanded_groups: list,
     display_timezone: str | None,
-) -> tuple[list | html.Div, str]:
-    """Rebuild the annotation list, always sorted by group with collapsible group sections."""
+) -> tuple[list, dict, str]:
+    """
+    Rebuild the annotation list, always sorted by group with collapsible group sections.
+
+    Only the *contents* are rebuilt: the scrolling element is the layout's own panel div, so a
+    label or visibility toggle leaves the reader where they were scrolled to.
+    """
     annotation_set = AnnotationSet.from_dicts(annotations_raw)
     if not len(annotation_set):
-        return [], ""
+        return [], ANNOTATION_LIST_PANEL_HIDDEN, ""
 
     expanded_set = set(expanded_groups or [])
     groups = annotation_set.groups()
@@ -1178,33 +1218,24 @@ def update_annotation_list(
         )
 
     count = len(annotation_set)
+    # An all-hidden set draws an empty plot; without the suffix the badge would read as
+    # "1000 annotations" beside it, which looks like a failed load rather than a choice.
+    hidden_count = sum(1 for annotation in annotation_set if annotation.hidden)
     count_text = f"{count} annotation{'s' if count != 1 else ''}"
-    panel = html.Div(
-        [
-            html.Div(
-                "Annotations",
-                style={
-                    "fontWeight": "bold",
-                    "fontSize": "13px",
-                    "color": "#555",
-                    "marginBottom": "4px",
-                    "borderBottom": "1px solid #dee2e6",
-                    "paddingBottom": "4px",
-                },
-            ),
-            *rows,
-        ],
+    if hidden_count:
+        count_text += f" · {hidden_count} hidden"
+    header = html.Div(
+        "Annotations",
         style={
-            "border": "1px solid #dee2e6",
-            "borderRadius": "6px",
-            "padding": "8px 12px",
-            "backgroundColor": "#fff",
-            "marginBottom": "12px",
-            "maxHeight": "300px",
-            "overflowY": "auto",
+            "fontWeight": "bold",
+            "fontSize": "13px",
+            "color": "#555",
+            "marginBottom": "4px",
+            "borderBottom": "1px solid #dee2e6",
+            "paddingBottom": "4px",
         },
     )
-    return panel, count_text
+    return [header, *rows], ANNOTATION_LIST_PANEL, count_text
 
 
 # ---------------------------------------------------------------------------
@@ -1238,7 +1269,7 @@ def toggle_group_expand(_n_clicks_list: list, expanded_groups: list) -> list:
 
 @callback(
     Output("annotation-store", "data", allow_duplicate=True),
-    Input({"type": "group-hide-btn", "id": ALL}, "n_clicks"),
+    Input({"type": "group-labels-btn", "id": ALL}, "n_clicks"),
     State("annotation-store", "data"),
     prevent_initial_call=True,
 )
@@ -1251,6 +1282,28 @@ def toggle_group_labels(_n: list, annotations_raw: list) -> list:
         raise PreventUpdate
     group_id = triggered_id["id"]
     return AnnotationSet.from_dicts(annotations_raw).with_group_labels_toggled(group_id).to_dicts()
+
+
+# ---------------------------------------------------------------------------
+# 10b-bis. Toggle whether a whole group is drawn at all
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("annotation-store", "data", allow_duplicate=True),
+    Input({"type": "group-hidden-btn", "id": ALL}, "n_clicks"),
+    State("annotation-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_group_hidden(_n: list, annotations_raw: list) -> list:
+    """Flip `hidden` for all group annotations: hide all if any shown, show all otherwise."""
+    if not ctx.triggered or ctx.triggered[0]["value"] <= 0:
+        raise PreventUpdate
+    triggered_id = ctx.triggered_id
+    if triggered_id is None:
+        raise PreventUpdate
+    group_id = triggered_id["id"]
+    return AnnotationSet.from_dicts(annotations_raw).with_group_hidden_toggled(group_id).to_dicts()
 
 
 # ---------------------------------------------------------------------------
@@ -1541,6 +1594,28 @@ def toggle_annotation_label(_n: list, annotations_raw: list) -> list:
         raise PreventUpdate
     annotation_id = triggered_id["id"]
     return AnnotationSet.from_dicts(annotations_raw).with_label_toggled(annotation_id).to_dicts()
+
+
+# ---------------------------------------------------------------------------
+# 16b. Toggle whether an individual annotation is drawn at all
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("annotation-store", "data", allow_duplicate=True),
+    Input({"type": "annotation-hidden-toggle-btn", "id": ALL}, "n_clicks"),
+    State("annotation-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_annotation_hidden(_n: list, annotations_raw: list) -> list:
+    """Flip `hidden` on the annotation whose visibility button was clicked."""
+    if not ctx.triggered or ctx.triggered[0]["value"] <= 0:
+        raise PreventUpdate
+    triggered_id = ctx.triggered_id
+    if triggered_id is None:
+        raise PreventUpdate
+    annotation_id = triggered_id["id"]
+    return AnnotationSet.from_dicts(annotations_raw).with_hidden_toggled(annotation_id).to_dicts()
 
 
 # ---------------------------------------------------------------------------

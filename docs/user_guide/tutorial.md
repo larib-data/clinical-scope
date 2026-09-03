@@ -536,6 +536,19 @@ Each annotation in the list below the toolbar carries a **Move** button. Click i
 
 Arming a move leaves the active group, so annotations you place afterwards are ungrouped until you click **▶ Continue** on that group again. **Exit mode** cancels a move you have armed but not finished.
 
+## Hiding an Annotation
+
+A busy plot — a group of several hundred time windows, say — can be harder to read than the signals underneath it. Two buttons on each annotation in the list control how much of it is drawn:
+
+- **L:on / L:off** hides just the text label, leaving the line, rectangle or point marker in place. Useful when you want to see *where* your marks are without reading them.
+- **V:on / V:off** hides the annotation completely — label, shape and marker alike. Nothing is drawn and nothing is sent to the plot, so hiding a large group is also what makes it redraw quickly again.
+
+Group headers carry the same pair, **Labels: on/off** and **Visible: on/off**, which apply to every annotation in the group at once. If only some members are hidden, the group reads as shown, so one click hides all of it.
+
+While an annotation is hidden its label and **Move** buttons are greyed out — their effect would not be visible until you show it again. Hiding never deletes anything: the annotation stays in the list, the count above it reports how many are hidden, and showing it again restores exactly the label setting it had.
+
+Visibility is saved with everything else, so a hidden group stays hidden the next time you open the patient. If you open a file and the plot looks empty, check the annotation count — it will tell you how many are hidden.
+
 ## Groups
 
 Annotations can be organised into named groups. Click **New Group**, enter a name, and all

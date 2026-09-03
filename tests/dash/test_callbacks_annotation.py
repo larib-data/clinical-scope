@@ -5,7 +5,7 @@ from dash import no_update
 from dash.exceptions import PreventUpdate
 
 import clinical_scope.constants as cst
-from clinical_scope.dash_api.annotations.model import AnnotationType
+from clinical_scope.dash_api.annotations.model import AnnotationSet, AnnotationType
 from clinical_scope.dash_api.callbacks import annotation_callbacks
 from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     activate_group,
@@ -14,7 +14,10 @@ from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     handle_graph_click,
     render_annotations,
     start_move,
+    toggle_annotation_hidden,
     toggle_annotation_mode,
+    toggle_group_hidden,
+    update_annotation_list,
 )
 
 
@@ -387,3 +390,172 @@ class TestMovingIdIsClearedByEveryModeWriter:
             armed, "2024-03-01T10:00:00+00:00", "time_series"
         )
         assert mode["moving_id"] == "a1"
+
+
+# ==================================================================================================
+# Whole-annotation visibility
+# ==================================================================================================
+
+
+def _shapes(patch) -> list:
+    """The list this patch assigns to layout.shapes, or [] if it assigns none."""
+    for operation in patch.to_plotly_json()["operations"]:
+        if operation["location"] == ["layout", "shapes"]:
+            return operation["params"]["value"]
+    return []
+
+
+def _render(stored: list) -> list:
+    """Render one time-series graph whose subplots match `_stored`'s subplot_name."""
+    return render_annotations(
+        stored, default_mode(), [{"name": "time_series"}], [_subplots_with_axes()], "UTC", {}
+    )
+
+
+def _with_ctx(monkeypatch, triggered_id):
+    monkeypatch.setattr(
+        annotation_callbacks,
+        "ctx",
+        type("Ctx", (), {"triggered": [{"value": 1}], "triggered_id": triggered_id}),
+    )
+
+
+class TestHiddenIsNotDrawn:
+    """The renderer guard: whatever reaches it, a hidden annotation produces nothing."""
+
+    def test_a_visible_time_window_draws_a_shape(self):
+        assert len(_shapes(_render([_stored("time_window", data={
+            "x0": "2024-01-01T00:00:00+00:00",
+            "x1": "2024-01-01T00:01:00+00:00",
+            "xaxis": "x",
+        })])[0])) == 1
+
+    def test_a_hidden_time_window_draws_nothing(self):
+        stored = _stored(
+            "time_window",
+            hidden=True,
+            data={
+                "x0": "2024-01-01T00:00:00+00:00",
+                "x1": "2024-01-01T00:01:00+00:00",
+                "xaxis": "x",
+            },
+        )
+        assert _shapes(_render([stored])[0]) == []
+
+    def test_a_hidden_time_event_draws_nothing(self):
+        assert _shapes(_render([_stored("time_event", hidden=True)])[0]) == []
+
+    def test_hiding_one_of_two_leaves_the_other_drawn(self):
+        stored = [
+            _stored("time_event", hidden=True),
+            {**_stored("time_event"), "id": "a2"},
+        ]
+        assert len(_shapes(_render(stored)[0])) == 1
+
+    def test_a_hidden_annotation_draws_no_label_either(self):
+        """`hidden` dominates: label_hidden=False must not resurrect the text."""
+        stored = _stored("time_event", hidden=True, label_hidden=False, label="Intubation")
+        operations = _render([stored])[0].to_plotly_json()["operations"]
+        drawn = [op for op in operations if op["location"] == ["layout", "annotations"]]
+        assert drawn == []
+
+
+class TestVisibilityToggleCallbacks:
+    """The two new buttons flip `hidden` and nothing else."""
+
+    def test_toggling_one_annotation_hides_it(self, monkeypatch):
+        _with_ctx(monkeypatch, {"type": "annotation-hidden-toggle-btn", "id": "a1"})
+        result = toggle_annotation_hidden(_n=[1], annotations_raw=[_stored("time_event")])
+        assert result[0]["hidden"] is True
+
+    def test_toggling_it_again_shows_it(self, monkeypatch):
+        _with_ctx(monkeypatch, {"type": "annotation-hidden-toggle-btn", "id": "a1"})
+        result = toggle_annotation_hidden(
+            _n=[1], annotations_raw=[_stored("time_event", hidden=True)]
+        )
+        assert result[0]["hidden"] is False
+
+    def test_toggling_leaves_the_label_choice_alone(self, monkeypatch):
+        _with_ctx(monkeypatch, {"type": "annotation-hidden-toggle-btn", "id": "a1"})
+        result = toggle_annotation_hidden(
+            _n=[1], annotations_raw=[_stored("time_event", label_hidden=True)]
+        )
+        assert result[0]["label_hidden"] is True
+
+    def test_toggling_a_group_hides_every_member(self, monkeypatch):
+        _with_ctx(monkeypatch, {"type": "group-hidden-btn", "id": "g1"})
+        stored = [
+            _stored("time_event", group_id="g1", group_name="Suctioning"),
+            {**_stored("time_event", group_id="g1", group_name="Suctioning"), "id": "a2"},
+        ]
+        result = toggle_group_hidden(_n=[1], annotations_raw=stored)
+        assert [item["hidden"] for item in result] == [True, True]
+
+    def test_an_unclicked_button_raises(self, monkeypatch):
+        monkeypatch.setattr(
+            annotation_callbacks,
+            "ctx",
+            type("Ctx", (), {"triggered": [{"value": 0}], "triggered_id": None}),
+        )
+        with pytest.raises(PreventUpdate):
+            toggle_annotation_hidden(_n=[0], annotations_raw=[_stored("time_event")])
+
+
+# ==================================================================================================
+# Scale invariants — behaviour that must hold at 1000 annotations, asserted without timing
+# ==================================================================================================
+
+
+def _group_of(count: int, **overrides) -> list[dict]:
+    return [
+        {
+            **_stored("time_event", group_id="g1", group_name="Suctioning", **overrides),
+            "id": f"a{index}",
+        }
+        for index in range(count)
+    ]
+
+
+class TestAnnotationListAtScale:
+    """A large group must cost the panel a constant number of rows while collapsed."""
+
+    def test_a_collapsed_group_of_1000_builds_one_row(self):
+        """Title div + one group header. A refactor that built rows then filtered would fail."""
+        children, _, _ = update_annotation_list(_group_of(1000), [], "UTC")
+        assert len(children) == 2
+
+    def test_expanding_it_builds_a_row_per_member(self):
+        children, _, _ = update_annotation_list(_group_of(1000), ["g1"], "UTC")
+        assert len(children) == 1002
+
+    def test_the_badge_reports_the_hidden_count(self):
+        _, _, badge = update_annotation_list(_group_of(1000, hidden=True), [], "UTC")
+        assert badge == "1000 annotations · 1000 hidden"
+
+    def test_the_badge_stays_plain_when_nothing_is_hidden(self):
+        _, _, badge = update_annotation_list(_group_of(1000), [], "UTC")
+        assert badge == "1000 annotations"
+
+    def test_the_callback_returns_no_scrolling_element(self):
+        """The scroll box is the layout's own div; rebuilding it here would reset scrollTop."""
+        children, _, _ = update_annotation_list(_group_of(20), ["g1"], "UTC")
+        assert not any("overflowY" in (child.style or {}) for child in children)
+
+    def test_an_empty_list_collapses_the_panel(self):
+        children, style, badge = update_annotation_list([], [], "UTC")
+        assert children == []
+        assert style["display"] == "none"
+        assert badge == ""
+
+    def test_a_populated_list_shows_the_panel(self):
+        _, style, _ = update_annotation_list(_group_of(3), [], "UTC")
+        assert "display" not in style
+        assert style["overflowY"] == "auto"
+
+    def test_1000_hidden_annotations_draw_no_shapes(self):
+        assert _shapes(_render(_group_of(1000, hidden=True))[0]) == []
+
+    def test_1000_annotations_round_trip_preserving_order_and_ids(self):
+        stored = _group_of(1000)
+        restored = AnnotationSet.from_dicts(stored).to_dicts()
+        assert [item["id"] for item in restored] == [item["id"] for item in stored]

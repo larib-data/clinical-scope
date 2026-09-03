@@ -310,6 +310,35 @@ ANNOTATION_LIST_ROW: dict = {
     "fontSize": "13px",
 }
 
+# The scrolling container belongs to the layout, not to the list callback's output: rebuilding
+# it on every annotation change would destroy the scrolled element and snap the panel back to
+# the top, which is unusable when toggling one annotation on and off repeatedly.
+ANNOTATION_LIST_PANEL: dict = {
+    "border": "1px solid #dee2e6",
+    "borderRadius": "6px",
+    "padding": "8px 12px",
+    "backgroundColor": "#fff",
+    "marginBottom": "16px",
+    "maxHeight": "300px",
+    "overflowY": "auto",
+}
+
+# Same element, collapsed — so an empty list shows no bordered box while the container survives.
+ANNOTATION_LIST_PANEL_HIDDEN: dict = {**ANNOTATION_LIST_PANEL, "display": "none"}
+
+BUTTON_ANNOTATION_SMALL: dict = {
+    **BUTTON_ANNOTATION_INACTIVE,
+    "padding": "2px 7px",
+    "fontSize": "11px",
+}
+
+# The list rows carry four buttons in the width the toolbar gives three, so they sit tighter.
+BUTTON_ANNOTATION_ROW: dict = {**BUTTON_ANNOTATION_SMALL, "padding": "1px 5px", "fontSize": "10px"}
+
+# Layered on top when a control cannot act: the label and Move buttons of a hidden annotation,
+# whose effect would stay invisible until it is shown again.
+BUTTON_DISABLED_OVERLAY: dict = {"opacity": 0.4, "cursor": "not-allowed"}
+
 # ---------------------------------------------------------------------------
 # Colour picker (annotation & group creation modals)
 # ---------------------------------------------------------------------------
