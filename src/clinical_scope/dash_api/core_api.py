@@ -137,6 +137,15 @@ _annotation_toolbar = html.Div(
                     n_clicks=0,
                     style=BUTTON_ANNOTATION_INACTIVE,
                 ),
+                # Arming plotly's shape editor makes every annotation swallow the clicks and
+                # hover of the plot beneath it, so it is a mode the user leaves rather than
+                # the default state of the plot.
+                html.Button(
+                    "✥ Adjust",
+                    id="annotation-adjust-btn",
+                    n_clicks=0,
+                    style=BUTTON_ANNOTATION_INACTIVE,
+                ),
                 html.Span(
                     "",
                     id="annotation-active-group-display",
@@ -581,6 +590,7 @@ app.layout = html.Div(
         # Global annotation stores
         dcc.Store(id="annotation-store", data=[]),
         dcc.Store(id="annotation-mode-store", data=default_mode()),
+        dcc.Store(id="annotation-adjust-store", data=False),
         dcc.Store(id="annotation-modal-data", data={}),
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),

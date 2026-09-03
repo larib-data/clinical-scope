@@ -29,6 +29,7 @@ from clinical_scope.dash_api.styles import (
     BUTTON_RELOAD,
     CARD_STYLE,
     DATASOURCE_CARD_STYLE,
+    GRAPH_CONFIG,
     INSPECTION_MODAL_STYLE_HIDDEN,
     INSPECTION_MODAL_STYLE_SHOWN,
     SECTION_HEADER_STYLE,
@@ -1378,7 +1379,8 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             dcc.Graph(
                 id={"type": "graph", "name": plot_model.name},
                 figure=fig,
-                config={"displayModeBar": True},
+                # Built disarmed; the Adjust toolbar toggle swaps in the editable config.
+                config=GRAPH_CONFIG,
                 style=graph_style,
             ),
             dcc.Store(id={"type": "resampler-store", "name": plot_model.name}, data=uid),

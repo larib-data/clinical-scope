@@ -10,12 +10,16 @@ from clinical_scope.dash_api.annotations.renderer import label_owner_ids, shape_
 from clinical_scope.dash_api.callbacks import annotation_callbacks
 from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     activate_group,
+    arm_graph_editors,
     cancel_annotation,
     default_mode,
     handle_graph_click,
+    handle_shape_drag,
+    leave_adjust_when_placing,
     render_annotations,
     start_move,
     toggle_annotation_hidden,
+    toggle_adjust_mode,
     toggle_annotation_mode,
     toggle_group_hidden,
     update_annotation_list,
@@ -42,25 +46,25 @@ class TestRenderAnnotationsHovermode:
     def test_time_series_gets_hovermode(self):
         graph_ids = [{"name": "time_series"}]
         subplots_list = [_subplots_data("time_series")]
-        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
+        patches = render_annotations([], default_mode(), False, graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 1
 
     def test_loop_gets_no_hovermode(self):
         graph_ids = [{"name": "loop"}]
         subplots_list = [_subplots_data("loop")]
-        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
+        patches = render_annotations([], default_mode(), False, graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
     def test_spectrogram_gets_no_hovermode(self):
         graph_ids = [{"name": "spectrogram"}]
         subplots_list = [_subplots_data("spectrogram")]
-        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
+        patches = render_annotations([], default_mode(), False, graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
     def test_psd_gets_no_hovermode(self):
         graph_ids = [{"name": "psd"}]
         subplots_list = [_subplots_data("psd")]
-        patches = render_annotations([], default_mode(), graph_ids, subplots_list, "UTC", {})
+        patches = render_annotations([], default_mode(), False, graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
     def test_user_hovermode_survives_an_annotation_redraw(self):
@@ -70,6 +74,7 @@ class TestRenderAnnotationsHovermode:
         patches = render_annotations(
             [],
             default_mode(),
+            False,
             graph_ids,
             subplots_list,
             "UTC",
@@ -85,6 +90,7 @@ class TestRenderAnnotationsHovermode:
         patches = render_annotations(
             [],
             mode,
+            False,
             graph_ids,
             subplots_list,
             "UTC",
@@ -407,7 +413,13 @@ def _shapes(patch) -> list:
 def _render(stored: list) -> list:
     """Render one time-series graph whose subplots match `_stored`'s subplot_name."""
     return render_annotations(
-        stored, default_mode(), [{"name": "time_series"}], [_subplots_with_axes()], "UTC", {}
+        stored,
+        default_mode(),
+        False,
+        [{"name": "time_series"}],
+        [_subplots_with_axes()],
+        "UTC",
+        {},
     )
 
 
@@ -575,7 +587,7 @@ class TestAnnotationListAtScale:
 
 
 # ==================================================================================================
-# Shape and label index -> annotation id
+# Dragging a time shape on the plot
 # ==================================================================================================
 
 
@@ -585,6 +597,18 @@ def _window(annotation_id: str, x0: str, x1: str, **overrides) -> dict:
         id=annotation_id,
         data={"x0": x0, "x1": x1, "xaxis": "x"},
         **overrides,
+    )
+
+
+def _drag(relayout: dict, stored: list, monkeypatch, plot_name: str = "time_series") -> list:
+    _with_ctx(monkeypatch, {"type": "graph", "name": plot_name})
+    return handle_shape_drag(
+        relayout_list=[relayout],
+        graph_ids=[{"type": "graph", "name": plot_name}],
+        subplots_list=[_subplots_with_axes()],
+        annotations_raw=stored,
+        adjusting=True,
+        display_timezone="UTC",
     )
 
 
@@ -636,6 +660,398 @@ class TestShapeIndexToAnnotationId:
         stored = [_stored("time_event", id="a1", plot_name="spectrogram")]
         annotations = AnnotationSet.from_dicts(stored).annotations
         assert shape_owner_ids(annotations, "time_series", []) == []
+
+
+class TestShapeDrag:
+    """The relayout half: a finished drag re-places the annotation the index belongs to."""
+
+    def test_dragging_a_time_event_moves_it(self, monkeypatch):
+        stored = [_stored("time_event", id="a1")]
+        result = _drag(
+            {"shapes[0].x0": "2024-03-01 10:00:00", "shapes[0].x1": "2024-03-01 10:00:00"},
+            stored,
+            monkeypatch,
+        )
+        assert result[0]["data"]["x"] == "2024-03-01T10:00:00+00:00"
+
+    def test_dragging_one_window_edge_leaves_the_other_alone(self, monkeypatch):
+        stored = [_window("a1", "2024-03-01T10:00:00+00:00", "2024-03-01T10:05:00+00:00")]
+        result = _drag({"shapes[0].x0": "2024-03-01 10:02:00"}, stored, monkeypatch)
+        assert result[0]["data"] == {
+            "x0": "2024-03-01T10:02:00+00:00",
+            "x1": "2024-03-01T10:05:00+00:00",
+            "xaxis": "x",
+        }
+
+    def test_the_second_shape_moves_the_second_annotation(self, monkeypatch):
+        stored = [
+            _stored("time_event", id="a1"),
+            _window("a2", "2024-03-01T10:00:00+00:00", "2024-03-01T10:05:00+00:00"),
+        ]
+        result = _drag({"shapes[1].x1": "2024-03-01 10:09:00"}, stored, monkeypatch)
+        assert result[0]["data"]["x"] == "2024-01-01T00:00:00+00:00"
+        assert result[1]["data"]["x1"] == "2024-03-01T10:09:00+00:00"
+
+    def test_a_hidden_annotation_does_not_shift_the_mapping(self, monkeypatch):
+        """The drag must land on what is drawn, not on what is stored."""
+        stored = [_stored("time_event", id="a1", hidden=True), _stored("time_event", id="a2")]
+        result = _drag({"shapes[0].x0": "2024-03-01 10:00:00"}, stored, monkeypatch)
+        assert result[0]["data"]["x"] == "2024-01-01T00:00:00+00:00"
+        assert result[1]["data"]["x"] == "2024-03-01T10:00:00+00:00"
+
+    def test_the_vertical_half_of_the_drag_is_discarded(self, monkeypatch):
+        """A time shape spans its subplot by construction; y is never stored."""
+        stored = [_stored("time_event", id="a1")]
+        result = _drag(
+            {"shapes[0].x0": "2024-03-01 10:00:00", "shapes[0].y0": 0.31, "shapes[0].y1": 1.31},
+            stored,
+            monkeypatch,
+        )
+        assert set(result[0]["data"]) == {"x", "xaxis"}
+
+    def test_a_drag_keeps_the_scope_it_had(self, monkeypatch):
+        stored = [_stored("time_event", id="a1", subplot_name=None)]
+        result = _drag({"shapes[0].x0": "2024-03-01 10:00:00"}, stored, monkeypatch)
+        assert result[0]["subplot_name"] is None
+
+    def test_a_drag_keeps_the_label_colour_and_group(self, monkeypatch):
+        stored = [_stored("time_event", id="a1", group_id="g1", group_name="Suctioning")]
+        result = _drag({"shapes[0].x0": "2024-03-01 10:00:00"}, stored, monkeypatch)
+        assert result[0]["label"] == "Intubation"
+        assert result[0]["color"] == "#3498db"
+        assert result[0]["group_id"] == "g1"
+
+    def test_a_zoom_is_not_a_drag(self, monkeypatch):
+        with pytest.raises(PreventUpdate):
+            _drag(
+                {"xaxis.range[0]": "2024-03-01 10:00:00", "xaxis.range[1]": "2024-03-01 11:00:00"},
+                [_stored("time_event", id="a1")],
+                monkeypatch,
+            )
+
+    def test_an_index_past_the_drawn_shapes_changes_nothing(self, monkeypatch):
+        with pytest.raises(PreventUpdate):
+            _drag(
+                {"shapes[7].x0": "2024-03-01 10:00:00"},
+                [_stored("time_event", id="a1")],
+                monkeypatch,
+            )
+
+
+# ==================================================================================================
+# Adjust mode
+# ==================================================================================================
+
+
+class TestAdjustMode:
+    """The toggle that arms plotly's editors, and the config it puts on each graph."""
+
+    def test_the_first_click_arms_it(self):
+        assert toggle_adjust_mode(1, False)[0] is True
+
+    def test_a_second_click_disarms_it(self):
+        assert toggle_adjust_mode(2, True)[0] is False
+
+    def test_arming_leaves_any_placement_mode(self):
+        """Armed annotations swallow clicks, so a half-placed window would never finish."""
+        result = toggle_adjust_mode(1, False)
+        assert result[2] == default_mode()
+
+    def test_disarming_touches_no_other_state(self):
+        assert all(value is no_update for value in toggle_adjust_mode(2, True)[2:])
+
+    def test_disarmed_graphs_get_the_plain_config(self):
+        configs = arm_graph_editors(False, [{"name": "time_series"}])
+        assert "edits" not in configs[0]
+
+    def test_an_armed_graph_gets_both_editors(self):
+        configs = arm_graph_editors(True, [{"name": "time_series"}])
+        assert configs[0]["edits"] == {"shapePosition": True, "annotationPosition": True}
+
+    def test_every_graph_is_armed(self):
+        configs = arm_graph_editors(True, [{"name": "time_series"}, {"name": "loop"}])
+        assert all("annotationPosition" in config["edits"] for config in configs)
+
+    def test_no_graphs_means_nothing_to_arm(self):
+        with pytest.raises(PreventUpdate):
+            arm_graph_editors(True, [])
+
+    def test_a_drag_outside_the_mode_is_ignored(self, monkeypatch):
+        """The editors cannot emit one, but the store is the single switch for the feature."""
+        _with_ctx(monkeypatch, {"type": "graph", "name": "time_series"})
+        with pytest.raises(PreventUpdate):
+            handle_shape_drag(
+                relayout_list=[{"shapes[0].x0": "2024-03-01 10:00:00"}],
+                graph_ids=[{"type": "graph", "name": "time_series"}],
+                subplots_list=[_subplots_with_axes()],
+                annotations_raw=[_stored("time_event")],
+                adjusting=False,
+                display_timezone="UTC",
+            )
+
+
+class TestLabelAndPointDrag:
+    """`layout.annotations` carries subplot titles and ours; only ours are stored."""
+
+    def test_a_subplot_title_drag_is_not_stored(self, monkeypatch):
+        titled = {**_subplots_with_axes(), "subplot_annotations": [{"text": "Pressure"}]}
+        _with_ctx(monkeypatch, {"type": "graph", "name": "time_series"})
+        with pytest.raises(PreventUpdate):
+            handle_shape_drag(
+                relayout_list=[{"annotations[0].x": 0.5, "annotations[0].y": 0.9}],
+                graph_ids=[{"type": "graph", "name": "time_series"}],
+                subplots_list=[titled],
+                annotations_raw=[_stored("time_event")],
+                adjusting=True,
+                display_timezone="UTC",
+            )
+
+    def test_a_title_does_not_shift_our_own_indices(self, monkeypatch):
+        titled = {**_subplots_with_axes(), "subplot_annotations": [{"text": "Pressure"}]}
+        _with_ctx(monkeypatch, {"type": "graph", "name": "time_series"})
+        result = handle_shape_drag(
+            relayout_list=[{"annotations[1].x": "2024-03-01 10:00:00"}],
+            graph_ids=[{"type": "graph", "name": "time_series"}],
+            subplots_list=[titled],
+            annotations_raw=[_stored("time_event")],
+            adjusting=True,
+            display_timezone="UTC",
+        )
+        assert result[0]["data"]["x"] == "2024-03-01T10:00:00+00:00"
+
+    def test_dragging_a_point_stores_both_coordinates(self, monkeypatch):
+        stored = [
+            _stored(
+                "point",
+                data={"x": "2024-01-01T00:00:00+00:00", "y": 1.0, "xaxis": "x", "yaxis": "y"},
+            )
+        ]
+        result = _drag(
+            {"annotations[0].x": "2024-03-01 10:00:00", "annotations[0].y": 7.5},
+            stored,
+            monkeypatch,
+        )
+        assert result[0]["data"]["x"] == "2024-03-01T10:00:00+00:00"
+        assert result[0]["data"]["y"] == 7.5
+
+    def test_dragging_a_window_label_slides_the_whole_window(self, monkeypatch):
+        """Grabbing the label reads as grabbing the window, not as pulling its start off its end."""
+        stored = [_window("a1", "2024-03-01T10:00:00+00:00", "2024-03-01T10:05:00+00:00")]
+        result = _drag({"annotations[0].x": "2024-03-01 10:10:00"}, stored, monkeypatch)
+        assert result[0]["data"]["x0"] == "2024-03-01T10:10:00+00:00"
+        assert result[0]["data"]["x1"] == "2024-03-01T10:15:00+00:00"
+
+    def test_dragging_a_time_event_label_moves_the_event(self, monkeypatch):
+        result = _drag(
+            {"annotations[0].x": "2024-03-01 10:00:00"}, [_stored("time_event")], monkeypatch
+        )
+        assert result[0]["data"]["x"] == "2024-03-01T10:00:00+00:00"
+
+    def test_a_hidden_label_takes_no_index(self, monkeypatch):
+        """The label is not drawn, so index 0 is the next annotation's, not its own."""
+        stored = [
+            _stored("time_event", id="a1", label_hidden=True),
+            _stored("time_event", id="a2"),
+        ]
+        result = _drag({"annotations[0].x": "2024-03-01 10:00:00"}, stored, monkeypatch)
+        assert result[0]["data"]["x"] == "2024-01-01T00:00:00+00:00"
+        assert result[1]["data"]["x"] == "2024-03-01T10:00:00+00:00"
+
+
+class TestOneModeAtATime:
+    """Adjust and placement both want the plot's clicks, so arming one leaves the other."""
+
+    def test_arming_a_placement_mode_leaves_adjust(self):
+        active = {**default_mode(), "active": True, "type": "time_event"}
+        assert leave_adjust_when_placing(active, True)[0] is False
+
+    def test_an_idle_mode_change_does_not_leave_adjust(self):
+        with pytest.raises(PreventUpdate):
+            leave_adjust_when_placing(default_mode(), True)
+
+    def test_nothing_to_leave_when_adjust_is_off(self):
+        active = {**default_mode(), "active": True}
+        with pytest.raises(PreventUpdate):
+            leave_adjust_when_placing(active, False)
+
+    def test_the_mode_adjust_clears_does_not_bounce_back(self):
+        """toggle_adjust_mode writes a fresh mode; that write must not re-trigger arming."""
+        cleared = toggle_adjust_mode(1, False)[2]
+        with pytest.raises(PreventUpdate):
+            leave_adjust_when_placing(cleared, True)
+
+
+class TestDraggedLoopPointDropsItsTime:
+    """A loop point's `t` comes off customdata, which a relayout payload does not carry."""
+
+    @staticmethod
+    def _loop_point(**data_overrides) -> dict:
+        return _stored(
+            "point",
+            plot_name="loop",
+            subplot_name=None,
+            data={
+                "x": 12.5,
+                "y": 3.0,
+                "xaxis": "x",
+                "yaxis": "y",
+                "t": "2024-01-01T00:00:30+00:00",
+                **data_overrides,
+            },
+        )
+
+    def _drag_on_loop(self, relayout: dict, stored: list, monkeypatch) -> list:
+        _with_ctx(monkeypatch, {"type": "graph", "name": "loop"})
+        return handle_shape_drag(
+            relayout_list=[relayout],
+            graph_ids=[{"type": "graph", "name": "loop"}],
+            subplots_list=[{**_subplots_data("loop"), "rows": []}],
+            annotations_raw=stored,
+            adjusting=True,
+            display_timezone="UTC",
+        )
+
+    def test_a_dragged_loop_point_keeps_its_coordinates(self, monkeypatch):
+        result = self._drag_on_loop(
+            {"annotations[0].x": 20.0, "annotations[0].y": 4.5},
+            [self._loop_point()],
+            monkeypatch,
+        )
+        assert result[0]["data"]["x"] == "20.0"
+        assert result[0]["data"]["y"] == 4.5
+
+    def test_a_dragged_loop_point_drops_its_time(self, monkeypatch):
+        result = self._drag_on_loop({"annotations[0].x": 20.0}, [self._loop_point()], monkeypatch)
+        assert "t" not in result[0]["data"]
+
+    def test_a_time_series_point_has_no_time_to_drop(self, monkeypatch):
+        """`t` is absent by construction there — x already is the instant."""
+        stored = [_stored("point", data={"x": "2024-01-01T00:00:00+00:00", "y": 1.0, "xaxis": "x"})]
+        result = _drag({"annotations[0].x": "2024-03-01 10:00:00"}, stored, monkeypatch)
+        assert result[0]["data"]["x"] == "2024-03-01T10:00:00+00:00"
+        assert "t" not in result[0]["data"]
+
+
+# ==================================================================================================
+# Dual y-axis subplots
+# ==================================================================================================
+
+
+def _subplots_dual_y() -> dict:
+    """
+    A two-row layout whose rows carry a secondary y-axis.
+
+    Plotly numbers overlaying axes into the same sequence, so row 2's primary is y3, not y2 —
+    the numbering the click path's grid formula has to work around.
+    """
+    return {
+        "plot_type": "time_series",
+        "rows": [
+            {"row": 1, "col": 1, "name": "Pressure", "yaxis": "y"},
+            {"row": 2, "col": 1, "name": "Flow", "yaxis": "y3"},
+        ],
+        "subplot_annotations": [{"text": "Pressure"}, {"text": "Flow"}],
+        "n_cols": 1,
+        "yaxis_to_subplot": {
+            "y": {"name": "Pressure"},
+            "y2": {"name": "Pressure"},
+            "y3": {"name": "Flow"},
+            "y4": {"name": "Flow"},
+        },
+    }
+
+
+def _drag_dual(relayout: dict, stored: list, monkeypatch) -> list:
+    _with_ctx(monkeypatch, {"type": "graph", "name": "time_series"})
+    return handle_shape_drag(
+        relayout_list=[relayout],
+        graph_ids=[{"type": "graph", "name": "time_series"}],
+        subplots_list=[_subplots_dual_y()],
+        annotations_raw=stored,
+        adjusting=True,
+        display_timezone="UTC",
+    )
+
+
+class TestDualYAxis:
+    """A secondary y-axis renumbers the axes; nothing on the drag path reads that numbering."""
+
+    def test_a_shape_spans_the_band_of_its_own_axis(self):
+        """`y3 domain` is the same vertical extent as `y3` — an overlay shares its domain."""
+        stored = [_stored("time_event", subplot_name="Flow")]
+        shapes = _shapes(
+            render_annotations(
+                stored,
+                default_mode(),
+                False,
+                [{"name": "time_series"}],
+                [_subplots_dual_y()],
+                "UTC",
+                {},
+            )[0]
+        )
+        assert shapes[0]["yref"] == "y3 domain"
+
+    def test_the_owner_mapping_resolves_by_name_not_by_axis_number(self):
+        stored = [
+            _stored("time_event", id="a1", subplot_name="Pressure"),
+            _stored("time_event", id="a2", subplot_name="Flow"),
+        ]
+        annotations = AnnotationSet.from_dicts(stored).annotations
+        owners = shape_owner_ids(annotations, "time_series", _subplots_dual_y()["rows"])
+        assert owners == ["a1", "a2"]
+
+    def test_dragging_a_shape_on_the_second_row_moves_the_right_one(self, monkeypatch):
+        stored = [
+            _stored("time_event", id="a1", subplot_name="Pressure"),
+            _stored("time_event", id="a2", subplot_name="Flow"),
+        ]
+        result = _drag_dual({"shapes[1].x0": "2024-03-01 10:00:00"}, stored, monkeypatch)
+        assert result[0]["data"]["x"] == "2024-01-01T00:00:00+00:00"
+        assert result[1]["data"]["x"] == "2024-03-01T10:00:00+00:00"
+
+    def test_a_point_keeps_the_axis_it_was_anchored_to(self, monkeypatch):
+        """Plotly converts the drag through the annotation's own yref, so y stays in y2 units."""
+        stored = [
+            _stored(
+                "point",
+                subplot_name="Pressure",
+                data={
+                    "x": "2024-01-01T00:00:00+00:00",
+                    "y": 1.0,
+                    "xaxis": "x",
+                    "yaxis": "y2",
+                },
+            )
+        ]
+        # Index 2: the two subplot titles come first, then this point's dot.
+        result = _drag_dual({"annotations[2].y": 42.0}, stored, monkeypatch)
+        assert result[0]["data"]["yaxis"] == "y2"
+        assert result[0]["data"]["y"] == 42.0
+
+    def test_a_point_on_the_secondary_axis_is_drawn_against_it(self):
+        stored = [
+            _stored(
+                "point",
+                subplot_name="Pressure",
+                data={"x": "2024-01-01T00:00:00+00:00", "y": 1.0, "xaxis": "x", "yaxis": "y2"},
+            )
+        ]
+        patch = render_annotations(
+            stored,
+            default_mode(),
+            False,
+            [{"name": "time_series"}],
+            [_subplots_dual_y()],
+            "UTC",
+            {},
+        )[0]
+        drawn = [
+            op["params"]["value"]
+            for op in patch.to_plotly_json()["operations"]
+            if op["location"] == ["layout", "annotations"]
+        ][0]
+        assert drawn[2]["yref"] == "y2"
 
 
 class TestLabelIndexToAnnotationId:

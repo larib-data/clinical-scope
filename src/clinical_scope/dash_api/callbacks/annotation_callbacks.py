@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -30,7 +31,9 @@ from clinical_scope.dash_api.annotations.model import (
 )
 from clinical_scope.dash_api.annotations.renderer import (
     build_figure_overlays,
+    label_owner_ids,
     normalize_annotation_for_display,
+    shape_owner_ids,
 )
 from clinical_scope.dash_api.styles import (
     ANNOTATION_LIST_PANEL,
@@ -47,6 +50,8 @@ from clinical_scope.dash_api.styles import (
     BUTTON_DISABLED_OVERLAY,
     BUTTON_MODAL_CLOSE,
     COLOR_PREVIEW_SWATCH,
+    GRAPH_CONFIG,
+    GRAPH_CONFIG_ADJUSTABLE,
 )
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
 from clinical_scope.plot_types import registry as plot_types
@@ -148,6 +153,99 @@ def _localize_x_val(x_val: str, display_tz: str = cst.DISPLAY_TIMEZONE) -> str:
         return x_val
 
 
+_SHAPE_DRAG_KEY = re.compile(r"^shapes\[(\d+)\]\.(x0|x1)$")
+_LABEL_DRAG_KEY = re.compile(r"^annotations\[(\d+)\]\.(x|y)$")
+
+
+def _parse_drag(relayout: dict | None, key_pattern: re.Pattern) -> dict[int, dict[str, str]]:
+    """
+    Group a relayout payload's indexed drag keys by the index they name.
+
+    Plotly reports a finished drag as flat indexed keys, and reports the vertical half
+    alongside the horizontal one.  What each half means is the caller's to decide; this only
+    says which index moved and how.
+    """
+    edits: dict[int, dict[str, str]] = {}
+    for key, value in (relayout or {}).items():
+        match = key_pattern.match(key)
+        if match is not None:
+            edits.setdefault(int(match.group(1)), {})[match.group(2)] = str(value)
+    return edits
+
+
+def _x_or_none(annotation: Annotation, edit: dict[str, str], display_tz: str) -> str | None:
+    """The new x a drag reports, localized, or ``None`` if the drag carried no x at all."""
+    # A vertical line's two ends are one position: grabbing either handle reports only that
+    # end, so whichever arrived is the new x for the whole shape.
+    moved = edit.get("x", edit.get("x0", edit.get("x1")))
+    if moved is None:
+        return None
+    return _localize_x_val(moved, display_tz) if annotation.type != AnnotationType.POINT else moved
+
+
+def _dragged_shape_data(
+    annotation: Annotation, edit: dict[str, str], display_tz: str
+) -> dict | None:
+    """
+    Return *annotation*'s ``data`` with the dragged x values in place of the stored ones.
+
+    ``None`` for anything a shape drag cannot express — a point, which draws no shape at all.
+    """
+    data = dict(annotation.data)
+    if annotation.type == AnnotationType.TIME_EVENT:
+        moved = _x_or_none(annotation, edit, display_tz)
+        if moved is None:
+            return None
+        data["x"] = moved
+        return data
+    if annotation.type == AnnotationType.TIME_WINDOW:
+        for bound in ("x0", "x1"):
+            if bound in edit:
+                data[bound] = _localize_x_val(edit[bound], display_tz)
+        return data
+    return None
+
+
+def _dragged_label_data(
+    annotation: Annotation, edit: dict[str, str], display_tz: str, *, time_axis: bool
+) -> dict | None:
+    """
+    Return *annotation*'s ``data`` after a drag of the thing that labels it.
+
+    A point *is* its marker, so the drag is the position.  A time shape's label sits on the
+    shape, so dragging it reads as dragging the shape: the event moves to the new x, and the
+    window slides whole rather than having its start pulled off its end.
+    """
+    data = dict(annotation.data)
+    if annotation.type == AnnotationType.POINT:
+        if "x" in edit:
+            data["x"] = _localize_x_val(edit["x"], display_tz) if time_axis else edit["x"]
+        if "y" in edit:
+            with contextlib.suppress(ValueError, TypeError):
+                data["y"] = float(edit["y"])
+        # A loop point's recorded time comes off the trace's customdata, and a relayout
+        # payload carries none — so a dragged point drops the time rather than keeping one it
+        # can no longer vouch for.  Only the click-driven move can re-derive it.
+        data.pop("t", None)
+        return data
+
+    moved = _x_or_none(annotation, edit, display_tz)
+    if moved is None:
+        return None
+    if annotation.type == AnnotationType.TIME_EVENT:
+        data["x"] = moved
+        return data
+
+    try:
+        shift = pd.Timestamp(moved) - pd.Timestamp(data["x0"])
+        data["x1"] = (pd.Timestamp(data["x1"]) + shift).isoformat()
+        data["x0"] = moved
+    except (ValueError, TypeError, KeyError):
+        logger.warning("Could not slide window %r from a label drag", annotation.id, exc_info=True)
+        return None
+    return data
+
+
 def _parse_yaxis_idx(yaxis_ref: str) -> int:
     """Parse Plotly axis ref to 1-based index: 'y' → 1, 'y2' → 2, etc."""
     num_str = yaxis_ref[1:] if yaxis_ref.startswith("y") else ""
@@ -208,9 +306,13 @@ def _annotation_list_row(
 
     x_val = annotation.data.get("x") or annotation.data.get("x0")
     time_str = _format_x_short(x_val, display_tz)
+    # On a plot whose x is not time, x alone says nothing about when — so the recorded time
+    # is shown beside it, and its absence after a drag is visible rather than silent.
+    recorded_at = annotation.data.get("t")
+    recorded_str = f"@{_format_x_short(recorded_at, display_tz)}" if recorded_at else ""
     trace_str = (annotation.trace_metadata or {}).get("display_name", "")
     scope_str = annotation.subplot_name or "Global"
-    info_parts = [part for part in [time_str, trace_str, scope_str] if part]
+    info_parts = [part for part in [time_str, recorded_str, trace_str, scope_str] if part]
     info_line = " · ".join(info_parts)
 
     # Hiding dominates: while it is on, the label toggle can have no visible effect and a
@@ -968,6 +1070,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
     Output({"type": "graph", "name": ALL}, "figure", allow_duplicate=True),
     Input("annotation-store", "data"),
     Input("annotation-mode-store", "data"),
+    Input("annotation-adjust-store", "data"),
     State({"type": "graph", "name": ALL}, "id"),
     State({"type": "graph-subplots", "name": ALL}, "data"),
     State("display-timezone-store", "data"),
@@ -977,6 +1080,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
 def render_annotations(
     annotations_raw: list,
     mode: dict,
+    _adjusting: bool,
     graph_ids: list,
     subplots_list: list,
     display_timezone: str | None,
@@ -1689,3 +1793,175 @@ def start_move(_n: list, annotations_raw: list, mode: dict) -> tuple:
         {**BUTTON_ANNOTATION_INACTIVE, "display": "inline-block"},
         f'Moving "{display_label}" — {gesture}',
     )
+
+
+# ---------------------------------------------------------------------------
+# 18. Adjust mode — arm plotly's editors, and receive the drags they emit
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("annotation-adjust-store", "data"),
+    Output("annotation-adjust-btn", "style"),
+    Output("annotation-mode-store", "data", allow_duplicate=True),
+    Output("annotation-type-btn-time_event", "style", allow_duplicate=True),
+    Output("annotation-type-btn-time_window", "style", allow_duplicate=True),
+    Output("annotation-type-btn-point", "style", allow_duplicate=True),
+    Output("annotation-mode-deactivate", "style", allow_duplicate=True),
+    Output("annotation-active-group-display", "children", allow_duplicate=True),
+    Input("annotation-adjust-btn", "n_clicks"),
+    State("annotation-adjust-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_adjust_mode(n_clicks: int | None, adjusting: bool) -> tuple:
+    """Flip Adjust mode, leaving whatever placement mode was armed."""
+    if not n_clicks:
+        raise PreventUpdate
+    now_adjusting = not adjusting
+    button_style = BUTTON_ANNOTATION_ACTIVE if now_adjusting else BUTTON_ANNOTATION_INACTIVE
+
+    if not now_adjusting:
+        # Leaving changes nothing but the arming: a placement mode was already cleared on the
+        # way in, so there is no state to restore.
+        return (False, button_style, *(no_update,) * 6)
+
+    # Placement and adjustment cannot share the plot: while the editors are armed the
+    # annotations swallow the clicks a placement would need.
+    return (
+        True,
+        button_style,
+        default_mode(),
+        BUTTON_ANNOTATION_INACTIVE,
+        BUTTON_ANNOTATION_INACTIVE,
+        BUTTON_ANNOTATION_INACTIVE,
+        {**BUTTON_ANNOTATION_INACTIVE, "display": "none"},
+        "",
+    )
+
+
+@callback(
+    Output("annotation-adjust-store", "data", allow_duplicate=True),
+    Output("annotation-adjust-btn", "style", allow_duplicate=True),
+    Input("annotation-mode-store", "data"),
+    State("annotation-adjust-store", "data"),
+    prevent_initial_call=True,
+)
+def leave_adjust_when_placing(mode: dict, adjusting: bool) -> tuple[bool, dict]:
+    """
+    Close the one-mode-at-a-time invariant from the other side.
+
+    Adjust mode disarms placement on the way in; this disarms Adjust whenever placement is
+    armed from anywhere else — a type button, a group, a move from the list.
+    """
+    if not adjusting or not (mode or {}).get("active"):
+        raise PreventUpdate
+    return False, BUTTON_ANNOTATION_INACTIVE
+
+
+@callback(
+    Output({"type": "graph", "name": ALL}, "config"),
+    Input("annotation-adjust-store", "data"),
+    Input({"type": "graph", "name": ALL}, "id"),
+)
+def arm_graph_editors(adjusting: bool, graph_ids: list) -> list:
+    """
+    Swap each graph's config for the editable one while Adjust mode is on.
+
+    Also fires when the graphs themselves are rebuilt, so a fresh Process cannot leave the
+    button lit over plots whose editors were never armed.
+    """
+    if not graph_ids:
+        raise PreventUpdate
+    return [GRAPH_CONFIG_ADJUSTABLE if adjusting else GRAPH_CONFIG] * len(graph_ids)
+
+
+@callback(
+    Output("annotation-store", "data", allow_duplicate=True),
+    Input({"type": "graph", "name": ALL}, "relayoutData"),
+    State({"type": "graph", "name": ALL}, "id"),
+    State({"type": "graph-subplots", "name": ALL}, "data"),
+    State("annotation-store", "data"),
+    State("annotation-adjust-store", "data"),
+    State("display-timezone-store", "data"),
+    prevent_initial_call=True,
+)
+def handle_shape_drag(
+    relayout_list: list,
+    graph_ids: list,
+    subplots_list: list,
+    annotations_raw: list,
+    adjusting: bool,
+    display_timezone: str | None,
+) -> list:
+    """Re-place whatever the user dragged on the plot."""
+    triggered_id = ctx.triggered_id
+    if triggered_id is None or not adjusting:
+        raise PreventUpdate
+
+    plot_name = triggered_id["name"]
+    graph_names = [graph_id["name"] for graph_id in graph_ids]
+    try:
+        graph_idx = graph_names.index(plot_name)
+    except ValueError as exc:
+        raise PreventUpdate from exc
+
+    relayout = relayout_list[graph_idx]
+    # Every zoom, pan and autorange lands here too; only the indexed drag keys are ours.
+    shape_edits = _parse_drag(relayout, _SHAPE_DRAG_KEY)
+    label_edits = _parse_drag(relayout, _LABEL_DRAG_KEY)
+    if not shape_edits and not label_edits:
+        raise PreventUpdate
+
+    annotation_set = AnnotationSet.from_dicts(annotations_raw)
+    subplots_data = subplots_list[graph_idx] or {}
+    subplot_rows = subplots_data.get("rows", [])
+    time_axis = plot_types.definition_for(subplots_data.get("plot_type")).TIME_AXIS
+    # The ordering the renderer drew with: normalising for display rewrites x values only, so
+    # the raw set gives the same order.  The pending preview shape is always appended last, so
+    # omitting it can only push an index off the end — never onto the wrong annotation.
+    shape_owners = shape_owner_ids(annotation_set.annotations, plot_name, subplot_rows)
+    label_owners = label_owner_ids(
+        annotation_set.annotations,
+        plot_name,
+        len(subplots_data.get("subplot_annotations", [])),
+        subplot_rows,
+    )
+    by_id = {annotation.id: annotation for annotation in annotation_set}
+    display_tz = display_timezone or cst.DISPLAY_TIMEZONE
+
+    moved = annotation_set
+    changed = False
+    for owners, edits, is_label in (
+        (shape_owners, shape_edits, False),
+        (label_owners, label_edits, True),
+    ):
+        for index, edit in edits.items():
+            owner_id = owners[index] if index < len(owners) else None
+            target = by_id.get(owner_id) if owner_id else None
+            if target is None:
+                # A subplot title, or a shape whose annotation is gone. Not ours to store;
+                # leaving Adjust mode redraws the figure and puts it back.
+                logger.debug("Drag on index %d matched no annotation on %r", index, plot_name)
+                continue
+            data = (
+                _dragged_label_data(target, edit, display_tz, time_axis=time_axis)
+                if is_label
+                else _dragged_shape_data(target, edit, display_tz)
+            )
+            if data is None:
+                continue
+            # Scope cannot change under a drag of a shape: the y half is discarded, so it never
+            # leaves the subplot it was drawn in. A point keeps its axis refs for the same
+            # reason — plotly reports the position, never the subplot it landed in.
+            moved = moved.with_moved(
+                target.id,
+                data=data,
+                plot_name=target.plot_name,
+                subplot_name=target.subplot_name,
+                trace_metadata=target.trace_metadata,
+            )
+            changed = True
+
+    if not changed:
+        raise PreventUpdate
+    return moved.to_dicts()

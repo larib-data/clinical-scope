@@ -378,3 +378,23 @@ COLOR_HEX_INPUT: dict = {
     "fontSize": "12px",
     "fontFamily": "monospace",
 }
+
+
+# ---------------------------------------------------------------------------
+# Graph config (dcc.Graph "config" prop)
+# ---------------------------------------------------------------------------
+
+# Plotly's shape/annotation editors are figure-wide and force `pointer-events: all` onto
+# everything they arm, so an armed annotation swallows the clicks and hover of the plot
+# beneath it.  Adjust mode is what buys that back: the editors exist only while the user is
+# nudging.  Derived from one base so the two forms cannot drift, and so leaving the mode
+# restores exactly the config the graph was built with.
+GRAPH_CONFIG: dict = {"displayModeBar": True}
+
+GRAPH_CONFIG_ADJUSTABLE: dict = {
+    **GRAPH_CONFIG,
+    # `annotationPosition` also arms the subplot titles make_subplots puts in the same list;
+    # they snap back on the next render, which is why it is affordable here and was not
+    # affordable as a permanent setting.
+    "edits": {"shapePosition": True, "annotationPosition": True},
+}
