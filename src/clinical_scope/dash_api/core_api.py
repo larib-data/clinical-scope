@@ -152,9 +152,6 @@ _annotation_toolbar = html.Div(
                         "color": "#555",
                         "fontStyle": "italic",
                         "marginLeft": "4px",
-                        # Wraps rather than truncates: the mode hints and the "not supported
-                        # on this plot type" warning both land here, and a half-read warning
-                        # is worse than a taller toolbar.
                         "minWidth": "0",
                     },
                 ),
