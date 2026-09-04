@@ -215,8 +215,13 @@ ACTION_CARD: dict = {
 # 6. Annotation styles
 # ---------------------------------------------------------------------------
 
+# The toolbar shares one flex row with a status message of unbounded length; without these the
+# buttons give up width to it and wrap their own labels onto a second line.
+_BUTTON_ANNOTATION_UNSHRINKABLE: dict = {"whiteSpace": "nowrap", "flexShrink": 0}
+
 BUTTON_ANNOTATION_INACTIVE: dict = {
     **_BUTTON_BASE,
+    **_BUTTON_ANNOTATION_UNSHRINKABLE,
     "backgroundColor": COLOR_GREY,
     "padding": "6px 14px",
     "fontSize": "13px",
@@ -224,6 +229,7 @@ BUTTON_ANNOTATION_INACTIVE: dict = {
 
 BUTTON_ANNOTATION_ACTIVE: dict = {
     **_BUTTON_BASE,
+    **_BUTTON_ANNOTATION_UNSHRINKABLE,
     "backgroundColor": COLOR_PURPLE,
     "padding": "6px 14px",
     "fontSize": "13px",
