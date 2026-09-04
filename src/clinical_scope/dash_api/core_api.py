@@ -137,9 +137,6 @@ _annotation_toolbar = html.Div(
                     n_clicks=0,
                     style=BUTTON_ANNOTATION_INACTIVE,
                 ),
-                # Arming plotly's shape editor makes every annotation swallow the clicks and
-                # hover of the plot beneath it, so it is a mode the user leaves rather than
-                # the default state of the plot.
                 html.Button(
                     "✥ Adjust",
                     id="annotation-adjust-btn",
@@ -522,7 +519,6 @@ _annotation_group_modal = html.Div(
 # ---------------------------------------------------------------------------
 # Annotation list panel (shown below toolbar when annotations exist)
 # ---------------------------------------------------------------------------
-# Carries the scroll box itself so it survives every list rebuild (see ANNOTATION_LIST_PANEL).
 _annotation_list_panel = html.Div(
     id="annotation-list-panel",
     style=ANNOTATION_LIST_PANEL_HIDDEN,

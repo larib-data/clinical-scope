@@ -310,9 +310,6 @@ ANNOTATION_LIST_ROW: dict = {
     "fontSize": "13px",
 }
 
-# The scrolling container belongs to the layout, not to the list callback's output: rebuilding
-# it on every annotation change would destroy the scrolled element and snap the panel back to
-# the top, which is unusable when toggling one annotation on and off repeatedly.
 ANNOTATION_LIST_PANEL: dict = {
     "border": "1px solid #dee2e6",
     "borderRadius": "6px",
@@ -323,7 +320,6 @@ ANNOTATION_LIST_PANEL: dict = {
     "overflowY": "auto",
 }
 
-# Same element, collapsed — so an empty list shows no bordered box while the container survives.
 ANNOTATION_LIST_PANEL_HIDDEN: dict = {**ANNOTATION_LIST_PANEL, "display": "none"}
 
 BUTTON_ANNOTATION_SMALL: dict = {
@@ -332,11 +328,8 @@ BUTTON_ANNOTATION_SMALL: dict = {
     "fontSize": "11px",
 }
 
-# The list rows carry four buttons in the width the toolbar gives three, so they sit tighter.
 BUTTON_ANNOTATION_ROW: dict = {**BUTTON_ANNOTATION_SMALL, "padding": "1px 5px", "fontSize": "10px"}
 
-# Layered on top when a control cannot act: the label and Move buttons of a hidden annotation,
-# whose effect would stay invisible until it is shown again.
 BUTTON_DISABLED_OVERLAY: dict = {"opacity": 0.4, "cursor": "not-allowed"}
 
 # ---------------------------------------------------------------------------
@@ -384,11 +377,10 @@ COLOR_HEX_INPUT: dict = {
 # Graph config (dcc.Graph "config" prop)
 # ---------------------------------------------------------------------------
 
-# Plotly's shape/annotation editors are figure-wide and force `pointer-events: all` onto
-# everything they arm, so an armed annotation swallows the clicks and hover of the plot
-# beneath it.  Adjust mode is what buys that back: the editors exist only while the user is
-# nudging.  Derived from one base so the two forms cannot drift, and so leaving the mode
-# restores exactly the config the graph was built with.
+# An armed annotation swallows the clicks and hover of the plot beneath it: plotly's editors
+# are figure-wide and force `pointer-events: all` onto everything they arm.  Adjust mode is
+# what buys that back, by arming them only while the user is nudging — hence two configs
+# derived from one base, so leaving the mode restores what the graph was built with.
 GRAPH_CONFIG: dict = {"displayModeBar": True}
 
 GRAPH_CONFIG_ADJUSTABLE: dict = {

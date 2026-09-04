@@ -1379,7 +1379,6 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             dcc.Graph(
                 id={"type": "graph", "name": plot_model.name},
                 figure=fig,
-                # Built disarmed; the Adjust toolbar toggle swaps in the editable config.
                 config=GRAPH_CONFIG,
                 style=graph_style,
             ),
