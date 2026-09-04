@@ -1866,16 +1866,9 @@ def handle_shape_drag(
             )
             if data is None:
                 continue
-            # Scope cannot change under a drag of a shape: the y half is discarded, so it never
-            # leaves the subplot it was drawn in. A point keeps its axis refs for the same
-            # reason — plotly reports the position, never the subplot it landed in.
-            moved = moved.with_moved(
-                target.id,
-                data=data,
-                plot_name=target.plot_name,
-                subplot_name=target.subplot_name,
-                trace_metadata=target.trace_metadata,
-            )
+            # A drag cannot re-scope: plotly reports a position and never the subplot it landed
+            # in, so the only thing this path is allowed to write is the position itself.
+            moved = moved.with_repositioned(target.id, data)
             changed = True
 
     if not changed:

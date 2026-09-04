@@ -598,3 +598,53 @@ class TestMove:
         before = annotation_set.to_dicts()
         self._moved(annotation_set)
         assert annotation_set.to_dicts() == before
+
+
+# ==================================================================================================
+# Repositioning an annotation
+# ==================================================================================================
+
+
+class TestReposition:
+    """A reposition writes coordinates and is structurally unable to write anything else."""
+
+    NEW_DATA = {"x": "2024-06-01T12:00:00+00:00", "xaxis": "x2"}
+
+    @pytest.fixture
+    def annotation_set(self) -> AnnotationSet:
+        return AnnotationSet(
+            [
+                make_annotation("a", subplot_name="Pressure", label_hidden=True),
+                make_annotation("b"),
+            ]
+        )
+
+    def test_position_is_written(self, annotation_set):
+        repositioned = annotation_set.with_repositioned("a", self.NEW_DATA)
+        assert repositioned.annotations[0].data == self.NEW_DATA
+
+    def test_scope_and_plot_survive(self, annotation_set):
+        """The drag path reports a coordinate and no subplot, so scope must be untouchable."""
+        repositioned = annotation_set.with_repositioned("a", self.NEW_DATA).annotations[0]
+        assert repositioned.plot_name == "time_series"
+        assert repositioned.subplot_name == "Pressure"
+
+    def test_identity_and_metadata_survive(self, annotation_set):
+        repositioned = annotation_set.with_repositioned("a", self.NEW_DATA).annotations[0]
+        assert repositioned.id == "a"
+        assert repositioned.label_hidden is True
+
+    def test_other_annotations_are_untouched(self, annotation_set):
+        repositioned = annotation_set.with_repositioned("a", self.NEW_DATA)
+        assert repositioned.annotations[1].data == annotation_set.annotations[1].data
+
+    def test_repositioning_an_unknown_id_is_a_no_op(self, annotation_set):
+        assert (
+            annotation_set.with_repositioned("missing", self.NEW_DATA).to_dicts()
+            == annotation_set.to_dicts()
+        )
+
+    def test_source_set_is_unchanged(self, annotation_set):
+        before = annotation_set.to_dicts()
+        annotation_set.with_repositioned("a", self.NEW_DATA)
+        assert annotation_set.to_dicts() == before

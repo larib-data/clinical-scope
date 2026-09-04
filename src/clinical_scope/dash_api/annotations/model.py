@@ -416,6 +416,22 @@ class AnnotationSet:
             ]
         )
 
+    def with_repositioned(self, annotation_id: str, data: dict) -> AnnotationSet:
+        """
+        Give the annotation with this id new coordinates, and change nothing else.
+
+        The narrow half of the pair with :meth:`with_moved`, for a caller that learns a new
+        position without learning where it landed — a plotly drag reports ``shapes[3].x0`` and
+        no subplot. Not offering the other fields is what stops such a caller from re-scoping
+        an annotation by restating a field it never meant to touch.
+        """
+        return AnnotationSet(
+            [
+                replace(annotation, data=data) if annotation.id == annotation_id else annotation
+                for annotation in self._annotations
+            ]
+        )
+
     def with_moved(
         self,
         annotation_id: str,
@@ -428,13 +444,14 @@ class AnnotationSet:
         """
         Re-place the annotation with this id, keeping everything that is not its position.
 
-        Position, plot, scope and the trace it sits on are all re-derived from the new click, so a
-        point dragged into another subplot takes that subplot's axis refs instead of reading its y
+        The wide half of the pair with :meth:`with_repositioned`, for a caller holding a full
+        click: position, plot, scope and the trace it sits on are all re-derived from it, so a
+        point moved into another subplot takes that subplot's axis refs instead of reading its y
         off one scale and drawing it against another.
 
         A global annotation stays global: an absent ``subplot_name`` is a choice the user made in
         the creation modal, not a fact about coordinates, so re-deriving it would silently demote
-        every global annotation the first time anyone nudged it.
+        every global annotation the first time anyone moved it.
         """
         return AnnotationSet(
             [
