@@ -144,13 +144,17 @@ _TOOLBAR_OUTPUTS = (
 _TOOLBAR_NO_UPDATE = (no_update,) * len(_TOOLBAR_OUTPUTS)
 
 
-def _toolbar_state(mode: dict, display: str = "") -> tuple:
+def _toolbar_state(mode: dict, display: str = "", *, adjusting: bool = False) -> tuple:
     """
     Return the toolbar values describing *mode*, in :data:`_TOOLBAR_OUTPUTS` order.
 
     Which type button is lit and whether Exit shows are functions of the mode dict, so a
     callback that settles the mode cannot leave the toolbar describing the previous one.
     Group mode lights no type button: the group owns the type, and its own text says so.
+
+    Adjust mode is the one that does not live in the mode dict — it is a config swap, not a
+    click contract — so it is passed alongside.  Exit is the way out of any mode, and a mode
+    the user cannot see how to leave is the complaint that put it here.
     """
     active = bool(mode.get("active"))
     lit = mode.get("type") if active and not mode.get("group_id") else None
@@ -159,7 +163,10 @@ def _toolbar_state(mode: dict, display: str = "") -> tuple:
             BUTTON_ANNOTATION_ACTIVE if lit == type_value else BUTTON_ANNOTATION_INACTIVE
             for type_value in _TOOLBAR_TYPE_ORDER
         ),
-        {**BUTTON_ANNOTATION_INACTIVE, "display": "inline-block" if active else "none"},
+        {
+            **BUTTON_ANNOTATION_INACTIVE,
+            "display": "inline-block" if active or adjusting else "none",
+        },
         display,
     )
 
@@ -470,6 +477,8 @@ def _annotation_list_row(
 
 @callback(
     Output("annotation-mode-store", "data", allow_duplicate=True),
+    Output("annotation-adjust-store", "data", allow_duplicate=True),
+    Output("annotation-adjust-btn", "style", allow_duplicate=True),
     *_TOOLBAR_OUTPUTS,
     Input("annotation-type-btn-time_event", "n_clicks"),
     Input("annotation-type-btn-time_window", "n_clicks"),
@@ -484,26 +493,31 @@ def toggle_annotation_mode(
     _pt: int,
     _deactivate: int,
     mode: dict,
-) -> tuple[dict, dict, dict, dict, dict, str]:
+) -> tuple:
     """Activate an annotation type or deactivate mode entirely."""
     mode = mode or default_mode()
     triggered = ctx.triggered_id
 
     if triggered == "annotation-mode-deactivate":
+        # Exit is the single way out, so it must also clear the mode that is not in the dict.
         new_mode = _mode_reset(mode, "type")
-    else:
-        btn_to_type = {
-            f"annotation-type-btn-{type_value}": type_value for type_value in _TOOLBAR_TYPE_ORDER
-        }
-        annotation_type = btn_to_type.get(
-            triggered, mode.get("type", AnnotationType.TIME_EVENT.value)
+        return (
+            new_mode,
+            False,
+            BUTTON_ANNOTATION_INACTIVE,
+            *_toolbar_state(new_mode),
         )
-        if mode.get("active") and mode.get("type") == annotation_type and not mode.get("group_id"):
-            new_mode = _mode_reset(mode, type=annotation_type)
-        else:
-            new_mode = _mode_reset(mode, active=True, type=annotation_type)
 
-    return (new_mode, *_toolbar_state(new_mode))
+    btn_to_type = {
+        f"annotation-type-btn-{type_value}": type_value for type_value in _TOOLBAR_TYPE_ORDER
+    }
+    annotation_type = btn_to_type.get(triggered, mode.get("type", AnnotationType.TIME_EVENT.value))
+    if mode.get("active") and mode.get("type") == annotation_type and not mode.get("group_id"):
+        new_mode = _mode_reset(mode, type=annotation_type)
+    else:
+        new_mode = _mode_reset(mode, active=True, type=annotation_type)
+
+    return (new_mode, no_update, no_update, *_toolbar_state(new_mode))
 
 
 # ---------------------------------------------------------------------------
@@ -1744,15 +1758,17 @@ def toggle_adjust_mode(n_clicks: int | None, adjusting: bool) -> tuple:
     now_adjusting = not adjusting
     button_style = BUTTON_ANNOTATION_ACTIVE if now_adjusting else BUTTON_ANNOTATION_INACTIVE
 
-    if not now_adjusting:
-        # Leaving changes nothing but the arming: a placement mode was already cleared on the
-        # way in, so there is no state to restore.
-        return (False, button_style, no_update, *_TOOLBAR_NO_UPDATE)
-
     # Placement and adjustment cannot share the plot: while the editors are armed the
-    # annotations swallow the clicks a placement would need.
+    # annotations swallow the clicks a placement would need.  Arming disarms placement, and
+    # leaving has nothing to restore, so the mode dict is empty on both sides.
     disarmed = default_mode()
-    return (True, button_style, disarmed, *_toolbar_state(disarmed))
+    display = "Adjust mode — grab an annotation to nudge it" if now_adjusting else ""
+    return (
+        now_adjusting,
+        button_style,
+        disarmed if now_adjusting else no_update,
+        *_toolbar_state(disarmed, display, adjusting=now_adjusting),
+    )
 
 
 @callback(

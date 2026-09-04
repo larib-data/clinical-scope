@@ -824,8 +824,32 @@ class TestAdjustMode:
         result = toggle_adjust_mode(1, False)
         assert result[2] == default_mode()
 
-    def test_disarming_touches_no_other_state(self):
-        assert all(value is no_update for value in toggle_adjust_mode(2, True)[2:])
+    def test_disarming_leaves_the_mode_store_alone(self):
+        assert toggle_adjust_mode(2, True)[2] is no_update
+
+    def test_exit_is_offered_while_adjusting(self):
+        """Adjust is a mode, so the toolbar must show the same way out as every other one."""
+        assert toggle_adjust_mode(1, False)[-2]["display"] == "inline-block"
+
+    def test_exit_is_withdrawn_on_leaving(self):
+        assert toggle_adjust_mode(2, True)[-2]["display"] == "none"
+
+    @staticmethod
+    def _with_ctx(monkeypatch, triggered_id):
+        monkeypatch.setattr(
+            annotation_callbacks,
+            "ctx",
+            type("Ctx", (), {"triggered": [{"value": 1}], "triggered_id": triggered_id}),
+        )
+
+    def test_exit_disarms_adjust(self, monkeypatch):
+        self._with_ctx(monkeypatch, "annotation-mode-deactivate")
+        assert toggle_annotation_mode(0, 0, 0, 1, default_mode())[1] is False
+
+    def test_a_type_button_leaves_adjust_to_its_own_callback(self, monkeypatch):
+        """`leave_adjust_when_placing` owns that transition; writing it twice would race."""
+        self._with_ctx(monkeypatch, "annotation-type-btn-time_event")
+        assert toggle_annotation_mode(1, 0, 0, 0, default_mode())[1] is no_update
 
     def test_disarmed_graphs_get_the_plain_config(self):
         configs = arm_graph_editors(False, [{"name": "time_series"}])
