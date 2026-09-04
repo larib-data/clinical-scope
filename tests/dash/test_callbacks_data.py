@@ -4,6 +4,7 @@ import json
 
 import pytest
 from dash import no_update
+from dash.exceptions import PreventUpdate
 
 import clinical_scope.constants as cst
 from clinical_scope.dash_api.callbacks.data_callbacks import (
@@ -13,6 +14,7 @@ from clinical_scope.dash_api.callbacks.data_callbacks import (
     _parse_database_options_file,
     _rehydrate_schema_classes,
     _status_badge,
+    resample_on_zoom,
     build_patient_options_ui,
     format_time_range,
     process_visualization,
@@ -442,3 +444,92 @@ class TestRehydrateSchemaClasses:
     def test_plain_datasource_id_still_resolves(self):
         lookup = _rehydrate_schema_classes({"specific.servo_u.time_shift": "TimeShift"})
         assert lookup["specific.servo_u.time_shift"].NAME == "time_shift"
+
+
+# ---------------------------------------------------------------------------
+# resample_on_zoom — reset-axes healing
+# ---------------------------------------------------------------------------
+
+
+def _layout_ops(patch) -> dict:
+    return {
+        ".".join(str(part) for part in op["location"]): op["params"].get("value")
+        for op in patch.to_plotly_json()["operations"]
+    }
+
+
+class TestResampleOnZoomReset:
+    """A graph with no resampler (uid None) must still be re-homed on a reset."""
+
+    def test_empty_relayout_does_nothing(self):
+        with pytest.raises(PreventUpdate):
+            resample_on_zoom({}, None, {"axes": {"xaxis": None}})
+
+    def test_zoom_without_a_resampler_does_nothing(self):
+        with pytest.raises(PreventUpdate):
+            resample_on_zoom(
+                {"xaxis.range[0]": 1.0, "xaxis.range[1]": 2.0},
+                None,
+                {"axes": {"xaxis": None}},
+            )
+
+    def test_corrupted_reset_is_pulled_back_to_autorange(self):
+        patch = resample_on_zoom(
+            {"xaxis.range": [100.0, 200.0], "xaxis.showspikes": False},
+            None,
+            {"axes": {"xaxis": None}},
+        )
+
+        ops = _layout_ops(patch)
+        assert ops["layout.xaxis.autorange"] is True
+        assert ops["layout.xaxis.range"] is None
+
+    def test_configured_range_is_the_home(self):
+        patch = resample_on_zoom(
+            {"xaxis.range": [100.0, 200.0], "xaxis.showspikes": False},
+            None,
+            {"axes": {"xaxis": [0.0, 10.0]}},
+        )
+
+        ops = _layout_ops(patch)
+        assert ops["layout.xaxis.range"] == [0.0, 10.0]
+        assert ops["layout.xaxis.autorange"] is False
+
+    def test_missing_home_store_still_resets(self):
+        patch = resample_on_zoom({"xaxis.showspikes": False, "xaxis.range": [1.0, 2.0]}, None, None)
+
+        assert _layout_ops(patch)["layout.xaxis.autorange"] is True
+
+    def test_unknown_resampler_uid_still_resets(self):
+        patch = resample_on_zoom(
+            {"xaxis.showspikes": False, "xaxis.range": [1.0, 2.0]},
+            "no-such-uid",
+            {"axes": {"xaxis": None}},
+        )
+
+        assert _layout_ops(patch)["layout.xaxis.autorange"] is True
+
+    def test_healthy_reset_is_passed_through_untouched(self):
+        # Nothing is corrupted, so the callback must stay silent as it did before the fix.
+        with pytest.raises(PreventUpdate):
+            resample_on_zoom(
+                {"xaxis.autorange": True, "xaxis.showspikes": False},
+                None,
+                {"axes": {"xaxis": None}},
+            )
+
+    def test_matched_axes_get_no_layout_ops(self):
+        relayout = {
+            "xaxis.range": [1.0, 2.0],
+            "xaxis.showspikes": False,
+            "xaxis2.range": [1.0, 2.0],
+            "xaxis2.showspikes": False,
+        }
+
+        patch = resample_on_zoom(
+            relayout, None, {"axes": {"xaxis": None, "xaxis2": None}, "matched": {"xaxis2": "xaxis"}}
+        )
+
+        ops = _layout_ops(patch)
+        assert not [key for key in ops if key.startswith("layout.xaxis2")]
+        assert ops["layout.xaxis.autorange"] is True
