@@ -26,10 +26,13 @@ Design notes
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from clinical_scope.dash_api.annotations.model import Annotation, AnnotationType
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # ---------------------------------------------------------------------------
 # Helper: axis reference strings
