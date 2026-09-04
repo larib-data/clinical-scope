@@ -17,11 +17,11 @@ from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     delete_group,
     handle_graph_click,
     handle_shape_drag,
-    leave_adjust_when_placing,
+    leave_drag_when_placing,
     render_annotations,
     start_move,
     toggle_annotation_hidden,
-    toggle_adjust_mode,
+    toggle_drag_mode,
     toggle_annotation_mode,
     toggle_group_hidden,
     update_annotation_list,
@@ -674,7 +674,7 @@ def _drag(relayout: dict, stored: list, monkeypatch, plot_name: str = "time_seri
         graph_ids=[{"type": "graph", "name": plot_name}],
         subplots_list=[_subplots_with_axes()],
         annotations_raw=stored,
-        adjusting=True,
+        dragging=True,
         display_timezone="UTC",
     )
 
@@ -806,33 +806,33 @@ class TestShapeDrag:
 
 
 # ==================================================================================================
-# Adjust mode
+# Drag mode
 # ==================================================================================================
 
 
-class TestAdjustMode:
+class TestDragMode:
     """The toggle that arms plotly's editors, and the config it puts on each graph."""
 
     def test_the_first_click_arms_it(self):
-        assert toggle_adjust_mode(1, False)[0] is True
+        assert toggle_drag_mode(1, False)[0] is True
 
     def test_a_second_click_disarms_it(self):
-        assert toggle_adjust_mode(2, True)[0] is False
+        assert toggle_drag_mode(2, True)[0] is False
 
     def test_arming_leaves_any_placement_mode(self):
         """Armed annotations swallow clicks, so a half-placed window would never finish."""
-        result = toggle_adjust_mode(1, False)
+        result = toggle_drag_mode(1, False)
         assert result[2] == default_mode()
 
     def test_disarming_leaves_the_mode_store_alone(self):
-        assert toggle_adjust_mode(2, True)[2] is no_update
+        assert toggle_drag_mode(2, True)[2] is no_update
 
-    def test_exit_is_offered_while_adjusting(self):
-        """Adjust is a mode, so the toolbar must show the same way out as every other one."""
-        assert toggle_adjust_mode(1, False)[-2]["display"] == "inline-block"
+    def test_exit_is_offered_while_dragging(self):
+        """Drag is a mode, so the toolbar must show the same way out as every other one."""
+        assert toggle_drag_mode(1, False)[-2]["display"] == "inline-block"
 
     def test_exit_is_withdrawn_on_leaving(self):
-        assert toggle_adjust_mode(2, True)[-2]["display"] == "none"
+        assert toggle_drag_mode(2, True)[-2]["display"] == "none"
 
     @staticmethod
     def _with_ctx(monkeypatch, triggered_id):
@@ -842,12 +842,12 @@ class TestAdjustMode:
             type("Ctx", (), {"triggered": [{"value": 1}], "triggered_id": triggered_id}),
         )
 
-    def test_exit_disarms_adjust(self, monkeypatch):
+    def test_exit_disarms_drag(self, monkeypatch):
         self._with_ctx(monkeypatch, "annotation-mode-deactivate")
         assert toggle_annotation_mode(0, 0, 0, 1, default_mode())[1] is False
 
-    def test_a_type_button_leaves_adjust_to_its_own_callback(self, monkeypatch):
-        """`leave_adjust_when_placing` owns that transition; writing it twice would race."""
+    def test_a_type_button_leaves_drag_to_its_own_callback(self, monkeypatch):
+        """`leave_drag_when_placing` owns that transition; writing it twice would race."""
         self._with_ctx(monkeypatch, "annotation-type-btn-time_event")
         assert toggle_annotation_mode(1, 0, 0, 0, default_mode())[1] is no_update
 
@@ -876,7 +876,7 @@ class TestAdjustMode:
                 graph_ids=[{"type": "graph", "name": "time_series"}],
                 subplots_list=[_subplots_with_axes()],
                 annotations_raw=[_stored("time_event")],
-                adjusting=False,
+                dragging=False,
                 display_timezone="UTC",
             )
 
@@ -893,7 +893,7 @@ class TestLabelAndPointDrag:
                 graph_ids=[{"type": "graph", "name": "time_series"}],
                 subplots_list=[titled],
                 annotations_raw=[_stored("time_event")],
-                adjusting=True,
+                dragging=True,
                 display_timezone="UTC",
             )
 
@@ -905,7 +905,7 @@ class TestLabelAndPointDrag:
             graph_ids=[{"type": "graph", "name": "time_series"}],
             subplots_list=[titled],
             annotations_raw=[_stored("time_event")],
-            adjusting=True,
+            dragging=True,
             display_timezone="UTC",
         )
         assert result[0]["data"]["x"] == "2024-03-01T10:00:00+00:00"
@@ -950,26 +950,26 @@ class TestLabelAndPointDrag:
 
 
 class TestOneModeAtATime:
-    """Adjust and placement both want the plot's clicks, so arming one leaves the other."""
+    """Drag and placement both want the plot's clicks, so arming one leaves the other."""
 
-    def test_arming_a_placement_mode_leaves_adjust(self):
+    def test_arming_a_placement_mode_leaves_drag(self):
         active = {**default_mode(), "active": True, "type": "time_event"}
-        assert leave_adjust_when_placing(active, True)[0] is False
+        assert leave_drag_when_placing(active, True)[0] is False
 
-    def test_an_idle_mode_change_does_not_leave_adjust(self):
+    def test_an_idle_mode_change_does_not_leave_drag(self):
         with pytest.raises(PreventUpdate):
-            leave_adjust_when_placing(default_mode(), True)
+            leave_drag_when_placing(default_mode(), True)
 
-    def test_nothing_to_leave_when_adjust_is_off(self):
+    def test_nothing_to_leave_when_drag_is_off(self):
         active = {**default_mode(), "active": True}
         with pytest.raises(PreventUpdate):
-            leave_adjust_when_placing(active, False)
+            leave_drag_when_placing(active, False)
 
-    def test_the_mode_adjust_clears_does_not_bounce_back(self):
-        """toggle_adjust_mode writes a fresh mode; that write must not re-trigger arming."""
-        cleared = toggle_adjust_mode(1, False)[2]
+    def test_the_mode_drag_clears_does_not_bounce_back(self):
+        """toggle_drag_mode writes a fresh mode; that write must not re-trigger arming."""
+        cleared = toggle_drag_mode(1, False)[2]
         with pytest.raises(PreventUpdate):
-            leave_adjust_when_placing(cleared, True)
+            leave_drag_when_placing(cleared, True)
 
 
 class TestDraggedLoopPointDropsItsTime:
@@ -998,7 +998,7 @@ class TestDraggedLoopPointDropsItsTime:
             graph_ids=[{"type": "graph", "name": "loop"}],
             subplots_list=[{**_subplots_data("loop"), "rows": []}],
             annotations_raw=stored,
-            adjusting=True,
+            dragging=True,
             display_timezone="UTC",
         )
 
@@ -1059,7 +1059,7 @@ def _drag_dual(relayout: dict, stored: list, monkeypatch) -> list:
         graph_ids=[{"type": "graph", "name": "time_series"}],
         subplots_list=[_subplots_dual_y()],
         annotations_raw=stored,
-        adjusting=True,
+        dragging=True,
         display_timezone="UTC",
     )
 

@@ -138,9 +138,10 @@ _annotation_toolbar = html.Div(
                     style=BUTTON_ANNOTATION_INACTIVE,
                 ),
                 html.Button(
-                    "✥ Adjust",
-                    id="annotation-adjust-btn",
+                    "✥ Drag",
+                    id="annotation-drag-btn",
                     n_clicks=0,
+                    title="Nudge existing annotations with the mouse, along time only",
                     style=BUTTON_ANNOTATION_INACTIVE,
                 ),
                 html.Span(
@@ -590,7 +591,7 @@ app.layout = html.Div(
         # Global annotation stores
         dcc.Store(id="annotation-store", data=[]),
         dcc.Store(id="annotation-mode-store", data=default_mode()),
-        dcc.Store(id="annotation-adjust-store", data=False),
+        dcc.Store(id="annotation-drag-store", data=False),
         dcc.Store(id="annotation-modal-data", data={}),
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),

@@ -51,7 +51,7 @@ from clinical_scope.dash_api.styles import (
     BUTTON_MODAL_CLOSE,
     COLOR_PREVIEW_SWATCH,
     GRAPH_CONFIG,
-    GRAPH_CONFIG_ADJUSTABLE,
+    GRAPH_CONFIG_DRAGGABLE,
 )
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
 from clinical_scope.plot_types import registry as plot_types
@@ -144,7 +144,7 @@ _TOOLBAR_OUTPUTS = (
 _TOOLBAR_NO_UPDATE = (no_update,) * len(_TOOLBAR_OUTPUTS)
 
 
-def _toolbar_state(mode: dict, display: str = "", *, adjusting: bool = False) -> tuple:
+def _toolbar_state(mode: dict, display: str = "", *, dragging: bool = False) -> tuple:
     """
     Return the toolbar values describing *mode*, in :data:`_TOOLBAR_OUTPUTS` order.
 
@@ -152,7 +152,7 @@ def _toolbar_state(mode: dict, display: str = "", *, adjusting: bool = False) ->
     callback that settles the mode cannot leave the toolbar describing the previous one.
     Group mode lights no type button: the group owns the type, and its own text says so.
 
-    Adjust mode is the one that does not live in the mode dict — it is a config swap, not a
+    Drag mode is the one that does not live in the mode dict — it is a config swap, not a
     click contract — so it is passed alongside.  Exit is the way out of any mode, and a mode
     the user cannot see how to leave is the complaint that put it here.
     """
@@ -165,7 +165,7 @@ def _toolbar_state(mode: dict, display: str = "", *, adjusting: bool = False) ->
         ),
         {
             **BUTTON_ANNOTATION_INACTIVE,
-            "display": "inline-block" if active or adjusting else "none",
+            "display": "inline-block" if active or dragging else "none",
         },
         display,
     )
@@ -442,7 +442,7 @@ def _annotation_list_row(
                 style=visible_style,
             ),
             html.Button(
-                "Move",
+                "Move to…",
                 id={"type": "annotation-move-btn", "id": annotation.id},
                 n_clicks=0,
                 disabled=annotation.hidden,
@@ -477,8 +477,8 @@ def _annotation_list_row(
 
 @callback(
     Output("annotation-mode-store", "data", allow_duplicate=True),
-    Output("annotation-adjust-store", "data", allow_duplicate=True),
-    Output("annotation-adjust-btn", "style", allow_duplicate=True),
+    Output("annotation-drag-store", "data", allow_duplicate=True),
+    Output("annotation-drag-btn", "style", allow_duplicate=True),
     *_TOOLBAR_OUTPUTS,
     Input("annotation-type-btn-time_event", "n_clicks"),
     Input("annotation-type-btn-time_window", "n_clicks"),
@@ -1077,7 +1077,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
     Output({"type": "graph", "name": ALL}, "figure", allow_duplicate=True),
     Input("annotation-store", "data"),
     Input("annotation-mode-store", "data"),
-    Input("annotation-adjust-store", "data"),
+    Input("annotation-drag-store", "data"),
     State({"type": "graph", "name": ALL}, "id"),
     State({"type": "graph-subplots", "name": ALL}, "data"),
     State("display-timezone-store", "data"),
@@ -1087,7 +1087,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
 def render_annotations(
     annotations_raw: list,
     mode: dict,
-    _adjusting: bool,
+    _dragging: bool,
     graph_ids: list,
     subplots_list: list,
     display_timezone: str | None,
@@ -1738,73 +1738,73 @@ def start_move(_n: list, annotations_raw: list, mode: dict) -> tuple:
 
 
 # ---------------------------------------------------------------------------
-# 18. Adjust mode — arm plotly's editors, and receive the drags they emit
+# 18. Drag mode — arm plotly's editors, and receive the drags they emit
 # ---------------------------------------------------------------------------
 
 
 @callback(
-    Output("annotation-adjust-store", "data"),
-    Output("annotation-adjust-btn", "style"),
+    Output("annotation-drag-store", "data"),
+    Output("annotation-drag-btn", "style"),
     Output("annotation-mode-store", "data", allow_duplicate=True),
     *_TOOLBAR_OUTPUTS,
-    Input("annotation-adjust-btn", "n_clicks"),
-    State("annotation-adjust-store", "data"),
+    Input("annotation-drag-btn", "n_clicks"),
+    State("annotation-drag-store", "data"),
     prevent_initial_call=True,
 )
-def toggle_adjust_mode(n_clicks: int | None, adjusting: bool) -> tuple:
-    """Flip Adjust mode, leaving whatever placement mode was armed."""
+def toggle_drag_mode(n_clicks: int | None, dragging: bool) -> tuple:
+    """Flip Drag mode, leaving whatever placement mode was armed."""
     if not n_clicks:
         raise PreventUpdate
-    now_adjusting = not adjusting
-    button_style = BUTTON_ANNOTATION_ACTIVE if now_adjusting else BUTTON_ANNOTATION_INACTIVE
+    now_dragging = not dragging
+    button_style = BUTTON_ANNOTATION_ACTIVE if now_dragging else BUTTON_ANNOTATION_INACTIVE
 
-    # Placement and adjustment cannot share the plot: while the editors are armed the
+    # Placement and dragging cannot share the plot: while the editors are armed the
     # annotations swallow the clicks a placement would need.  Arming disarms placement, and
     # leaving has nothing to restore, so the mode dict is empty on both sides.
     disarmed = default_mode()
-    display = "Adjust mode — grab an annotation to nudge it" if now_adjusting else ""
+    display = "Drag mode — grab an annotation to nudge it" if now_dragging else ""
     return (
-        now_adjusting,
+        now_dragging,
         button_style,
-        disarmed if now_adjusting else no_update,
-        *_toolbar_state(disarmed, display, adjusting=now_adjusting),
+        disarmed if now_dragging else no_update,
+        *_toolbar_state(disarmed, display, dragging=now_dragging),
     )
 
 
 @callback(
-    Output("annotation-adjust-store", "data", allow_duplicate=True),
-    Output("annotation-adjust-btn", "style", allow_duplicate=True),
+    Output("annotation-drag-store", "data", allow_duplicate=True),
+    Output("annotation-drag-btn", "style", allow_duplicate=True),
     Input("annotation-mode-store", "data"),
-    State("annotation-adjust-store", "data"),
+    State("annotation-drag-store", "data"),
     prevent_initial_call=True,
 )
-def leave_adjust_when_placing(mode: dict, adjusting: bool) -> tuple[bool, dict]:
+def leave_drag_when_placing(mode: dict, dragging: bool) -> tuple[bool, dict]:
     """
     Close the one-mode-at-a-time invariant from the other side.
 
-    Adjust mode disarms placement on the way in; this disarms Adjust whenever placement is
+    Drag mode disarms placement on the way in; this disarms Drag whenever placement is
     armed from anywhere else — a type button, a group, a move from the list.
     """
-    if not adjusting or not (mode or {}).get("active"):
+    if not dragging or not (mode or {}).get("active"):
         raise PreventUpdate
     return False, BUTTON_ANNOTATION_INACTIVE
 
 
 @callback(
     Output({"type": "graph", "name": ALL}, "config"),
-    Input("annotation-adjust-store", "data"),
+    Input("annotation-drag-store", "data"),
     Input({"type": "graph", "name": ALL}, "id"),
 )
-def arm_graph_editors(adjusting: bool, graph_ids: list) -> list:
+def arm_graph_editors(dragging: bool, graph_ids: list) -> list:
     """
-    Swap each graph's config for the editable one while Adjust mode is on.
+    Swap each graph's config for the editable one while Drag mode is on.
 
     Also fires when the graphs themselves are rebuilt, so a fresh Process cannot leave the
     button lit over plots whose editors were never armed.
     """
     if not graph_ids:
         raise PreventUpdate
-    return [GRAPH_CONFIG_ADJUSTABLE if adjusting else GRAPH_CONFIG] * len(graph_ids)
+    return [GRAPH_CONFIG_DRAGGABLE if dragging else GRAPH_CONFIG] * len(graph_ids)
 
 
 @callback(
@@ -1813,7 +1813,7 @@ def arm_graph_editors(adjusting: bool, graph_ids: list) -> list:
     State({"type": "graph", "name": ALL}, "id"),
     State({"type": "graph-subplots", "name": ALL}, "data"),
     State("annotation-store", "data"),
-    State("annotation-adjust-store", "data"),
+    State("annotation-drag-store", "data"),
     State("display-timezone-store", "data"),
     prevent_initial_call=True,
 )
@@ -1822,12 +1822,12 @@ def handle_shape_drag(
     graph_ids: list,
     subplots_list: list,
     annotations_raw: list,
-    adjusting: bool,
+    dragging: bool,
     display_timezone: str | None,
 ) -> list:
     """Re-place whatever the user dragged on the plot."""
     triggered_id = ctx.triggered_id
-    if triggered_id is None or not adjusting:
+    if triggered_id is None or not dragging:
         raise PreventUpdate
 
     plot_name = triggered_id["name"]
@@ -1872,7 +1872,7 @@ def handle_shape_drag(
             target = by_id.get(owner_id) if owner_id else None
             if target is None:
                 # A subplot title, or a shape whose annotation is gone. Not ours to store;
-                # leaving Adjust mode redraws the figure and puts it back.
+                # leaving Drag mode redraws the figure and puts it back.
                 logger.debug("Drag on index %d matched no annotation on %r", index, plot_name)
                 continue
             data = (

@@ -384,12 +384,12 @@ COLOR_HEX_INPUT: dict = {
 # ---------------------------------------------------------------------------
 
 # An armed annotation swallows the clicks and hover of the plot beneath it: plotly's editors
-# are figure-wide and force `pointer-events: all` onto everything they arm.  Adjust mode is
+# are figure-wide and force `pointer-events: all` onto everything they arm.  Drag mode is
 # what buys that back, by arming them only while the user is nudging — hence two configs
 # derived from one base, so leaving the mode restores what the graph was built with.
 GRAPH_CONFIG: dict = {"displayModeBar": True}
 
-GRAPH_CONFIG_ADJUSTABLE: dict = {
+GRAPH_CONFIG_DRAGGABLE: dict = {
     **GRAPH_CONFIG,
     # `annotationPosition` also arms the subplot titles make_subplots puts in the same list;
     # they snap back on the next render, which is why it is affordable here and was not
