@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from dash import no_update
+from dash import Patch, no_update
 from dash.exceptions import PreventUpdate
 
 import clinical_scope.constants as cst
@@ -14,6 +14,7 @@ from clinical_scope.dash_api.callbacks.data_callbacks import (
     _parse_database_options_file,
     _rehydrate_schema_classes,
     _status_badge,
+    FIGURE_RESAMPLER_CACHE,
     resample_on_zoom,
     build_patient_options_ui,
     format_time_range,
@@ -25,6 +26,7 @@ from clinical_scope.dash_api.callbacks.data_callbacks import (
 from clinical_scope.dash_api.io import load_patient_options
 from clinical_scope.datasource.inspection import ColumnInfo, DataSourceInspection
 from clinical_scope.io.paths import get_patient_options_path
+from tests.dash.helpers import patch_ops
 
 # ---------------------------------------------------------------------------
 # _parse_database_options_file
@@ -451,13 +453,6 @@ class TestRehydrateSchemaClasses:
 # ---------------------------------------------------------------------------
 
 
-def _layout_ops(patch) -> dict:
-    return {
-        ".".join(str(part) for part in op["location"]): op["params"].get("value")
-        for op in patch.to_plotly_json()["operations"]
-    }
-
-
 class TestResampleOnZoomReset:
     """A graph with no resampler (uid None) must still be re-homed on a reset."""
 
@@ -473,16 +468,21 @@ class TestResampleOnZoomReset:
                 {"axes": {"xaxis": None}},
             )
 
-    def test_corrupted_reset_is_pulled_back_to_autorange(self):
+    def test_stale_reset_is_pulled_back_to_autorange(self):
         patch = resample_on_zoom(
             {"xaxis.range": [100.0, 200.0], "xaxis.showspikes": False},
             None,
             {"axes": {"xaxis": None}},
         )
 
-        ops = _layout_ops(patch)
+        ops = patch_ops(patch)
         assert ops["layout.xaxis.autorange"] is True
         assert ops["layout.xaxis.range"] is None
+
+    def test_double_click_reset_is_pulled_back_too(self):
+        patch = resample_on_zoom({"xaxis.range": [100.0, 200.0]}, None, {"axes": {"xaxis": None}})
+
+        assert patch_ops(patch)["layout.xaxis.autorange"] is True
 
     def test_configured_range_is_the_home(self):
         patch = resample_on_zoom(
@@ -491,26 +491,26 @@ class TestResampleOnZoomReset:
             {"axes": {"xaxis": [0.0, 10.0]}},
         )
 
-        ops = _layout_ops(patch)
+        ops = patch_ops(patch)
         assert ops["layout.xaxis.range"] == [0.0, 10.0]
         assert ops["layout.xaxis.autorange"] is False
 
     def test_missing_home_store_still_resets(self):
-        patch = resample_on_zoom({"xaxis.showspikes": False, "xaxis.range": [1.0, 2.0]}, None, None)
+        patch = resample_on_zoom({"xaxis.range": [1.0, 2.0]}, None, None)
 
-        assert _layout_ops(patch)["layout.xaxis.autorange"] is True
+        assert patch_ops(patch)["layout.xaxis.autorange"] is True
 
     def test_unknown_resampler_uid_still_resets(self):
         patch = resample_on_zoom(
-            {"xaxis.showspikes": False, "xaxis.range": [1.0, 2.0]},
+            {"xaxis.range": [1.0, 2.0]},
             "no-such-uid",
             {"axes": {"xaxis": None}},
         )
 
-        assert _layout_ops(patch)["layout.xaxis.autorange"] is True
+        assert patch_ops(patch)["layout.xaxis.autorange"] is True
 
     def test_healthy_reset_is_passed_through_untouched(self):
-        # Nothing is corrupted, so the callback must stay silent as it did before the fix.
+        # Nothing is off home, so the callback must stay silent as it did before the fix.
         with pytest.raises(PreventUpdate):
             resample_on_zoom(
                 {"xaxis.autorange": True, "xaxis.showspikes": False},
@@ -518,18 +518,94 @@ class TestResampleOnZoomReset:
                 {"axes": {"xaxis": None}},
             )
 
+    def test_spike_lines_toggle_is_passed_through_untouched(self):
+        with pytest.raises(PreventUpdate):
+            resample_on_zoom(
+                {"xaxis.showspikes": True, "yaxis.showspikes": True},
+                None,
+                {"axes": {"xaxis": [0.0, 10.0]}},
+            )
+
     def test_matched_axes_get_no_layout_ops(self):
-        relayout = {
-            "xaxis.range": [1.0, 2.0],
-            "xaxis.showspikes": False,
-            "xaxis2.range": [1.0, 2.0],
-            "xaxis2.showspikes": False,
-        }
+        relayout = {"xaxis.range": [1.0, 2.0], "xaxis2.range": [1.0, 2.0]}
 
         patch = resample_on_zoom(
-            relayout, None, {"axes": {"xaxis": None, "xaxis2": None}, "matched": {"xaxis2": "xaxis"}}
+            relayout,
+            None,
+            {"axes": {"xaxis": None, "xaxis2": None}, "matched": {"xaxis2": "xaxis"}},
         )
 
-        ops = _layout_ops(patch)
+        ops = patch_ops(patch)
         assert not [key for key in ops if key.startswith("layout.xaxis2")]
+        assert ops["layout.xaxis.autorange"] is True
+
+
+class _SpyResampler:
+    """Stands in for a FigureResampler, recording the relayout it is asked to aggregate."""
+
+    def __init__(self, patch=None):
+        self.seen: dict | None = None
+        self._patch = patch
+
+    def construct_update_data_patch(self, relayout):
+        self.seen = relayout
+        return no_update if self._patch is None else self._patch
+
+
+class TestResampleOnZoomFeedsTheResampler:
+    """The healed relayout, not plotly's stale one, is what gets re-aggregated."""
+
+    @pytest.fixture
+    def spy(self):
+        uid = "spy-uid"
+        spy = _SpyResampler()
+        FIGURE_RESAMPLER_CACHE[uid] = spy
+        yield uid, spy
+        del FIGURE_RESAMPLER_CACHE[uid]
+
+    def test_a_stale_reset_is_aggregated_on_the_home_window(self, spy):
+        uid, resampler = spy
+
+        resample_on_zoom(
+            {"xaxis.range": [100.0, 200.0], "xaxis.showspikes": False},
+            uid,
+            {"axes": {"xaxis": [0.0, 10.0]}},
+        )
+
+        assert resampler.seen["xaxis.range[0]"] == 0.0
+        assert resampler.seen["xaxis.range[1]"] == 10.0
+        assert "xaxis.range" not in resampler.seen
+
+    def test_a_matched_axis_is_aggregated_too(self, spy):
+        uid, resampler = spy
+
+        resample_on_zoom(
+            {"xaxis.range": [100.0, 200.0], "xaxis2.range": [100.0, 200.0]},
+            uid,
+            {"axes": {"xaxis": [0.0, 10.0], "xaxis2": None}, "matched": {"xaxis2": "xaxis"}},
+        )
+
+        assert resampler.seen["xaxis2.range[0]"] == 0.0
+        assert resampler.seen["xaxis2.range[1]"] == 10.0
+
+    def test_an_ordinary_zoom_reaches_the_resampler_unaltered(self, spy):
+        uid, resampler = spy
+        relayout = {"xaxis.range[0]": 1.0, "xaxis.range[1]": 2.0}
+
+        with pytest.raises(PreventUpdate):
+            resample_on_zoom(relayout, uid, {"axes": {"xaxis": None}})
+
+        assert resampler.seen == relayout
+
+    def test_the_layout_ops_compose_onto_the_resampler_data_patch(self, spy):
+        uid, resampler = spy
+        data_patch = Patch()
+        data_patch["data"][0]["x"] = [1, 2, 3]
+        resampler._patch = data_patch
+
+        ops = patch_ops(
+            resample_on_zoom({"xaxis.range": [100.0, 200.0]}, uid, {"axes": {"xaxis": None}})
+        )
+
+        assert ops["data.0.x"] == [1, 2, 3]
         assert ops["layout.xaxis.autorange"] is True

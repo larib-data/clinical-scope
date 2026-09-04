@@ -749,25 +749,22 @@ def resample_on_zoom(
 
     A reset whose proposed view is not the stored home is overruled — plotly re-derives its
     own reset reference from the current view on any config swap, which is what arming or
-    leaving Drag mode does. Healing the relayout first makes the resampler aggregate the
-    corrected window; a reset already on home passes through untouched.
+    leaving Drag mode does. ``rehome`` heals the relayout first so the resampler aggregates
+    the corrected window; every other gesture comes back from it untouched.
     """
     if not relayout:
         raise PreventUpdate
     store = home_store or {}
-    reset = axis_home.reset_axes(relayout)
-    corrupted = axis_home.corrupted_axes(relayout, reset, store) if reset else []
-    if corrupted:
-        relayout = axis_home.heal_relayout(relayout, reset, store)
+    relayout, off_home = axis_home.rehome(relayout, store)
 
     patch = no_update
     if resampler_uid and resampler_uid in FIGURE_RESAMPLER_CACHE:
         patch = FIGURE_RESAMPLER_CACHE[resampler_uid].construct_update_data_patch(relayout)
-    if not corrupted:
+    if not off_home:
         if patch is no_update:
             raise PreventUpdate
         return patch
-    return axis_home.apply_to_patch(Patch() if patch is no_update else patch, corrupted, store)
+    return axis_home.apply_to_patch(Patch() if patch is no_update else patch, off_home, store)
 
 
 @callback(

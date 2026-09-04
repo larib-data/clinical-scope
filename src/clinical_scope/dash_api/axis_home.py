@@ -1,5 +1,5 @@
 """
-Home position of a graph's axes, and the repair of the modebar reset that reads it.
+Home position of a graph's axes, and the repair of the reset gesture that reads it.
 
 plotly.js keeps its own "reset axes" reference (``_rangeInitial``) in private state, and
 re-derives it from the current view whenever a ``config`` change forces a full re-plot —
@@ -8,26 +8,36 @@ Python, so nothing here tries to correct it. Instead the true initial state is c
 at Process time and compared against what a reset proposes: a reset is an ordinary GUI
 relayout, so it arrives in ``relayoutData`` and can be overruled like any other.
 
+A reset is recognised by the shape of its payload rather than by a companion key. plotly
+replays ``_rangeInitial`` as an *unsplit* ``<axis>.range``; every other gesture that moves
+an axis — drag-zoom, pan, the modebar's zoom buttons, the rangeslider — emits split
+``range[0]``/``range[1]``. An unsplit range key therefore *is* the stale reference being
+replayed, which catches both ways to reset (the modebar button and double-click) and
+nothing else. Keying on the ``<axis>.showspikes`` companion instead, the way
+plotly-resampler does, caught the button alone and misfired on Toggle Spike Lines.
+
 Only axes plotly actually got wrong are overruled: a reset names every axis on the figure,
 and all but one of a time-series figure's x-axes are ``matches``-constrained, so a blanket
 correction is both costly and wrong — a matched axis cannot be moved directly.
 """
 
 import re
+from datetime import datetime
 from typing import Any
 
 # Store id shared by the graph builder and the relayout callback.
 STORE_TYPE = "axis-home-store"
-AXES_KEY = "axes"
-MATCHED_KEY = "matched"
+
+_AXES_KEY = "axes"
+_MATCHED_KEY = "matched"
 
 _AXIS_NAME = re.compile(r"^[xy]axis\d*$")
 
-# plotly emits this on a reset and on nothing else; plotly-resampler bets on it too.
-_RESET_MARKER = re.compile(r"^([xy]axis\d*)\.showspikes$")
+# An unsplit range is plotly replaying a stored initial view; a zoom or pan splits it.
+_REPLAYED_RANGE = re.compile(r"^([xy]axis\d*)\.range$")
 
 # Dropped from a reset's payload, then re-derived from the stored home.
-_VIEW_SUFFIXES = frozenset({"range", "range[0]", "range[1]", "autorange"})
+_VIEW_SUFFIXES = frozenset({"range", "autorange"})
 
 
 def capture(figure: Any) -> dict[str, Any]:
@@ -49,48 +59,68 @@ def capture(figure: Any) -> dict[str, Any]:
         master = value.get("matches")
         if master:
             matched[key] = _layout_name(master)
-    return {AXES_KEY: axes, MATCHED_KEY: matched}
+    return {_AXES_KEY: axes, _MATCHED_KEY: matched}
 
 
-def reset_axes(relayout: dict[str, Any]) -> list[str]:
+def rehome(relayout: dict[str, Any], store: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """
-    Names of the axes a reset-axes click touched; empty for a zoom, pan or autoscale.
+    Overrule a reset plotly is replaying from a reference it re-derived while zoomed.
 
-    Detection is on key presence, never on the value: the replayed spike setting is
-    normally ``False``.
+    Returns the relayout to hand the resampler, and the axes to correct on the figure. The
+    second is empty when this is not a reset or is one already on its home position, and
+    the relayout then comes back untouched — the pass-through every other gesture takes.
     """
-    return [match.group(1) for key in relayout if (match := _RESET_MARKER.match(key))]
-
-
-def corrupted_axes(relayout: dict[str, Any], axes: list[str], store: dict[str, Any]) -> list[str]:
-    """
-    Of the axes a reset touched, those whose proposed view is not their home.
-
-    A healthy reset yields none, so it is passed through unaltered. An axis constrained by
-    ``matches`` is never listed: it cannot be moved directly, and healing its master
-    carries it along.
-    """
-    home = store.get(AXES_KEY) or {}
-    matched = store.get(MATCHED_KEY) or {}
-    return [
+    replayed = [match.group(1) for key in relayout if (match := _REPLAYED_RANGE.match(key))]
+    if not replayed:
+        return relayout, []
+    home = store.get(_AXES_KEY) or {}
+    matched = store.get(_MATCHED_KEY) or {}
+    # A matched axis cannot be moved directly, so it is never corrected: healing its
+    # master carries it through plotly's constraint solver.
+    off_home = [
         axis
-        for axis in axes
-        if axis not in matched and not _is_home(_proposed_range(relayout, axis), home.get(axis))
+        for axis in replayed
+        if axis not in matched and not _is_home(relayout[f"{axis}.range"], home.get(axis))
     ]
+    if not off_home:
+        return relayout, []
+    return _heal(relayout, replayed, home, matched), off_home
 
 
-def heal_relayout(
-    relayout: dict[str, Any], axes: list[str], store: dict[str, Any]
+def apply_to_patch(patch: Any, axes: list[str], store: dict[str, Any]) -> Any:
+    """
+    Add the layout ops that put the off-home axes back on their home position.
+
+    ``uirevision`` is deliberately untouched: bumping it would drop the GUI zoom this reset
+    undoes, but ``editrevision`` falls back to it and the user's annotation shape edits
+    would go with it. An explicit ``autorange`` wins over a re-applied range anyway.
+    """
+    home = store.get(_AXES_KEY) or {}
+    for axis in axes:
+        axis_range = home.get(axis)
+        patch["layout"][axis]["autorange"] = axis_range is None
+        patch["layout"][axis]["range"] = list(axis_range) if axis_range else None
+    return patch
+
+
+def _heal(
+    relayout: dict[str, Any],
+    axes: list[str],
+    home: dict[str, Any],
+    matched: dict[str, str],
 ) -> dict[str, Any]:
     """
     Rewrite a reset's proposed view as the stored home, for the resampler to aggregate.
 
-    Every axis the reset named is rewritten, matched ones included: plotly-resampler
-    selects the traces to re-aggregate by their own x-axis, so dropping an axis here
-    would leave that subplot showing data for the wrong window.
+    Every replayed axis is rewritten, matched ones included: plotly-resampler selects the
+    traces to re-aggregate by their own x-axis, so dropping an axis here would leave that
+    subplot showing data for the wrong window.
+
+    The ``showspikes`` companion is stated rather than merely preserved. plotly-resampler
+    reads a reset off that key, and re-aggregates to the whole recording only when it is
+    there; a double-click reset carries none, so a healed one that stayed silent would
+    move the axes and leave the traces on the aggregation for the abandoned window.
     """
-    home = store.get(AXES_KEY) or {}
-    matched = store.get(MATCHED_KEY) or {}
     healed = {key: value for key, value in relayout.items() if not _is_view_key(key, axes)}
     for axis in axes:
         axis_range = home.get(matched.get(axis, axis))
@@ -98,23 +128,8 @@ def heal_relayout(
             healed[f"{axis}.autorange"] = True
         else:
             healed[f"{axis}.range[0]"], healed[f"{axis}.range[1]"] = axis_range
+        healed.setdefault(f"{axis}.showspikes", False)
     return healed
-
-
-def apply_to_patch(patch: Any, axes: list[str], store: dict[str, Any]) -> Any:
-    """
-    Add the layout ops that put the corrupted axes back on their home position.
-
-    ``uirevision`` is deliberately untouched: bumping it would drop the GUI zoom this reset
-    undoes, but ``editrevision`` falls back to it and the user's annotation shape edits
-    would go with it. An explicit ``autorange`` wins over a re-applied range anyway.
-    """
-    home = store.get(AXES_KEY) or {}
-    for axis in axes:
-        axis_range = home.get(axis)
-        patch["layout"][axis]["autorange"] = axis_range is None
-        patch["layout"][axis]["range"] = list(axis_range) if axis_range else None
-    return patch
 
 
 def _layout_name(axis_id: str) -> str:
@@ -128,22 +143,34 @@ def _is_view_key(key: str, axes: list[str]) -> bool:
     return axis in axes and suffix in _VIEW_SUFFIXES
 
 
-def _proposed_range(relayout: dict[str, Any], axis: str) -> list | None:
-    """The range a reset proposes for one axis; None when it proposes autorange."""
-    if f"{axis}.range" in relayout:
-        return list(relayout[f"{axis}.range"])
-    low, high = f"{axis}.range[0]", f"{axis}.range[1]"
-    if low in relayout and high in relayout:
-        return [relayout[low], relayout[high]]
-    return None
+def _is_home(proposed: list, home_range: list | None) -> bool:
+    """Whether a replayed range is the axis's home; never, when home is plain autorange."""
+    if home_range is None or len(proposed) != len(home_range):
+        return False
+    return all(_is_same_bound(*pair) for pair in zip(proposed, home_range, strict=True))
 
 
-def _is_home(proposed: list | None, home_range: list | None) -> bool:
-    """Whether a proposed range is the axis's home. Dates compare as text, not floats."""
-    if proposed is None or home_range is None:
-        return proposed is home_range is None
-    return proposed == home_range or _as_text(proposed) == _as_text(home_range)
+def _is_same_bound(proposed: Any, home_bound: Any) -> bool:
+    """
+    Compare one range bound.
+
+    A date reaches the store as a ``datetime`` and comes back from it as ISO-8601 text,
+    while plotly sends the same instant space-separated, so the two never compare equal
+    as strings and a healthy reset would look off-home.
+    """
+    if proposed == home_bound:
+        return True
+    instant = _as_instant(proposed)
+    return instant is not None and instant == _as_instant(home_bound)
 
 
-def _as_text(values: list) -> list[str]:
-    return [str(value) for value in values]
+def _as_instant(value: Any) -> datetime | None:
+    """A range bound as a datetime, or None when it does not state one."""
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
