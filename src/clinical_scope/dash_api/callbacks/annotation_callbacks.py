@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -30,18 +31,27 @@ from clinical_scope.dash_api.annotations.model import (
 )
 from clinical_scope.dash_api.annotations.renderer import (
     build_figure_overlays,
+    label_owner_ids,
     normalize_annotation_for_display,
+    shape_owner_ids,
 )
 from clinical_scope.dash_api.styles import (
+    ANNOTATION_LIST_PANEL,
+    ANNOTATION_LIST_PANEL_HIDDEN,
     ANNOTATION_LIST_ROW,
     ANNOTATION_MODAL_STYLE_HIDDEN,
     ANNOTATION_MODAL_STYLE_SHOWN,
     ANNOTATION_TOOLBAR_STYLE,
     BUTTON_ANNOTATION_ACTIVE,
     BUTTON_ANNOTATION_INACTIVE,
+    BUTTON_ANNOTATION_ROW,
     BUTTON_ANNOTATION_SAVE,
+    BUTTON_ANNOTATION_SMALL,
+    BUTTON_DISABLED_OVERLAY,
     BUTTON_MODAL_CLOSE,
     COLOR_PREVIEW_SWATCH,
+    GRAPH_CONFIG,
+    GRAPH_CONFIG_DRAGGABLE,
 )
 from clinical_scope.datasource.formatting.timezone import to_naive_display_ts
 from clinical_scope.plot_types import registry as plot_types
@@ -65,20 +75,19 @@ _TYPE_ICONS = {
     AnnotationType.POINT.value: "•",
 }
 
-_SMALL_BTN: dict = {
-    **BUTTON_ANNOTATION_INACTIVE,
-    "padding": "2px 7px",
-    "fontSize": "11px",
-}
-
 
 def default_mode() -> dict:
     """
     Return a fresh annotation-mode-store value.
 
     This dict is the annotation state machine: ``active`` gates click handling, the
-    ``pending_*`` pair holds a time-window's first click, and the ``group_*`` fields —
-    set only in group mode — make clicks bypass the creation modal.
+    ``pending_*`` pair holds a time-window's first click, the ``group_*`` fields — set only
+    in group mode — make clicks bypass the creation modal, and ``moving_id`` names the
+    annotation the next click re-places.
+
+    One mode at a time: group and move are never both armed.  :func:`_mode_reset` is what
+    holds that: a writer names the fields it keeps and every other one comes back from here,
+    so a field added below is cleared on every transition without visiting them.
     """
     return {
         "active": False,
@@ -89,7 +98,115 @@ def default_mode() -> dict:
         "group_name": None,
         "group_color": None,
         "group_is_global": False,
+        "moving_id": None,
     }
+
+
+# The mode fields a finished or cancelled placement gesture leaves alone: what you are
+# placing, and the group you are placing it into.
+_MODE_KEYS_SURVIVING_A_GESTURE = (
+    "active",
+    "type",
+    "group_id",
+    "group_name",
+    "group_color",
+    "group_is_global",
+)
+
+
+def _mode_reset(mode: dict | None, *keep: str, **overrides: Any) -> dict:
+    """
+    Return *mode* with every field back at its default except *keep* and *overrides*.
+
+    Naming what survives inverts the ``{**mode, "x": None}`` idiom this replaces, where each
+    writer had to know the whole schema and a field added later rode along on every copy that
+    did not mention it.  Here a new field is cleared by every writer that does not keep it.
+    """
+    source = mode or default_mode()
+    return {**default_mode(), **{key: source[key] for key in keep if key in source}, **overrides}
+
+
+# The annotation types in toolbar order; the buttons core_api builds carry the same ids.
+_TOOLBAR_TYPE_ORDER = tuple(_TYPE_LABELS)
+
+# The toolbar outputs a mode transition writes, in the one order they are returned in.  Dash
+# matches a return positionally and the last two are a style dict and a string, so swapping
+# them renders wrong rather than raising; stating the order once removes the chance.
+_TOOLBAR_OUTPUTS = (
+    *(
+        Output(f"annotation-type-btn-{type_value}", "style", allow_duplicate=True)
+        for type_value in _TOOLBAR_TYPE_ORDER
+    ),
+    Output("annotation-mode-deactivate", "style", allow_duplicate=True),
+    Output("annotation-active-group-display", "children", allow_duplicate=True),
+)
+
+_TOOLBAR_NO_UPDATE = (no_update,) * len(_TOOLBAR_OUTPUTS)
+
+
+def _toolbar_state(mode: dict, display: str = "", *, dragging: bool = False) -> tuple:
+    """
+    Return the toolbar values describing *mode*, in :data:`_TOOLBAR_OUTPUTS` order.
+
+    Which type button is lit and whether Exit shows are functions of the mode dict, so a
+    callback that settles the mode cannot leave the toolbar describing the previous one.
+    Group mode lights no type button: the group owns the type, and its own text says so.
+
+    Drag mode is the one that does not live in the mode dict — it is a config swap, not a
+    click contract — so it is passed alongside.  Exit is the way out of any mode, and a mode
+    the user cannot see how to leave is the complaint that put it here.
+    """
+    active = bool(mode.get("active"))
+    lit = mode.get("type") if active and not mode.get("group_id") else None
+    return (
+        *(
+            BUTTON_ANNOTATION_ACTIVE if lit == type_value else BUTTON_ANNOTATION_INACTIVE
+            for type_value in _TOOLBAR_TYPE_ORDER
+        ),
+        {
+            **BUTTON_ANNOTATION_INACTIVE,
+            "display": "inline-block" if active or dragging else "none",
+        },
+        display,
+    )
+
+
+def _build_annotation_data(
+    annotation_type: AnnotationType,
+    *,
+    x: str | None = None,
+    x0: str | None = None,
+    x1: str | None = None,
+    xaxis: str = "x",
+    y: float | None = None,
+    yaxis: str = "y",
+    point_time: str | None = None,
+) -> dict:
+    """Build an annotation's type-specific ``data`` payload from an already-resolved click."""
+    if annotation_type == AnnotationType.TIME_WINDOW:
+        return {"x0": x0, "x1": x1, "xaxis": xaxis}
+    if annotation_type == AnnotationType.POINT:
+        data: dict[str, Any] = {"x": x, "y": y, "xaxis": xaxis, "yaxis": yaxis}
+        if point_time:
+            data["t"] = point_time
+        return data
+    return {"x": x, "xaxis": xaxis}
+
+
+def _point_time(point: dict, *, timestamped: bool, display_tz: str) -> str | None:
+    """
+    Return when a clicked point was recorded, read off the trace's customdata.
+
+    Only loop-style plots carry it; on a time-axis plot the x value already is that instant.
+    """
+    if not timestamped:
+        return None
+    raw_t = point.get("customdata")
+    if not raw_t:
+        return None
+    with contextlib.suppress(Exception):
+        return pd.Timestamp(str(raw_t)).tz_localize(display_tz).isoformat()
+    return None
 
 
 def _localize_x_val(x_val: str, display_tz: str = cst.DISPLAY_TIMEZONE) -> str:
@@ -104,6 +221,99 @@ def _localize_x_val(x_val: str, display_tz: str = cst.DISPLAY_TIMEZONE) -> str:
     except Exception:
         logger.warning("Could not localize x value %r", x_val, exc_info=True)
         return x_val
+
+
+_SHAPE_DRAG_KEY = re.compile(r"^shapes\[(\d+)\]\.(x0|x1)$")
+_LABEL_DRAG_KEY = re.compile(r"^annotations\[(\d+)\]\.(x|y)$")
+
+
+def _parse_drag(relayout: dict | None, key_pattern: re.Pattern) -> dict[int, dict[str, str]]:
+    """
+    Group a relayout payload's indexed drag keys by the index they name.
+
+    Plotly reports a finished drag as flat indexed keys, and reports the vertical half
+    alongside the horizontal one.  What each half means is the caller's to decide; this only
+    says which index moved and how.
+    """
+    edits: dict[int, dict[str, str]] = {}
+    for key, value in (relayout or {}).items():
+        match = key_pattern.match(key)
+        if match is not None:
+            edits.setdefault(int(match.group(1)), {})[match.group(2)] = str(value)
+    return edits
+
+
+def _x_or_none(annotation: Annotation, edit: dict[str, str], display_tz: str) -> str | None:
+    """The new x a drag reports, localized, or ``None`` if the drag carried no x at all."""
+    # A vertical line's two ends are one position: grabbing either handle reports only that
+    # end, so whichever arrived is the new x for the whole shape.
+    moved = edit.get("x", edit.get("x0", edit.get("x1")))
+    if moved is None:
+        return None
+    return _localize_x_val(moved, display_tz) if annotation.type != AnnotationType.POINT else moved
+
+
+def _dragged_shape_data(
+    annotation: Annotation, edit: dict[str, str], display_tz: str
+) -> dict | None:
+    """
+    Return *annotation*'s ``data`` with the dragged x values in place of the stored ones.
+
+    ``None`` for anything a shape drag cannot express — a point, which draws no shape at all.
+    """
+    data = dict(annotation.data)
+    if annotation.type == AnnotationType.TIME_EVENT:
+        moved = _x_or_none(annotation, edit, display_tz)
+        if moved is None:
+            return None
+        data["x"] = moved
+        return data
+    if annotation.type == AnnotationType.TIME_WINDOW:
+        for bound in ("x0", "x1"):
+            if bound in edit:
+                data[bound] = _localize_x_val(edit[bound], display_tz)
+        return data
+    return None
+
+
+def _dragged_label_data(
+    annotation: Annotation, edit: dict[str, str], display_tz: str, *, time_axis: bool
+) -> dict | None:
+    """
+    Return *annotation*'s ``data`` after a drag of the thing that labels it.
+
+    A point *is* its marker, so the drag is the position.  A time shape's label sits on the
+    shape, so dragging it reads as dragging the shape: the event moves to the new x, and the
+    window slides whole rather than having its start pulled off its end.
+    """
+    data = dict(annotation.data)
+    if annotation.type == AnnotationType.POINT:
+        if "x" in edit:
+            data["x"] = _localize_x_val(edit["x"], display_tz) if time_axis else edit["x"]
+        if "y" in edit:
+            with contextlib.suppress(ValueError, TypeError):
+                data["y"] = float(edit["y"])
+        # A loop point's recorded time comes off the trace's customdata, and a relayout
+        # payload carries none — so a dragged point drops the time rather than keeping one it
+        # can no longer vouch for.  Only the click-driven move can re-derive it.
+        data.pop("t", None)
+        return data
+
+    moved = _x_or_none(annotation, edit, display_tz)
+    if moved is None:
+        return None
+    if annotation.type == AnnotationType.TIME_EVENT:
+        data["x"] = moved
+        return data
+
+    try:
+        shift = pd.Timestamp(moved) - pd.Timestamp(data["x0"])
+        data["x1"] = (pd.Timestamp(data["x1"]) + shift).isoformat()
+        data["x0"] = moved
+    except (ValueError, TypeError, KeyError):
+        logger.warning("Could not slide window %r from a label drag", annotation.id, exc_info=True)
+        return None
+    return data
 
 
 def _parse_yaxis_idx(yaxis_ref: str) -> int:
@@ -166,17 +376,27 @@ def _annotation_list_row(
 
     x_val = annotation.data.get("x") or annotation.data.get("x0")
     time_str = _format_x_short(x_val, display_tz)
+    # On a plot whose x is not time, x alone says nothing about when — so the recorded time
+    # is shown beside it, and its absence after a drag is visible rather than silent.
+    recorded_at = annotation.data.get("t")
+    recorded_str = f"@{_format_x_short(recorded_at, display_tz)}" if recorded_at else ""
     trace_str = (annotation.trace_metadata or {}).get("display_name", "")
     scope_str = annotation.subplot_name or "Global"
-    info_parts = [part for part in [time_str, trace_str, scope_str] if part]
+    info_parts = [part for part in [time_str, recorded_str, trace_str, scope_str] if part]
     info_line = " · ".join(info_parts)
 
+    # Hiding dominates: while it is on, the label toggle can have no visible effect and a
+    # move could not be verified, so both are disabled rather than left to act invisibly.
     label_text = "L:off" if annotation.label_hidden else "L:on"
     label_style = {
-        **_SMALL_BTN,
+        **BUTTON_ANNOTATION_ROW,
         "backgroundColor": "#6c757d" if annotation.label_hidden else "#adb5bd",
-        "padding": "1px 5px",
-        "fontSize": "10px",
+        **(BUTTON_DISABLED_OVERLAY if annotation.hidden else {}),
+    }
+    visible_text = "V:off" if annotation.hidden else "V:on"
+    visible_style = {
+        **BUTTON_ANNOTATION_ROW,
+        "backgroundColor": "#6c757d" if annotation.hidden else "#adb5bd",
     }
 
     return html.Div(
@@ -210,7 +430,27 @@ def _annotation_list_row(
                 label_text,
                 id={"type": "annotation-label-toggle-btn", "id": annotation.id},
                 n_clicks=0,
+                disabled=annotation.hidden,
+                title="Show or hide this annotation's text label",
                 style=label_style,
+            ),
+            html.Button(
+                visible_text,
+                id={"type": "annotation-hidden-toggle-btn", "id": annotation.id},
+                n_clicks=0,
+                title="Show or hide this annotation entirely",
+                style=visible_style,
+            ),
+            html.Button(
+                "Move to…",
+                id={"type": "annotation-move-btn", "id": annotation.id},
+                n_clicks=0,
+                disabled=annotation.hidden,
+                title="Click here, then click the new position on the plot",
+                style={
+                    **BUTTON_ANNOTATION_ROW,
+                    **(BUTTON_DISABLED_OVERLAY if annotation.hidden else {}),
+                },
             ),
             html.Button(
                 "×",  # noqa: RUF001
@@ -237,11 +477,9 @@ def _annotation_list_row(
 
 @callback(
     Output("annotation-mode-store", "data", allow_duplicate=True),
-    Output("annotation-type-btn-time_event", "style"),
-    Output("annotation-type-btn-time_window", "style"),
-    Output("annotation-type-btn-point", "style"),
-    Output("annotation-mode-deactivate", "style"),
-    Output("annotation-active-group-display", "children", allow_duplicate=True),
+    Output("annotation-drag-store", "data", allow_duplicate=True),
+    Output("annotation-drag-btn", "style", allow_duplicate=True),
+    *_TOOLBAR_OUTPUTS,
     Input("annotation-type-btn-time_event", "n_clicks"),
     Input("annotation-type-btn-time_window", "n_clicks"),
     Input("annotation-type-btn-point", "n_clicks"),
@@ -255,60 +493,31 @@ def toggle_annotation_mode(
     _pt: int,
     _deactivate: int,
     mode: dict,
-) -> tuple[dict, dict, dict, dict, dict, str]:
+) -> tuple:
     """Activate an annotation type or deactivate mode entirely."""
     mode = mode or default_mode()
     triggered = ctx.triggered_id
 
     if triggered == "annotation-mode-deactivate":
-        new_mode = {
-            **mode,
-            "active": False,
-            "pending_x0": None,
-            "pending_plot_name": None,
-            "group_id": None,
-        }
-    else:
-        btn_to_type = {
-            "annotation-type-btn-time_event": AnnotationType.TIME_EVENT.value,
-            "annotation-type-btn-time_window": AnnotationType.TIME_WINDOW.value,
-            "annotation-type-btn-point": AnnotationType.POINT.value,
-        }
-        annotation_type = btn_to_type.get(
-            triggered, mode.get("type", AnnotationType.TIME_EVENT.value)
+        # Exit is the single way out, so it must also clear the mode that is not in the dict.
+        new_mode = _mode_reset(mode, "type")
+        return (
+            new_mode,
+            False,
+            BUTTON_ANNOTATION_INACTIVE,
+            *_toolbar_state(new_mode),
         )
-        if mode.get("active") and mode.get("type") == annotation_type and not mode.get("group_id"):
-            new_mode = {
-                **mode,
-                "active": False,
-                "pending_x0": None,
-                "pending_plot_name": None,
-                "group_id": None,
-            }
-        else:
-            new_mode = {**mode, "active": True, "type": annotation_type, "group_id": None}
 
-    active = new_mode["active"]
-    active_type = new_mode["type"]
-
-    def _btn_style(annotation_type_value: str) -> dict:
-        if active and active_type == annotation_type_value and not new_mode.get("group_id"):
-            return BUTTON_ANNOTATION_ACTIVE
-        return BUTTON_ANNOTATION_INACTIVE
-
-    deactivate_style = {
-        **BUTTON_ANNOTATION_INACTIVE,
-        "display": "inline-block" if active else "none",
+    btn_to_type = {
+        f"annotation-type-btn-{type_value}": type_value for type_value in _TOOLBAR_TYPE_ORDER
     }
+    annotation_type = btn_to_type.get(triggered, mode.get("type", AnnotationType.TIME_EVENT.value))
+    if mode.get("active") and mode.get("type") == annotation_type and not mode.get("group_id"):
+        new_mode = _mode_reset(mode, type=annotation_type)
+    else:
+        new_mode = _mode_reset(mode, active=True, type=annotation_type)
 
-    return (
-        new_mode,
-        _btn_style(AnnotationType.TIME_EVENT.value),
-        _btn_style(AnnotationType.TIME_WINDOW.value),
-        _btn_style(AnnotationType.POINT.value),
-        deactivate_style,
-        "",  # clear group display text
-    )
+    return (new_mode, no_update, no_update, *_toolbar_state(new_mode))
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +532,10 @@ def _check_pending_x0(mode: dict, x_str: str, plot_name: str) -> tuple[bool, str
     Returns ``(is_first_click, stored_x0, new_mode)``.
     First click  → new_mode stores x_str; stored_x0 is None.
     Second click → new_mode clears pending; stored_x0 holds the first-click value.
+
+    The one writer of the mode store that copies it wholesale rather than going through
+    :func:`_mode_reset`: this is a step *within* one gesture, not a transition between modes,
+    so a window move must still be armed when its second click arrives.
     """
     pending_x0 = mode.get("pending_x0")
     pending_plot = mode.get("pending_plot_name")
@@ -343,6 +556,7 @@ def _check_pending_x0(mode: dict, x_str: str, plot_name: str) -> tuple[bool, str
     Output({"type": "graph", "name": ALL}, "figure", allow_duplicate=True),
     Output("annotation-warning-msg", "children"),
     Output("annotation-store", "data", allow_duplicate=True),
+    *_TOOLBAR_OUTPUTS,
     Input({"type": "graph", "name": ALL}, "clickData"),
     State("annotation-mode-store", "data"),
     State({"type": "graph-subplots", "name": ALL}, "data"),
@@ -360,7 +574,7 @@ def handle_graph_click(
     graph_ids: list,
     annotations_raw: list,
     display_timezone: str | None,
-) -> tuple[dict, dict, dict, list, str, list]:
+) -> tuple:
     """React to a graph click when annotation mode is active."""
     mode = mode or default_mode()
     if not mode.get("active"):
@@ -429,9 +643,11 @@ def handle_graph_click(
             no_update_patches,
             f"⚠ Time-based annotations are not supported on {plot_type} plots — switch to Point.",
             no_update,
+            *_TOOLBAR_NO_UPDATE,
         )
 
     x_str = _localize_x_val(str(x_val), display_tz) if has_time_axis else str(x_val)
+    click_point_time = _point_time(point, timestamped=point_is_timestamped, display_tz=display_tz)
 
     # Built in data_callbacks.py, so it reflects the real layout (sparse grids, secondary
     # y-axes). Used for the subplot NAME only — row/col still come from the grid formula.
@@ -473,6 +689,70 @@ def handle_graph_click(
             )
         subplot_name = row_obj["name"] if row_obj else None
 
+    # --- Move mode: re-place an existing annotation, keeping everything but its position ---
+    moving_id = mode.get("moving_id")
+    if moving_id:
+        annotation_set = AnnotationSet.from_dicts(annotations_raw)
+        target = next(
+            (annotation for annotation in annotation_set if annotation.id == moving_id), None
+        )
+        settled_mode = _mode_reset(mode, "type")
+
+        if target is None:
+            # Deleted mid-move, or a folder change reloaded the store. Disarm, change nothing.
+            return (
+                settled_mode,
+                no_update,
+                ANNOTATION_MODAL_STYLE_HIDDEN,
+                no_update_patches,
+                "",
+                no_update,
+                *_toolbar_state(settled_mode),
+            )
+
+        if annotation_type == AnnotationType.TIME_WINDOW.value:
+            is_first, stored_x0, pending_mode = _check_pending_x0(mode, x_str, plot_name)
+            if is_first:
+                # Still armed, and the preview line is drawn from the pending first click.
+                return (
+                    pending_mode,
+                    no_update,
+                    ANNOTATION_MODAL_STYLE_HIDDEN,
+                    no_update_patches,
+                    "",
+                    no_update,
+                    *_TOOLBAR_NO_UPDATE,
+                )
+            data = _build_annotation_data(
+                AnnotationType.TIME_WINDOW, x0=stored_x0, x1=x_str, xaxis=xaxis_ref
+            )
+        else:
+            data = _build_annotation_data(
+                AnnotationType(annotation_type),
+                x=x_str,
+                xaxis=xaxis_ref,
+                y=y_val,
+                yaxis=yaxis_ref,
+                point_time=click_point_time,
+            )
+
+        moved = annotation_set.with_moved(
+            moving_id,
+            data=data,
+            plot_name=plot_name,
+            subplot_name=subplot_name,
+            trace_metadata=trace_metadata or None,
+        )
+        return (
+            settled_mode,
+            no_update,
+            ANNOTATION_MODAL_STYLE_HIDDEN,
+            no_update_patches,
+            "",
+            moved.to_dicts(),
+            *_toolbar_state(settled_mode),
+        )
+
     # --- Group mode: bypass modal, create annotation immediately ---
     group_id = mode.get("group_id")
     if group_id:
@@ -491,9 +771,12 @@ def handle_graph_click(
                     no_update_patches,
                     "",
                     no_update,
+                    *_TOOLBAR_NO_UPDATE,
                 )
 
-            data: dict[str, Any] = {"x0": stored_x0, "x1": x_str, "xaxis": xaxis_ref}
+            data = _build_annotation_data(
+                AnnotationType.TIME_WINDOW, x0=stored_x0, x1=x_str, xaxis=xaxis_ref
+            )
             annotation = Annotation.create(
                 annotation_type=AnnotationType(annotation_type),
                 plot_name=plot_name,
@@ -513,22 +796,17 @@ def handle_graph_click(
                 no_update_patches,
                 "",
                 annotation_set.with_added(annotation).to_dicts(),
+                *_TOOLBAR_NO_UPDATE,
             )
 
-        if annotation_type == AnnotationType.POINT.value:
-            data = {
-                "x": x_str,
-                "y": y_val,
-                "xaxis": xaxis_ref,
-                "yaxis": yaxis_ref,
-            }
-            if point_is_timestamped:
-                raw_t = point.get("customdata")
-                if raw_t:
-                    with contextlib.suppress(Exception):
-                        data["t"] = pd.Timestamp(str(raw_t)).tz_localize(display_tz).isoformat()
-        else:
-            data = {"x": x_str, "xaxis": xaxis_ref}
+        data = _build_annotation_data(
+            AnnotationType(annotation_type),
+            x=x_str,
+            xaxis=xaxis_ref,
+            y=y_val,
+            yaxis=yaxis_ref,
+            point_time=click_point_time,
+        )
 
         annotation = Annotation.create(
             annotation_type=AnnotationType(annotation_type),
@@ -549,6 +827,7 @@ def handle_graph_click(
             no_update_patches,
             "",
             annotation_set.with_added(annotation).to_dicts(),
+            *_TOOLBAR_NO_UPDATE,
         )
 
     # --- Normal mode ---
@@ -564,6 +843,7 @@ def handle_graph_click(
                 no_update_patches,
                 "",
                 no_update,
+                *_TOOLBAR_NO_UPDATE,
             )
 
         modal_data: dict[str, Any] = {
@@ -585,6 +865,7 @@ def handle_graph_click(
             no_update_patches,
             "",
             no_update,
+            *_TOOLBAR_NO_UPDATE,
         )
 
     modal_data = {
@@ -599,15 +880,20 @@ def handle_graph_click(
     if annotation_type == AnnotationType.POINT.value:
         modal_data["y"] = y_val
         modal_data["yaxis"] = yaxis_ref
-        if point_is_timestamped:
-            raw_t = point.get("customdata")
-            if raw_t:
-                with contextlib.suppress(Exception):
-                    modal_data["t"] = pd.Timestamp(str(raw_t)).tz_localize(display_tz).isoformat()
+        if click_point_time:
+            modal_data["t"] = click_point_time
     if trace_metadata:
         modal_data["trace_metadata"] = trace_metadata
 
-    return mode, modal_data, ANNOTATION_MODAL_STYLE_SHOWN, no_update_patches, "", no_update
+    return (
+        mode,
+        modal_data,
+        ANNOTATION_MODAL_STYLE_SHOWN,
+        no_update_patches,
+        "",
+        no_update,
+        *_TOOLBAR_NO_UPDATE,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -736,25 +1022,16 @@ def create_annotation(
     is_global = "global" in (global_checkbox or [])
     color = normalize_hex_color(color)
 
-    if annotation_type == AnnotationType.TIME_EVENT:
-        data = {"x": modal_data["x"], "xaxis": modal_data.get("xaxis", "x")}
-    elif annotation_type == AnnotationType.TIME_WINDOW:
-        data = {
-            "x0": modal_data["x0"],
-            "x1": modal_data["x1"],
-            "xaxis": modal_data.get("xaxis", "x"),
-        }
-    elif annotation_type == AnnotationType.POINT:
-        data = {
-            "x": modal_data["x"],
-            "y": modal_data.get("y"),
-            "xaxis": modal_data.get("xaxis", "x"),
-            "yaxis": modal_data.get("yaxis", "y"),
-        }
-        if "t" in modal_data:
-            data["t"] = modal_data["t"]
-    else:
-        raise PreventUpdate
+    data = _build_annotation_data(
+        annotation_type,
+        x=modal_data.get("x"),
+        x0=modal_data.get("x0"),
+        x1=modal_data.get("x1"),
+        xaxis=modal_data.get("xaxis", "x"),
+        y=modal_data.get("y"),
+        yaxis=modal_data.get("yaxis", "y"),
+        point_time=modal_data.get("t"),
+    )
 
     annotation = Annotation.create(
         annotation_type=annotation_type,
@@ -768,7 +1045,7 @@ def create_annotation(
     )
 
     new_annotations = AnnotationSet.from_dicts(annotations_raw).with_added(annotation).to_dicts()
-    new_mode = {**(mode or default_mode()), "pending_x0": None, "pending_plot_name": None}
+    new_mode = _mode_reset(mode, *_MODE_KEYS_SURVIVING_A_GESTURE)
     return new_annotations, new_mode, ANNOTATION_MODAL_STYLE_HIDDEN
 
 
@@ -787,7 +1064,7 @@ def create_annotation(
 )
 def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
     """Close the modal and discard any pending time-window first click."""
-    new_mode = {**(mode or default_mode()), "pending_x0": None, "pending_plot_name": None}
+    new_mode = _mode_reset(mode, *_MODE_KEYS_SURVIVING_A_GESTURE)
     return new_mode, ANNOTATION_MODAL_STYLE_HIDDEN
 
 
@@ -800,6 +1077,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
     Output({"type": "graph", "name": ALL}, "figure", allow_duplicate=True),
     Input("annotation-store", "data"),
     Input("annotation-mode-store", "data"),
+    Input("annotation-drag-store", "data"),
     State({"type": "graph", "name": ALL}, "id"),
     State({"type": "graph-subplots", "name": ALL}, "data"),
     State("display-timezone-store", "data"),
@@ -809,6 +1087,7 @@ def cancel_annotation(_h: int, _f: int, mode: dict) -> tuple[dict, dict]:
 def render_annotations(
     annotations_raw: list,
     mode: dict,
+    _dragging: bool,
     graph_ids: list,
     subplots_list: list,
     display_timezone: str | None,
@@ -879,8 +1158,17 @@ def render_annotations(
 def _group_header_row(group: Group, is_expanded: bool) -> html.Div:
     """Build a collapsible group header row with per-group action buttons."""
     toggle_icon = "▼" if is_expanded else "▶"
-    labels_label = "Labels: off" if group.is_hidden else "Labels: on"
-    labels_style = {**_SMALL_BTN, "backgroundColor": "#6c757d" if group.is_hidden else "#adb5bd"}
+    labels_label = "Labels: off" if group.labels_hidden else "Labels: on"
+    labels_style = {
+        **BUTTON_ANNOTATION_SMALL,
+        "backgroundColor": "#6c757d" if group.labels_hidden else "#adb5bd",
+        **(BUTTON_DISABLED_OVERLAY if group.hidden else {}),
+    }
+    visible_label = "Visible: off" if group.hidden else "Visible: on"
+    visible_style = {
+        **BUTTON_ANNOTATION_SMALL,
+        "backgroundColor": "#6c757d" if group.hidden else "#adb5bd",
+    }
 
     type_icon = _TYPE_ICONS.get(group.type, "?")
     type_label = _TYPE_LABELS.get(group.type, group.type)
@@ -947,19 +1235,26 @@ def _group_header_row(group: Group, is_expanded: bool) -> html.Div:
                 "▶ Continue",
                 id={"type": "group-continue-btn", "id": group.id},
                 n_clicks=0,
-                style=_SMALL_BTN,
+                style=BUTTON_ANNOTATION_SMALL,
             ),
             html.Button(
                 labels_label,
-                id={"type": "group-hide-btn", "id": group.id},
+                id={"type": "group-labels-btn", "id": group.id},
                 n_clicks=0,
+                disabled=group.hidden,
                 style=labels_style,
+            ),
+            html.Button(
+                visible_label,
+                id={"type": "group-hidden-btn", "id": group.id},
+                n_clicks=0,
+                style=visible_style,
             ),
             html.Button(
                 "Delete all",
                 id={"type": "group-delete-btn", "id": group.id},
                 n_clicks=0,
-                style={**_SMALL_BTN, "backgroundColor": "#dc3545"},
+                style={**BUTTON_ANNOTATION_SMALL, "backgroundColor": "#dc3545"},
             ),
         ],
         style={
@@ -975,6 +1270,7 @@ def _group_header_row(group: Group, is_expanded: bool) -> html.Div:
 
 @callback(
     Output("annotation-list-panel", "children"),
+    Output("annotation-list-panel", "style"),
     Output("annotation-count-badge", "children"),
     Input("annotation-store", "data"),
     Input("annotation-expanded-groups-store", "data"),
@@ -985,11 +1281,16 @@ def update_annotation_list(
     annotations_raw: list,
     expanded_groups: list,
     display_timezone: str | None,
-) -> tuple[list | html.Div, str]:
-    """Rebuild the annotation list, always sorted by group with collapsible group sections."""
+) -> tuple[list, dict, str]:
+    """
+    Rebuild the annotation list, always sorted by group with collapsible group sections.
+
+    Only the *contents* are rebuilt: the scrolling element is the layout's own panel div, so a
+    label or visibility toggle leaves the reader where they were scrolled to.
+    """
     annotation_set = AnnotationSet.from_dicts(annotations_raw)
     if not len(annotation_set):
-        return [], ""
+        return [], ANNOTATION_LIST_PANEL_HIDDEN, ""
 
     expanded_set = set(expanded_groups or [])
     groups = annotation_set.groups()
@@ -1028,33 +1329,24 @@ def update_annotation_list(
         )
 
     count = len(annotation_set)
+    # An all-hidden set draws an empty plot; without the suffix the badge would read as
+    # "1000 annotations" beside it, which looks like a failed load rather than a choice.
+    hidden_count = sum(1 for annotation in annotation_set if annotation.hidden)
     count_text = f"{count} annotation{'s' if count != 1 else ''}"
-    panel = html.Div(
-        [
-            html.Div(
-                "Annotations",
-                style={
-                    "fontWeight": "bold",
-                    "fontSize": "13px",
-                    "color": "#555",
-                    "marginBottom": "4px",
-                    "borderBottom": "1px solid #dee2e6",
-                    "paddingBottom": "4px",
-                },
-            ),
-            *rows,
-        ],
+    if hidden_count:
+        count_text += f" · {hidden_count} hidden"
+    header = html.Div(
+        "Annotations",
         style={
-            "border": "1px solid #dee2e6",
-            "borderRadius": "6px",
-            "padding": "8px 12px",
-            "backgroundColor": "#fff",
-            "marginBottom": "12px",
-            "maxHeight": "300px",
-            "overflowY": "auto",
+            "fontWeight": "bold",
+            "fontSize": "13px",
+            "color": "#555",
+            "marginBottom": "4px",
+            "borderBottom": "1px solid #dee2e6",
+            "paddingBottom": "4px",
         },
     )
-    return panel, count_text
+    return [header, *rows], ANNOTATION_LIST_PANEL, count_text
 
 
 # ---------------------------------------------------------------------------
@@ -1088,7 +1380,7 @@ def toggle_group_expand(_n_clicks_list: list, expanded_groups: list) -> list:
 
 @callback(
     Output("annotation-store", "data", allow_duplicate=True),
-    Input({"type": "group-hide-btn", "id": ALL}, "n_clicks"),
+    Input({"type": "group-labels-btn", "id": ALL}, "n_clicks"),
     State("annotation-store", "data"),
     prevent_initial_call=True,
 )
@@ -1104,6 +1396,28 @@ def toggle_group_labels(_n: list, annotations_raw: list) -> list:
 
 
 # ---------------------------------------------------------------------------
+# 10b-bis. Toggle whether a whole group is drawn at all
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("annotation-store", "data", allow_duplicate=True),
+    Input({"type": "group-hidden-btn", "id": ALL}, "n_clicks"),
+    State("annotation-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_group_hidden(_n: list, annotations_raw: list) -> list:
+    """Flip `hidden` for all group annotations: hide all if any shown, show all otherwise."""
+    if not ctx.triggered or ctx.triggered[0]["value"] <= 0:
+        raise PreventUpdate
+    triggered_id = ctx.triggered_id
+    if triggered_id is None:
+        raise PreventUpdate
+    group_id = triggered_id["id"]
+    return AnnotationSet.from_dicts(annotations_raw).with_group_hidden_toggled(group_id).to_dicts()
+
+
+# ---------------------------------------------------------------------------
 # 10c. Delete all annotations in a group
 # ---------------------------------------------------------------------------
 
@@ -1112,8 +1426,7 @@ def toggle_group_labels(_n: list, annotations_raw: list) -> list:
     Output("annotation-store", "data", allow_duplicate=True),
     Output("annotation-expanded-groups-store", "data", allow_duplicate=True),
     Output("annotation-mode-store", "data", allow_duplicate=True),
-    Output("annotation-active-group-display", "children", allow_duplicate=True),
-    Output("annotation-mode-deactivate", "style", allow_duplicate=True),
+    *_TOOLBAR_OUTPUTS,
     Input({"type": "group-delete-btn", "id": ALL}, "n_clicks"),
     State("annotation-store", "data"),
     State("annotation-expanded-groups-store", "data"),
@@ -1142,21 +1455,9 @@ def delete_group(
 
     mode = mode or default_mode()
     if mode.get("group_id") == group_id:
-        new_mode = {
-            **mode,
-            "active": False,
-            "group_id": None,
-            "pending_x0": None,
-            "pending_plot_name": None,
-        }
-        return (
-            new_annotations,
-            new_expanded,
-            new_mode,
-            "",
-            {**BUTTON_ANNOTATION_INACTIVE, "display": "none"},
-        )
-    return new_annotations, new_expanded, no_update, no_update, no_update
+        new_mode = _mode_reset(mode, "type")
+        return (new_annotations, new_expanded, new_mode, *_toolbar_state(new_mode))
+    return (new_annotations, new_expanded, no_update, *_TOOLBAR_NO_UPDATE)
 
 
 # ---------------------------------------------------------------------------
@@ -1267,11 +1568,7 @@ def open_group_modal(_n: int) -> tuple[dict, str, str]:
 @callback(
     Output("annotation-mode-store", "data", allow_duplicate=True),
     Output("annotation-group-modal", "style", allow_duplicate=True),
-    Output("annotation-active-group-display", "children", allow_duplicate=True),
-    Output("annotation-mode-deactivate", "style", allow_duplicate=True),
-    Output("annotation-type-btn-time_event", "style", allow_duplicate=True),
-    Output("annotation-type-btn-time_window", "style", allow_duplicate=True),
-    Output("annotation-type-btn-point", "style", allow_duplicate=True),
+    *_TOOLBAR_OUTPUTS,
     Input("create-group-btn", "n_clicks"),
     Input({"type": "group-continue-btn", "id": ALL}, "n_clicks"),
     State("group-name-input", "value"),
@@ -1295,8 +1592,6 @@ def activate_group(
     """Create a new annotation group or re-activate an existing one, then enter group mode."""
 
     triggered_id = ctx.triggered_id
-    deactivate_style = {**BUTTON_ANNOTATION_INACTIVE, "display": "inline-block"}
-    inactive = BUTTON_ANNOTATION_INACTIVE
 
     if triggered_id == "create-group-btn":
         if not name:
@@ -1306,25 +1601,19 @@ def activate_group(
         is_global = (
             "global" in (scope_value or []) and annotation_type in TIME_BASED_ANNOTATION_TYPES
         )
-        new_mode = {
-            **(mode or default_mode()),
-            "active": True,
-            "type": annotation_type.value,
-            "group_id": str(uuid.uuid4()),
-            "group_name": name,
-            "group_color": color,
-            "group_is_global": is_global,
-            "pending_x0": None,
-            "pending_plot_name": None,
-        }
+        new_mode = _mode_reset(
+            mode,
+            active=True,
+            type=annotation_type.value,
+            group_id=str(uuid.uuid4()),
+            group_name=name,
+            group_color=color,
+            group_is_global=is_global,
+        )
         return (
             new_mode,
             ANNOTATION_MODAL_STYLE_HIDDEN,
-            f"Group: {name}",
-            deactivate_style,
-            inactive,
-            inactive,
-            inactive,
+            *_toolbar_state(new_mode, f"Group: {name}"),
         )
 
     # Triggered by a "Continue" button on an existing group — derive props from annotations.
@@ -1335,26 +1624,16 @@ def activate_group(
     if group is None:
         raise PreventUpdate
     group_name = group.name
-    new_mode = {
-        **(mode or default_mode()),
-        "active": True,
-        "type": group.type.value,
-        "group_id": group_id,
-        "group_name": group_name,
-        "group_color": group.color,
-        "group_is_global": group.is_global,
-        "pending_x0": None,
-        "pending_plot_name": None,
-    }
-    return (
-        new_mode,
-        no_update,
-        f"Group: {group_name}",
-        deactivate_style,
-        inactive,
-        inactive,
-        inactive,
+    new_mode = _mode_reset(
+        mode,
+        active=True,
+        type=group.type.value,
+        group_id=group_id,
+        group_name=group_name,
+        group_color=group.color,
+        group_is_global=group.is_global,
     )
+    return (new_mode, no_update, *_toolbar_state(new_mode, f"Group: {group_name}"))
 
 
 @callback(
@@ -1388,3 +1667,226 @@ def toggle_annotation_label(_n: list, annotations_raw: list) -> list:
         raise PreventUpdate
     annotation_id = triggered_id["id"]
     return AnnotationSet.from_dicts(annotations_raw).with_label_toggled(annotation_id).to_dicts()
+
+
+# ---------------------------------------------------------------------------
+# 16b. Toggle whether an individual annotation is drawn at all
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("annotation-store", "data", allow_duplicate=True),
+    Input({"type": "annotation-hidden-toggle-btn", "id": ALL}, "n_clicks"),
+    State("annotation-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_annotation_hidden(_n: list, annotations_raw: list) -> list:
+    """Flip `hidden` on the annotation whose visibility button was clicked."""
+    if not ctx.triggered or ctx.triggered[0]["value"] <= 0:
+        raise PreventUpdate
+    triggered_id = ctx.triggered_id
+    if triggered_id is None:
+        raise PreventUpdate
+    annotation_id = triggered_id["id"]
+    return AnnotationSet.from_dicts(annotations_raw).with_hidden_toggled(annotation_id).to_dicts()
+
+
+# ---------------------------------------------------------------------------
+# 17. Arm a move — the next graph click re-places this annotation
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("annotation-mode-store", "data", allow_duplicate=True),
+    *_TOOLBAR_OUTPUTS,
+    Input({"type": "annotation-move-btn", "id": ALL}, "n_clicks"),
+    State("annotation-store", "data"),
+    State("annotation-mode-store", "data"),
+    prevent_initial_call=True,
+)
+def start_move(_n: list, annotations_raw: list, mode: dict) -> tuple:
+    """Enter move mode for the annotation whose move button was clicked."""
+    if not ctx.triggered or ctx.triggered[0]["value"] <= 0:
+        raise PreventUpdate
+    triggered_id = ctx.triggered_id
+    if triggered_id is None:
+        raise PreventUpdate
+    annotation_id = triggered_id["id"]
+    target = next(
+        (
+            annotation
+            for annotation in AnnotationSet.from_dicts(annotations_raw)
+            if annotation.id == annotation_id
+        ),
+        None,
+    )
+    if target is None:
+        raise PreventUpdate
+
+    # The click handler routes on `type`, so a window move gets its two-click state machine
+    # for free.  Group mode is cleared rather than nested: "▶ Continue" costs one click.
+    new_mode = _mode_reset(mode, active=True, type=target.type.value, moving_id=annotation_id)
+
+    gesture = (
+        "click the new start, then the new end"
+        if target.type == AnnotationType.TIME_WINDOW
+        else "click the new position"
+    )
+    display_label = target.label or _TYPE_LABELS.get(target.type.value, target.type.value)
+
+    return (new_mode, *_toolbar_state(new_mode, f'Moving "{display_label}" — {gesture}'))
+
+
+# ---------------------------------------------------------------------------
+# 18. Drag mode — arm plotly's editors, and receive the drags they emit
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("annotation-drag-store", "data"),
+    Output("annotation-drag-btn", "style"),
+    Output("annotation-mode-store", "data", allow_duplicate=True),
+    *_TOOLBAR_OUTPUTS,
+    Input("annotation-drag-btn", "n_clicks"),
+    State("annotation-drag-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_drag_mode(n_clicks: int | None, dragging: bool) -> tuple:
+    """Flip Drag mode, leaving whatever placement mode was armed."""
+    if not n_clicks:
+        raise PreventUpdate
+    now_dragging = not dragging
+    button_style = BUTTON_ANNOTATION_ACTIVE if now_dragging else BUTTON_ANNOTATION_INACTIVE
+
+    # Placement and dragging cannot share the plot: while the editors are armed the
+    # annotations swallow the clicks a placement would need.  Arming disarms placement, and
+    # leaving has nothing to restore, so the mode dict is empty on both sides.
+    disarmed = default_mode()
+    display = "Drag mode — grab an annotation to nudge it" if now_dragging else ""
+    return (
+        now_dragging,
+        button_style,
+        disarmed if now_dragging else no_update,
+        *_toolbar_state(disarmed, display, dragging=now_dragging),
+    )
+
+
+@callback(
+    Output("annotation-drag-store", "data", allow_duplicate=True),
+    Output("annotation-drag-btn", "style", allow_duplicate=True),
+    Input("annotation-mode-store", "data"),
+    State("annotation-drag-store", "data"),
+    prevent_initial_call=True,
+)
+def leave_drag_when_placing(mode: dict, dragging: bool) -> tuple[bool, dict]:
+    """
+    Close the one-mode-at-a-time invariant from the other side.
+
+    Drag mode disarms placement on the way in; this disarms Drag whenever placement is
+    armed from anywhere else — a type button, a group, a move from the list.
+    """
+    if not dragging or not (mode or {}).get("active"):
+        raise PreventUpdate
+    return False, BUTTON_ANNOTATION_INACTIVE
+
+
+@callback(
+    Output({"type": "graph", "name": ALL}, "config"),
+    Input("annotation-drag-store", "data"),
+    Input({"type": "graph", "name": ALL}, "id"),
+)
+def arm_graph_editors(dragging: bool, graph_ids: list) -> list:
+    """
+    Swap each graph's config for the editable one while Drag mode is on.
+
+    Also fires when the graphs themselves are rebuilt, so a fresh Process cannot leave the
+    button lit over plots whose editors were never armed.
+    """
+    if not graph_ids:
+        raise PreventUpdate
+    return [GRAPH_CONFIG_DRAGGABLE if dragging else GRAPH_CONFIG] * len(graph_ids)
+
+
+@callback(
+    Output("annotation-store", "data", allow_duplicate=True),
+    Input({"type": "graph", "name": ALL}, "relayoutData"),
+    State({"type": "graph", "name": ALL}, "id"),
+    State({"type": "graph-subplots", "name": ALL}, "data"),
+    State("annotation-store", "data"),
+    State("annotation-drag-store", "data"),
+    State("display-timezone-store", "data"),
+    prevent_initial_call=True,
+)
+def handle_shape_drag(
+    relayout_list: list,
+    graph_ids: list,
+    subplots_list: list,
+    annotations_raw: list,
+    dragging: bool,
+    display_timezone: str | None,
+) -> list:
+    """Re-place whatever the user dragged on the plot."""
+    triggered_id = ctx.triggered_id
+    if triggered_id is None or not dragging:
+        raise PreventUpdate
+
+    plot_name = triggered_id["name"]
+    graph_names = [graph_id["name"] for graph_id in graph_ids]
+    try:
+        graph_idx = graph_names.index(plot_name)
+    except ValueError as exc:
+        raise PreventUpdate from exc
+
+    relayout = relayout_list[graph_idx]
+    # Every zoom, pan and autorange lands here too; only the indexed drag keys are ours.
+    shape_edits = _parse_drag(relayout, _SHAPE_DRAG_KEY)
+    label_edits = _parse_drag(relayout, _LABEL_DRAG_KEY)
+    if not shape_edits and not label_edits:
+        raise PreventUpdate
+
+    annotation_set = AnnotationSet.from_dicts(annotations_raw)
+    subplots_data = subplots_list[graph_idx] or {}
+    subplot_rows = subplots_data.get("rows", [])
+    time_axis = plot_types.definition_for(subplots_data.get("plot_type")).TIME_AXIS
+    # The ordering the renderer drew with: normalising for display rewrites x values only, so
+    # the raw set gives the same order.  The pending preview shape is always appended last, so
+    # omitting it can only push an index off the end — never onto the wrong annotation.
+    shape_owners = shape_owner_ids(annotation_set.annotations, plot_name, subplot_rows)
+    label_owners = label_owner_ids(
+        annotation_set.annotations,
+        plot_name,
+        len(subplots_data.get("subplot_annotations", [])),
+        subplot_rows,
+    )
+    by_id = {annotation.id: annotation for annotation in annotation_set}
+    display_tz = display_timezone or cst.DISPLAY_TIMEZONE
+
+    moved = annotation_set
+    changed = False
+    for owners, edits, is_label in (
+        (shape_owners, shape_edits, False),
+        (label_owners, label_edits, True),
+    ):
+        for index, edit in edits.items():
+            owner_id = owners[index] if index < len(owners) else None
+            target = by_id.get(owner_id) if owner_id else None
+            if target is None:
+                # A subplot title, or a shape whose annotation is gone. Not ours to store;
+                # leaving Drag mode redraws the figure and puts it back.
+                logger.debug("Drag on index %d matched no annotation on %r", index, plot_name)
+                continue
+            data = (
+                _dragged_label_data(target, edit, display_tz, time_axis=time_axis)
+                if is_label
+                else _dragged_shape_data(target, edit, display_tz)
+            )
+            if data is None:
+                continue
+            # A drag cannot re-scope: plotly reports a position and never the subplot it landed
+            # in, so the only thing this path is allowed to write is the position itself.
+            moved = moved.with_repositioned(target.id, data)
+            changed = True
+
+    if not changed:
+        raise PreventUpdate
+    return moved.to_dicts()

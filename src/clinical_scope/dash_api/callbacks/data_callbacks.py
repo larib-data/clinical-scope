@@ -16,19 +16,20 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
-from dash import ALL, MATCH, Input, Output, State, callback, ctx, dcc, html, no_update
+from dash import ALL, MATCH, Input, Output, Patch, State, callback, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 from plotly_resampler import FigureResampler
 
 import clinical_scope.constants as cst
 import clinical_scope.datasource.registry as datasource
 from clinical_scope import wrapper
+from clinical_scope.dash_api import axis_home, io, ui_components, validation
 from clinical_scope.dash_api import helper_api as ui_helper
-from clinical_scope.dash_api import io, ui_components, validation
 from clinical_scope.dash_api.styles import (
     BUTTON_RELOAD,
     CARD_STYLE,
     DATASOURCE_CARD_STYLE,
+    GRAPH_CONFIG,
     INSPECTION_MODAL_STYLE_HIDDEN,
     INSPECTION_MODAL_STYLE_SHOWN,
     SECTION_HEADER_STYLE,
@@ -735,16 +736,35 @@ def enable_progress_interval(
     Output({"type": "graph", "name": MATCH}, "figure", allow_duplicate=True),
     Input({"type": "graph", "name": MATCH}, "relayoutData"),
     State({"type": "resampler-store", "name": MATCH}, "data"),
+    State({"type": axis_home.STORE_TYPE, "name": MATCH}, "data"),
     prevent_initial_call=True,
 )
-def resample_on_zoom(relayout: dict[str, Any], resampler_uid: str | None) -> Any:
-    """Resample time-series traces when the user zooms or pans."""
-    if not relayout or not resampler_uid or resampler_uid not in FIGURE_RESAMPLER_CACHE:
+def resample_on_zoom(
+    relayout: dict[str, Any],
+    resampler_uid: str | None,
+    home_store: dict[str, Any] | None,
+) -> Any:
+    """
+    Resample time-series traces when the user zooms or pans, and re-home a reset.
+
+    A reset whose proposed view is not the stored home is overruled — plotly re-derives its
+    own reset reference from the current view on any config swap, which is what arming or
+    leaving Drag mode does. ``rehome`` heals the relayout first so the resampler aggregates
+    the corrected window; every other gesture comes back from it untouched.
+    """
+    if not relayout:
         raise PreventUpdate
-    result = FIGURE_RESAMPLER_CACHE[resampler_uid].construct_update_data_patch(relayout)
-    if result is no_update:
-        raise PreventUpdate
-    return result
+    store = home_store or {}
+    relayout, off_home = axis_home.rehome(relayout, store)
+
+    patch = no_update
+    if resampler_uid and resampler_uid in FIGURE_RESAMPLER_CACHE:
+        patch = FIGURE_RESAMPLER_CACHE[resampler_uid].construct_update_data_patch(relayout)
+    if not off_home:
+        if patch is no_update:
+            raise PreventUpdate
+        return patch
+    return axis_home.apply_to_patch(Patch() if patch is no_update else patch, off_home, store)
 
 
 @callback(
@@ -1378,10 +1398,14 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
             dcc.Graph(
                 id={"type": "graph", "name": plot_model.name},
                 figure=fig,
-                config={"displayModeBar": True},
+                config=GRAPH_CONFIG,
                 style=graph_style,
             ),
             dcc.Store(id={"type": "resampler-store", "name": plot_model.name}, data=uid),
+            dcc.Store(
+                id={"type": axis_home.STORE_TYPE, "name": plot_model.name},
+                data=axis_home.capture(fig),
+            ),
             dcc.Store(
                 id={"type": "graph-subplots", "name": plot_model.name}, data=graph_subplots_data
             ),

@@ -106,7 +106,10 @@ Generate it from the workbook, never by hand — the direction the repo uses for
 
 ```python
 import json
-Path(json_path).write_text(json.dumps(options, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
+
+Path(json_path).write_text(
+    json.dumps(options, indent=4, ensure_ascii=False) + "\n", encoding="utf-8"
+)
 ```
 
 ## Reference

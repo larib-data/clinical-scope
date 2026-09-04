@@ -24,6 +24,7 @@ from clinical_scope.dash_api.helper_api import get_cached_database_options_path,
 from clinical_scope.dash_api.styles import (
     ACTION_CARD,
     ACTION_PANEL_ROW,
+    ANNOTATION_LIST_PANEL_HIDDEN,
     ANNOTATION_MODAL_PANEL,
     ANNOTATION_MODAL_STYLE_HIDDEN,
     ANNOTATION_TOOLBAR_STYLE,
@@ -136,6 +137,13 @@ _annotation_toolbar = html.Div(
                     n_clicks=0,
                     style=BUTTON_ANNOTATION_INACTIVE,
                 ),
+                html.Button(
+                    "✥ Drag",
+                    id="annotation-drag-btn",
+                    n_clicks=0,
+                    title="Nudge existing annotations with the mouse, along time only",
+                    style=BUTTON_ANNOTATION_INACTIVE,
+                ),
                 html.Span(
                     "",
                     id="annotation-active-group-display",
@@ -144,6 +152,7 @@ _annotation_toolbar = html.Div(
                         "color": "#555",
                         "fontStyle": "italic",
                         "marginLeft": "4px",
+                        "minWidth": "0",
                     },
                 ),
             ],
@@ -154,9 +163,10 @@ _annotation_toolbar = html.Div(
                 "display": "flex",
                 "alignItems": "center",
                 "gap": "8px",
-                "flex": "1",
                 "justifyContent": "flex-end",
-                "minWidth": "0",  # Flex children need this to shrink instead of overflowing
+                # Only as wide as Exit + Save need, so the leftover width goes to the
+                # status message instead of being held by an empty half-row.
+                "flexShrink": 0,
             },
             children=[
                 html.Button(
@@ -514,7 +524,7 @@ _annotation_group_modal = html.Div(
 # ---------------------------------------------------------------------------
 _annotation_list_panel = html.Div(
     id="annotation-list-panel",
-    style={"marginBottom": "16px"},
+    style=ANNOTATION_LIST_PANEL_HIDDEN,
     children=[],
 )
 
@@ -579,6 +589,7 @@ app.layout = html.Div(
         # Global annotation stores
         dcc.Store(id="annotation-store", data=[]),
         dcc.Store(id="annotation-mode-store", data=default_mode()),
+        dcc.Store(id="annotation-drag-store", data=False),
         dcc.Store(id="annotation-modal-data", data={}),
         dcc.Store(id="annotation-expanded-groups-store", data=[]),
         dcc.Store(id="folder-visu-path", data=""),

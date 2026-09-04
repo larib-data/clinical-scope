@@ -112,6 +112,11 @@ class Annotation:
         When ``True``, the text label / arrow is not rendered.  For ``POINT``
         annotations this defaults to ``True`` so the dot marker shows without
         cluttering the plot.
+    hidden
+        When ``True``, nothing is drawn for this annotation at all — shape, label and
+        point marker alike.  Dominates ``label_hidden``, which stays independent rather
+        than being folded into a single tri-state so that hiding and re-showing gives
+        every annotation its own label choice back.
     data
         Type-specific payload dict:
 
@@ -140,6 +145,7 @@ class Annotation:
     group_name: str | None = None
     trace_metadata: dict | None = None
     label_hidden: bool = False
+    hidden: bool = False
     patient: str | None = None
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(default_factory=_now_iso)
@@ -195,6 +201,7 @@ class Annotation:
             "data": self.data,
             "trace_metadata": self.trace_metadata,
             "label_hidden": self.label_hidden,
+            "hidden": self.hidden,
             "created_at": self.created_at,
         }
 
@@ -214,6 +221,7 @@ class Annotation:
             data=annotation_dict.get("data", {}),
             trace_metadata=annotation_dict.get("trace_metadata"),
             label_hidden=annotation_dict.get("label_hidden", False),
+            hidden=annotation_dict.get("hidden", False),
             created_at=annotation_dict.get("created_at", _now_iso()),
             extra={
                 key: value
@@ -247,9 +255,14 @@ class Group:
     annotations: list[Annotation]
 
     @property
-    def is_hidden(self) -> bool:
-        """Whether every member's label is hidden — the state the group's eye icon shows."""
+    def labels_hidden(self) -> bool:
+        """Whether every member's label is hidden — the state the group's Labels button shows."""
         return all(annotation.label_hidden for annotation in self.annotations)
+
+    @property
+    def hidden(self) -> bool:
+        """Whether every member is hidden outright — the state the group's Visible button shows."""
+        return all(annotation.hidden for annotation in self.annotations)
 
     def __len__(self) -> int:
         return len(self.annotations)
@@ -352,21 +365,104 @@ class AnnotationSet:
             ]
         )
 
+    def with_hidden_toggled(self, annotation_id: str) -> AnnotationSet:
+        """Flip ``hidden`` on the annotation with this id."""
+        return AnnotationSet(
+            [
+                replace(annotation, hidden=not annotation.hidden)
+                if annotation.id == annotation_id
+                else annotation
+                for annotation in self._annotations
+            ]
+        )
+
     def with_group_labels_toggled(self, group_id: str) -> AnnotationSet:
         """
         Flip a whole group's labels to the state its eye icon is not showing.
 
-        Pairing the target with :attr:`Group.is_hidden` here is what keeps the icon and the
-        button it sits on from drifting apart.
+        Pairing the target with :attr:`Group.labels_hidden` here is what keeps the button's
+        text and the state it acts on from drifting apart.
         """
         group = self.group(group_id)
         if group is None:
             return self
-        target_hidden = not group.is_hidden
+        target_hidden = not group.labels_hidden
         return AnnotationSet(
             [
                 replace(annotation, label_hidden=target_hidden)
                 if annotation.group_id == group_id
+                else annotation
+                for annotation in self._annotations
+            ]
+        )
+
+    def with_group_hidden_toggled(self, group_id: str) -> AnnotationSet:
+        """
+        Flip a whole group's visibility to the state its Visible button is not showing.
+
+        Mirrors :meth:`with_group_labels_toggled`, down to the mixed case: a group where only
+        some members are hidden reads as shown, so one click hides all of it.
+        """
+        group = self.group(group_id)
+        if group is None:
+            return self
+        target_hidden = not group.hidden
+        return AnnotationSet(
+            [
+                replace(annotation, hidden=target_hidden)
+                if annotation.group_id == group_id
+                else annotation
+                for annotation in self._annotations
+            ]
+        )
+
+    def with_repositioned(self, annotation_id: str, data: dict) -> AnnotationSet:
+        """
+        Give the annotation with this id new coordinates, and change nothing else.
+
+        The narrow half of the pair with :meth:`with_moved`, for a caller that learns a new
+        position without learning where it landed — a plotly drag reports ``shapes[3].x0`` and
+        no subplot. Not offering the other fields is what stops such a caller from re-scoping
+        an annotation by restating a field it never meant to touch.
+        """
+        return AnnotationSet(
+            [
+                replace(annotation, data=data) if annotation.id == annotation_id else annotation
+                for annotation in self._annotations
+            ]
+        )
+
+    def with_moved(
+        self,
+        annotation_id: str,
+        *,
+        data: dict,
+        plot_name: str,
+        subplot_name: str | None,
+        trace_metadata: dict | None,
+    ) -> AnnotationSet:
+        """
+        Re-place the annotation with this id, keeping everything that is not its position.
+
+        The wide half of the pair with :meth:`with_repositioned`, for a caller holding a full
+        click: position, plot, scope and the trace it sits on are all re-derived from it, so a
+        point moved into another subplot takes that subplot's axis refs instead of reading its y
+        off one scale and drawing it against another.
+
+        A global annotation stays global: an absent ``subplot_name`` is a choice the user made in
+        the creation modal, not a fact about coordinates, so re-deriving it would silently demote
+        every global annotation the first time anyone moved it.
+        """
+        return AnnotationSet(
+            [
+                replace(
+                    annotation,
+                    data=data,
+                    plot_name=plot_name,
+                    subplot_name=None if annotation.subplot_name is None else subplot_name,
+                    trace_metadata=trace_metadata,
+                )
+                if annotation.id == annotation_id
                 else annotation
                 for annotation in self._annotations
             ]

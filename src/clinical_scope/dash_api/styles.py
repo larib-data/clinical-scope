@@ -215,8 +215,13 @@ ACTION_CARD: dict = {
 # 6. Annotation styles
 # ---------------------------------------------------------------------------
 
+# The toolbar shares one flex row with a status message of unbounded length; without these the
+# buttons give up width to it and wrap their own labels onto a second line.
+_BUTTON_ANNOTATION_UNSHRINKABLE: dict = {"whiteSpace": "nowrap", "flexShrink": 0}
+
 BUTTON_ANNOTATION_INACTIVE: dict = {
     **_BUTTON_BASE,
+    **_BUTTON_ANNOTATION_UNSHRINKABLE,
     "backgroundColor": COLOR_GREY,
     "padding": "6px 14px",
     "fontSize": "13px",
@@ -224,6 +229,7 @@ BUTTON_ANNOTATION_INACTIVE: dict = {
 
 BUTTON_ANNOTATION_ACTIVE: dict = {
     **_BUTTON_BASE,
+    **_BUTTON_ANNOTATION_UNSHRINKABLE,
     "backgroundColor": COLOR_PURPLE,
     "padding": "6px 14px",
     "fontSize": "13px",
@@ -310,6 +316,28 @@ ANNOTATION_LIST_ROW: dict = {
     "fontSize": "13px",
 }
 
+ANNOTATION_LIST_PANEL: dict = {
+    "border": "1px solid #dee2e6",
+    "borderRadius": "6px",
+    "padding": "8px 12px",
+    "backgroundColor": "#fff",
+    "marginBottom": "16px",
+    "maxHeight": "300px",
+    "overflowY": "auto",
+}
+
+ANNOTATION_LIST_PANEL_HIDDEN: dict = {**ANNOTATION_LIST_PANEL, "display": "none"}
+
+BUTTON_ANNOTATION_SMALL: dict = {
+    **BUTTON_ANNOTATION_INACTIVE,
+    "padding": "2px 7px",
+    "fontSize": "11px",
+}
+
+BUTTON_ANNOTATION_ROW: dict = {**BUTTON_ANNOTATION_SMALL, "padding": "1px 5px", "fontSize": "10px"}
+
+BUTTON_DISABLED_OVERLAY: dict = {"opacity": 0.4, "cursor": "not-allowed"}
+
 # ---------------------------------------------------------------------------
 # Colour picker (annotation & group creation modals)
 # ---------------------------------------------------------------------------
@@ -348,4 +376,23 @@ COLOR_HEX_INPUT: dict = {
     "outline": "none",
     "fontSize": "12px",
     "fontFamily": "monospace",
+}
+
+
+# ---------------------------------------------------------------------------
+# Graph config (dcc.Graph "config" prop)
+# ---------------------------------------------------------------------------
+
+# An armed annotation swallows the clicks and hover of the plot beneath it: plotly's editors
+# are figure-wide and force `pointer-events: all` onto everything they arm.  Drag mode is
+# what buys that back, by arming them only while the user is nudging — hence two configs
+# derived from one base, so leaving the mode restores what the graph was built with.
+GRAPH_CONFIG: dict = {"displayModeBar": True}
+
+GRAPH_CONFIG_DRAGGABLE: dict = {
+    **GRAPH_CONFIG,
+    # `annotationPosition` also arms the subplot titles make_subplots puts in the same list;
+    # they snap back on the next render, which is why it is affordable here and was not
+    # affordable as a permanent setting.
+    "edits": {"shapePosition": True, "annotationPosition": True},
 }
