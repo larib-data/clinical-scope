@@ -694,3 +694,43 @@ class TestInspectUnreadableFile:
         assert entry.status == "load_error"
         assert entry.datasource_name == "other::empty_file"
         assert entry.file_path == str(path)
+
+
+class TestFileWithoutTimeAxis:
+    """A file holding no parseable time axis: main skips it, inspect says why."""
+
+    def _folder_with_one_bad_file(self, tmp_path) -> Path:
+        """One loadable file plus one whose columns cannot pass datetime detection."""
+        folder = _write_other_patient(tmp_path, [("waves", ".parquet")])
+        (folder / "no_time_axis.csv").write_text("a,b\n1,2\n3,4\n5,6\n")
+        return folder
+
+    def test_main_skips_it_and_still_loads_the_sibling(self, tmp_path, other_cls):
+        self._folder_with_one_bad_file(tmp_path)
+        signals = other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+        assert sorted(sig.raw_name for sig in signals) == ["waves::art", "waves::paw"]
+
+    def test_a_skipped_file_is_not_recorded_as_loaded(self, tmp_path, other_cls):
+        """The symlink set is the only trace of loaded_files — a skipped file is not in it."""
+        self._folder_with_one_bad_file(tmp_path)
+        other_cls.main({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        symlink_folder = tmp_path / cst.FOLDER_NAME_OUTPUT / "other"
+        assert {path.name for path in symlink_folder.iterdir()} == {"waves.parquet"}
+
+    def test_inspect_reports_the_reason_without_a_filename_prefix(self, tmp_path, other_cls):
+        """A '<name>: ' prefix marks a file that could not be read at all; this one read fine."""
+        self._folder_with_one_bad_file(tmp_path)
+        results = other_cls.inspect({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        entry = next(r for r in results if r.datasource_name == "other::no_time_axis")
+        assert entry.status == "load_error"
+        assert "No datetime column detected" in entry.error_message
+        assert "no_time_axis.csv" not in entry.error_message
+
+    def test_inspect_still_describes_the_sibling(self, tmp_path, other_cls):
+        self._folder_with_one_bad_file(tmp_path)
+        results = other_cls.inspect({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        entry = next(r for r in results if r.datasource_name == "other::waves")
+        assert entry.status == "ok"
