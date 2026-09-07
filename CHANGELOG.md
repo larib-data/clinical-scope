@@ -10,6 +10,37 @@ _Nothing yet._
 
 ---
 
+## [1.2.0] — 2026-09-07
+
+An annotations release. A mark you have placed can now be moved, dragged and hidden — where before the only correction was to delete it and draw a new one, losing its label, colour, group and creation time along the way.
+
+Nothing here changes a configuration file, and an `annotations.json` written by 1.1.0 loads unchanged.
+
+### Added
+- **Move an annotation instead of redrawing it.** Every row in the annotation list carries a **Move to…** button: click it, then click the new position on the plot — a Time Window takes two clicks, the new start and then the new end, exactly like placing one. The annotation keeps its label, colour, group membership and creation time; only its position changes. It can be moved onto a different subplot or a different plot, and one placed on all subplots stays on all subplots.
+
+- **✥ Drag — nudge annotations with the mouse.** A toolbar mode that turns the annotations already on the plots into handles you can grab: take a Time Window's edge to stretch it, its body to slide it whole at the same duration, a Time Event to shift it, or a Point to reposition it. For a mark that is a few seconds out, this is quicker than **Move to…**.
+
+  It is a mode you switch on and off rather than the plot's default state, because while it is on the annotations sit above the signals and take the clicks and hover that would otherwise reach them. Placing new annotations and dragging existing ones cannot both be armed; turning one on turns the other off.
+
+  A drag only ever moves an annotation along the time axis, and a Point's value. Dragging up or down snaps back on release, so a drag can never change which subplot an annotation belongs to — **Move to…** stays the way to re-scope one. One thing to watch: a Point on a loop plot carries the time it was taken from, and a drag cannot work that time out again, so a dragged Point loses it. The annotation list now shows each Point's time, so that loss is visible rather than silent.
+
+- **Hide a whole annotation, not just its label.** Each row carries **V:on / V:off** beside the existing **L:on / L:off**. Labels-off suppresses the text and leaves the line, rectangle or point marker in place; visibility-off removes the annotation from the plot entirely. Group headers carry the same pair and apply it to every member at once. Until now only the label could be suppressed, so a group of a thousand global time windows had no off switch at all and simply made the signals underneath unreadable. Hiding a large group also makes the plot redraw noticeably faster. Nothing is deleted: the count above the list reports how many are hidden, and showing an annotation again restores exactly the label setting it had.
+
+### Documentation
+- **The first-launch OS warnings are documented.** The standalone bundles are not code-signed, so every platform interrupts the first launch — Windows elevation and SmartScreen, macOS quarantine, the Linux executable bit. The workarounds existed only in the body of the GitHub release pages, so anyone arriving through the repository met a blocked launch with nothing to go on. The tutorial gains a **First launch** section, which matters most because it ships as the PDF inside every bundle; the README carries the same instructions in a collapsible block.
+- The tutorial documents **Move to…**, **✥ Drag** and the two visibility toggles, including what a drag can and cannot do.
+
+### Internal
+_No effect on configuration files or on what is drawn; listed for contributors._
+- **A drag is mapped back to its annotation by derived identity.** plotly reports a drag positionally (`shapes[3].x0`), never by identity, so the overlay builder now returns the shapes, the labels and the owner id of each from one walk. A second function computing draw order independently would drift from the real one the first time a skip rule changed.
+- **`with_repositioned` splits off `with_moved`,** so the drag path is structurally unable to re-scope an annotation: it writes the position and can write nothing else. `with_moved` keeps its full signature for the click-driven path, which does re-derive plot, scope and trace from the click.
+- **The annotation mode store and its toolbar are derived rather than restated.** A writer names the fields it keeps and the rest come back from the default, and the five toolbar outputs are computed from the mode dict in one place instead of being restated in six callbacks. That settles two toolbars that could disagree with their own mode, and a field added later is cleared on every transition without visiting them.
+- `axis_home.py` holds the home-position capture and the reset repair, recognising a reset by the shape of its relayout payload rather than by a companion key.
+- New `tests/benchmarks/bench_annotations.py` drives both annotation callbacks across three arms of one fixture — everything drawn, labels off, wholly hidden — so the two visibility controls can be compared. It needs no fixtures on disk and runs in seconds.
+
+---
+
 ## [1.1.0] — 2026-08-28
 
 The first release since v1.0.0 went public, and a large one. Start here:
