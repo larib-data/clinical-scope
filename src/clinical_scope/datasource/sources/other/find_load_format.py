@@ -1,4 +1,3 @@
-import csv
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -10,6 +9,7 @@ import clinical_scope.datasource.sources.other.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.inspection import DataSourceInspection
 from clinical_scope.io.column_patterns import make_column_selector
+from clinical_scope.io.csv_dialect import sniff_csv_delimiter
 from clinical_scope.io.parquet_pruning import read_parquet_pruned
 from clinical_scope.io.paths import get_output_folder
 from clinical_scope.io.time_axis import deduplicate_then_sort_index, set_datetime_index
@@ -44,15 +44,7 @@ def _load_single_file(
         return pd.read_parquet(file_path)
 
     if suffix == ".csv":
-        with Path.open(file_path, "r", newline="") as file:
-            sample = file.read(4096)
-            try:
-                dialect = csv.Sniffer().sniff(sample)
-                sep = dialect.delimiter
-            except csv.Error:
-                sep = ","
-
-        return pd.read_csv(file_path, sep=sep)
+        return pd.read_csv(file_path, sep=sniff_csv_delimiter(file_path))
 
     msg = f"Unsupported file extension: {suffix}"
     raise ValueError(msg)
