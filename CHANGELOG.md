@@ -6,7 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **`icca` datasource.** Reads Philips IntelliSpace Critical Care and Anesthesia high-density anesthesia exports, turning their one-row-per-measurement layout into one signal per charted attribute. ICCA names its signals with numeric attribute IDs rather than labels, so the [user guide](docs/user_guide/tutorial.md) explains how to find out which parameter an ID carries before configuring it.
+- **ICCA reports what it leaves behind.** Measurements sharing a timestamp within the same attribute (routine at high density) are collapsed to the first one, and attributes holding text rather than numbers are not plotted. Both are counted in the log rather than dropped silently, so a signal that looks thinner than the file is traceable.
 
 ---
 
