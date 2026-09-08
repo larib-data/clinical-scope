@@ -22,7 +22,7 @@ Clinical Scope is an interactive dashboard for exploring, comparing, and annotat
 
 ## Key Features
 
-- **Multi-source visualization**: Display signals from FluxMed, Mindray, EIT, Servo-U and EDF recorders simultaneously.
+- **Multi-source visualization**: Display signals from FluxMed, Mindray, EIT, Servo-U, ICCA and EDF recorders simultaneously.
 - **Generic "Other" data source**: Drop any CSV or Parquet file with a datetime column into an `other/` folder — monitor exports, syringe pumps, anything tabular. Signals are auto-discovered and configured per file.
 - **Interactive plots**: Zoom, pan, and explore data at any time scale with automatic resampling.
 - **Data inspection**: Preview available columns, point counts, and time ranges for every source
@@ -151,7 +151,7 @@ Servo-U, `.xml` for Mindray Scope).
 | Mindray Respi Waves | `mindray_respi_waves` | `mindray`, `resp`, `wave` | `.parquet`, `.csv` | Single file | High-frequency respiratory waveforms |
 | Mindray Respi Numerics | `mindray_respi_numerics` | `mindray`, `resp`, `numeric` | `.parquet`, `.csv` | Single file | Respiratory parameters (Vt, RR, PEEP, etc.) |
 | EDF / EDF+ | `edf` | `edf` | `.edf` | All files | Any signal an amplifier or recorder exports as EDF (typically EEG) |
-| ICCA | `icca` | `icca` | `.csv`, `.parquet` | Single file | High-density anesthesia signals (long-format, pivoted by `attributeId`) |
+| ICCA | `icca` | `icca` | `.csv` | Single file | High-density anesthesia signals (long-format, pivoted by `attributeId`) |
 | Other (Generic) | `other` | `other` | `.parquet`, `.csv` | All files (one entry **per file**) | Any time-series with a datetime column |
 
 **Single file** sources expect exactly one data file per folder. When several formats coexist
@@ -170,6 +170,31 @@ An EDF header always states a start date and a start time, but de-identification
 - Times are read in the **device's** timezone (the source's `additional_informations.timezone`, `Europe/Paris` by default), not your display timezone.
 
 A file that still carries a real start date keeps it, and `recording_start` is ignored. A file with no date and no `recording_start` is still plotted, anchored at 1985-01-01, with a warning in the log.
+
+**ICCA records.** ICCA identifies every measurement by a numeric *attribute ID*, and those numbers are the signal names you configure: `2423`, `19602`, `4347`. The export carries no dictionary of names, so nothing in the file says that `2423` is a heart rate. Two things do let you identify a signal:
+
+- **[Inspect](#inspect-data-teal-button) the folder first.** It lists the attribute IDs actually present, with their point counts and time ranges — the fastest way to see what a new export contains.
+- **Read the export's own display columns.** For the ID you are chasing, `unitOfMeasure` gives the unit and `verboseForm` holds the value as it was charted (`83 bpm`, `12 cmH2O`), which usually settles what the signal is.
+
+**Getting the names from ICCA itself.** Both routes above work on the export alone. If you can also ask whoever runs your ICCA instance for a dictionary extract, ask for one row per attribute carrying its numeric id, its long and short labels, and its unit — ICCA keeps those next to `attributeId` in its reporting views, and the extract holds no patient data. That list turns the configuration below into a copy-out rather than a deduction, and it is worth keeping alongside your exports: attribute ids are configured per site, so one list serves every recording from the same hospital.
+
+Then give each ID a label, exactly as the shipped `example/demo_database/database_options.json` does for the demo export:
+
+```json
+"icca": {
+    "field_display": ["2423", "2630"],
+    "signals": {
+        "2423": { "label": "HR (ICCA 2423)", "unit": "bpm", "color": "crimson" },
+        "2630": { "label": "SpO2 (ICCA 2630)", "unit": "%" }
+    }
+}
+```
+
+Keeping the number inside the label is worth borrowing as a habit: attribute IDs are configured per site, so a label that carries its own ID stays checkable against the raw export — and against another hospital's.
+
+**What an ICCA export does not bring into the plot.** Only numeric measurements are plotted: an attribute whose values are text or dates is named in the log and left out. And when two measurements of the same attribute carry the same timestamp — routine in high-density charting — only the first is kept, with the log reporting how many were dropped for each attribute. A signal that looks thinner than you expect is worth checking against those two messages.
+
+ICCA timestamps are recorded in UTC and are shown in your display timezone, so this source needs no timezone setting of its own.
 
 Per-source configuration options (`field_display`, `signals`, `grouped_fields`, `loop`,
 `additional_informations`, etc.) are documented in the [Configuration File Reference section](#configuration-file-reference).

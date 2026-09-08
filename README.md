@@ -25,7 +25,7 @@
 
 ---
 
-**ClinicalScope** is an open-source, browser-based dashboard for visualizing, annotating, and extracting time-series data. Its primary domain is ICU monitoring — loading recordings from multiple clinical devices simultaneously (Servo-U ventilators, EIT systems, FluxMed, Mindray, EDF recorders, plus a generic reader for any tabular export — monitors, syringe pumps, and the like) — but its annotation and extraction pipeline is designed for any time-series data, making it equally useful for machine learning workflows that require labeled datasets.
+**ClinicalScope** is an open-source, browser-based dashboard for visualizing, annotating, and extracting time-series data. Its primary domain is ICU monitoring — loading recordings from multiple clinical devices simultaneously (Servo-U ventilators, EIT systems, FluxMed, Mindray, ICCA anesthesia records, EDF recorders, plus a generic reader for any tabular export — monitors, syringe pumps, and the like) — but its annotation and extraction pipeline is designed for any time-series data, making it equally useful for machine learning workflows that require labeled datasets.
 
 ## Installation
 
@@ -91,6 +91,7 @@ The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for e
 | Mindray Respi Waves | Mindray respiratory | `.parquet`, `.csv` | High-frequency respiratory waveforms |
 | Mindray Respi Numerics | Mindray respiratory | `.parquet`, `.csv` | Vt, RR, PEEP, and more |
 | EDF / EDF+ | Amplifiers and polygraphic recorders | `.edf` | Any EDF-exported signal, typically EEG |
+| ICCA | Philips IntelliSpace Critical Care and Anesthesia | `.csv` | High-density anesthesia signals, named by numeric attribute ID |
 | Other (Generic) | Any CSV / Parquet | `.parquet`, `.csv` | Any time-series with a datetime column — one independent entry per file |
 
 Each patient folder should contain one subfolder per data source. The [user guide](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* gives the folder keyword for each source, the naming rules, and the configuration details.
