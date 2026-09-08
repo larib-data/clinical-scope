@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
 
 - **Derived signals can be chained.** A derived signal's `source` may name another derived signal, so steps combine: a `derivative` of a `derivative` draws the second derivative of a pressure, and `lowpass` then `minmax` keeps the slow, ventilation-driven part of an EIT impedance and rescales it to overlay on volume. Each step is drawn only if displayed, and a hidden one is still computed for the signals built from it. The unit is worked out step by step (`mmHg/s/s`). Sources that loop back on each other are reported when the file is loaded, and a step that cannot be computed for one patient leaves out every signal built from it, with the log naming that step. The demo configuration adds the second derivative of the arterial pressure.
 
+- **`icca` datasource.** Reads Philips IntelliSpace Critical Care and Anesthesia high-density anesthesia exports, turning their one-row-per-measurement layout into one signal per charted attribute. ICCA names its signals with numeric attribute IDs rather than labels, so the [user guide](docs/user_guide/tutorial.md) explains how to find out which parameter an ID carries before configuring it.
+
+- **ICCA reports what it leaves behind.** Measurements sharing a timestamp within the same attribute (routine at high density) are collapsed to the first one, and attributes holding text rather than numbers are not plotted. Both are counted in the log rather than dropped silently, so a signal that looks thinner than the file is traceable.
+
 ### Changed
 - **`scipy` is now a dependency**, for the filters above. The standalone application grows accordingly, by about 40 MB on macOS.
 
