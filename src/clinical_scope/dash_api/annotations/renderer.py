@@ -11,9 +11,11 @@ Design notes
 * Point annotations use a Plotly annotation with an arrowhead pointing at the
   data coordinate.  The ``yref`` targets the specific subplot y-axis so the
   arrow anchors correctly as the plot is zoomed.
-* The x-axis reference is always ``"x"`` for time-series plots because all
-  subplots share the same time axis.  Loop plots use the per-subplot xaxis
-  stored in the annotation data.
+* The x-axis reference comes from the annotation's own data: creating one records the
+  xaxis of the trace the click landed on.  Time-axis subplots are linked with plotly's
+  ``matches`` so they pan and zoom together, but they keep distinct refs ("x", "x2", …),
+  so a mark on the second row stores ``"x2"``.  Data carrying no xaxis at all — a
+  hand-written annotations.json — falls back to ``"x"``.
 * Subplot title annotations created by ``make_subplots`` live in
   ``layout.annotations`` alongside ours.  Callers must merge them; this module
   only produces the *annotation* portion.
