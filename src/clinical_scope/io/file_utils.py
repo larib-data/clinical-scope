@@ -1,5 +1,6 @@
 """File I/O utilities for reading, writing, and discovering data files."""
 
+import csv
 import logging
 import re
 import warnings
@@ -13,6 +14,9 @@ import pyarrow.parquet as pq
 import clinical_scope.constants as cst
 
 logger = logging.getLogger(__name__)
+
+# Enough of a CSV to expose its delimiter without reading a multi-gigabyte export.
+_CSV_SNIFF_SAMPLE_BYTES = 4096
 
 
 # ==================================================================================================
@@ -630,6 +634,22 @@ def deduplicate_then_sort_index(df: pd.DataFrame) -> pd.DataFrame:
     if not df.index.is_monotonic_increasing:
         df = df.sort_index()
     return df
+
+
+# ==================================================================================================
+def sniff_csv_delimiter(file_path: str | Path, default: str = ",") -> str:
+    """
+    Return the delimiter *file_path* uses, or *default* when it cannot be detected.
+
+    Device exports are routinely re-saved through a locale-configured Excel, which turns a
+    comma-separated export into a semicolon-separated one without changing its name.
+    """
+    with Path(file_path).open("r", newline="") as file:
+        sample = file.read(_CSV_SNIFF_SAMPLE_BYTES)
+    try:
+        return csv.Sniffer().sniff(sample).delimiter
+    except csv.Error:
+        return default
 
 
 # ==================================================================================================

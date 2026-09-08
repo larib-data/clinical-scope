@@ -9,13 +9,22 @@ FILE_KEYWORDS = [
     "anesthesia",
     "icca",
 ]
-FILE_EXTENSIONS = [".csv", ".parquet"]
+FILE_EXTENSIONS = [".csv"]
+# ICCA can export these too; the loader rejects them by name rather than as "unknown".
+FILE_EXTENSIONS_PLANNED = [".xml", ".json"]
 MULTI_FILE = False
 
 FILE_NAME_DATAFRAME_LOADED = "icca_loaded.parquet"
 
 # utcmeasurementTime is recorded in UTC (naive); localize to UTC by default.
 DATA_SOURCE_DEFAULT_TIMEZONE = "UTC"
+
+# Raw column names in the ICCA PtHighDensityAnesthesiaData export.
+COLUMN_ATTRIBUTE_ID = "attributeId"
+COLUMN_TIME = "utcmeasurementTime"
+COLUMN_VALUE = "valueNumber"
+# Where a non-numeric measurement keeps its value instead of COLUMN_VALUE.
+COLUMNS_VALUE_NON_NUMERIC = ["valueString", "valueDateTime", "utcValueDateTime"]
 
 source_options = {
     cst.SourceOptions.TRACE_OPTIONS: {
