@@ -127,7 +127,7 @@ class TestBadgeContent:
 
     def test_behind_names_the_newer_version(self, monkeypatch):
         self._answers(monkeypatch, "1.2.0", "1.3.0")
-        assert version_check.badge_content() == ("API Version: 1.2.0", "1.3.0 available ↗")
+        assert version_check.badge_content() == ("API Version: 1.2.0", "| 1.3.0 available ↗")
 
     @pytest.mark.parametrize(
         ("running", "latest"),
@@ -140,18 +140,18 @@ class TestBadgeContent:
     def test_unreachable_pypi_still_offers_the_page(self, monkeypatch):
         """A link costs nothing, and the release page is where the answer is."""
         self._answers(monkeypatch, "1.2.0", None)
-        assert version_check.badge_content() == ("API Version: 1.2.0", "releases ↗")
+        assert version_check.badge_content() == ("API Version: 1.2.0", "| releases ↗")
 
     def test_unparseable_published_version_still_offers_the_page(self, monkeypatch):
         self._answers(monkeypatch, "1.2.0", "1.3.0rc1")
-        assert version_check.badge_content() == ("API Version: 1.2.0", "releases ↗")
+        assert version_check.badge_content() == ("API Version: 1.2.0", "| releases ↗")
 
     def test_unknown_running_version_says_so_and_offers_the_page(self, monkeypatch):
         """A source checkout is told what it is, not that it is behind something."""
         self._answers(monkeypatch, "dev (unknown version)", "1.3.0")
         text, link = version_check.badge_content()
         assert text == "API Version: dev (unknown version)"
-        assert link == "releases ↗"
+        assert link == "| releases ↗"
 
 
 # ---------------------------------------------------------------------------
@@ -174,9 +174,9 @@ class TestBadgeCallback:
         assert module.annotate_version_badge(1) == "API Version: 1.3.0"
 
     def test_links_to_the_release_page(self, monkeypatch):
-        module = self._module(monkeypatch, ("API Version: 1.2.0", "1.3.0 available ↗"))
+        module = self._module(monkeypatch, ("API Version: 1.2.0", "| 1.3.0 available ↗"))
         text, link = module.annotate_version_badge(1)
         assert text == "API Version: 1.2.0"
-        assert link.children == "1.3.0 available ↗"
+        assert link.children == "| 1.3.0 available ↗"
         assert link.href == "https://github.com/larib-data/clinical-scope/releases/latest"
         assert link.target == "_blank"

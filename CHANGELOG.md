@@ -7,9 +7,9 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **The version badge says when a newer release is out.** The badge in the top-right corner has always named the version you are running. It now also asks PyPI what the newest published version is, and when you are behind it gains a link — `API Version: 1.2.0   1.3.0 available ↗` — pointing at that release's notes and downloads. Until now the only way to learn that a new version existed was to be told by someone.
+- **The version badge says when a newer release is out.** The badge in the top-right corner has always named the version you are running. It now also asks PyPI what the newest published version is, and when you are behind it gains a link — `API Version: 1.2.0 | 1.3.0 available ↗` — pointing at that release's notes and downloads. Until now the only way to learn that a new version existed was to be told by someone.
 
-  When the check cannot reach PyPI, or cannot make sense of what it gets back, the badge offers a plain `releases ↗` link instead: it will not claim you are behind, but the page it points at is where the answer is. An install that is genuinely up to date gets no link at all, so the quiet case stays quiet.
+  When the check cannot reach PyPI, or cannot make sense of what it gets back, the badge shows `API Version: 1.2.0 | releases ↗` instead: it will not claim you are behind, but the page it points at is where the answer is. An install that is genuinely up to date gets no link at all, so the quiet case stays quiet.
 
   The check runs after the page is on screen, so it never delays startup, and nothing about you or your data is sent — it asks PyPI for a version number, the same request `pip` makes.
 
