@@ -61,6 +61,12 @@ clinical-scope          # opens http://127.0.0.1:8050
 
 > Requires Python 3.11–3.13.
 
+To upgrade an existing install to the newest release:
+
+```bash
+pip install -U clinical-scope
+```
+
 ### From source (developers)
 
 ```bash

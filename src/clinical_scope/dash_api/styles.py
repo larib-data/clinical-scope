@@ -167,6 +167,15 @@ VERSION_BADGE: dict = {
     "border": "1px solid #ddd",
 }
 
+# Newer-release link appended inside the version badge; inherits its font, gains colour so the
+# tail reads as clickable against the badge's grey.
+VERSION_BADGE_LINK: dict = {
+    "color": COLOR_BLUE,
+    "marginLeft": "6px",
+    "textDecoration": "none",
+    "fontWeight": "bold",
+}
+
 # Settings pill — stacked directly under the version badge (top-right); badge-matching styling.
 BUTTON_GEAR: dict = {
     "position": "absolute",

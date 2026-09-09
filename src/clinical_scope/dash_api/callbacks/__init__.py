@@ -44,9 +44,11 @@ from clinical_scope.dash_api.callbacks.user_options_callbacks import (
     reflect_user_options,
     toggle_settings_modal,
 )
+from clinical_scope.dash_api.callbacks.version_callbacks import annotate_version_badge
 
 __all__ = [
     "activate_group",
+    "annotate_version_badge",
     "auto_load_annotations",
     "build_patient_options_ui",
     "cancel_annotation",

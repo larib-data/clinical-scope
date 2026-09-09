@@ -1,7 +1,6 @@
 # === Imports === #
 import sys
 import webbrowser
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import dash_bootstrap_components as dbc
@@ -51,13 +50,11 @@ from clinical_scope.dash_api.styles import (
     SETTINGS_MODAL_PANEL,
     VERSION_BADGE,
 )
+from clinical_scope.dash_api.version_check import initial_badge_text, running_version
 from clinical_scope.datasource.formatting.timezone import resolve_display_timezone
 
 # === API Version === #
-try:
-    __version__ = version("clinical_scope")
-except PackageNotFoundError:
-    __version__ = "0.0.0-dev (not installed)"
+__version__ = running_version()
 
 # === Logger === #
 logs_path_root = logger_config.get_logs_path()
@@ -581,7 +578,17 @@ _settings_modal = html.Div(
 
 app.layout = html.Div(
     [
-        html.Div(f"API Version: {__version__}", style=VERSION_BADGE),
+        html.Div(
+            initial_badge_text(),
+            id="version-badge",
+            style=VERSION_BADGE,
+        ),
+        # Fires once, after the page is served, so the release check never delays startup.
+        dcc.Interval(
+            id="version-check-interval",
+            interval=cst.UPDATE_CHECK_DELAY_MS,
+            max_intervals=1,
+        ),
         html.Button("⚙ Settings", id="settings-open-btn", n_clicks=0, style=BUTTON_GEAR),
         _settings_modal,
         # Global user options store (source of truth for the settings surfaces).
