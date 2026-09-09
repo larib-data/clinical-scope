@@ -58,18 +58,21 @@ def _load_single_file(
     raise ValueError(msg)
 
 
-def _normalize_on_time_axis(df: pd.DataFrame) -> pd.DataFrame:
+def _normalize_on_time_axis(df: pd.DataFrame, file_name: str) -> pd.DataFrame:
     """
     Index *df* by its detected time axis, coerce every column to numeric, dedupe and sort.
 
     Takes a frame, not a path: every way the readers fail is a ValueError subclass
     (unsupported extension, empty CSV, corrupt parquet), so a read pulled in here would
     land in the caller's missing-time-axis branch.
+
+    *file_name* is a label, not a second way in -- nothing is read from it. It only lets
+    the dedup warning name the file whose rows it dropped.
     """
     df = set_datetime_index(df)
     for column in list(df.columns):
         df[column] = pd.to_numeric(df[column], errors="coerce")
-    return deduplicate_then_sort_index(df)
+    return deduplicate_then_sort_index(df, context=file_name)
 
 
 def _patient_options_for_file(patient_options: dict, file_stem: str) -> dict:
@@ -205,7 +208,7 @@ class OtherDataSource(DataSourceBase):
                 )
 
                 try:
-                    df = _normalize_on_time_axis(df)
+                    df = _normalize_on_time_axis(df, file_path.name)
                 except ValueError as exc:
                     logger.warning("Skipping file '%s': %s", file_path.name, exc)
                     continue
@@ -352,7 +355,7 @@ class OtherDataSource(DataSourceBase):
                     ),
                 )
                 try:
-                    df = _normalize_on_time_axis(df)
+                    df = _normalize_on_time_axis(df, file_path.name)
                 except ValueError as exc:
                     logger.warning("inspect: no datetime index in '%s', skipping", file_path.name)
                     results.append(

@@ -9,6 +9,7 @@ pick the same column, so they live together.
 Name lists and validation thresholds live in constants.py (``DatetimeColumnDetection``).
 """
 
+import logging
 import re
 import warnings
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 import clinical_scope.constants as cst
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -327,7 +330,7 @@ def set_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
     return df.set_index(column_name)
 
 
-def deduplicate_then_sort_index(df: pd.DataFrame) -> pd.DataFrame:
+def deduplicate_then_sort_index(df: pd.DataFrame, *, context: str = "") -> pd.DataFrame:
     """
     Drop duplicate index entries (keep first) *then* sort by index.
 
@@ -335,9 +338,21 @@ def deduplicate_then_sort_index(df: pd.DataFrame) -> pd.DataFrame:
     collision, which a non-stable ``sort_index`` would decide arbitrarily.
     Skips either step when already satisfied (device exports are usually
     already sorted and unique).
+
+    Every dropped row is data the caller will never see again, so a drop is
+    warned about with its row counts; *context* names the frame's origin in
+    that message for callers that can identify it.
     """
     if not df.index.is_unique:
+        row_count = len(df)
         df = df[~df.index.duplicated(keep="first")]
+        logger.warning(
+            "Dropped %d of %d rows%s on duplicate timestamps; "
+            "kept the first row of each timestamp.",
+            row_count - len(df),
+            row_count,
+            f" from '{context}'" if context else "",
+        )
     if not df.index.is_monotonic_increasing:
         df = df.sort_index()
     return df
