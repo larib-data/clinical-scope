@@ -6,7 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **The version badge says when a newer release is out.** The badge in the top-right corner has always named the version you are running. It now also asks PyPI what the newest published version is, and when you are behind it gains a link — `API Version: 1.2.0   1.3.0 available ↗` — pointing at that release's notes and downloads. Until now the only way to learn that a new version existed was to be told by someone.
+
+  When the check cannot reach PyPI, or cannot make sense of what it gets back, the badge offers a plain `releases ↗` link instead: it will not claim you are behind, but the page it points at is where the answer is. An install that is genuinely up to date gets no link at all, so the quiet case stays quiet.
+
+  The check runs after the page is on screen, so it never delays startup, and nothing about you or your data is sent — it asks PyPI for a version number, the same request `pip` makes.
+
+### Changed
+- **A run with no installed version now says `dev (unknown version)`** rather than `0.0.0-dev (not installed)`. It shows up when the app is launched from a source checkout, where the old wording read as though the app were broken, and its fake `0.0.0` looked like a real version.
+
+### Documentation
+- The README's PyPI section says how to upgrade an existing install, not only how to make a new one.
 
 ---
 

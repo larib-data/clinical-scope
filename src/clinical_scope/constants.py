@@ -55,6 +55,18 @@ CLINICAL_SCOPE_DIR_NAME = ".clinical_scope"
 CACHED_DATABASE_OPTIONS_FILE_NAME = "last_database_options.json"  # signal metadata only, no PHI
 USER_OPTIONS_FILE_NAME = "user_options.json"  # global user options of the person at the keyboard
 
+# Update check, run once per page load. PyPI rather than the GitHub releases API: GitHub's
+# unauthenticated quota is counted per IP.
+PYPI_PROJECT_JSON_URL = "https://pypi.org/pypi/clinical-scope/json"
+LATEST_RELEASE_PAGE_URL = "https://github.com/larib-data/clinical-scope/releases/latest"
+UPDATE_CHECK_TIMEOUT_SECONDS = 2.0
+UPDATE_CHECK_DELAY_MS = 1500
+VERSION_BADGE_LABEL = "API Version: "
+RELEASE_VERSION_PATTERN = r"(\d+)\.(\d+)\.(\d+)"
+UNKNOWN_VERSION_LABEL = "dev (unknown version)"
+UPDATE_AVAILABLE_LABEL = "| {version} available ↗"
+RELEASES_PAGE_LABEL = "| releases ↗"
+
 PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"
 PLACEHOLDER_DAY = "YYYY-MM-DD"
 
