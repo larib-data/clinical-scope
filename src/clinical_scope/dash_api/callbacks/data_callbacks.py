@@ -1324,23 +1324,12 @@ def _build_graphs(model: Any, display_timezone: str | None = None) -> list[html.
         for trace_idx, trace in enumerate(plot_model.figure.data):
             trace_name = getattr(trace, "name", "") or ""
             meta = signal_meta_lookup.get(trace_name, {})
-            trace_color: str | None = None
-            try:
-                if getattr(trace, "line", None) and getattr(trace.line, "color", None):
-                    trace_color = trace.line.color
-                elif getattr(trace, "marker", None) and isinstance(
-                    getattr(trace.marker, "color", None), str
-                ):
-                    trace_color = trace.marker.color
-            except (AttributeError, TypeError):
-                pass
             trace_map[f"curve_{trace_idx}"] = {
                 "yaxis": getattr(trace, "yaxis", None) or "y",
                 "xaxis": getattr(trace, "xaxis", None) or "x",
                 "display_name": trace_name,
                 "raw_name": meta.get("raw_name", ""),
                 "datasource_name": meta.get("datasource_name", ""),
-                "line_color": trace_color,
             }
 
         subplot_rows = []

@@ -59,7 +59,6 @@ class PsdDefinition(PlotTypeDefinition):
     SECTION_KEY = "psd"
 
     TIME_AXIS = False
-    UNIFIED_HOVER = False
     RESAMPLED = False
 
     class Config:

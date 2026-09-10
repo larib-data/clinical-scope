@@ -374,13 +374,14 @@ class OtherDataSource(DataSourceBase):
                     )
                 )
 
-            except Exception:
+            except Exception as exc:
                 logger.exception("inspect: failed to process '%s'", file_path.name)
+                first_line = str(exc).partition("\n")[0]
                 results.append(
                     DataSourceInspection(
                         datasource_name=inspection_name,
                         status=cst.InspectionStatus.LOAD_ERROR,
-                        error_message=f"Unexpected error processing {file_path.name}",
+                        error_message=f"{type(exc).__name__}: {first_line}",
                         file_path=str(file_path),
                     )
                 )

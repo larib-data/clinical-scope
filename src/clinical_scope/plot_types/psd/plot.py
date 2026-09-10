@@ -18,13 +18,20 @@ from clinical_scope.signal_reference import resolve_signal_references
 logger = logging.getLogger(__name__)
 
 
-def _hover_spec(signal_name: str) -> RenderSpec:
-    """X is frequency and y always dB, so neither unit comes from the signal itself."""
+def _hover_spec(signal_name: str, hovermode: str) -> RenderSpec:
+    """
+    X is frequency and y always dB, so neither unit comes from the signal itself.
+
+    A unified panel heads itself with the hovered frequency, so the row drops it. Read at
+    build time, not render time: the template is baked into the trace.
+    """
+    name = f"<b>{signal_name}</b>"
+    y_value = f"%{{y:{cst.Spectral.HOVER_DB_FORMAT}}} dB"
+    if hovermode == cst.HoverMode.X_UNIFIED:
+        return RenderSpec(hover_template=f"{name}: {y_value}<extra></extra>")
     return RenderSpec(
         hover_template=(
-            f"<b>{signal_name}</b>"
-            f"<br>%{{x:{cst.Spectral.HOVER_PSD_FREQ_FORMAT}}} Hz"
-            f"<br>%{{y:{cst.Spectral.HOVER_DB_FORMAT}}} dB<extra></extra>"
+            f"{name}<br>%{{x:{cst.Spectral.HOVER_PSD_FREQ_FORMAT}}} Hz<br>{y_value}<extra></extra>"
         )
     )
 
@@ -66,6 +73,8 @@ def psd_from_signal(
         x_axis_title="Frequency (Hz)",
         x_unit_name="Hz",
         x_axis_range=list(freq_range),
+        # Without it a unified panel heads itself with a raw bin centre (12.2070312).
+        x_axis_hover_format=cst.Spectral.HOVER_PSD_FREQ_FORMAT,
         y_axis_title="Power spectral density (dB)",
         y_unit_name="dB",
         y_axis_range=list(db_range) if db_range else None,
@@ -90,7 +99,7 @@ def psd_from_signal(
         trace_options=trace_options,
         metadata=Metadata(),
         display_fallbacks=signal.display_fallbacks,
-        render=_hover_spec(display_name),
+        render=_hover_spec(display_name, signal.display_fallbacks.hovermode),
     )
 
 

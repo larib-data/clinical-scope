@@ -374,7 +374,7 @@ The **⚙ Settings** button at the top right opens your personal settings. They 
 | Palette for signals with no color in the config | Both colorblind-safe palettes are readable under the common color-vision deficiencies. |
 | Plot theme | Light or dark background. |
 | Hover: x-axis time format | Whether the hover panel shows the time only, or the full date and time. |
-| Hover: panel style | *Unified* lists every trace at the hovered time in one panel; *closest point only* shows just the nearest trace. Unified is comfortable for a few signals and crowded on a subplot with many. |
+| Hover: panel style | *Unified* lists every trace at the hovered position in one panel; *closest point only* shows just the nearest trace. It applies to plots that can have multiple traces. Unified is comfortable for a few signals and crowded on a subplot with many. |
 | Hover: significant digits of the y value | How precisely hovered values are printed. A signal with its own hover format in the database options keeps it. |
 | Spectrogram colour range — minimum / maximum (dB) | Colour scale bounds used by any spectrogram whose configuration leaves `db_range` unset. |
 

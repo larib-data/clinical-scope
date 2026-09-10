@@ -485,23 +485,33 @@ class TestHoverFallbacks:
         assert model.figure.layout.hovermode == "closest"
         assert model.figure.layout.xaxis.hoverformat == "%Y-%m-%d %H:%M:%S.%3f"
 
-    def test_loops_keep_plotly_hovermode(self):
+    def test_loops_keep_both_plotly_defaults(self):
+        """Neither applies: a loop's x is another signal's values, so it is not time either."""
         loop = loop_from_signals(_make_signal(raw_name="x"), _make_signal(raw_name="y"))
         model = PlotModel(
             groups=[PlotGroup.from_single_signal(loop)],
-            display_fallbacks=DisplayFallbacks(hovermode=cst.HoverMode.X_UNIFIED),
+            display_fallbacks=DisplayFallbacks(
+                hovermode=cst.HoverMode.X_UNIFIED,
+                hover_time_format=cst.HoverTimeFormat.DATE_TIME,
+            ),
         )
         assert model.figure.layout.hovermode is None
+        assert model.figure.layout.xaxis.hoverformat is None
 
-    def test_spectrograms_keep_plotly_hovermode(self):
+    def test_spectrograms_keep_plotly_hovermode_but_take_the_time_format(self):
+        """A spectrogram's x is time even though a unified panel is meaningless per pixel."""
         spec = spectrogram_from_signal(
             _make_spectrogram_source_signal(), name="x", freq_range=(1.0, 30.0)
         )
         model = PlotModel(
             groups=[PlotGroup.from_single_signal(spec)],
-            display_fallbacks=DisplayFallbacks(hovermode=cst.HoverMode.X_UNIFIED),
+            display_fallbacks=DisplayFallbacks(
+                hovermode=cst.HoverMode.X_UNIFIED,
+                hover_time_format=cst.HoverTimeFormat.DATE_TIME,
+            ),
         )
         assert model.figure.layout.hovermode is None
+        assert model.figure.layout.xaxis.hoverformat == "%Y-%m-%d %H:%M:%S.%3f"
 
 
 class TestLayoutFallbacks:
@@ -635,12 +645,37 @@ class TestPsdFigure:
         model = assemble_plot_models(groups)[0]
         assert model.figure.layout.xaxis2.matches is None
 
-    def test_keeps_plotly_hovermode(self):
+    def test_takes_the_user_hovermode(self):
+        """Several traces do share one x here -- it is simply frequency rather than time."""
         model = PlotModel(
             groups=[self._psd_group("EEG PSD", 1)],
             display_fallbacks=DisplayFallbacks(hovermode=cst.HoverMode.X_UNIFIED),
         )
-        assert model.figure.layout.hovermode is None
+        assert model.figure.layout.hovermode == "x unified"
+
+    def test_heads_the_panel_with_a_frequency_not_a_time(self):
+        model = PlotModel(
+            groups=[self._psd_group("EEG PSD", 1)],
+            display_fallbacks=DisplayFallbacks(
+                hovermode=cst.HoverMode.X_UNIFIED,
+                hover_time_format=cst.HoverTimeFormat.DATE_TIME,
+            ),
+        )
+        assert model.figure.layout.xaxis.hoverformat == ".3g"
+
+    def test_unified_rows_drop_the_frequency_the_panel_header_already_shows(self):
+        source = _make_spectrogram_source_signal(raw_name="eeg")
+        source.display_fallbacks = DisplayFallbacks(hovermode=cst.HoverMode.X_UNIFIED)
+        psd = psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
+        assert psd.render.hover_template == "<b>eeg</b>: %{y:.1f} dB<extra></extra>"
+
+    def test_closest_keeps_the_frequency_nothing_else_shows_it(self):
+        source = _make_spectrogram_source_signal(raw_name="eeg")
+        source.display_fallbacks = DisplayFallbacks(hovermode=cst.HoverMode.CLOSEST)
+        psd = psd_from_signal(source, psd_name="EEG PSD", freq_range=(1.0, 30.0))
+        assert psd.render.hover_template == (
+            "<b>eeg</b><br>%{x:.3g} Hz<br>%{y:.1f} dB<extra></extra>"
+        )
 
     def test_page_order_puts_psd_between_spectrogram_and_loop(self):
         groups = [

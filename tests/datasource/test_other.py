@@ -10,6 +10,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import clinical_scope.constants as cst
@@ -17,6 +19,7 @@ from clinical_scope.database_options_parser import (
     normalize_database_options,
     validate_database_options,
 )
+from clinical_scope.datasource.sources.other import find_load_format
 
 
 class TestFind:
@@ -585,3 +588,73 @@ class TestSourceSymlink:
 
         assert cache.read_bytes() == b"servo_u cache"
         assert (output_folder / "other" / "servo_u_loaded.parquet").is_symlink()
+
+
+class TestInspectErrorReporting:
+    """A file inspect cannot read reports the cause, so the red row says what to go fix."""
+
+    def _write_unreadable_parquet(self, root):
+        """
+        Write a parquet whose columns are named 'art' twice.
+
+        pyarrow permits duplicate field names, pandas refuses to read them -- a cheap way to
+        reach the generic except without corrupting bytes or mocking anything.
+        """
+        folder = root / "other"
+        folder.mkdir(parents=True, exist_ok=True)
+        index = pd.date_range("2004-09-15 08:00:00", periods=5, freq="1s")
+        table = pa.table(
+            {
+                "datetime_index": pa.array(index),
+                "art": pa.array([1.0] * 5),
+                "art_to_be_renamed": pa.array([2.0] * 5),
+            }
+        )
+        pq.write_table(
+            table.rename_columns(["datetime_index", "art", "art"]), folder / "dup.parquet"
+        )
+        return folder
+
+    def test_the_message_names_the_cause(self, tmp_path, other_cls):
+        self._write_unreadable_parquet(tmp_path)
+
+        (result,) = other_cls.inspect({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        assert result.status == "load_error"
+        assert "art" in result.error_message  # the duplicated column pyarrow choked on
+        assert "Unexpected error" not in result.error_message
+
+    def test_the_message_is_one_line(self, tmp_path, other_cls):
+        """A pyarrow error appends the file's whole schema; the UI gives the message one line."""
+        self._write_unreadable_parquet(tmp_path)
+
+        (result,) = other_cls.inspect({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        assert "\n" not in result.error_message
+
+    def test_a_blank_exception_message_still_reports(self, tmp_path, other_cls, monkeypatch):
+        """``raise ValueError`` stringifies to '', which no message-slicing may index into."""
+
+        def _raise_blank(*_args, **_kwargs):
+            raise ValueError
+
+        _write_other_patient(tmp_path, [("waves", ".parquet")])
+        monkeypatch.setattr(find_load_format, "_load_single_file", _raise_blank)
+
+        (result,) = other_cls.inspect({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+
+        assert result.status == "load_error"
+        assert result.error_message.startswith("ValueError")
+
+    def test_one_unreadable_file_leaves_its_neighbours_green(self, tmp_path, other_cls):
+        """One entry per file is what lets the healthy sibling keep its own status and columns."""
+        folder = self._write_unreadable_parquet(tmp_path)
+        index = pd.date_range("2004-09-15 08:00:00", periods=5, freq="1s", name="datetime_index")
+        pd.DataFrame({"art": range(5)}, index=index).to_csv(folder / "good.csv")
+
+        results = other_cls.inspect({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+        by_name = {result.datasource_name: result for result in results}
+
+        assert by_name["other::dup"].status == "load_error"
+        assert by_name["other::good"].status == "ok"
+        assert [column.raw_name for column in by_name["other::good"].columns] == ["art"]

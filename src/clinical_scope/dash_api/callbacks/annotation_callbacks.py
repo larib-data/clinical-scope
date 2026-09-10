@@ -831,8 +831,6 @@ def handle_graph_click(
         )
 
     # --- Normal mode ---
-    suggested_color = trace_info.get("line_color") or ANNOTATION_COLORS[0]
-
     if annotation_type == AnnotationType.TIME_WINDOW.value:
         is_first, stored_x0, new_mode = _check_pending_x0(mode, x_str, plot_name)
         if is_first:
@@ -853,7 +851,6 @@ def handle_graph_click(
             "x1": x_str,
             "xaxis": xaxis_ref,
             "subplot_name": subplot_name,
-            "suggested_color": suggested_color,
             "display_timezone": display_tz,
         }
         if trace_metadata:
@@ -874,7 +871,6 @@ def handle_graph_click(
         "x": x_str,
         "xaxis": xaxis_ref,
         "subplot_name": subplot_name,
-        "suggested_color": suggested_color,
         "display_timezone": display_tz,
     }
     if annotation_type == AnnotationType.POINT.value:
@@ -914,8 +910,7 @@ def update_modal_ui(modal_data: dict) -> tuple[str, str, list, str]:
     if not modal_data:
         raise PreventUpdate
     position_text = _format_position(modal_data)
-    color = modal_data.get("suggested_color", ANNOTATION_COLORS[0])
-    return position_text, "", [], color
+    return position_text, "", [], ANNOTATION_COLORS[0]
 
 
 # ---------------------------------------------------------------------------
