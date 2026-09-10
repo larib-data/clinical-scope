@@ -44,7 +44,7 @@ def _hovermode_ops(patch) -> list:
 
 
 class TestRenderAnnotationsHovermode:
-    """Hovermode is a time_series-only fallback, matching PlotModel.to_figure."""
+    """Hovermode reaches the types that overlay traces on one x, matching PlotModel.to_figure."""
 
     def test_time_series_gets_hovermode(self):
         graph_ids = [{"name": "time_series"}]
@@ -64,11 +64,12 @@ class TestRenderAnnotationsHovermode:
         patches = render_annotations([], default_mode(), False, graph_ids, subplots_list, "UTC", {})
         assert len(_hovermode_ops(patches[0])) == 0
 
-    def test_psd_gets_no_hovermode(self):
+    def test_psd_gets_hovermode(self):
+        """Overlaid spectra share one frequency axis, so the panel style applies there too."""
         graph_ids = [{"name": "psd"}]
         subplots_list = [_subplots_data("psd")]
         patches = render_annotations([], default_mode(), False, graph_ids, subplots_list, "UTC", {})
-        assert len(_hovermode_ops(patches[0])) == 0
+        assert len(_hovermode_ops(patches[0])) == 1
 
     def test_user_hovermode_survives_an_annotation_redraw(self):
         """This patch runs after to_figure, so a hardcoded value would silently discard it."""

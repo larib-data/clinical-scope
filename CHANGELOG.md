@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 
 - **A new annotation always opens on the default colour**, instead of the clicked signal's own line colour — a mark cannot be read against the trace it was drawn from.
 
+- **The hover panel style now applies to PSD plots too**, where several spectra share one frequency axis and reading them at one frequency is the point. A spectrogram's hover also follows the *Hover: x-axis time format* setting, instead of always printing the full date and time.
+
 ### Documentation
 - The README's PyPI section says how to upgrade an existing install, not only how to make a new one.
 

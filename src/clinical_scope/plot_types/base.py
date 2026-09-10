@@ -119,13 +119,14 @@ class PlotTypeDefinition:
     # A flag answers "does this plot type behave this way?", so a new plot type is a handful of
     # booleans rather than a new branch inside each rendering function.
 
-    # x-axis is time: subplots share a zoom range, the hovered x is localized, and time-based
-    # annotations are accepted. A loop's x is another signal's values, a PSD's is frequency.
+    # x-axis is time: subplots share a zoom range, the hovered x is localized and takes the
+    # user's hover time format, and time-based annotations are accepted. A loop's x is
+    # another signal's values, a PSD's is frequency.
     TIME_AXIS = True
 
-    # Reads the user's hovermode and hover time format. Everything else keeps Plotly's default
-    # ("closest"): a unified panel is meaningless with an independent x per point (loop, psd)
-    # or an independent cell per pixel (spectrogram).
+    # Reads the user's hovermode. Everything else keeps Plotly's default ("closest"): a
+    # unified panel is meaningless with an independent x per point (loop) or an independent
+    # cell per pixel (spectrogram). Independent of TIME_AXIS: a PSD's shared x is frequency.
     UNIFIED_HOVER = True
 
     # Wrapped in a FigureResampler for dynamic downsampling on zoom/pan, and so has Plotly's

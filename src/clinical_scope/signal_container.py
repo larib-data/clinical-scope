@@ -167,6 +167,7 @@ class PlotOptions:
     x_axis_title: str | None = None
     x_axis_range: list | None = None
     x_unit_name: str | None = None
+    x_axis_hover_format: str | None = None
     x2_axis_title: str | None = None
     x2_axis_range: list | None = None
     x2_unit_name: str | None = None
@@ -262,6 +263,7 @@ class PlotOptions:
             x_axis_title=first_plot_options.x_axis_title,
             x_axis_range=first_plot_options.x_axis_range,
             x_unit_name=first_plot_options.x_unit_name,
+            x_axis_hover_format=first_plot_options.x_axis_hover_format,
             y_axis_title=y_axis_title,
             y_unit_name=primary_unit,
             y2_axis_title=y2_axis_title,
@@ -781,6 +783,7 @@ class PlotModel:
                 row=plotly_row,
                 col=plotly_col,
                 range=group.plot_options.x_axis_range,
+                hoverformat=group.plot_options.x_axis_hover_format,
             )
 
             # Shared x-axis only applies where x is time. A loop's x is another signal's
@@ -797,10 +800,9 @@ class PlotModel:
             if self.definition.RESAMPLED:
                 fig.update_yaxes(modebardisable="zoominout", row=plotly_row)
 
-        # Hover header format and panel style are user fallbacks: no database option speaks
-        # about either, so they apply unconditionally to the types that want them.
-        if self.definition.UNIFIED_HOVER:
+        if self.definition.TIME_AXIS:
             fig.update_xaxes(hoverformat=self.display_fallbacks.hover_time_format)
+        if self.definition.UNIFIED_HOVER:
             fig.update_layout(hovermode=self.display_fallbacks.hovermode)
 
         fig.update_layout(
