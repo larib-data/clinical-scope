@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **A run with no installed version now says `dev (unknown version)`** rather than `0.0.0-dev (not installed)`. It shows up when the app is launched from a source checkout, where the old wording read as though the app were broken, and its fake `0.0.0` looked like a real version.
 
+- **A new annotation always opens on the default colour**, instead of the clicked signal's own line colour — a mark cannot be read against the trace it was drawn from.
+
 ### Documentation
 - The README's PyPI section says how to upgrade an existing install, not only how to make a new one.
 

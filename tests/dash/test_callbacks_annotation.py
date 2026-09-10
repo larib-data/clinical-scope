@@ -25,6 +25,7 @@ from clinical_scope.dash_api.callbacks.annotation_callbacks import (
     toggle_annotation_mode,
     toggle_group_hidden,
     update_annotation_list,
+    update_modal_ui,
 )
 
 
@@ -145,6 +146,51 @@ class TestGraphClickTimeAxisGuard:
     def test_time_event_still_accepted_on_spectrogram(self, click_on):
         result = click_on("spectrogram", "time_event", "2024-01-01 00:00:00")
         assert result[self.WARNING_INDEX] == ""
+
+
+class TestAnnotationColorIgnoresTheClickedTrace:
+    """A mark drawn in its own trace's colour is the one thing it cannot be read against."""
+
+    @pytest.fixture
+    def modal_data_from_click(self, monkeypatch):
+        def _click(trace_entry: dict) -> dict:
+            monkeypatch.setattr(
+                annotation_callbacks,
+                "ctx",
+                type("Ctx", (), {"triggered_id": {"type": "graph", "name": "time_series"}}),
+            )
+            mode = {**default_mode(), "active": True, "type": "time_event"}
+            return handle_graph_click(
+                click_data_list=[
+                    {"points": [{"x": "2024-01-01 00:00:00", "y": 42.0, "curveNumber": 0}]}
+                ],
+                mode=mode,
+                subplots_list=[_subplots_data("time_series")],
+                trace_map_list=[{"curve_0": trace_entry}],
+                graph_ids=[{"type": "graph", "name": "time_series"}],
+                annotations_raw=[],
+                display_timezone="UTC",
+            )[1]
+
+        return _click
+
+    # Position of the colour in update_modal_ui's return tuple.
+    COLOR_INDEX = 3
+
+    def test_no_colour_crosses_the_store(self, modal_data_from_click):
+        modal_data = modal_data_from_click({"xaxis": "x", "yaxis": "y", "display_name": "Flow"})
+        assert "suggested_color" not in modal_data
+
+    def test_modal_opens_on_the_palette_default(self, modal_data_from_click):
+        modal_data = modal_data_from_click({"xaxis": "x", "yaxis": "y", "display_name": "Flow"})
+        assert update_modal_ui(modal_data)[self.COLOR_INDEX] == "#999999"
+
+    def test_a_colour_left_in_the_store_is_ignored(self, modal_data_from_click):
+        """The removal itself: a trace colour reaching the callback must not reach the modal."""
+        modal_data = modal_data_from_click(
+            {"xaxis": "x", "yaxis": "y", "display_name": "Flow", "line_color": "#1f77b4"}
+        )
+        assert update_modal_ui(modal_data)[self.COLOR_INDEX] == "#999999"
 
 
 def _subplots_with_axes() -> dict:
