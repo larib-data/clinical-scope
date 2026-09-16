@@ -88,9 +88,23 @@ For the full developer setup (tests, linting, adding a datasource), see [CONTRIB
 
 1. **Install and run** — see [Installation](#installation) above; your browser opens at `http://127.0.0.1:8050`
 2. **Load config** — click **Default visualization (all sources)** to use built-in defaults, or upload a `database_options.json` / `.xlsx` config file
-3. **Set data folder** — enter the path to your patient folder (or point to the bundled `demo_database/demo_patient/` to try it immediately; for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` so every source lines up)
+3. **Set data folder** — enter the path to your patient folder. No data of your own yet? See [Trying the demo](#trying-the-demo) below (for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` so every source lines up)
 4. **Process** — click **Process visualization**; interactive plots appear in the browser
 5. **Annotate** — draw time events, windows, or point annotations, then click **Save**
+
+## Trying the demo
+
+ClinicalScope ships a small demo recording — one patient, every supported data source — so you can see a full visualization before preparing any data of your own.
+
+A `pip install` does not include it, so download it once:
+
+```bash
+clinical-scope --demo
+```
+
+That prints the folder it landed in, plus the `demo_patient/` path to paste into the app's **Data folder** field. A source checkout and the standalone application already carry the same data under `example/demo_database/`.
+
+Run `clinical-scope --help` for the full list of commands.
 
 ## Documentation
 
@@ -124,8 +138,8 @@ from clinical_scope import extract_datasource, extract_patient, batch_extract
 from clinical_scope.config.parsing import load_database_options_from_path
 
 db_options = load_database_options_from_path(Path("database_options.json"))
-# No config of your own yet? The shipped demo works as-is, no UI needed:
-#   load_database_options_from_path(Path("example/demo_database/database_options.json"))
+# No config of your own yet? The demo config works as-is, no UI needed — run
+# `clinical-scope --demo`, then point at the database_options.json it reports.
 
 # 1. Single datasource subfolder (auto-detects type from folder name)
 df = extract_datasource(

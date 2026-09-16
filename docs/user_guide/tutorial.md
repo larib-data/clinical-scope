@@ -103,6 +103,29 @@ The bundle also ships this user guide and a template folder for organizing patie
 
 To **close** ClinicalScope, close the terminal window that opened with it — the application runs inside that window. If the window is hidden, end the `ClinicalScope` process from your system's process manager.
 
+## Trying the Demo Dataset
+
+ClinicalScope comes with a small demo recording — a single patient, with one example of every supported data source — so you can see a complete visualization before preparing any data of your own.
+
+**With the standalone application**, the demo is already there: look for the `example/demo_database/` folder next to the executable.
+
+**With a `pip` install**, the demo is not part of the package. Download it once from a terminal:
+
+```bash
+clinical-scope --demo
+```
+
+The command prints the folder it downloaded into, along with the two paths the app asks for. It is safe to repeat: an already-downloaded demo is left alone. Run `clinical-scope --help` to see everything the command line offers.
+
+Then, in the application:
+
+1. Click **Default visualization (all sources)**, or upload the demo's `database_options.json`.
+2. Set **Data folder** to the demo's `demo_patient` folder.
+3. Set the EIT **day** to `2004-09-15`, and the EDF **recording start** to `2004-09-15 10:12:33` — the demo's sources were recorded at different times, and these line them up on one timeline.
+4. Click **Process visualization**.
+
+The demo is synthetic data for learning the interface. It is not a real recording, and nothing in it should be read clinically.
+
 ## Application Overview
 
 The interface is organized top-to-bottom in the following order:
@@ -122,7 +145,7 @@ The interface is organized top-to-bottom in the following order:
    status badges, column tables, and a CSV download.
 6. **Visualization Area** -- Interactive plots.
 
-A **⚙ Settings** button sits at the top right, above the Database Options row. It opens your personal display and export settings, which apply to every patient you open — see [Settings](#settings).
+A **⚙ Settings** button sits at the top right, above the Database Options row. It opens your personal display and export settings, which apply to every patient you open — see [Settings](#settings). Below it, **📖 Docs** opens this guide in a new browser tab, always at its newest version.
 
 ![Application main interface](images/AppMainScreen.png){ width=100% }
 

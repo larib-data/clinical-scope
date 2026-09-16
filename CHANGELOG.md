@@ -7,6 +7,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **`clinical-scope --demo` downloads the demo dataset.** Installing with `pip` gives you the application but none of the example data — the demo recording ships with the standalone application and with a source checkout, and until now a `pip` user had no way to get it. The command downloads it once, into `~/.clinical_scope/example/`, and prints the data folder and config paths the app asks for. Repeating it costs nothing: an existing demo is left alone unless you pass `--force`.
+
+  `clinical-scope --help` now lists what the command line offers, and `clinical-scope --version` prints the installed version. Launching the app is still just `clinical-scope`.
+
+- **A 📖 Docs link in the app.** It sits under the ⚙ Settings button in the top-right corner and opens the user guide in a new tab, always at its newest version. Previously the guide could only be found by going to the project page, which a `pip` install never sends you to.
+
 - **The version badge says when a newer release is out.** The badge in the top-right corner has always named the version you are running. It now also asks PyPI what the newest published version is, and when you are behind it gains a link — `API Version: 1.2.0 | 1.3.0 available ↗` — pointing at that release's notes and downloads. Until now the only way to learn that a new version existed was to be told by someone.
 
   When the check cannot reach PyPI, or cannot make sense of what it gets back, the badge shows `API Version: 1.2.0 | releases ↗` instead: it will not claim you are behind, but the page it points at is where the answer is. An install that is genuinely up to date gets no link at all, so the quiet case stays quiet.
@@ -20,8 +26,12 @@ All notable changes to this project will be documented in this file.
 
 - **The hover panel style now applies to PSD plots too**, where several spectra share one frequency axis and reading them at one frequency is the point. A spectrogram's hover also follows the *Hover: x-axis time format* setting, instead of always printing the full date and time.
 
+### Fixed
+- **The project page on PyPI now links to the documentation.** Its description is the project README, whose links all pointed at files inside the repository — on PyPI those led nowhere, and the demo animation did not appear at all. Every link is now absolute, and the page carries *Documentation*, *Changelog* and *Issues* links in its sidebar.
+
 ### Documentation
 - The README's PyPI section says how to upgrade an existing install, not only how to make a new one.
+- The user guide has a *Trying the Demo Dataset* section, covering both the copy bundled with the standalone application and the `--demo` download.
 
 ---
 
