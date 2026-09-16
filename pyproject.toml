@@ -63,4 +63,8 @@ markers = [
 [project.urls]
 Homepage = "https://github.com/larib-data/clinical-scope"
 Repository = "https://github.com/larib-data/clinical-scope.git"
+# PyPI renders these as its sidebar: for a pip install, that page is the only entry point.
+Documentation = "https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/tutorial.md"
+Changelog = "https://github.com/larib-data/clinical-scope/blob/main/CHANGELOG.md"
+Issues = "https://github.com/larib-data/clinical-scope/issues"
 DOI = "https://doi.org/10.5281/zenodo.20830140"

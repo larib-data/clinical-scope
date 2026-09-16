@@ -15,7 +15,7 @@
   <a href="https://pypi.org/project/clinical-scope/">
     <img src="https://img.shields.io/pypi/pyversions/clinical-scope" alt="Python versions" />
   </a>
-  <a href="LICENSE">
+  <a href="https://github.com/larib-data/clinical-scope/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" />
   </a>
   <a href="https://doi.org/10.5281/zenodo.20830140">
@@ -78,11 +78,11 @@ pip install -e .
 clinical-scope
 ```
 
-For the full developer setup (tests, linting, adding a datasource), see [CONTRIBUTING.md](CONTRIBUTING.md).
+For the full developer setup (tests, linting, adding a datasource), see [CONTRIBUTING.md](https://github.com/larib-data/clinical-scope/blob/main/CONTRIBUTING.md).
 
 ## Demo
 
-![ClinicalScope demo](docs/user_guide/images/demo.gif)
+![ClinicalScope demo](https://raw.githubusercontent.com/larib-data/clinical-scope/main/docs/user_guide/images/demo.gif)
 
 ## Quickstart
 
@@ -94,7 +94,7 @@ For the full developer setup (tests, linting, adding a datasource), see [CONTRIB
 
 ## Documentation
 
-The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for everything beyond the Quickstart: data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, and the Python API.
+The **[user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/tutorial.md)** is the primary reference for everything beyond the Quickstart: data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, and the Python API.
 
 ## Supported Data Sources
 
@@ -110,7 +110,7 @@ The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for e
 | EDF / EDF+ | Amplifiers and polygraphic recorders | `.edf` | Any EDF-exported signal, typically EEG |
 | Other (Generic) | Any CSV / Parquet | `.parquet`, `.csv` | Any time-series with a datetime column — one independent entry per file |
 
-Each patient folder should contain one subfolder per data source. The [user guide](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* gives the folder keyword for each source, the naming rules, and the configuration details.
+Each patient folder should contain one subfolder per data source. The [user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* gives the folder keyword for each source, the naming rules, and the configuration details.
 
 ## Standalone Data Processing
 
@@ -182,7 +182,7 @@ Omit `--database-options` to use all available datasources with their defaults. 
 
 ## Contributing
 
-Contributions are welcome — bug reports, new data sources, and documentation improvements. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome — bug reports, new data sources, and documentation improvements. See [CONTRIBUTING.md](https://github.com/larib-data/clinical-scope/blob/main/CONTRIBUTING.md).
 
 ## Citation
 
@@ -199,7 +199,7 @@ If you use ClinicalScope in academic work, please cite:
 }
 ```
 
-A [`CITATION.cff`](CITATION.cff) file is also provided for GitHub's *Cite this repository* button.
+A [`CITATION.cff`](https://github.com/larib-data/clinical-scope/blob/main/CITATION.cff) file is also provided for GitHub's *Cite this repository* button.
 
 ## Disclaimer
 
@@ -215,6 +215,6 @@ This software processes physiological signals that may constitute health data �
 
 ## License
 
-ClinicalScope is licensed under the [Apache License 2.0](LICENSE).
+ClinicalScope is licensed under the [Apache License 2.0](https://github.com/larib-data/clinical-scope/blob/main/LICENSE).
 
 Copyright © 2026 Assistance Publique – Hôpitaux de Paris. Developed by Alexis Janin.

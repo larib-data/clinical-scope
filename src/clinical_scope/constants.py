@@ -67,6 +67,10 @@ UNKNOWN_VERSION_LABEL = "dev (unknown version)"
 UPDATE_AVAILABLE_LABEL = "| {version} available ↗"
 RELEASES_PAGE_LABEL = "| releases ↗"
 
+# Target of the in-app Docs link. Absolute rather than a repo path: a pip install ships no
+# local copy of the tutorial, and the one bundled with the standalone app can be older.
+TUTORIAL_URL = "https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/tutorial.md"
+
 PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"
 PLACEHOLDER_DAY = "YYYY-MM-DD"
 

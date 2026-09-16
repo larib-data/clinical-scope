@@ -191,6 +191,14 @@ BUTTON_GEAR: dict = {
     "color": "#666",
 }
 
+# Docs link — third pill in the top-right stack, under the settings gear. Grey like its
+# neighbours: reaching the tutorial is not one of the action roles the coloured buttons carry.
+LINK_DOCS: dict = {
+    **BUTTON_GEAR,
+    "top": "70px",
+    "textDecoration": "none",
+}
+
 ROOT_CONTAINER: dict = {
     "padding": "20px 32px",
     "maxWidth": "1400px",
