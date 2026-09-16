@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [project.scripts]
-clinical-scope = "clinical_scope.dash_api.core_api:main"
+clinical-scope = "clinical_scope.cli:main"
 
 [project.optional-dependencies]
 # ruff is capped to a minor line: the formatter and new lint rules change in minors, and select = ["ALL"] opts into every rule ruff adds.

@@ -18,11 +18,13 @@ Release checklist for `clinical-scope`, starting from a `main` branch you're hap
    ```
    → run `clinical-scope`, check the example.
 
-3. **Tag and push** — this triggers [`build.yml`](../.github/workflows/build.yml), which drafts a GitHub Release with the standalone executables attached.
+3. **Tag and push** — this triggers [`build.yml`](../.github/workflows/build.yml), which drafts a GitHub Release with the standalone executables and `clinical-scope-example.zip` attached.
    ```bash
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
-   → review the draft Release: executables attached, no build warnings.
+   → review the draft Release: executables **and the example archive** attached, no build warnings.
+
+   `clinical-scope --demo` downloads that archive from `releases/latest/download/clinical-scope-example.zip`. It has to be on the newest release under exactly that name: publishing without it, or renaming it, breaks the demo command for every version already installed.
 
 4. **Dry-run on TestPyPI** — run **Publish to TestPyPI** manually from the Actions tab, then install from it (project from TestPyPI, dependencies from real PyPI):
    ```bash
@@ -35,7 +37,7 @@ Release checklist for `clinical-scope`, starting from a `main` branch you're hap
    ```bash
    pip install clinical-scope==X.Y.Z
    ```
-   → run `clinical-scope`, check the example.
+   → run `clinical-scope`, check the example. A pip install ships none, so fetch it first with `clinical-scope --demo` — which also confirms the release asset is reachable.
 
 **Note:** versions can't be reused — TestPyPI and PyPI both reject re-uploading a version that already exists. Bump to a `.devN` (e.g. `X.Y.Z.dev0`) if you need to re-run the TestPyPI dry-run.
 

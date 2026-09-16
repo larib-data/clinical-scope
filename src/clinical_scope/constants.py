@@ -71,6 +71,19 @@ RELEASES_PAGE_LABEL = "| releases ↗"
 # local copy of the tutorial, and the one bundled with the standalone app can be older.
 TUTORIAL_URL = "https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/tutorial.md"
 
+# Demo dataset for `clinical-scope --demo`, which exists because a pip install packages no
+# example data. Pinned to `releases/latest` rather than the running version: the demo changes
+# far more slowly than the app, and an older release carries no asset to fall back to.
+DEMO_ARCHIVE_URL = (
+    "https://github.com/larib-data/clinical-scope/releases/latest/download/"
+    "clinical-scope-example.zip"
+)
+DEMO_DIR_NAME = "example"  # extracted under ~/<CLINICAL_SCOPE_DIR_NAME>/
+DEMO_DOWNLOAD_TIMEOUT_SECONDS = 30.0
+DEMO_DOWNLOAD_CHUNK_BYTES = 64 * 1024
+# The published archive is ~2 MB; this only bounds a response that never stops arriving.
+DEMO_MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
+
 PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"
 PLACEHOLDER_DAY = "YYYY-MM-DD"
 
