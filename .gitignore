@@ -35,6 +35,8 @@ logs/
 
 # Local testing and example
 **/clinical_scope_output/
+/example.zip
+/clinical-scope-example.zip
 LOCAL_SCRIPT/*
 *_from_xlsx.json
 
