@@ -125,7 +125,7 @@ Gitignored under `logs/`: `logs/app/dash_api.log` (app), `logs/scripts/` (script
 - **Triage labels** — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`; see `docs/agents/triage-labels.md`.
 - **Domain docs** — single-context repo: `CONTEXT.md` (domain glossary) + `docs/adr/` at root; see `docs/agents/domain.md`.
 - **Doc audience** — `README.md` / `docs/user_guide/tutorial.md` are clinician-facing: state behavior, not implementation; never link to `docs/adr/`, `CONTEXT.md`, or CLAUDE.md from them.
-- **Tutorial PDF** — the standalone bundle ships `tutorial.md` as a PDF, and nothing regenerates it: `assemble_bundle.py` copies whatever is committed. It is rebuilt once per *release*, not per commit (`./docs/user_guide/build_pdf.sh`, needs pandoc + LaTeX — [RELEASING.md](docs/RELEASING.md) step 1), so on `main` it is expected to lag `tutorial.md`.
+- **Tutorial PDF** — the standalone bundle ships `tutorial.md` as a PDF, and nothing regenerates it: `assemble_bundle.py` copies whatever is committed. It is rebuilt once per *release*, not per commit (`./docs/user_guide/build_pdf.sh`, needs pandoc + LaTeX — [RELEASING.md](docs/RELEASING.md) step 1), so on `main` it is expected to lag `tutorial.md`. `build.yml` also attaches it to the draft release, which is what the in-app **Docs** link resolves to (`cst.USER_GUIDE_URL` → `releases/latest/download/`).
 - **Project skills** (`.claude/skills/`, invoke with `/name`):
 
 | Skill | When to use |

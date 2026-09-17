@@ -88,7 +88,7 @@ For the full developer setup (tests, linting, adding a datasource), see [CONTRIB
 
 1. **Install and run** — see [Installation](#installation) above; your browser opens at `http://127.0.0.1:8050`
 2. **Load config** — click **Default visualization (all sources)** to use built-in defaults, or upload a `database_options.json` / `.xlsx` config file
-3. **Set data folder** — enter the path to your patient folder. No data of your own yet? See [Trying the demo](#trying-the-demo) below (for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` so every source lines up)
+3. **Set data folder** — enter the path to your patient folder. No data of your own yet? See [Trying the demo](#trying-the-demo) below (for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` — neither file carries its own recording date)
 4. **Process** — click **Process visualization**; interactive plots appear in the browser
 5. **Annotate** — draw time events, windows, or point annotations, then click **Save**
 

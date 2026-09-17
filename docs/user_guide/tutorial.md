@@ -121,8 +121,9 @@ Then, in the application:
 
 1. Click **Default visualization (all sources)**, or upload the demo's `database_options.json`.
 2. Set **Data folder** to the demo's `demo_patient` folder.
-3. Set the EIT **day** to `2004-09-15`, and the EDF **recording start** to `2004-09-15 10:12:33` — the demo's sources were recorded at different times, and these line them up on one timeline.
-4. Click **Process visualization**.
+3. Set the EIT **day** to `2004-09-15`, and the EDF **recording start** to `2004-09-15 10:12:33`. Neither file carries the recording date and both expect you to supply one: EIT device files record time of day only, and the demo's EDF was de-identified, which blanks the date in its header.
+4. Click **Inspect data** to check that every source was found and covers the period you asked for. This is worth doing on any new folder before plotting anything.
+5. Click **Process visualization**.
 
 The demo is synthetic data for learning the interface. It is not a real recording, and nothing in it should be read clinically.
 

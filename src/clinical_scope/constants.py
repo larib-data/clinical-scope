@@ -67,13 +67,15 @@ UNKNOWN_VERSION_LABEL = "dev (unknown version)"
 UPDATE_AVAILABLE_LABEL = "| {version} available ↗"
 RELEASES_PAGE_LABEL = "| releases ↗"
 
-# Target of the in-app Docs link. Absolute rather than a repo path: a pip install ships no
-# local copy of the tutorial, and the one bundled with the standalone app can be older.
-TUTORIAL_URL = "https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/tutorial.md"
+# Target of the in-app Docs link. The newest release's PDF rather than the copy on `main`,
+# which carries edits for a version nobody is running yet.
+USER_GUIDE_URL = (
+    "https://github.com/larib-data/clinical-scope/releases/latest/download/"
+    "ClinicalScope_UserGuide.pdf"
+)
 
-# Demo dataset for `clinical-scope --demo`, which exists because a pip install packages no
-# example data. Pinned to `releases/latest` rather than the running version: the demo changes
-# far more slowly than the app, and an older release carries no asset to fall back to.
+# Pinned to `releases/latest` rather than the running version: the demo changes far more
+# slowly than the app, and an older release carries no asset to fall back to.
 DEMO_ARCHIVE_URL = (
     "https://github.com/larib-data/clinical-scope/releases/latest/download/"
     "clinical-scope-example.zip"

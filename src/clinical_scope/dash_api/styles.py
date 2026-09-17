@@ -154,8 +154,6 @@ INSPECTION_MODAL_HEADER_ROW: dict = {
 # ---------------------------------------------------------------------------
 # 5. Layout styles
 # ---------------------------------------------------------------------------
-# The top-right stack — version badge, settings gear, docs link — sits at a fixed pitch so a
-# fourth pill is one more multiple rather than another hand-picked offset.
 _STACK_TOP_PX = 10
 _STACK_PITCH_PX = 30
 
@@ -181,10 +179,10 @@ VERSION_BADGE_LINK: dict = {
     "fontWeight": "bold",
 }
 
-# Settings pill — stacked directly under the version badge (top-right); badge-matching styling.
+# Settings pill — last in the top-right stack; badge-matching styling.
 BUTTON_GEAR: dict = {
     "position": "absolute",
-    "top": f"{_STACK_TOP_PX + _STACK_PITCH_PX}px",
+    "top": f"{_STACK_TOP_PX + 2 * _STACK_PITCH_PX}px",
     "right": "10px",
     "cursor": "pointer",
     "fontSize": "12px",
@@ -200,7 +198,7 @@ BUTTON_GEAR: dict = {
 # buttons carry.
 LINK_DOCS: dict = {
     **BUTTON_GEAR,
-    "top": f"{_STACK_TOP_PX + 2 * _STACK_PITCH_PX}px",
+    "top": f"{_STACK_TOP_PX + _STACK_PITCH_PX}px",
     "textDecoration": "none",
 }
 

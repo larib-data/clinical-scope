@@ -590,16 +590,15 @@ app.layout = html.Div(
             interval=cst.UPDATE_CHECK_DELAY_MS,
             max_intervals=1,
         ),
-        html.Button("⚙ Settings", id="settings-open-btn", n_clicks=0, style=BUTTON_GEAR),
-        # The online tutorial, not a bundled file: a pip install has no local copy of it.
         html.A(
             "📖 Docs",
             id="docs-link",
-            href=cst.TUTORIAL_URL,
+            href=cst.USER_GUIDE_URL,
             target="_blank",
             rel="noopener noreferrer",
             style=LINK_DOCS,
         ),
+        html.Button("⚙ Settings", id="settings-open-btn", n_clicks=0, style=BUTTON_GEAR),
         _settings_modal,
         # Global user options store (source of truth for the settings surfaces).
         dcc.Store(id="user-options-store", data=_INITIAL_USER_OPTIONS),

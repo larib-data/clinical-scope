@@ -1,10 +1,13 @@
 """
 The ``clinical-scope`` console script: launch the dashboard, or fetch the demo dataset.
 
-Separate from :mod:`clinical_scope.dash_api.core_api`, which stays the PyInstaller entry point
-and must keep ignoring ``sys.argv`` — macOS hands a Finder-launched bundle a ``-psn_…``
-argument that any parser would reject. Keeping the parsing here also means ``--help`` and
-``--demo`` never pay for building the Dash layout, which happens at import time.
+Separate from :mod:`clinical_scope.dash_api.core_api` because the two entry points have
+different argv contracts. This one is run by a person who may pass flags; core_api is the
+PyInstaller entry point, run by Finder, which hands a macOS bundle a ``-psn_…`` argument that
+any parser would reject.
+
+Imports of ``dash_api`` are deferred to their call sites: it builds the Dash layout at import
+time, so ``--help`` and ``--demo`` would otherwise pay for a layout they never render.
 """
 
 from __future__ import annotations
