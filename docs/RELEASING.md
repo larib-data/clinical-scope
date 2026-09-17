@@ -8,7 +8,7 @@ Release checklist for `clinical-scope`, starting from a `main` branch you're hap
    ```bash
    ./docs/user_guide/build_pdf.sh    # needs pandoc + xelatex/pdflatex
    ```
-   The standalone bundle ships `docs/user_guide/ClinicalScope_UserGuide.pdf`, but nothing rebuilds it from `tutorial.md` — `assemble_bundle.py` copies whatever is committed, and a months-old PDF copies without a warning. Run this whenever the tutorial changed since the last release, and **commit the regenerated PDF** so the CI build picks it up too.
+   The standalone bundle ships `docs/user_guide/ClinicalScope_UserGuide.pdf`, but nothing rebuilds it from `user_guide.md` — `assemble_bundle.py` copies whatever is committed, and a months-old PDF copies without a warning. Run this whenever the user guide changed since the last release, and **commit the regenerated PDF** so the CI build picks it up too.
    → open the PDF and confirm it describes this release (new datasources, plot types, config keys).
 
 2. **Build locally and install from it.**
@@ -18,11 +18,11 @@ Release checklist for `clinical-scope`, starting from a `main` branch you're hap
    ```
    → run `clinical-scope`, check the example.
 
-3. **Tag and push** — this triggers [`build.yml`](../.github/workflows/build.yml), which drafts a GitHub Release with the standalone executables attached.
+3. **Tag and push** — this triggers [`build.yml`](../.github/workflows/build.yml), which drafts a GitHub Release with the standalone executables and `clinical-scope-example.zip` attached.
    ```bash
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
-   → review the draft Release: executables attached, no build warnings.
+   → review the draft Release: executables, the example archive and the user guide PDF attached, no build warnings.
 
 4. **Dry-run on TestPyPI** — run **Publish to TestPyPI** manually from the Actions tab, then install from it (project from TestPyPI, dependencies from real PyPI):
    ```bash
@@ -36,6 +36,7 @@ Release checklist for `clinical-scope`, starting from a `main` branch you're hap
    pip install clinical-scope==X.Y.Z
    ```
    → run `clinical-scope`, check the example.
+   → `clinical-scope --demo --force` — a pip install ships no example, and `--force` is what makes this a real check: without it the demo folder left by the previous release is kept and nothing is downloaded.
 
 **Note:** versions can't be reused — TestPyPI and PyPI both reject re-uploading a version that already exists. Bump to a `.devN` (e.g. `X.Y.Z.dev0`) if you need to re-run the TestPyPI dry-run.
 

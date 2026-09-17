@@ -9,7 +9,7 @@ pip install -e .        # in your virtualenv
 clinical-scope          # launches the Dash app at http://127.0.0.1:8050
 ```
 
-CLI scripts (extract / inspect / visualize) and the Python API are documented in [README.md](README.md) and the [user guide](docs/user_guide/tutorial.md). Packaging to a standalone executable lives in `src/clinical_scope/build_info/` (`build.sh` + README).
+CLI scripts (extract / inspect / visualize) and the Python API are documented in [README.md](README.md) and the [user guide](docs/user_guide/user_guide.md). Packaging to a standalone executable lives in `src/clinical_scope/build_info/` (`build.sh` + README).
 
 ## Where things live
 
@@ -65,7 +65,7 @@ src/clinical_scope/
 
 ## Datasources
 
-Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical list plus folder/file-naming rules live in the [tutorial](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources*. A patient folder holds one subfolder per source.
+Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical list plus folder/file-naming rules live in the [user guide](docs/user_guide/user_guide.md) → *Patient Data & Supported Data Sources*. A patient folder holds one subfolder per source.
 
 **A module is justified only by format-specific parsing** ([ADR-0008](docs/adr/0008-datasource-modules-need-format-specific-parsing.md)). Plain CSV/parquet with a datetime column belongs in `other/`, configured per file under an `other::<stem>` key — that scope carries its own `time_shift`, timezone, grouping and trace style, so a module would add machinery and no capability.
 
@@ -73,11 +73,11 @@ Registered in `datasource/registry.py` (`DataSource.AVAILABLE`); the canonical l
 
 **Datetime bounds are qualified at the boundary** ([ADR-0011](docs/adr/0011-datetime-bounds-are-qualified-at-the-boundary.md)). The UI turns naive form text into a tz-aware instant at Submit, using the user's `display_timezone` — *that* is what makes the Settings timezone govern the time window. The load path only ever localizes a bound that is still naive (script or hand-edited file), and does so with `cst.NAIVE_BOUND_TZ`, never a user option, so `extract_*` output does not depend on who is at the keyboard. `cst.NAIVE_BOUND_TZ` and `cst.DISPLAY_TIMEZONE` are separate literals on purpose; do not alias them.
 
-**Adding one**: use the `/new-datasource` skill — it is authoritative for the module layout, `options.py` constants, the loader, registration (Other stays last), example data, tests, snapshots, and the tutorial table.
+**Adding one**: use the `/new-datasource` skill — it is authoritative for the module layout, `options.py` constants, the loader, registration (Other stays last), example data, tests, snapshots, and the user guide table.
 
 ## Config files
 
-Field-by-field reference is in the [tutorial](docs/user_guide/tutorial.md). The three tiers:
+Field-by-field reference is in the [user guide](docs/user_guide/user_guide.md). The three tiers:
 - **`database_options`** (`.json` or `.xlsx`) — per-source signal config: `field_display`, `signals` (labels/units/colors), `grouped_fields`, and one section per derived plot type (`loop`, `spectrogram`, `psd`); a `global` section takes the same keys, resolved across datasources. Uploading one in the UI caches it to `~/.clinical_scope/last_database_options.json` (signal metadata only, no PHI).
 - **`patient_options`** (`.json`) — per-run settings: `data_folder`, `datetime_start`/`datetime_end`, `quick_load`, and per-source options (`time_shift`, `day`, …).
 - **`user_options`** (`~/.clinical_scope/user_options.json`) — the third tier: per-person app behaviour + display fallbacks, edited only in the Settings modal. **Never overrides `database_options`** ([ADR-0005](docs/adr/0005-user-options-are-fallbacks.md)). A new display setting = a `UserOptions` schema class (with `SECTION`) + a field on `DisplayFallbacks` (`signal_container.py`) + one read site; the carrier is threaded from `wrapper.main` down to both `Signal` and `PlotModel` construction, so no signature grows. Values are held to the schema by `user_options.validate()` at every boundary that accepts one, and only `dash_api` may read the file ([ADR-0014](docs/adr/0014-user-options-are-validated-at-the-boundary.md)).
@@ -124,8 +124,8 @@ Gitignored under `logs/`: `logs/app/dash_api.log` (app), `logs/scripts/` (script
 - **Issue tracker** — GitHub Issues via the GitHub MCP server (`larib-data/clinical-scope`), not the `gh` CLI; see `docs/agents/issue-tracker.md`.
 - **Triage labels** — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`; see `docs/agents/triage-labels.md`.
 - **Domain docs** — single-context repo: `CONTEXT.md` (domain glossary) + `docs/adr/` at root; see `docs/agents/domain.md`.
-- **Doc audience** — `README.md` / `docs/user_guide/tutorial.md` are clinician-facing: state behavior, not implementation; never link to `docs/adr/`, `CONTEXT.md`, or CLAUDE.md from them.
-- **Tutorial PDF** — the standalone bundle ships `tutorial.md` as a PDF, and nothing regenerates it: `assemble_bundle.py` copies whatever is committed. It is rebuilt once per *release*, not per commit (`./docs/user_guide/build_pdf.sh`, needs pandoc + LaTeX — [RELEASING.md](docs/RELEASING.md) step 1), so on `main` it is expected to lag `tutorial.md`.
+- **Doc audience** — `README.md` / `docs/user_guide/user_guide.md` are clinician-facing: state behavior, not implementation; never link to `docs/adr/`, `CONTEXT.md`, or CLAUDE.md from them.
+- **User guide PDF** — the standalone bundle ships `user_guide.md` as a PDF, and nothing regenerates it: `assemble_bundle.py` copies whatever is committed. It is rebuilt once per *release*, not per commit (`./docs/user_guide/build_pdf.sh`, needs pandoc + LaTeX — [RELEASING.md](docs/RELEASING.md) step 1), so on `main` it is expected to lag `user_guide.md`. `build.yml` also attaches it to the draft release, which is what the in-app **Docs** link resolves to (`cst.USER_GUIDE_URL` → `releases/latest/download/`).
 - **Project skills** (`.claude/skills/`, invoke with `/name`):
 
 | Skill | When to use |

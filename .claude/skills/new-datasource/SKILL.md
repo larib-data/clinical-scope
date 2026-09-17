@@ -95,7 +95,7 @@ Beyond the three new files in `src/clinical_scope/datasource/sources/<name>/`, e
 
 - **`src/clinical_scope/datasource/registry.py`** — import the new module, add an inner class to `DataSource`, append it to `AVAILABLE` **before `Other`** (`Other` must stay last). `NAME` must equal `DATASOURCE_NAME` — the decorator raises at import time if not.
 - **`tests/datasource/conftest.py`** — add a session-scoped `<datasource_name>_cls` fixture.
-- **`docs/user_guide/tutorial.md`** → *Patient Data & Supported Data Sources* canonical table — add a row.
+- **`docs/user_guide/user_guide.md`** → *Patient Data & Supported Data Sources* canonical table — add a row.
 - **`CLAUDE.md`** → *Supported Data Sources* bullet list — add a bullet, list order aligned with `AVAILABLE`.
 - **`example/template_patient_data_structure/<EXPECTED_FOLDER_NAME>/.gitkeep`** — the empty scaffold that ships in the release bundle.
 - **`example/demo_database/database_options.xlsx`** — add a section for the new source (a `*` sentinel row plus a curated handful of signals), then **regenerate `database_options.json` from it**; the demo must plot every source it ships.
@@ -165,7 +165,7 @@ Once everything is in place, mention the primary for transparency:
 - [ ] `tests/datasource/conftest.py` — fixture added
 - [ ] `tests/datasource/test_<name>.py` — copied from primary and adapted
 - [ ] `tests/expected_results/<name>/` — snapshots generated
-- [ ] `docs/user_guide/tutorial.md` — table row added
+- [ ] `docs/user_guide/user_guide.md` — table row added
 - [ ] `CLAUDE.md` — Supported Data Sources bullet updated
 - [ ] `example/demo_database/database_options.{xlsx,json}` — section added to the xlsx, json regenerated from it
 - [ ] `README.md` — updated only if it enumerates sources

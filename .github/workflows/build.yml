@@ -99,3 +99,69 @@ jobs:
           files: ${{ matrix.artifact_name }}.zip
           draft: true
           make_latest: false
+
+  # The user guide PDF, published as a release asset so the app's Docs link resolves to a
+  # released guide rather than to whatever `main` happens to hold. Committed, never built here:
+  # regenerating it needs pandoc and LaTeX (docs/user_guide/build_pdf.sh, run once per release).
+  # The asset name is pinned by constants.USER_GUIDE_URL, which every published wheel already
+  # carries: renaming it here breaks the Docs link for every version already installed.
+  user_guide:
+    name: ClinicalScope_UserGuide.pdf
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Attach to GitHub Release (tag push)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: docs/user_guide/ClinicalScope_UserGuide.pdf
+          draft: true
+          make_latest: false
+
+  # The demo dataset, published as a release asset so `clinical-scope --demo` has something to
+  # fetch. The standalone bundle still carries its own copy (assemble_bundle.py); this exists
+  # for pip installs, which package no example at all.
+  # The asset name is pinned by constants.DEMO_ARCHIVE_URL, which every published wheel already
+  # carries: renaming it here breaks `--demo` for every version already installed.
+  example:
+    name: clinical-scope-example.zip
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Staged through a filtered copy so the per-run parquet cache and macOS metadata stay out
+      # of the archive. Same list as _TREE_IGNORE in assemble_bundle.py; keep the two in step.
+      - name: Build the example archive
+        run: |
+          python3 - <<'EOF'
+          import shutil, tempfile
+          from pathlib import Path
+
+          with tempfile.TemporaryDirectory() as tmp:
+              staged = Path(tmp) / "example"
+              shutil.copytree(
+                  "example",
+                  staged,
+                  ignore=shutil.ignore_patterns("clinical_scope_output", ".DS_Store", "__MACOSX"),
+              )
+              shutil.make_archive("clinical-scope-example", "zip", root_dir=staged)
+          EOF
+
+      - name: Upload artifact (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clinical-scope-example
+          path: clinical-scope-example.zip
+          retention-days: 7
+
+      - name: Attach to GitHub Release (tag push)
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: clinical-scope-example.zip
+          draft: true
+          make_latest: false

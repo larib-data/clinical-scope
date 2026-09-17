@@ -71,7 +71,7 @@ class TestSameNameCollision:
 
         Documented limitation (ADR 0003): two *different* Databases that share a patient-folder
         name under the **same** output_root collapse onto one leaf, and the second write
-        overwrites the first. This pins the tutorial 'Known limitation' bullet as an executable
+        overwrites the first. This pins the user guide's 'Known limitation' bullet as an executable
         contract — if a future change disambiguated the leaf (e.g. a Database-name hash), this
         test would fail and force the doc to be updated in lockstep.
         """

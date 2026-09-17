@@ -15,7 +15,7 @@
   <a href="https://pypi.org/project/clinical-scope/">
     <img src="https://img.shields.io/pypi/pyversions/clinical-scope" alt="Python versions" />
   </a>
-  <a href="LICENSE">
+  <a href="https://github.com/larib-data/clinical-scope/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License: Apache 2.0" />
   </a>
   <a href="https://doi.org/10.5281/zenodo.20830140">
@@ -78,23 +78,37 @@ pip install -e .
 clinical-scope
 ```
 
-For the full developer setup (tests, linting, adding a datasource), see [CONTRIBUTING.md](CONTRIBUTING.md).
+For the full developer setup (tests, linting, adding a datasource), see [CONTRIBUTING.md](https://github.com/larib-data/clinical-scope/blob/main/CONTRIBUTING.md).
 
 ## Demo
 
-![ClinicalScope demo](docs/user_guide/images/demo.gif)
+![ClinicalScope demo](https://raw.githubusercontent.com/larib-data/clinical-scope/main/docs/user_guide/images/demo.gif)
 
 ## Quickstart
 
 1. **Install and run** — see [Installation](#installation) above; your browser opens at `http://127.0.0.1:8050`
 2. **Load config** — click **Default visualization (all sources)** to use built-in defaults, or upload a `database_options.json` / `.xlsx` config file
-3. **Set data folder** — enter the path to your patient folder (or point to the bundled `demo_database/demo_patient/` to try it immediately; for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` so every source lines up)
+3. **Set data folder** — enter the path to your patient folder. No data of your own yet? See [Trying the demo](#trying-the-demo) below (for the demo, set the EIT *day* to `2004-09-15` and the EDF *recording start* to `2004-09-15 10:12:33` — neither file carries its own recording date)
 4. **Process** — click **Process visualization**; interactive plots appear in the browser
 5. **Annotate** — draw time events, windows, or point annotations, then click **Save**
 
+## Trying the demo
+
+ClinicalScope ships a small demo recording — one patient, every supported data source — so you can see a full visualization before preparing any data of your own.
+
+A `pip install` does not include it, so download it once:
+
+```bash
+clinical-scope --demo
+```
+
+That prints the folder it landed in, plus the `demo_patient/` path to paste into the app's **Data folder** field. A source checkout already carries the same data under `example/demo_database/`; the standalone application puts it in `demo_database/`, next to the executable.
+
+Run `clinical-scope --help` for the full list of commands.
+
 ## Documentation
 
-The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for everything beyond the Quickstart: data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, and the Python API.
+The **[user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/user_guide.md)** is the primary reference for everything beyond the Quickstart: data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, and the Python API.
 
 ## Supported Data Sources
 
@@ -110,7 +124,7 @@ The **[user guide](docs/user_guide/tutorial.md)** is the primary reference for e
 | EDF / EDF+ | Amplifiers and polygraphic recorders | `.edf` | Any EDF-exported signal, typically EEG |
 | Other (Generic) | Any CSV / Parquet | `.parquet`, `.csv` | Any time-series with a datetime column — one independent entry per file |
 
-Each patient folder should contain one subfolder per data source. The [user guide](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* gives the folder keyword for each source, the naming rules, and the configuration details.
+Each patient folder should contain one subfolder per data source. The [user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/user_guide.md) → *Patient Data & Supported Data Sources* gives the folder keyword for each source, the naming rules, and the configuration details.
 
 ## Standalone Data Processing
 
@@ -124,8 +138,8 @@ from clinical_scope import extract_datasource, extract_patient, batch_extract
 from clinical_scope.config.parsing import load_database_options_from_path
 
 db_options = load_database_options_from_path(Path("database_options.json"))
-# No config of your own yet? The shipped demo works as-is, no UI needed:
-#   load_database_options_from_path(Path("example/demo_database/database_options.json"))
+# No config of your own yet? The demo config works as-is, no UI needed — run
+# `clinical-scope --demo`, then point at the database_options.json it reports.
 
 # 1. Single datasource subfolder (auto-detects type from folder name)
 df = extract_datasource(
@@ -182,7 +196,7 @@ Omit `--database-options` to use all available datasources with their defaults. 
 
 ## Contributing
 
-Contributions are welcome — bug reports, new data sources, and documentation improvements. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome — bug reports, new data sources, and documentation improvements. See [CONTRIBUTING.md](https://github.com/larib-data/clinical-scope/blob/main/CONTRIBUTING.md).
 
 ## Citation
 
@@ -199,7 +213,7 @@ If you use ClinicalScope in academic work, please cite:
 }
 ```
 
-A [`CITATION.cff`](CITATION.cff) file is also provided for GitHub's *Cite this repository* button.
+A [`CITATION.cff`](https://github.com/larib-data/clinical-scope/blob/main/CITATION.cff) file is also provided for GitHub's *Cite this repository* button.
 
 ## Disclaimer
 
@@ -215,6 +229,6 @@ This software processes physiological signals that may constitute health data �
 
 ## License
 
-ClinicalScope is licensed under the [Apache License 2.0](LICENSE).
+ClinicalScope is licensed under the [Apache License 2.0](https://github.com/larib-data/clinical-scope/blob/main/LICENSE).
 
 Copyright © 2026 Assistance Publique – Hôpitaux de Paris. Developed by Alexis Janin.

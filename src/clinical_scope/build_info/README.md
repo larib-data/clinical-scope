@@ -66,13 +66,13 @@ builded_app/
 
 Everything above the `_internal/` line except the executable is copied in by `assemble_bundle.py`, from the `ASSETS` manifest at the top of that file. Adding a file to the bundle means adding it there — both build entry points read the same list.
 
-**The user guide PDF is a committed artifact, not a build product.** `assemble_bundle.py` copies `docs/user_guide/ClinicalScope_UserGuide.pdf` as it finds it in the repo; nothing regenerates it from `tutorial.md`, and a stale PDF copies just as cleanly as a fresh one — the build cannot tell the difference and says nothing. Regenerating is a manual step:
+**The user guide PDF is a committed artifact, not a build product.** `assemble_bundle.py` copies `docs/user_guide/ClinicalScope_UserGuide.pdf` as it finds it in the repo; nothing regenerates it from `user_guide.md`, and a stale PDF copies just as cleanly as a fresh one — the build cannot tell the difference and says nothing. Regenerating is a manual step:
 
 ```bash
 ./docs/user_guide/build_pdf.sh    # needs pandoc + xelatex/pdflatex
 ```
 
-It is deliberately not wired into `build.sh`: pandoc and a LaTeX engine would then be prerequisites on every build machine, CI runners included, to rebuild a file that changes a few times a year. The cost of that choice is that **`tutorial.md` and the PDF drift silently**, so run the script and commit the result whenever you edit the tutorial — and always before cutting a release ([RELEASING.md](../../../docs/RELEASING.md) step 1).
+It is deliberately not wired into `build.sh`: pandoc and a LaTeX engine would then be prerequisites on every build machine, CI runners included, to rebuild a file that changes a few times a year. The cost of that choice is that **`user_guide.md` and the PDF drift silently**, so run the script and commit the result whenever you edit the user guide — and always before cutting a release ([RELEASING.md](../../../docs/RELEASING.md) step 1).
 
 ## License notices
 

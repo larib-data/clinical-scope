@@ -5,13 +5,13 @@ refuses one the demo config never plots. Neither notices the last gap: a type th
 validates, renders, ships — and is described nowhere a reader would look. That gap is the
 whole periphery a new plot type has to land in, and it is the only part of it left to prose.
 
-Two audiences, so two documents, neither substituting for the other. The **tutorial** is where
+Two audiences, so two documents, neither substituting for the other. The **user guide** is where
 a clinician learns the config key exists at all; ``CONTEXT.md`` is where the word the team says
 out loud is pinned to one meaning, so ``psd`` in a config file and "PSD" in a corridor
 conversation are the same thing.
 
 Deliberately anchored on *headings* and *glossary terms* rather than a search of the prose:
-"loop" appears all over the tutorial for unrelated reasons -- the datasource loop, a loop
+"loop" appears all over the user guide for unrelated reasons -- the datasource loop, a loop
 subplot's height, multi-cycle loops -- so a body search would pass for a plot type nobody had
 written a word about. A heading is a place in the document; a mention is not.
 
@@ -28,7 +28,7 @@ import pytest
 from clinical_scope.plot_types import registry
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-TUTORIAL = PROJECT_ROOT / "docs" / "user_guide" / "tutorial.md"
+USER_GUIDE = PROJECT_ROOT / "docs" / "user_guide" / "user_guide.md"
 CONTEXT = PROJECT_ROOT / "CONTEXT.md"
 
 # A glossary entry is a bold term at the start of a line, followed by its definition.
@@ -46,10 +46,10 @@ def _spellings(definition):
 
 
 @pytest.mark.parametrize("definition", registry.DERIVED, ids=lambda s: s.NAME)
-def test_the_tutorial_gives_it_a_heading(definition):
+def test_the_user_guide_gives_it_a_heading(definition):
     """Where a clinician finds out the key exists -- a config block, a sheet, or a section."""
     headings = [
-        line for line in TUTORIAL.read_text(encoding="utf-8").splitlines() if line.startswith("#")
+        line for line in USER_GUIDE.read_text(encoding="utf-8").splitlines() if line.startswith("#")
     ]
     spellings = _spellings(definition)
 
@@ -60,7 +60,7 @@ def test_the_tutorial_gives_it_a_heading(definition):
     ]
 
     assert found, (
-        f"No heading in docs/user_guide/tutorial.md names the {definition.NAME!r} plot type "
+        f"No heading in docs/user_guide/user_guide.md names the {definition.NAME!r} plot type "
         f"(looked for {sorted(spellings)}). Add the section a reader would need to configure "
         f"one -- the '`spectrogram` Block' and '`spectrograms` sheet' headings are the shape."
     )

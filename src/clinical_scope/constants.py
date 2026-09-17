@@ -67,6 +67,30 @@ UNKNOWN_VERSION_LABEL = "dev (unknown version)"
 UPDATE_AVAILABLE_LABEL = "| {version} available ↗"
 RELEASES_PAGE_LABEL = "| releases ↗"
 
+# Target of the in-app Docs link. The newest release's PDF rather than the copy on `main`,
+# which carries edits for a version nobody is running yet.
+USER_GUIDE_URL = (
+    "https://github.com/larib-data/clinical-scope/releases/latest/download/"
+    "ClinicalScope_UserGuide.pdf"
+)
+
+# Pinned to `releases/latest` rather than the running version: the demo changes far more
+# slowly than the app, and an older release carries no asset to fall back to.
+DEMO_ARCHIVE_URL = (
+    "https://github.com/larib-data/clinical-scope/releases/latest/download/"
+    "clinical-scope-example.zip"
+)
+DEMO_DIR_NAME = "example"  # extracted under ~/<CLINICAL_SCOPE_DIR_NAME>/
+# Layout inside the archive, which is a copy of the checkout's example/ tree. The first two
+# are what `--demo` prints for the app's Data folder and Database options fields.
+DEMO_DATABASE_DIR_NAME = "demo_database"
+DEMO_PATIENT_DIR_NAME = "demo_patient"
+DEMO_DATABASE_OPTIONS_FILE_NAME = "database_options.json"
+DEMO_DOWNLOAD_TIMEOUT_SECONDS = 30.0
+DEMO_DOWNLOAD_CHUNK_BYTES = 64 * 1024
+# The published archive is ~2 MB; this only bounds a response that never stops arriving.
+DEMO_MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
+
 PLACEHOLDER_TIMESTAMP = "YYYY-MM-DD HH:MM:SS"
 PLACEHOLDER_DAY = "YYYY-MM-DD"
 

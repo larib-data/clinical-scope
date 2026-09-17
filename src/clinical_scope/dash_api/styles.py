@@ -154,9 +154,12 @@ INSPECTION_MODAL_HEADER_ROW: dict = {
 # ---------------------------------------------------------------------------
 # 5. Layout styles
 # ---------------------------------------------------------------------------
+_STACK_TOP_PX = 10
+_STACK_PITCH_PX = 30
+
 VERSION_BADGE: dict = {
     "position": "absolute",
-    "top": "10px",
+    "top": f"{_STACK_TOP_PX}px",
     "right": "10px",
     "color": "#666",
     "fontSize": "12px",
@@ -176,10 +179,10 @@ VERSION_BADGE_LINK: dict = {
     "fontWeight": "bold",
 }
 
-# Settings pill — stacked directly under the version badge (top-right); badge-matching styling.
+# Settings pill — last in the top-right stack; badge-matching styling.
 BUTTON_GEAR: dict = {
     "position": "absolute",
-    "top": "40px",
+    "top": f"{_STACK_TOP_PX + 2 * _STACK_PITCH_PX}px",
     "right": "10px",
     "cursor": "pointer",
     "fontSize": "12px",
@@ -189,6 +192,14 @@ BUTTON_GEAR: dict = {
     "border": "1px solid #ddd",
     "backgroundColor": "#f0f0f0",
     "color": "#666",
+}
+
+# Grey like its neighbours: reaching the user guide is not one of the action roles the coloured
+# buttons carry.
+LINK_DOCS: dict = {
+    **BUTTON_GEAR,
+    "top": f"{_STACK_TOP_PX + _STACK_PITCH_PX}px",
+    "textDecoration": "none",
 }
 
 ROOT_CONTAINER: dict = {

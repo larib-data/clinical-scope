@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [project.scripts]
-clinical-scope = "clinical_scope.dash_api.core_api:main"
+clinical-scope = "clinical_scope.cli:main"
 
 [project.optional-dependencies]
 # ruff is capped to a minor line: the formatter and new lint rules change in minors, and select = ["ALL"] opts into every rule ruff adds.
@@ -63,4 +63,7 @@ markers = [
 [project.urls]
 Homepage = "https://github.com/larib-data/clinical-scope"
 Repository = "https://github.com/larib-data/clinical-scope.git"
+Documentation = "https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/user_guide.md"
+Changelog = "https://github.com/larib-data/clinical-scope/blob/main/CHANGELOG.md"
+Issues = "https://github.com/larib-data/clinical-scope/issues"
 DOI = "https://doi.org/10.5281/zenodo.20830140"

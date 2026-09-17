@@ -72,6 +72,10 @@ unfixable = []
 "src/clinical_scope/build_info/*" = [
     "T201", # build CLI prints progress to the console
 ]
+"src/clinical_scope/cli.py" = [
+    "T201", # the console script's stdout is its interface
+    "PLC0415", # imports are deferred so --help and --demo never build the Dash layout
+]
 
 [format]
 quote-style = "double"

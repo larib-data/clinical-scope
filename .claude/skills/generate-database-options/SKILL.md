@@ -114,9 +114,9 @@ Path(json_path).write_text(
 
 ## Reference
 
-Every column, its scope and its default: `docs/user_guide/tutorial.md` → *database_options.xlsx*. `example/demo_database/database_options.xlsx` shows all four sheets populated — read it for structure, not as a model of good clinical config.
+Every column, its scope and its default: `docs/user_guide/user_guide.md` → *database_options.xlsx*. `example/demo_database/database_options.xlsx` shows all four sheets populated — read it for structure, not as a model of good clinical config.
 
-Not in the tutorial: **a signal reference resolves three ways** (`signal_reference.resolve_signal_references`) — qualified `datasource::raw_name`, then display name, then raw name. Qualify whenever one raw name lives in two datasources.
+Not in the user guide: **a signal reference resolves three ways** (`signal_reference.resolve_signal_references`) — qualified `datasource::raw_name`, then display name, then raw name. Qualify whenever one raw name lives in two datasources.
 
 ## Before finishing
 
