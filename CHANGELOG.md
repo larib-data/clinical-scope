@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [1.3.0] — 2026-09-17
+
+A `pip` release. Installing with `pip` gave you the application and nothing around it — no example data to open, no route to the documentation, and no sign that a newer version existed. This release closes those three gaps, and the project page on PyPI now links somewhere useful.
+
+Nothing here changes a configuration file or what is drawn, and the standalone bundles already shipped the example and the guide — this is the `pip` install catching up with them.
+
 ### Added
 - **`clinical-scope --demo` downloads the demo dataset.** Installing with `pip` gives you the application but none of the example data — the demo recording ships with the standalone application and with a source checkout, and until now a `pip` user had no way to get it. The command downloads it once, into `~/.clinical_scope/example/`, and prints the data folder and config paths the app asks for. Repeating it costs nothing: an existing demo is left alone unless you pass `--force`.
 
@@ -28,10 +38,16 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **The project page on PyPI now links to the documentation.** Its description is the project README, whose links all pointed at files inside the repository — on PyPI those led nowhere, and the demo animation did not appear at all. Every link is now absolute, and the page carries *Documentation*, *Changelog* and *Issues* links in its sidebar.
+- **A file Inspect cannot read now says why.** A file in `other/` that fails to load is still reported as a red row, but the row carries the reader's own message — `ArrowInvalid: Duplicate column names found` — instead of `Unexpected error processing <file>`, which named the file and nothing you could act on.
 
 ### Documentation
 - The README's PyPI section says how to upgrade an existing install, not only how to make a new one.
 - The user guide has a *Trying the Demo Dataset* section, covering both the copy bundled with the standalone application and the `--demo` download.
+
+### Internal
+_No effect on configuration files or on what is drawn; listed for contributors._
+- `docs/user_guide/tutorial.md` is now `docs/user_guide/user_guide.md`. The document's own title, its PDF and the README already called it the user guide; only the file name and the references to it said tutorial. A bookmark to the old path needs updating.
+- `.github/ci-local.sh` runs locally what `ci.yml` runs in CI, keeping the two jobs separate so a lint failure cannot hide a test failure. The PR checklist points at it.
 
 ---
 
