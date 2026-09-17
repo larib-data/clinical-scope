@@ -36,7 +36,7 @@ Release checklist for `clinical-scope`, starting from a `main` branch you're hap
    pip install clinical-scope==X.Y.Z
    ```
    → run `clinical-scope`, check the example.
-   → `clinical-scope --demo --force` — a pip install ships no example, and `--force` is what makes this a real check: without it the demo folder left by the previous release is kept and nothing is downloaded.
+   → `clinical-scope --demo` — a pip install ships no example, so this prints the link to `clinical-scope-example.zip`. Follow it: the check is that the release really carries the asset, and that unzipping it gives a single `clinical-scope-example/` folder holding the two paths the command printed.
 
 **Note:** versions can't be reused — TestPyPI and PyPI both reject re-uploading a version that already exists. Bump to a `.devN` (e.g. `X.Y.Z.dev0`) if you need to re-run the TestPyPI dry-run.
 

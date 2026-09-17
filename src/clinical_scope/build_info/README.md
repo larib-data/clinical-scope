@@ -53,7 +53,7 @@ builded_app/
 └── macOS_arm/
     └── ClinicalScope/
         ├── ClinicalScope                    # Main executable
-        ├── ClinicalScope_UserGuide.pdf      # User guide (committed artifact — see below)
+        ├── ClinicalScope_UserGuide.pdf      # User guide, served by the Docs link (see below)
         ├── LICENSE                          # Project license
         ├── DISCLAIMER.txt                   # Research-use-only notice
         ├── THIRD_PARTY_LICENSES.txt         # Bundled dependency notices (auto-generated)
@@ -65,6 +65,8 @@ builded_app/
 ## Static assets
 
 Everything above the `_internal/` line except the executable is copied in by `assemble_bundle.py`, from the `ASSETS` manifest at the top of that file. Adding a file to the bundle means adding it there — both build entry points read the same list.
+
+The bundled PDF is also what the app's **📖 Docs** link opens: the app serves the copy beside its executable, inline and offline. Drop it from `ASSETS` and the link silently falls back to the guide on GitHub, which needs a connection.
 
 **The user guide PDF is a committed artifact, not a build product.** `assemble_bundle.py` copies `docs/user_guide/ClinicalScope_UserGuide.pdf` as it finds it in the repo; nothing regenerates it from `user_guide.md`, and a stale PDF copies just as cleanly as a fresh one — the build cannot tell the difference and says nothing. Regenerating is a manual step:
 

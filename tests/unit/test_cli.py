@@ -1,42 +1,23 @@
 """
 Cover the ``clinical-scope`` console script: the argument surface a terminal user meets.
 
-Both things the parser can reach are replaced here — the download, and the Dash app, which is
-built at import time and so must never be imported by a test.
+The Dash app is stubbed wherever the parser could reach it: it builds its layout at import
+time, so a test must never import the real thing. Nothing else here needs a stub — ``--demo``
+only prints, which is the property most of these tests are about.
 """
 
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
 from clinical_scope import cli
-from clinical_scope.demo_data import DemoDownloadError
 
-DOWNLOAD_FOLDER_NAME = "example"
-
-
-@pytest.fixture
-def fetched(monkeypatch, tmp_path):
-    """Stand in for the download; returns the list of ``force`` values it was called with."""
-    calls: list[bool] = []
-
-    def fake_fetch(*, force=False):
-        calls.append(force)
-        folder = tmp_path / DOWNLOAD_FOLDER_NAME
-        folder.mkdir(exist_ok=True)
-        return folder
-
-    monkeypatch.setattr(cli, "fetch_demo_data", fake_fetch)
-    return calls
-
-
-@pytest.fixture
-def failing_fetch(monkeypatch):
-    def fake_fetch(*, force=False):
-        raise DemoDownloadError("could not reach the release")
-
-    monkeypatch.setattr(cli, "fetch_demo_data", fake_fetch)
+DEMO_ARCHIVE_URL = (
+    "https://github.com/larib-data/clinical-scope/releases/latest/download/"
+    "clinical-scope-example.zip"
+)
 
 
 @pytest.fixture
@@ -56,53 +37,71 @@ class TestLaunching:
         assert cli.main([]) == 0
         assert dashboard == [True]
 
-    def test_demo_does_not_start_the_dashboard(self, fetched, dashboard, capsys):
+    def test_demo_does_not_start_the_dashboard(self, dashboard):
         cli.main(["--demo"])
 
         assert dashboard == []
 
 
 class TestDemoOutput:
-    """The printed paths are the only instructions a pip user gets; they must be the real ones."""
+    """The printed link and paths are the only instructions a pip user gets."""
 
-    def test_it_prints_the_two_paths_the_app_asks_for(self, fetched, tmp_path, capsys):
+    def test_it_prints_the_download_link(self, capsys):
         exit_code = cli.main(["--demo"])
 
-        printed = capsys.readouterr().out
-        demo = tmp_path / DOWNLOAD_FOLDER_NAME / "demo_database"
         assert exit_code == 0
-        assert str(demo / "demo_patient") in printed
-        assert str(demo / "database_options.json") in printed
+        assert DEMO_ARCHIVE_URL in capsys.readouterr().out
 
-    def test_force_reaches_the_download(self, fetched):
-        cli.main(["--demo", "--force"])
-
-        assert fetched == [True]
-
-    def test_without_force_the_download_may_reuse_what_is_there(self, fetched):
+    def test_it_prints_the_two_paths_the_app_asks_for(self, capsys):
         cli.main(["--demo"])
 
-        assert fetched == [False]
+        printed = capsys.readouterr().out
+        assert "clinical-scope-example/demo_database/demo_patient" in printed
+        assert "clinical-scope-example/demo_database/database_options.json" in printed
 
-    def test_a_failed_download_is_a_message_not_a_traceback(self, failing_fetch, capsys):
-        exit_code = cli.main(["--demo"])
+    def test_the_paths_sit_inside_the_folder_the_archive_unpacks_to(self, capsys):
+        # The archive holds one top-level folder; a path printed without it would not exist.
+        cli.main(["--demo"])
 
-        assert exit_code == 1
-        assert "could not reach the release" in capsys.readouterr().err
+        for line in capsys.readouterr().out.splitlines():
+            if "demo_database" in line:
+                assert "clinical-scope-example/demo_database" in line
 
 
-class TestForceIsRefusedOnItsOwn:
-    """Accepting ``--force`` without ``--demo`` would silently do nothing."""
+class TestDemoWritesNothing:
+    """The whole point of the change: a link to read, not a folder the user cannot find."""
 
-    def test_force_without_demo_exits_with_usage(self, dashboard, capsys):
+    def test_demo_touches_neither_the_home_folder_nor_the_working_directory(
+        self, monkeypatch, tmp_path
+    ):
+        home = tmp_path / "home"
+        working = tmp_path / "working"
+        home.mkdir()
+        working.mkdir()
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
+        monkeypatch.chdir(working)
+
+        assert cli.main(["--demo"]) == 0
+        assert list(home.rglob("*")) == []
+        assert list(working.rglob("*")) == []
+
+
+class TestForceIsGone:
+    """``--force`` only ever meant re-download, and nothing downloads any more."""
+
+    def test_force_is_no_longer_a_flag(self, dashboard, capsys):
         with pytest.raises(SystemExit) as exit_info:
-            cli.main(["--force"])
+            cli.main(["--demo", "--force"])
 
         assert exit_info.value.code == 2
         assert "--force" in capsys.readouterr().err
-
-    def test_force_without_demo_does_not_start_the_dashboard(self, dashboard):
-        with pytest.raises(SystemExit):
-            cli.main(["--force"])
-
         assert dashboard == []
+
+    def test_help_does_not_advertise_it(self, capsys):
+        with pytest.raises(SystemExit) as exit_info:
+            cli.main(["--help"])
+
+        helped = capsys.readouterr().out
+        assert exit_info.value.code == 0
+        assert "--force" not in helped
+        assert "--demo" in helped

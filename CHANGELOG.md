@@ -6,7 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **📖 Docs now opens the guide instead of downloading it.** Every click — a misclick included — saved a 1.3 MB PDF into your Downloads folder, needed a connection, and always showed the newest release's guide even when you were running an older version. The link now opens in a browser tab: the standalone application shows the guide it ships with, which needs no connection at all, and a `pip` install opens the guide written for the version it is running.
+- **The demo dataset now lands somewhere you can find it.** `clinical-scope --demo` downloaded it into a folder that macOS and Windows both hide from view, so anyone who closed the terminal could no longer reach their own demo data. The command now prints the download link instead: open it in your browser and the archive arrives in Downloads, like any other file. It unpacks into a single `clinical-scope-example` folder — previously it scattered three — and the command prints the exact paths to paste into **Data folder** and **Database options** once you have unzipped it.
+
+### Removed
+- **`clinical-scope --demo --force`.** The flag only ever meant "download it again", and `--demo` no longer downloads anything. It was introduced in 1.3.0, the previous release.
 
 ---
 

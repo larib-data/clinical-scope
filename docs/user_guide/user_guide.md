@@ -109,13 +109,13 @@ ClinicalScope comes with a small demo recording — a single patient, with one e
 
 **With the standalone application**, the demo is already there: look for the `demo_database/` folder next to the executable.
 
-**With a `pip` install**, the demo is not part of the package. Download it once from a terminal:
+**With a `pip` install**, the demo is not part of the package. Ask for its download link from a terminal:
 
 ```bash
 clinical-scope --demo
 ```
 
-The command prints the folder it downloaded into, along with the two paths the app asks for. It is safe to repeat: an already-downloaded demo is left alone. Run `clinical-scope --help` to see everything the command line offers.
+Open the printed link in your browser. The archive — about 2 MB — lands in your Downloads folder; unzip it there and you get a single `clinical-scope-example` folder. The command also prints the two paths the app asks for, ready to complete with wherever you unzipped it. Run `clinical-scope --help` to see everything the command line offers.
 
 Then, in the application:
 
@@ -146,7 +146,7 @@ The interface is organized top-to-bottom in the following order:
    status badges, column tables, and a CSV download.
 6. **Visualization Area** -- Interactive plots.
 
-A **⚙ Settings** button sits at the top right, above the Database Options row. It opens your personal display and export settings, which apply to every patient you open — see [Settings](#settings). Below it, **📖 Docs** opens this guide in a new browser tab, always at its newest version.
+A **⚙ Settings** button sits at the top right, above the Database Options row. It opens your personal display and export settings, which apply to every patient you open — see [Settings](#settings). Below it, **📖 Docs** opens this guide in a new browser tab, at the version you are running — in the standalone application, the copy that shipped with it, so it opens with no connection needed.
 
 ![Application main interface](images/AppMainScreen.png){ width=100% }
 

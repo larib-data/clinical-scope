@@ -96,13 +96,13 @@ For the full developer setup (tests, linting, adding a datasource), see [CONTRIB
 
 ClinicalScope ships a small demo recording — one patient, every supported data source — so you can see a full visualization before preparing any data of your own.
 
-A `pip install` does not include it, so download it once:
+A `pip install` does not include it, so ask for the download link once:
 
 ```bash
 clinical-scope --demo
 ```
 
-That prints the folder it landed in, plus the `demo_patient/` path to paste into the app's **Data folder** field. A source checkout already carries the same data under `example/demo_database/`; the standalone application puts it in `demo_database/`, next to the executable.
+Open the printed link in your browser — the archive lands in your Downloads folder — and unzip it. The command also prints the `demo_patient/` path to paste into the app's **Data folder** field, and the `database_options.json` that goes with it. A source checkout already carries the same data under `example/demo_database/`; the standalone application puts it in `demo_database/`, next to the executable.
 
 Run `clinical-scope --help` for the full list of commands.
 
@@ -139,7 +139,8 @@ from clinical_scope.config.parsing import load_database_options_from_path
 
 db_options = load_database_options_from_path(Path("database_options.json"))
 # No config of your own yet? The demo config works as-is, no UI needed — run
-# `clinical-scope --demo`, then point at the database_options.json it reports.
+# `clinical-scope --demo` for the download link, then point at the database_options.json
+# inside the archive it names.
 
 # 1. Single datasource subfolder (auto-detects type from folder name)
 df = extract_datasource(
