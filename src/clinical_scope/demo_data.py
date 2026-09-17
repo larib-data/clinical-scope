@@ -61,16 +61,19 @@ def _download(url: str) -> Path:
     archive = Path(handle.name)
     try:
         # Scheme is fixed by the constant, so the URL cannot be steered elsewhere.
-        with handle, urllib.request.urlopen(  # noqa: S310
-            url, timeout=cst.DEMO_DOWNLOAD_TIMEOUT_SECONDS
-        ) as response:
+        with (
+            handle,
+            urllib.request.urlopen(  # noqa: S310
+                url, timeout=cst.DEMO_DOWNLOAD_TIMEOUT_SECONDS
+            ) as response,
+        ):
             received = 0
             while chunk := response.read(cst.DEMO_DOWNLOAD_CHUNK_BYTES):
                 received += len(chunk)
                 if received > cst.DEMO_MAX_ARCHIVE_BYTES:
-                    raise DemoDownloadError(
-                        f"the archive at {url} is larger than this version expects"
-                    )
+                    # Raised inside the loop so the handler below deletes the part-file.
+                    msg = f"the archive at {url} is larger than this version expects"
+                    raise DemoDownloadError(msg)  # noqa: TRY301
                 handle.write(chunk)
     except DemoDownloadError:
         archive.unlink(missing_ok=True)
@@ -79,10 +82,11 @@ def _download(url: str) -> Path:
         archive.unlink(missing_ok=True)
         # A release published without the asset looks exactly like being offline, so the
         # message names both rather than guessing which one happened.
-        raise DemoDownloadError(
+        msg = (
             f"could not reach {url} ({error}). Check your connection, or download the archive "
             "by hand from the latest release."
-        ) from error
+        )
+        raise DemoDownloadError(msg) from error
     return archive
 
 
@@ -100,10 +104,12 @@ def _extract(archive: Path, destination: Path) -> None:
         with zipfile.ZipFile(archive) as bundle:
             _reject_escaping_members(bundle.namelist())
             staging.mkdir(parents=True)
-            bundle.extractall(staging)  # noqa: S202 -- members validated just above
+            # Safe because every member was just validated as staying inside the folder.
+            bundle.extractall(staging)
     except (OSError, zipfile.BadZipFile) as error:
         shutil.rmtree(staging, ignore_errors=True)
-        raise DemoDownloadError(f"the downloaded archive could not be unpacked ({error})") from error
+        msg = f"the downloaded archive could not be unpacked ({error})"
+        raise DemoDownloadError(msg) from error
 
     shutil.rmtree(destination, ignore_errors=True)
     staging.rename(destination)
@@ -120,4 +126,5 @@ def _reject_escaping_members(names: list[str]) -> None:
         or (len(name) > 1 and name[1] == ":")
     ]
     if escaping:
-        raise DemoDownloadError(f"the archive contains unsafe path(s): {sorted(escaping)}")
+        msg = f"the archive contains unsafe path(s): {sorted(escaping)}"
+        raise DemoDownloadError(msg)
