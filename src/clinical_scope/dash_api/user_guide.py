@@ -1,0 +1,65 @@
+"""
+Where the in-app Docs link points, and how a guide that ships with the app is served.
+
+Deliberately free of Dash imports, like :mod:`clinical_scope.dash_api.version_check`, so the
+href is decided by a plain function and testable without an app fixture.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from flask import send_file
+
+import clinical_scope.constants as cst
+from clinical_scope.dash_api.version_check import running_version
+
+if TYPE_CHECKING:
+    from flask import Flask, Response
+
+
+def bundled_guide_path() -> Path | None:
+    """
+    The user guide PDF shipped with a frozen bundle, or ``None`` when the app has none.
+
+    A source checkout's PDF does not count: it is rebuilt once per release, so on a working
+    tree it describes an older app than the one running.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    # PyInstaller puts the executable at the bundle root, which is where the assets are copied.
+    candidate = Path(sys.executable).resolve().parent / cst.USER_GUIDE_PDF_NAME
+    return candidate if candidate.is_file() else None
+
+
+def docs_href(bundled_pdf: Path | None) -> str:
+    """
+    Where the Docs link points, given whatever guide the install has on disk.
+
+    Only an exact release has a tag to name, so a dev build falls back to the default branch
+    rather than to a ref that would 404.
+    """
+    if bundled_pdf is not None:
+        return cst.USER_GUIDE_ROUTE
+    running = running_version().strip()
+    ref = (
+        cst.USER_GUIDE_RELEASE_REF.format(version=running)
+        if re.fullmatch(cst.RELEASE_VERSION_PATTERN, running)
+        else cst.USER_GUIDE_DEFAULT_REF
+    )
+    return cst.USER_GUIDE_PAGE_URL.format(ref=ref)
+
+
+def register_guide_route(server: Flask, pdf_path: Path) -> None:
+    """Serve ``pdf_path`` inline, so the browser renders the guide instead of saving it."""
+
+    @server.route(cst.USER_GUIDE_ROUTE)
+    def _serve_user_guide() -> Response:
+        return send_file(
+            pdf_path,
+            mimetype=cst.USER_GUIDE_PDF_MIME_TYPE,
+            as_attachment=False,
+        )

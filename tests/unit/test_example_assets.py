@@ -107,14 +107,14 @@ class TestDemoPlotTypeCoverage:
 
 
 class TestDemoLayoutTheCliPrints:
-    """`clinical-scope --demo` unpacks a zip of this tree, then prints paths into it."""
+    """This tree is zipped as the release's demo archive, and `--demo` prints paths into it."""
 
     def test_the_paths_the_demo_command_prints_exist(self, project_root):
         demo = project_root / "example" / "demo_database"
 
         assert demo.is_dir(), (
-            "`clinical-scope --demo` prints <download>/demo_database/... — renaming this "
-            "folder needs cst.DEMO_DATABASE_DIR_NAME changed with it"
+            "`clinical-scope --demo` prints <unzipped>/clinical-scope-example/demo_database/... "
+            "— renaming this folder needs cst.DEMO_DATABASE_DIR_NAME changed with it"
         )
         assert (demo / "demo_patient").is_dir(), (
             "`clinical-scope --demo` prints this as the app's Data folder — see "

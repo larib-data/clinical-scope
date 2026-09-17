@@ -100,11 +100,10 @@ jobs:
           draft: true
           make_latest: false
 
-  # The user guide PDF, published as a release asset so the app's Docs link resolves to a
-  # released guide rather than to whatever `main` happens to hold. Committed, never built here:
-  # regenerating it needs pandoc and LaTeX (docs/user_guide/build_pdf.sh, run once per release).
-  # The asset name is pinned by constants.USER_GUIDE_URL, which every published wheel already
-  # carries: renaming it here breaks the Docs link for every version already installed.
+  # The user guide PDF, published as a release asset so the release page offers a readable copy.
+  # Committed, never built here: regenerating it needs pandoc and LaTeX
+  # (docs/user_guide/build_pdf.sh, run once per release).
+  # Keep the asset name: installs of 1.3.0 and earlier still point their Docs link at it.
   user_guide:
     name: ClinicalScope_UserGuide.pdf
     if: github.event_name == 'push'
@@ -120,11 +119,12 @@ jobs:
           draft: true
           make_latest: false
 
-  # The demo dataset, published as a release asset so `clinical-scope --demo` has something to
-  # fetch. The standalone bundle still carries its own copy (assemble_bundle.py); this exists
-  # for pip installs, which package no example at all.
-  # The asset name is pinned by constants.DEMO_ARCHIVE_URL, which every published wheel already
-  # carries: renaming it here breaks `--demo` for every version already installed.
+  # The demo dataset, published as a release asset so pip installs — which package no example at
+  # all — have one to download. The standalone bundle carries its own copy
+  # (assemble_bundle.py).
+  # The asset name is pinned by constants.DEMO_ARCHIVE_URL and the folder inside it by
+  # constants.DEMO_ARCHIVE_ROOT_DIR_NAME, both already carried by every published wheel:
+  # renaming either here breaks the paths `--demo` prints for every version already installed.
   example:
     name: clinical-scope-example.zip
     runs-on: ubuntu-latest
@@ -140,14 +140,18 @@ jobs:
           import shutil, tempfile
           from pathlib import Path
 
+          # Archived by name, not by contents, so unzipping by hand leaves one folder behind
+          # rather than scattering the tree.
           with tempfile.TemporaryDirectory() as tmp:
-              staged = Path(tmp) / "example"
+              staged = Path(tmp) / "clinical-scope-example"
               shutil.copytree(
                   "example",
                   staged,
                   ignore=shutil.ignore_patterns("clinical_scope_output", ".DS_Store", "__MACOSX"),
               )
-              shutil.make_archive("clinical-scope-example", "zip", root_dir=staged)
+              shutil.make_archive(
+                  "clinical-scope-example", "zip", root_dir=tmp, base_dir=staged.name
+              )
           EOF
 
       - name: Upload artifact (workflow_dispatch)

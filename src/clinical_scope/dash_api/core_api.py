@@ -51,6 +51,11 @@ from clinical_scope.dash_api.styles import (
     SETTINGS_MODAL_PANEL,
     VERSION_BADGE,
 )
+from clinical_scope.dash_api.user_guide import (
+    bundled_guide_path,
+    docs_href,
+    register_guide_route,
+)
 from clinical_scope.dash_api.version_check import initial_badge_text, running_version
 from clinical_scope.datasource.formatting.timezone import resolve_display_timezone
 
@@ -83,6 +88,11 @@ app = Dash(
     suppress_callback_exceptions=True,
     assets_folder=_assets_folder,
 )
+
+_bundled_guide = bundled_guide_path()
+if _bundled_guide is not None:
+    register_guide_route(app.server, _bundled_guide)
+_docs_href = docs_href(_bundled_guide)
 
 # ---------------------------------------------------------------------------
 # Annotation toolbar
@@ -593,7 +603,7 @@ app.layout = html.Div(
         html.A(
             "📖 Docs",
             id="docs-link",
-            href=cst.USER_GUIDE_URL,
+            href=_docs_href,
             target="_blank",
             rel="noopener noreferrer",
             style=LINK_DOCS,
