@@ -70,8 +70,7 @@ Then use the `/new-datasource` skill from within Claude Code — it walks throug
 **Branch naming:** `<type>/<short-description>` — e.g. `feat/mindray-ecg`, `fix/eit-timezone`, `docs/contributing`.
 
 **Before opening a PR:**
-- All tests pass (`pytest`)
-- Linting is clean (`ruff check .` and `ruff format --check .`)
+- [`./.github/ci-local.sh`](.github/ci-local.sh) passes — it runs the three checks CI runs (`ruff format --check .`, `ruff check .`, `pytest`) against your active interpreter, and reports all three rather than stopping at the first failure. CI additionally runs the suite on both Python 3.11 and 3.13.
 - New datasources include example data and snapshot tests
 
 **PR description should include:**
