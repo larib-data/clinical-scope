@@ -104,3 +104,23 @@ class TestDemoPlotTypeCoverage:
             f"{sorted(expected - configured)}. Add a sheet row to database_options.xlsx "
             f"naming demo signals that suit it, then regenerate the json.\n{REGENERATE_HINT}"
         )
+
+
+class TestDemoLayoutTheCliPrints:
+    """`clinical-scope --demo` unpacks a zip of this tree, then prints paths into it."""
+
+    def test_the_paths_the_demo_command_prints_exist(self, project_root):
+        demo = project_root / "example" / "demo_database"
+
+        assert demo.is_dir(), (
+            "`clinical-scope --demo` prints <download>/demo_database/... — renaming this "
+            "folder needs cst.DEMO_DATABASE_DIR_NAME changed with it"
+        )
+        assert (demo / "demo_patient").is_dir(), (
+            "`clinical-scope --demo` prints this as the app's Data folder — see "
+            "cst.DEMO_PATIENT_DIR_NAME"
+        )
+        assert (demo / "database_options.json").is_file(), (
+            "`clinical-scope --demo` prints this as the app's Database options — see "
+            "cst.DEMO_DATABASE_OPTIONS_FILE_NAME"
+        )

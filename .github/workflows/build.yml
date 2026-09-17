@@ -103,6 +103,8 @@ jobs:
   # The demo dataset, published as a release asset so `clinical-scope --demo` has something to
   # fetch. The standalone bundle still carries its own copy (assemble_bundle.py); this exists
   # for pip installs, which package no example at all.
+  # The asset name is pinned by constants.DEMO_ARCHIVE_URL, which every published wheel already
+  # carries: renaming it here breaks `--demo` for every version already installed.
   example:
     name: clinical-scope-example.zip
     runs-on: ubuntu-latest
@@ -111,7 +113,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Staged through a filtered copy so the per-run parquet cache and macOS metadata stay out
-      # of the archive. Same intent as _TREE_IGNORE in assemble_bundle.py.
+      # of the archive. Same list as _TREE_IGNORE in assemble_bundle.py; keep the two in step.
       - name: Build the example archive
         run: |
           python3 - <<'EOF'

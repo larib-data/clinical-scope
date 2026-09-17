@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+import clinical_scope.constants as cst
 from clinical_scope.demo_data import DemoDownloadError, fetch_demo_data
 
 _EPILOG = """\
@@ -46,7 +47,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _version_string() -> str:
-    # Imported here so --version does not drag in the Dash layout with it.
+    # Deferred import — see the module docstring.
     from clinical_scope.dash_api.version_check import running_version
 
     return f"clinical-scope {running_version()}"
@@ -59,21 +60,25 @@ def _download_demo(*, force: bool) -> int:
         print(f"clinical-scope: could not get the demo data: {error}", file=sys.stderr)
         return 1
 
+    database = folder / cst.DEMO_DATABASE_DIR_NAME
     print(f"Demo data ready at:\n  {folder}\n")
     print("Start the app with `clinical-scope`, then:")
-    print(f"  - Data folder:      {folder / 'demo_database' / 'demo_patient'}")
-    print(f"  - Database options: {folder / 'demo_database' / 'database_options.json'}")
+    print(f"  - Data folder:      {database / cst.DEMO_PATIENT_DIR_NAME}")
+    print(f"  - Database options: {database / cst.DEMO_DATABASE_OPTIONS_FILE_NAME}")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     """Entry point for the ``clinical-scope`` script; returns the process exit code."""
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
 
     if args.demo:
         return _download_demo(force=args.force)
+    if args.force:
+        parser.error("--force only applies to --demo")
 
-    # Deferred: importing core_api builds the whole Dash app and opens the app log.
+    # Deferred import — see the module docstring.
     from clinical_scope.dash_api.core_api import main as run_dashboard
 
     run_dashboard()

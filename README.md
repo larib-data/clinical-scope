@@ -102,7 +102,7 @@ A `pip install` does not include it, so download it once:
 clinical-scope --demo
 ```
 
-That prints the folder it landed in, plus the `demo_patient/` path to paste into the app's **Data folder** field. A source checkout and the standalone application already carry the same data under `example/demo_database/`.
+That prints the folder it landed in, plus the `demo_patient/` path to paste into the app's **Data folder** field. A source checkout already carries the same data under `example/demo_database/`; the standalone application puts it in `demo_database/`, next to the executable.
 
 Run `clinical-scope --help` for the full list of commands.
 

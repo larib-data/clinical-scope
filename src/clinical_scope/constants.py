@@ -79,6 +79,11 @@ DEMO_ARCHIVE_URL = (
     "clinical-scope-example.zip"
 )
 DEMO_DIR_NAME = "example"  # extracted under ~/<CLINICAL_SCOPE_DIR_NAME>/
+# Layout inside the archive, which is a copy of the checkout's example/ tree. The first two
+# are what `--demo` prints for the app's Data folder and Database options fields.
+DEMO_DATABASE_DIR_NAME = "demo_database"
+DEMO_PATIENT_DIR_NAME = "demo_patient"
+DEMO_DATABASE_OPTIONS_FILE_NAME = "database_options.json"
 DEMO_DOWNLOAD_TIMEOUT_SECONDS = 30.0
 DEMO_DOWNLOAD_CHUNK_BYTES = 64 * 1024
 # The published archive is ~2 MB; this only bounds a response that never stops arriving.

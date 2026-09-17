@@ -2,8 +2,7 @@
 Cover the demo download: the one code path a pip user hits before anything else works.
 
 Nothing here touches the network — ``urlopen`` is replaced by a fake serving bytes built in
-the test, which is the whole reason :mod:`clinical_scope.demo_data` keeps itself Dash-free and
-takes its URL from a constant.
+the test.
 """
 
 import io

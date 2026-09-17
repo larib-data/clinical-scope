@@ -43,7 +43,7 @@ ASSETS: list[tuple[str, str]] = [
     ("example/template_patient_data_structure", "tree"),
     ("example/demo_database", "tree"),
 ]
-_TREE_IGNORE = shutil.ignore_patterns("clinical_scope_output")
+_TREE_IGNORE = shutil.ignore_patterns("clinical_scope_output", ".DS_Store", "__MACOSX")
 
 
 def copy_assets(bundle_root: Path) -> list[str]:

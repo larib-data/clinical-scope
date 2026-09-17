@@ -107,7 +107,7 @@ To **close** ClinicalScope, close the terminal window that opened with it — th
 
 ClinicalScope comes with a small demo recording — a single patient, with one example of every supported data source — so you can see a complete visualization before preparing any data of your own.
 
-**With the standalone application**, the demo is already there: look for the `example/demo_database/` folder next to the executable.
+**With the standalone application**, the demo is already there: look for the `demo_database/` folder next to the executable.
 
 **With a `pip` install**, the demo is not part of the package. Download it once from a terminal:
 
