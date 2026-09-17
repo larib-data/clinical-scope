@@ -2,8 +2,7 @@
 Cover the ``clinical-scope`` console script: the argument surface a terminal user meets.
 
 The Dash app is stubbed wherever the parser could reach it: it builds its layout at import
-time, so a test must never import the real thing. Nothing else here needs a stub — ``--demo``
-only prints, which is the property most of these tests are about.
+time, so a test must never import the real thing.
 """
 
 import sys
@@ -69,7 +68,7 @@ class TestDemoOutput:
 
 
 class TestDemoWritesNothing:
-    """The whole point of the change: a link to read, not a folder the user cannot find."""
+    """A link the user can read beats a folder their file browser hides."""
 
     def test_demo_touches_neither_the_home_folder_nor_the_working_directory(
         self, monkeypatch, tmp_path
@@ -87,8 +86,6 @@ class TestDemoWritesNothing:
 
 
 class TestForceIsGone:
-    """``--force`` only ever meant re-download, and nothing downloads any more."""
-
     def test_force_is_no_longer_a_flag(self, dashboard, capsys):
         with pytest.raises(SystemExit) as exit_info:
             cli.main(["--demo", "--force"])

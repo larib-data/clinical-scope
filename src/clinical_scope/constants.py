@@ -67,28 +67,25 @@ UNKNOWN_VERSION_LABEL = "dev (unknown version)"
 UPDATE_AVAILABLE_LABEL = "| {version} available ↗"
 RELEASES_PAGE_LABEL = "| releases ↗"
 
-# Target of the in-app Docs link, in its two forms. A standalone bundle ships the guide beside
-# its executable and serves that copy itself, offline and inline; every other install opens the
-# guide rendered on GitHub, at the version it is running.
+# Target of the in-app Docs link. A bundle serves its own PDF; everything else reads the
+# rendered Markdown, whose ref decides which version's guide the user gets.
 USER_GUIDE_PDF_NAME = "ClinicalScope_UserGuide.pdf"  # as assemble_bundle.py copies it in
 USER_GUIDE_PDF_MIME_TYPE = "application/pdf"
-USER_GUIDE_ROUTE = "/user-guide"  # app-served, so a click costs a tab and not a download
+USER_GUIDE_ROUTE = "/user-guide"
 USER_GUIDE_PAGE_URL = (
     "https://github.com/larib-data/clinical-scope/blob/{ref}/docs/user_guide/user_guide.md"
 )
-USER_GUIDE_RELEASE_REF = "v{version}"  # the tag a published release carries
-USER_GUIDE_DEFAULT_REF = "main"  # no tag to name: a source checkout or a dev build
+USER_GUIDE_RELEASE_REF = "v{version}"
+USER_GUIDE_DEFAULT_REF = "main"
 
-# The demo archive link `--demo` prints, for the user to fetch in a browser. Pinned to
-# `releases/latest` rather than the running version: the demo changes far more slowly than the
-# app, and an older release carries no asset to fall back to.
+# Pinned to `releases/latest` rather than the running version: the demo changes far more
+# slowly than the app, and an older release carries no asset to fall back to.
 DEMO_ARCHIVE_URL = (
     "https://github.com/larib-data/clinical-scope/releases/latest/download/"
     "clinical-scope-example.zip"
 )
-# Layout inside that archive: the checkout's example/ tree, wrapped in one folder so unzipping
-# by hand leaves one thing behind. Spelled out by `--demo` as the paths to paste into the app's
-# Data folder and Database options fields; build.yml packs the archive to match.
+# Layout inside that archive; build.yml packs it to match. The one wrapping folder is what
+# keeps unzipping by hand from scattering the tree into the user's Downloads.
 DEMO_ARCHIVE_ROOT_DIR_NAME = "clinical-scope-example"
 DEMO_DATABASE_DIR_NAME = "demo_database"
 DEMO_PATIENT_DIR_NAME = "demo_patient"

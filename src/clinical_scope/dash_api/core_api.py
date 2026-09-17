@@ -89,7 +89,6 @@ app = Dash(
     assets_folder=_assets_folder,
 )
 
-# A bundle carries the guide, so the app serves it rather than sending the browser to fetch one.
 _bundled_guide = bundled_guide_path()
 if _bundled_guide is not None:
     register_guide_route(app.server, _bundled_guide)

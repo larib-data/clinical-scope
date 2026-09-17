@@ -67,11 +67,10 @@ def _version_string() -> str:
 
 def _print_demo_instructions() -> None:
     """
-    Print the demo download link and what to do with the archive it points at.
+    Print the demo download link rather than fetching the archive.
 
-    A link rather than a download: a browser saves it to Downloads, a folder every user can
-    open, whereas anything this command wrote under the app's own state folder would be hidden
-    by default on both macOS and Windows.
+    A browser saves it to Downloads, which every user can find; the app's own state folder is
+    hidden by default on both macOS and Windows.
     """
     print(
         _DEMO_INSTRUCTIONS.format(

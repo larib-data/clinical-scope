@@ -93,7 +93,7 @@ class TestDocsHref:
         )
 
     def test_never_points_at_a_release_asset(self, monkeypatch):
-        """The bug being fixed: GitHub serves release assets as attachments, so they download."""
+        """GitHub serves release assets as attachments, which no link attribute overrides."""
         _running(monkeypatch, "1.3.1")
         assert "releases/latest/download" not in user_guide.docs_href(None)
 
@@ -121,6 +121,6 @@ class TestGuideRoute:
         assert self._response(tmp_path).mimetype == "application/pdf"
 
     def test_serves_it_inline(self, tmp_path):
-        """Inline is the whole point: a misclick costs a tab, not a file in Downloads."""
+        """Inline disposition is what makes a misclick cost a tab and not a file."""
         disposition = self._response(tmp_path).headers.get("Content-Disposition", "")
         assert "attachment" not in disposition
