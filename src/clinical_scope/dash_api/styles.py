@@ -194,7 +194,7 @@ BUTTON_GEAR: dict = {
     "color": "#666",
 }
 
-# Grey like its neighbours: reaching the tutorial is not one of the action roles the coloured
+# Grey like its neighbours: reaching the user guide is not one of the action roles the coloured
 # buttons carry.
 LINK_DOCS: dict = {
     **BUTTON_GEAR,

@@ -234,7 +234,7 @@ class TestTraceOptionsPrecedence:
         assert sig.trace.mode == "lines"
 
     def test_per_signal_line_dash_still_wins(self):
-        """The signals block stays the last word, as the tutorial promises."""
+        """The signals block stays the last word, as the user guide promises."""
         sig = self._signal(
             database_options_specific={
                 "trace_options": {"line_dash": "solid"},

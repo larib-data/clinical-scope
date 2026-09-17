@@ -8,7 +8,7 @@ Release checklist for `clinical-scope`, starting from a `main` branch you're hap
    ```bash
    ./docs/user_guide/build_pdf.sh    # needs pandoc + xelatex/pdflatex
    ```
-   The standalone bundle ships `docs/user_guide/ClinicalScope_UserGuide.pdf`, but nothing rebuilds it from `tutorial.md` — `assemble_bundle.py` copies whatever is committed, and a months-old PDF copies without a warning. Run this whenever the tutorial changed since the last release, and **commit the regenerated PDF** so the CI build picks it up too.
+   The standalone bundle ships `docs/user_guide/ClinicalScope_UserGuide.pdf`, but nothing rebuilds it from `user_guide.md` — `assemble_bundle.py` copies whatever is committed, and a months-old PDF copies without a warning. Run this whenever the user guide changed since the last release, and **commit the regenerated PDF** so the CI build picks it up too.
    → open the PDF and confirm it describes this release (new datasources, plot types, config keys).
 
 2. **Build locally and install from it.**

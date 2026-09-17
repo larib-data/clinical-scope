@@ -63,7 +63,7 @@ Ruff is capped to the 0.16.x line by the dev extra — run it from the project v
 **First check that it needs a module at all.** The test: strip the configuration away — is any parsing left? A vendor header to decode, an XML schema, a binary layout, a channel table justifies a module. Plain CSV or parquet with a datetime column belongs in `other/`, where each file is configured under its own `other::<stem>` key carrying its own `time_shift`, timezone, grouping and trace style. Full reasoning in [ADR-0008](docs/adr/0008-datasource-modules-need-format-specific-parsing.md).
 
 Then use the `/new-datasource` skill from within Claude Code — it walks through every step
-(module skeleton, options, loader, registration, example data, tests, snapshots, docs). The existing sources are catalogued in the [tutorial](docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources*.
+(module skeleton, options, loader, registration, example data, tests, snapshots, docs). The existing sources are catalogued in the [user guide](docs/user_guide/user_guide.md) → *Patient Data & Supported Data Sources*.
 
 ## PR Process
 

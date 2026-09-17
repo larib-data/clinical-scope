@@ -149,7 +149,7 @@ type that exists only in code:
 - `example/demo_database/database_options.xlsx` — configure one plot of the new type over demo
   signals, then **regenerate the json from it**; `tests/unit/test_example_assets.py` prints the
   one-liner. Pick signals the plot is honest on, not merely present.
-- `docs/user_guide/tutorial.md` — a heading naming the type, under *Configuration File
+- `docs/user_guide/user_guide.md` — a heading naming the type, under *Configuration File
   Reference*. The `` `spectrogram` Block `` and `` `spectrograms` sheet `` sections are the
   shape: the keys, a JSON example, and what each field does, in clinician-facing language.
 - `CONTEXT.md` — a `**Name**:` entry under *Core concepts*, with the `_Avoid_` line naming
@@ -169,7 +169,7 @@ The last two answer to nothing but this skill, which is what makes them the ones
 - [ ] `src/clinical_scope/plot_types/registry.py` — import + `AVAILABLE`
 - [ ] `src/clinical_scope/plot_types/registry.py` — import + `BUILDERS`
 - [ ] `example/demo_database/database_options.{xlsx,json}` — configured, json regenerated
-- [ ] `docs/user_guide/tutorial.md` — a heading and its section
+- [ ] `docs/user_guide/user_guide.md` — a heading and its section
 - [ ] `CONTEXT.md` — glossary entry
 - [ ] `CLAUDE.md` — derived-type list
 - [ ] `tests/plot_types/test_<name>.py`

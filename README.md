@@ -108,7 +108,7 @@ Run `clinical-scope --help` for the full list of commands.
 
 ## Documentation
 
-The **[user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/tutorial.md)** is the primary reference for everything beyond the Quickstart: data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, and the Python API.
+The **[user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/user_guide.md)** is the primary reference for everything beyond the Quickstart: data folder layout, `database_options` config files, annotation tools, inspection view, CLI scripts, and the Python API.
 
 ## Supported Data Sources
 
@@ -124,7 +124,7 @@ The **[user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/u
 | EDF / EDF+ | Amplifiers and polygraphic recorders | `.edf` | Any EDF-exported signal, typically EEG |
 | Other (Generic) | Any CSV / Parquet | `.parquet`, `.csv` | Any time-series with a datetime column — one independent entry per file |
 
-Each patient folder should contain one subfolder per data source. The [user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/tutorial.md) → *Patient Data & Supported Data Sources* gives the folder keyword for each source, the naming rules, and the configuration details.
+Each patient folder should contain one subfolder per data source. The [user guide](https://github.com/larib-data/clinical-scope/blob/main/docs/user_guide/user_guide.md) → *Patient Data & Supported Data Sources* gives the folder keyword for each source, the naming rules, and the configuration details.
 
 ## Standalone Data Processing
 

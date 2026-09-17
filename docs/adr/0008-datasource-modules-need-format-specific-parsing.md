@@ -12,7 +12,7 @@ The registry had grown to twelve datasources, and three of them — `philips_wav
 
 That was defensible when `other/` was a single undifferentiated bucket: every file in it shared one configuration block, so a file needing its own `time_shift` genuinely had nowhere to go but a module of its own. Per-file configuration (`other::<stem>`, see [ADR-0009](0009-other-stem-is-a-config-scope.md)) removed that constraint. Once each file inside `other/` carries its own scope, a module that only supplies configuration is a module that supplies nothing.
 
-Leaving them cost more than the dead code. A datasource module is the unit contributors copy: the `/new-datasource` skill, the registry ordering rule, the per-source test and snapshot files, the tutorial table. Three modules whose only content was configuration taught every future contributor that "my CSV has a different time offset" is a reason to write one — which is how a registry reaches thirty entries that all call `read_csv`.
+Leaving them cost more than the dead code. A datasource module is the unit contributors copy: the `/new-datasource` skill, the registry ordering rule, the per-source test and snapshot files, the user guide table. Three modules whose only content was configuration taught every future contributor that "my CSV has a different time offset" is a reason to write one — which is how a registry reaches thirty entries that all call `read_csv`.
 
 Three options were considered:
 
