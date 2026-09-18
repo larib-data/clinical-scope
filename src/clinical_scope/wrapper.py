@@ -35,6 +35,18 @@ def _resolve_database_options(database_options_global: dict | None) -> dict:
 
 
 # ==================================================================================================
+def _requested_datasources(database_options_global: dict) -> list[type]:
+    """
+    Return the registry entries a run touches, in registry order.
+
+    A datasource is requested when *database_options_global* holds a section under its name;
+    a key naming none (``global``, a typo) is skipped. The order is ``DataSource.AVAILABLE``'s,
+    not the config file's.
+    """
+    return [ds for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global]
+
+
+# ==================================================================================================
 def _format_datasource_summary(found: dict[str, str], requested: list[str]) -> str:
     """
     Render a one-line found/not-found tally for a single-patient run.
@@ -68,7 +80,7 @@ def main(
 
     Loading is isolated per datasource — a source that fails is logged and skipped, and the
     rest of the patient still renders. ``progress_callback(current, total, name)`` is called
-    once per datasource, before it loads.
+    once per requested datasource, before it loads.
 
     Args:
         patient_options: Per-run settings (``data_folder``, the datetime window, ``quick_load``,
@@ -90,9 +102,8 @@ def main(
     all_signal_list = []
     found_datasources: dict[str, str] = {}
 
-    requested_sources = [
-        ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
-    ]
+    requested_datasources = _requested_datasources(database_options_global)
+    requested_sources = [ds.NAME for ds in requested_datasources]
     logger.info(
         "🚀 Starting visualization for %d datasource(s): %s",
         len(requested_sources),
@@ -102,16 +113,11 @@ def main(
         patient_options[cst.PatientOptions.PathDataFolder.NAME]
     )
 
-    total_count = len(requested_sources)
-    processed_count = 0
+    total_count = len(requested_datasources)
 
-    for data_source in datasource_list.DataSource.AVAILABLE:
+    for processed_count, data_source in enumerate(requested_datasources, start=1):
         name = data_source.NAME
 
-        if name not in database_options_global:
-            continue
-
-        processed_count += 1
         if progress_callback is not None:
             progress_callback(processed_count, total_count, name)
 
@@ -180,9 +186,8 @@ def inspect(
     """
     database_options_global = _resolve_database_options(database_options_global)
     display_timezone = DisplayFallbacks.from_user_options(user_options).display_timezone
-    requested_sources = [
-        ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
-    ]
+    requested_datasources = _requested_datasources(database_options_global)
+    requested_sources = [ds.NAME for ds in requested_datasources]
     logger.info(
         "🔎 Starting inspection for %d datasource(s): %s%s",
         len(requested_sources),
@@ -193,16 +198,12 @@ def inspect(
         patient_options[cst.PatientOptions.PathDataFolder.NAME]
     )
 
-    total_count = len(requested_sources)
-    processed_count = 0
+    total_count = len(requested_datasources)
 
     results = []
-    for data_source in datasource_list.DataSource.AVAILABLE:
+    for processed_count, data_source in enumerate(requested_datasources, start=1):
         name = data_source.NAME
-        if name not in database_options_global:
-            continue
 
-        processed_count += 1
         if progress_callback is not None:
             progress_callback(processed_count, total_count, name)
 
@@ -309,7 +310,7 @@ def extract_datasource(
             return None
 
     resolved_patient_options = dict(patient_options or {})
-    resolved_patient_options["data_folder"] = str(datasource_folder.parent)
+    resolved_patient_options[cst.PatientOptions.PathDataFolder.NAME] = str(datasource_folder.parent)
     database_options = database_options_specific or {}
 
     return datasource_cls.extract(resolved_patient_options, database_options, save_path=save_path)
@@ -341,11 +342,10 @@ def extract_patient(
     database_options_global = _resolve_database_options(database_options_global)
 
     patient_options = dict(patient_options or {})
-    patient_options["data_folder"] = str(patient_folder)
+    patient_options[cst.PatientOptions.PathDataFolder.NAME] = str(patient_folder)
 
-    requested_sources = [
-        ds.NAME for ds in datasource_list.DataSource.AVAILABLE if ds.NAME in database_options_global
-    ]
+    requested_datasources = _requested_datasources(database_options_global)
+    requested_sources = [ds.NAME for ds in requested_datasources]
     logger.info(
         "📤 Starting extraction for %d datasource(s): %s",
         len(requested_sources),
@@ -354,11 +354,8 @@ def extract_patient(
 
     results: dict[str, pd.DataFrame | None] = {}
 
-    for data_source in datasource_list.DataSource.AVAILABLE:
+    for data_source in requested_datasources:
         name = data_source.NAME
-        if name not in database_options_global:
-            continue
-
         database_options = database_options_global[name]
 
         datasource_cls = data_source.DATASOURCE_CLASS
