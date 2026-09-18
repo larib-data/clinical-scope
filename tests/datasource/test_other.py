@@ -658,3 +658,39 @@ class TestInspectErrorReporting:
         assert by_name["other::dup"].status == "load_error"
         assert by_name["other::good"].status == "ok"
         assert [column.raw_name for column in by_name["other::good"].columns] == ["art"]
+
+
+class TestInspectUnreadableFile:
+    """The two reader failures a clinician actually hits, each reported in its own words."""
+
+    def _inspect_one(self, tmp_path, other_cls, name, write_bad_file):
+        folder = tmp_path / "other"
+        folder.mkdir(parents=True, exist_ok=True)
+        write_bad_file(folder / name)
+        results = other_cls.inspect({**PATIENT_OPTIONS, "data_folder": str(tmp_path)}, {})
+        assert len(results) == 1
+        return results[0], folder / name
+
+    def test_empty_csv_keeps_the_underlying_reason(self, tmp_path, other_cls):
+        entry, _ = self._inspect_one(
+            tmp_path, other_cls, "empty_file.csv", lambda path: path.write_text("")
+        )
+        assert "No columns to parse" in entry.error_message
+
+    def test_corrupt_parquet_keeps_the_underlying_reason(self, tmp_path, other_cls):
+        entry, _ = self._inspect_one(
+            tmp_path,
+            other_cls,
+            "corrupt_file.parquet",
+            lambda path: path.write_bytes(b"not a parquet file at all"),
+        )
+        assert "magic bytes" in entry.error_message
+
+    def test_the_other_inspection_fields_are_untouched(self, tmp_path, other_cls):
+        """The card prints file_path on its own line, so the message need not name the file."""
+        entry, path = self._inspect_one(
+            tmp_path, other_cls, "empty_file.csv", lambda path: path.write_text("")
+        )
+        assert entry.status == "load_error"
+        assert entry.datasource_name == "other::empty_file"
+        assert entry.file_path == str(path)
