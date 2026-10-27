@@ -19,7 +19,7 @@ def ds_folder(patient_full_path, icca_cls):
 def loaded_df(ds_folder, icca_cls):
     file_path = icca_cls._find(ds_folder)
     assert file_path is not None
-    return icca_cls._load(file_path, None)
+    return icca_cls._load(file_path)
 
 
 class TestFind:
@@ -151,14 +151,14 @@ class TestExtensions:
         path = tmp_path / "export.parquet"
         path.touch()
         with pytest.raises(ValueError, match="not an ICCA export format"):
-            icca_cls._load(path, None)
+            icca_cls._load(path)
 
     @pytest.mark.parametrize("suffix", [".xml", ".json"])
     def test_planned_format_raises_not_implemented(self, tmp_path, icca_cls, suffix):
         path = tmp_path / f"export{suffix}"
         path.touch()
         with pytest.raises(NotImplementedError):
-            icca_cls._load(path, None)
+            icca_cls._load(path)
 
 
 class TestEmptyExport:
@@ -170,12 +170,12 @@ class TestEmptyExport:
 
     def test_empty_export_returns_naive_empty_index(self, tmp_path, icca_cls):
         """A header-only export must not hand back a localized index _format would keep."""
-        df = icca_cls._load(self._header_only(tmp_path / "icca.csv"), None)
+        df = icca_cls._load(self._header_only(tmp_path / "icca.csv"))
         assert df.empty
         assert df.index.tz is None
 
     def test_empty_export_still_formats(self, tmp_path, icca_cls, patient_options_full):
-        loaded = icca_cls._load(self._header_only(tmp_path / "icca.csv"), None)
+        loaded = icca_cls._load(self._header_only(tmp_path / "icca.csv"))
         formatted = icca_cls._format(loaded, patient_options_full, {})
         assert str(formatted.index.tz) == "UTC"
 
@@ -184,7 +184,7 @@ class TestDelimiter:
     def test_semicolon_export_loads(self, tmp_path, icca_cls):
         """Excel re-saves a comma export as semicolon-separated without renaming it."""
         path = _write_export(tmp_path / "icca.csv", _numeric_rows(6), delimiter=";")
-        df = icca_cls._load(path, None)
+        df = icca_cls._load(path)
         assert list(df.columns) == ["2423"]
         assert len(df) == 6
 
@@ -194,13 +194,13 @@ class TestDataLossReporting:
         """The demo export collides on 125 of its 500 measurements."""
         file_path = icca_cls._find(ds_folder)
         with caplog.at_level(logging.WARNING):
-            icca_cls._load(file_path, None)
+            icca_cls._load(file_path)
         assert "only the first of each is kept" in caplog.text
 
     def test_no_duplicate_warning_when_unique(self, tmp_path, icca_cls, caplog):
         path = _write_export(tmp_path / "icca.csv", _numeric_rows(6))
         with caplog.at_level(logging.WARNING):
-            icca_cls._load(path, None)
+            icca_cls._load(path)
         assert "only the first of each is kept" not in caplog.text
 
     def test_non_numeric_attribute_is_reported(self, tmp_path, icca_cls, caplog):
@@ -217,7 +217,7 @@ class TestDataLossReporting:
         ]
         path = _write_export(tmp_path / "icca.csv", rows)
         with caplog.at_level(logging.WARNING):
-            df = icca_cls._load(path, None)
+            df = icca_cls._load(path)
         assert "9999" in caplog.text
         assert "valueString" in caplog.text
         assert "9999" not in df.columns

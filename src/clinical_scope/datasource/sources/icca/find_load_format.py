@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
@@ -105,7 +104,7 @@ class IccaDataSource(DataSourceBase):
 
     @classmethod
     @time_it
-    def _load(cls, file_path: Path, path_output: Path | None, **kwargs: Any) -> pd.DataFrame:  # noqa: ARG003
+    def _load(cls, file_path: Path) -> pd.DataFrame:
         """
         Load and parse an ICCA high-density anesthesia export.
 
@@ -118,7 +117,7 @@ class IccaDataSource(DataSourceBase):
 
         if df.empty:
             logger.warning("[%s] Empty data file: %s", cls.DATASOURCE_NAME, file_path)
-            return pd.DataFrame(index=pd.DatetimeIndex([]))
+            return pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))
 
         cls._warn_dropped_non_numeric(df)
         cls._warn_collapsed_duplicates(df)
@@ -135,11 +134,7 @@ class IccaDataSource(DataSourceBase):
         df_pivoted.columns = [str(c) for c in df_pivoted.columns]
 
         df_pivoted.index = pd.to_datetime(df_pivoted.index)
-        df_pivoted = deduplicate_then_sort_index(df_pivoted)
-
-        if path_output is not None:
-            cls._save_dataframe(df_pivoted, path_output)
-        return df_pivoted
+        return deduplicate_then_sort_index(df_pivoted)
 
     @classmethod
     @time_it
