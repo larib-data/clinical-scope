@@ -16,6 +16,7 @@ from clinical_scope.io.time_axis import deduplicate_then_sort_index, set_datetim
 from clinical_scope.signal_container import (
     DisplayFallbacks,
     Signal,
+    derived_signal_names,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,7 +231,10 @@ class OtherDataSource(DataSourceBase):
                     continue
 
                 columns = _resolve_columns(df, file_config)
-                if not columns:
+                # A derived name is not a column, so _resolve_columns leaves it out; it is built
+                # from its source below, even when it is all the file displays.
+                derived_names = derived_signal_names(file_config, df.columns)
+                if not columns and not derived_names:
                     logger.debug("No columns selected for '%s', skipping file", file_path.name)
                     continue
 
@@ -253,6 +257,30 @@ class OtherDataSource(DataSourceBase):
                         logger.exception(
                             "Could not process signal '%s' from '%s'",
                             column_name,
+                            file_path.name,
+                        )
+
+                for derived_name in derived_names:
+                    raw_name = _qualify(file_stem, derived_name)
+                    try:
+                        signal_obj = Signal.derived_from_dataframe(
+                            df=df,
+                            raw_signal_name=derived_name,
+                            source_options=cls.SOURCE_OPTIONS,
+                            database_options_specific=file_config,
+                            display_fallbacks=display_fallbacks,
+                        )
+                        signal_obj.raw_name = raw_name
+                        signal_obj.metadata.parent_signal_name = _qualify(
+                            file_stem, signal_obj.metadata.parent_signal_name
+                        )
+                        signal_obj.metadata.datasource_name = cls.DATASOURCE_NAME
+                        all_signals.append(signal_obj)
+                        file_signal_raw_names.append(raw_name)
+                    except Exception:
+                        logger.exception(
+                            "Could not build the derived signal '%s' from '%s'",
+                            derived_name,
                             file_path.name,
                         )
 

@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 import clinical_scope.constants as cst
+from clinical_scope import transforms
 from clinical_scope.datasource.formatting.timezone import (
     _date_range,
     _resolve_effective_tz,
@@ -33,7 +34,7 @@ from clinical_scope.io.discovery import find_files, folder_name_matches_keywords
 from clinical_scope.io.export import save_df
 from clinical_scope.io.parquet_pruning import read_cache_pruned
 from clinical_scope.io.paths import get_datasource_cache_path
-from clinical_scope.signal_container import DisplayFallbacks, Signal
+from clinical_scope.signal_container import DisplayFallbacks, Signal, derived_signal_names
 
 logger = logging.getLogger(__name__)
 
@@ -494,30 +495,43 @@ class DataSourceBase(ABC):
         """
         Build one Signal per name in ``field_display``, or per column when it is unset.
 
-        A name that cannot be turned into a Signal is logged and skipped, so one unusable
-        column does not cost the datasource its other signals. Override this method for
+        A derived name is not a column: it is built from its source column instead. A name
+        that cannot be turned into a Signal is logged and skipped, so one unusable column or
+        derived row does not cost the datasource its other signals. Override this method for
         datasource-specific signal extraction needs.
         """
-        list_signals = database_options_specific.get(
-            cst.DatabaseOptions.FIELD_DISPLAY, list(df.columns)
+        field_display = database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
+        derived = transforms.derived_rows(database_options_specific)
+        list_signals = (
+            list(df.columns)
+            if field_display is None
+            else [name for name in field_display if name not in derived or name in df.columns]
         )
+
+        kwargs = {
+            "df": df,
+            "database_options_specific": database_options_specific,
+            "display_fallbacks": display_fallbacks,
+        }
+        if cls.SOURCE_OPTIONS is not None:
+            kwargs["source_options"] = cls.SOURCE_OPTIONS
 
         list_signal_container = []
         for signal in list_signals:
             try:
-                kwargs = {
-                    "df": df,
-                    "raw_signal_name": signal,
-                    "database_options_specific": database_options_specific,
-                    "display_fallbacks": display_fallbacks,
-                }
-                if cls.SOURCE_OPTIONS is not None:
-                    kwargs["source_options"] = cls.SOURCE_OPTIONS
-                signal_obj = Signal.time_series_from_dataframe(**kwargs)
+                signal_obj = Signal.time_series_from_dataframe(raw_signal_name=signal, **kwargs)
                 signal_obj.metadata.datasource_name = cls.DATASOURCE_NAME
                 list_signal_container.append(signal_obj)
             except Exception:
                 logger.exception("Could not process the signal '%s' as Signal object", signal)
+
+        for signal in derived_signal_names(database_options_specific, df.columns):
+            try:
+                signal_obj = Signal.derived_from_dataframe(raw_signal_name=signal, **kwargs)
+                signal_obj.metadata.datasource_name = cls.DATASOURCE_NAME
+                list_signal_container.append(signal_obj)
+            except Exception:
+                logger.exception("Could not build the derived signal '%s'", signal)
 
         return list_signal_container
 

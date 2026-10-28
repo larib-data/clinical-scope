@@ -580,6 +580,10 @@ class DatabaseOptions:
         VISIBLE = "visible"
         LINE_DASH = "line_dash"
         HOVER_TEMPLATE = "hover_template"
+        # A non-empty source makes the row a derived signal, computed from that raw signal.
+        SOURCE = "source"
+        # How a derived signal is computed: {Transform.METHOD: <name>, <param>: <value>, ...}.
+        TRANSFORM = "transform"
 
         DEFAULT_LABEL = None  # default = raw_name
         DEFAULT_UNIT = "-"
@@ -597,6 +601,8 @@ class DatabaseOptions:
                 VISIBLE,
                 LINE_DASH,
                 HOVER_TEMPLATE,
+                SOURCE,
+                TRANSFORM,
             }
         )
 
@@ -646,6 +652,20 @@ class Sampling:
     # Multiple of median Δt beyond which a step is a recording gap (masked as NaN, never
     # interpolated across) rather than jitter (interpolated across).
     GAP_FACTOR = 3.0
+
+
+class Transform:
+    """The canonical form of a derived signal's ``transform``, and the methods it may name."""
+
+    # The key naming the method; every other key of the dict is one of its parameters.
+    METHOD = "method"
+
+    # --- Methods (implemented in transforms/filters.py) ---
+    LOWPASS = "lowpass"  # Butterworth, zero-phase
+    HIGHPASS = "highpass"  # Butterworth, zero-phase
+    BANDPASS = "bandpass"  # Butterworth, zero-phase
+    BANDSTOP = "bandstop"  # Butterworth, zero-phase
+    MOVING_AVERAGE = "moving_average"  # centred, over a time window
 
 
 class Spectral:

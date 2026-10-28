@@ -3,6 +3,7 @@
 import logging
 
 import clinical_scope.constants as cst
+from clinical_scope import transforms
 from clinical_scope.datasource.registry import DataSource
 from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.validation import ValidationIssue
@@ -91,8 +92,88 @@ def validate_database_options(database_options: dict) -> list[ValidationIssue]:
 def _validate_section(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
     _check_unknown_keys(section, path_prefix, issues)
     _check_types(section, path_prefix, issues)
+    _check_derived_signals(section, path_prefix, issues)
     _check_plot_types(section, path_prefix, issues)
     _check_redundant_entries(section, path_prefix, issues)
+
+
+def _check_derived_signals(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
+    """
+    Check every signal row declaring ``source`` or ``transform``: the two travel together.
+
+    Only what the file alone can show. Whether the source column exists, or a cutoff fits the
+    recording's sampling, depends on the patient: a row failing there is skipped when the data
+    is plotted, not reported here.
+    """
+    signal_config = cst.DatabaseOptions.SignalConfig
+    signals = section.get(cst.DatabaseOptions.SIGNALS)
+    if not isinstance(signals, dict):
+        return
+    derived = transforms.derived_rows(section)
+    for raw_name, signal_options in signals.items():
+        if not isinstance(signal_options, dict):
+            continue
+        has_source = signal_config.SOURCE in signal_options
+        has_transform = signal_config.TRANSFORM in signal_options
+        if not (has_source or has_transform):
+            continue
+        signal_path = f"{path_prefix}.signals.{raw_name}"
+        source = signal_options.get(signal_config.SOURCE)
+
+        if not has_source:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=signal_path,
+                    message="'transform' needs a 'source': the signal it is computed from",
+                )
+            )
+        elif raw_name not in derived:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=f"{signal_path}.source",
+                    message=f"Must be the name of a signal, got {source!r}",
+                )
+            )
+        elif source in derived:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=f"{signal_path}.source",
+                    message=(
+                        f"'{source}' is itself a derived signal; a derived signal is computed "
+                        f"from a signal of the data"
+                    ),
+                )
+            )
+
+        if has_transform:
+            issues.extend(
+                transforms.validate_transform(
+                    signal_options[signal_config.TRANSFORM], f"{signal_path}.transform"
+                )
+            )
+        else:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=signal_path,
+                    message=(
+                        "'source' needs a 'transform': how to compute this signal from it, "
+                        "e.g. lowpass(cutoff_hz=5)"
+                    ),
+                )
+            )
+
+        if has_source and signal_config.PERIOD_RESAMPLING in signal_options:
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    path=f"{signal_path}.period_resampling",
+                    message="Ignored: a derived signal is computed from every sample of its source",
+                )
+            )
 
 
 def _check_unknown_keys(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
@@ -246,11 +327,13 @@ def _check_redundant_entries(
                 )
             )
 
+        # On a derived row a factor of 1 is not the default: it overrides the source's factor.
         unit_conversion = signal_options.get(signal_config.UNIT_CONVERSION)
         if (
             unit_conversion is not None
             and isinstance(unit_conversion, (int, float))
             and float(unit_conversion) == signal_config.DEFAULT_UNIT_CONVERSION
+            and signal_config.SOURCE not in signal_options
         ):
             issues.append(
                 ValidationIssue(

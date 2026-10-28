@@ -134,7 +134,7 @@ hiddenimports += ["missing_module"]
 To reduce size, add unused packages to `excludes`:
 
 ```python
-excludes = ["matplotlib", "scipy", ...]
+excludes = ["matplotlib", "tkinter", ...]
 ```
 
 ### Slow startup
