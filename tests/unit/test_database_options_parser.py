@@ -290,3 +290,76 @@ class TestTraceOptions:
         db = {"servo_u": {"trace_options": "lines"}}
         errors = _issues("error", db)
         assert len(errors) == 1
+
+
+# ---------------------------------------------------------------------------
+# Unrecognised section names
+# ---------------------------------------------------------------------------
+
+
+class TestUnknownSectionName:
+    def test_misspelled_datasource_name_warns(self):
+        db = {"servo-u": {"signals": {}}}
+        warnings = _issues("warning", db)
+        assert len(warnings) == 1
+        assert "servo-u" in warnings[0].message
+
+    def test_warning_path_is_the_section_key(self):
+        db = {"mindray_respi_wave": {"signals": {}}}
+        warnings = _issues("warning", db)
+        assert [i.path for i in warnings] == ["mindray_respi_wave"]
+
+    def test_message_names_the_accepted_spellings(self):
+        db = {"nonsense": {}}
+        message = _issues("warning", db)[0].message
+        assert "servo_u" in message
+        assert "global" in message
+        assert "other::" in message
+
+    def test_bad_name_replaces_the_key_level_complaints(self):
+        """A section no datasource reads gets one message about the name, not about its keys."""
+        db = {"not_a_datasource": {"bogus": 1}}
+        warnings = _issues("warning", db)
+        assert len(warnings) == 1
+        assert "bogus" not in warnings[0].message
+
+    def test_non_dict_under_a_bad_name_still_warns(self):
+        db = {"servo-u": "hello"}
+        warnings = _issues("warning", db)
+        assert len(warnings) == 1
+        assert "servo-u" in warnings[0].message
+
+    def test_bad_name_is_the_whole_report(self):
+        """The name warning replaces the section's issues entirely, at every severity."""
+        db = {"not_a_datasource": {"signals": "notadict"}}
+        issues = validate_database_options(db)
+        assert [(i.severity, i.path) for i in issues] == [("warning", "not_a_datasource")]
+
+    def test_shipped_datasource_names_are_accepted(self):
+        db = {
+            name: {"signals": {}}
+            for name in (
+                "eit",
+                "fluxmed_parameters",
+                "fluxmed_signals",
+                "servo_u",
+                "mindray_scope",
+                "mindray_respi_numerics",
+                "mindray_respi_waves",
+                "edf",
+                "other",
+            )
+        }
+        assert _issues("warning", db) == []
+
+    def test_global_and_other_prefix_are_accepted(self):
+        db = {"global": {"grouped_fields": {}}, "other::waves": {"signals": {}}}
+        assert _issues("warning", db) == []
+
+    def test_normalized_shape_is_accepted(self):
+        """The shape normalize_database_options produces: a top-level 'other' with 'files'."""
+        db = {"other": {"files": {"waves": {"signals": {}}}}}
+        assert _issues("warning", db) == []
+
+    def test_example_config_fixture_has_no_warnings(self, example_database_options):
+        assert _issues("warning", example_database_options) == []

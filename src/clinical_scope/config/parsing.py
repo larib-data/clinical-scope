@@ -10,6 +10,7 @@ from pathlib import Path
 
 from clinical_scope.database_options_parser import validate_database_options
 from clinical_scope.database_options_xlsx import xlsx_to_database_options
+from clinical_scope.validation import log_database_options_issues
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +73,6 @@ def load_database_options_from_path(path: Path) -> dict:
         msg = f"Unsupported file extension '{suffix}'. Expected .json or .xlsx."
         raise ValueError(msg)
 
-    for issue in validate_database_options(database_options):
-        if issue.severity == "error":
-            logger.error("database_options [%s]: %s", issue.path, issue.message)
-        elif issue.severity == "warning":
-            logger.warning("database_options [%s]: %s", issue.path, issue.message)
-        else:
-            logger.info("database_options [%s]: %s", issue.path, issue.message)
+    log_database_options_issues(validate_database_options(database_options), logger)
 
     return database_options

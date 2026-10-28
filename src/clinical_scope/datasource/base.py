@@ -40,13 +40,17 @@ logger = logging.getLogger(__name__)
 
 class DataSourceBase(ABC):
     """
-    Abstract base class for datasource processing.
+    Template for datasource processing: find → load → format → extract_signals.
 
-    Subclasses must implement:
-        - _find(): Locate the data file(s)
-        - _load(): Parse the raw data into a DataFrame
+    A subclass must set ``OPTIONS_MODULE`` — ``__init_subclass__`` derives DATASOURCE_NAME, the
+    parquet cache file name, SOURCE_OPTIONS and the capability flags from it, and derives nothing
+    at all when it is left ``None`` — and implement ``_load()``, the only abstract method: parse
+    the raw data file(s) into a DataFrame. The base class covers the rest of the pipeline from
+    those same constants, so a datasource usually implements ``_load()`` alone.
 
     Subclasses may override:
+        - _find(): Locate the data file(s) — the default discovers them from
+          FILE_EXTENSIONS, MULTI_FILE and FILE_KEYWORDS
         - _format(): Apply formatting transformations
         - _extract_signals(): Convert DataFrame to Signal objects
         - main(): Main entry point (usually not needed)
@@ -98,6 +102,12 @@ class DataSourceBase(ABC):
 
         Uses the OPTIONS_MODULE constants (FILE_KEYWORDS, FILE_EXTENSIONS, MULTI_FILE)
         for default file discovery. Override in subclasses that need custom logic.
+
+        Returns:
+            One file per matching stem when MULTI_FILE is set, a single file otherwise;
+            ``None`` when nothing matched — or, in single-file mode, when the match stayed
+            ambiguous — which callers read as "this datasource has no data here".
+
         """
         options_module = cls.OPTIONS_MODULE
         return find_files(
@@ -336,7 +346,12 @@ class DataSourceBase(ABC):
 
     @classmethod
     def _save_dataframe(cls, df: pd.DataFrame, path_output: Path) -> None:
-        """Save DataFrame to parquet for quick loading."""
+        """
+        Write the loaded DataFrame to its parquet cache path, creating the folders it needs.
+
+        A failure here is logged and swallowed: the cache only makes a later ``quick_load``
+        run faster, so losing it must not fail the load that just succeeded.
+        """
         try:
             Path(path_output).parent.mkdir(parents=True, exist_ok=True)
             df.to_parquet(path_output)
@@ -395,14 +410,24 @@ class DataSourceBase(ABC):
     def _apply_timezone(
         cls, df: pd.DataFrame, database_options_specific: dict, default_timezone: str
     ) -> pd.DataFrame:
-        """Apply timezone to DataFrame index if not already set."""
+        """
+        Localize a tz-naive index in *default_timezone*, or in the database_options override.
+
+        What this classmethod adds to ``apply_timezone_to_dataframe`` is ``cls.OPTIONS_MODULE``:
+        that is how the delegate finds the override key this source declares. An index that
+        is already tz-aware is left as it is.
+        """
         return apply_timezone_to_dataframe(
             df, database_options_specific, default_timezone, cls.OPTIONS_MODULE
         )
 
     @classmethod
     def _apply_time_shift(cls, df: pd.DataFrame, patient_options: dict) -> pd.DataFrame:
-        """Apply time shift based on patient options."""
+        """
+        Shift the index by this datasource's ``time_shift`` patient option, in seconds.
+
+        The shift is applied to *df* in place; the frame returned is that same object.
+        """
         patient_options_specific = patient_options.get(cls.DATASOURCE_NAME, {})
         time_shift_second = patient_options_specific.get(
             cls.OPTIONS_MODULE.PatientOptionsDataSourceRelative.TimeShift.NAME, 0.0
@@ -414,7 +439,12 @@ class DataSourceBase(ABC):
     def _filter_by_datetime(
         cls, df: pd.DataFrame, patient_options: dict, filter_date: bool = True
     ) -> pd.DataFrame:
-        """Filter DataFrame by datetime start and end from patient options."""
+        """
+        Keep the rows inside the ``datetime_start``/``datetime_end`` window from patient options.
+
+        With *filter_date* ``False`` the bounds are read as times of day, so the window is
+        applied to every day the frame spans instead of once across the whole recording.
+        """
         datetime_start = patient_options.get(cst.PatientOptions.DatetimeStart.NAME)
         datetime_end = patient_options.get(cst.PatientOptions.DatetimeEnd.NAME)
         datetime_start = pd.Timestamp(datetime_start) if datetime_start else None
@@ -434,9 +464,12 @@ class DataSourceBase(ABC):
         cls, df: pd.DataFrame, patient_options: dict, database_options_specific: dict
     ) -> pd.DataFrame:
         """
-        Apply standard formatting transformations.
+        Interpret the loaded frame: timezone, then time shift, then the datetime window.
 
-        Override this method for datasource-specific formatting needs.
+        This is the stage that may resolve options — ``_load`` only transcribes the file
+        (ADR-0010). The timezone step would be skipped by a source whose OPTIONS_MODULE
+        declares no DATA_SOURCE_DEFAULT_TIMEZONE. Override this method for datasource-specific
+        formatting needs.
         """
         # Shallow copy since below only rebinds df.index or row-filters, never mutates columns.
         df = df.copy(deep=False)
@@ -459,9 +492,11 @@ class DataSourceBase(ABC):
         display_fallbacks: DisplayFallbacks | None = None,
     ) -> list[Signal]:
         """
-        Extract Signal objects from DataFrame.
+        Build one Signal per name in ``field_display``, or per column when it is unset.
 
-        Override this method for datasource-specific signal extraction needs.
+        A name that cannot be turned into a Signal is logged and skipped, so one unusable
+        column does not cost the datasource its other signals. Override this method for
+        datasource-specific signal extraction needs.
         """
         list_signals = database_options_specific.get(
             cst.DatabaseOptions.FIELD_DISPLAY, list(df.columns)
@@ -509,7 +544,8 @@ class DataSourceBase(ABC):
             # No subfolder expected, use root patient folder
             return folder_path
 
-        # Try exact match first (for performance)
+        # Exact name wins: one stat instead of an iterdir(), and since keywords match by
+        # substring, letting the scan decide would hand ties to directory order.
         expected_folder_name = getattr(cls.OPTIONS_MODULE, "EXPECTED_FOLDER_NAME", None)
         if expected_folder_name:
             expected_path = folder_path / expected_folder_name
@@ -551,7 +587,14 @@ class DataSourceBase(ABC):
         database_options_specific: dict | None,
         display_fallbacks: DisplayFallbacks | None = None,
     ) -> list[Signal]:
-        """Main entry point for datasource processing."""
+        """
+        Main entry point: run find → load → format → extract_signals for this datasource.
+
+        Returns ``[]`` when the data is absent — no folder for this datasource under the
+        patient folder, or no matching file inside it. A genuine load or format *failure*
+        raises instead, and ``wrapper.main`` catches it, so a failure is logged rather than
+        silently read as absent data.
+        """
         database_options = (
             database_options_specific if database_options_specific is not None else {}
         )
@@ -732,7 +775,8 @@ class DataSourceBase(ABC):
             database_options_specific if database_options_specific is not None else {}
         )
 
-        # Remove field_display so _load() returns ALL columns.
+        # Strip field_display so the cache read returns every column; a fresh _load() takes no
+        # options and parses everything anyway. configured_columns_only puts it back below.
         database_options_for_load = {
             key: value
             for key, value in database_options.items()

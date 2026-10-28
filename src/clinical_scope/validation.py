@@ -1,6 +1,13 @@
-"""The one type every ``database_options`` validator returns."""
+"""What every ``database_options`` validator returns, and how it is reported."""
 
+import logging
 from typing import Literal, NamedTuple
+
+_SEVERITY_LOG_LEVELS = {
+    "error": logging.ERROR,
+    "warning": logging.WARNING,
+    "info": logging.INFO,
+}
 
 
 class ValidationIssue(NamedTuple):
@@ -30,4 +37,24 @@ class ValidationIssue(NamedTuple):
             severity="warning",
             path=path,
             message=f"Unknown keys: {sorted(found)}. Expected: {sorted(known)}",
+        )
+
+
+def log_database_options_issues(issues: list[ValidationIssue], logger: logging.Logger) -> None:
+    """
+    Report every issue at the level its severity names.
+
+    *logger* belongs to the caller: each tier that validates a config keeps its own name on
+    the records, which a module-level logger here would silently rewrite to this one.
+    ``stacklevel`` carries the rest of that origin -- the frame emitting the record now sits
+    in this module, while a reader of the log wants the tier that found the issue. A severity
+    the table does not name reports at INFO: ``severity`` binds type-checkers, not runtime.
+    """
+    for issue in issues:
+        logger.log(
+            _SEVERITY_LOG_LEVELS.get(issue.severity, logging.INFO),
+            "database_options [%s]: %s",
+            issue.path,
+            issue.message,
+            stacklevel=2,
         )
