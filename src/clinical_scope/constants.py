@@ -635,6 +635,19 @@ class SourceOptions:
     TRACE_OPTIONS = "trace_options"
 
 
+class Sampling:
+    """How sampling.py puts a series on a uniform grid, for spectral plots and transforms alike."""
+
+    # Fraction of median Δt a step can deviate by and still count as "already uniform"
+    # (skip interpolation). Kept tight since the reference EEG recording measured
+    # jitter=0; revisit once validated against real hardware timestamp noise.
+    JITTER_TOLERANCE = 0.05
+
+    # Multiple of median Δt beyond which a step is a recording gap (masked as NaN, never
+    # interpolated across) rather than jitter (interpolated across).
+    GAP_FACTOR = 3.0
+
+
 class Spectral:
     """Defaults for spectral.py's STFT-based spectrogram computation."""
 
@@ -644,15 +657,6 @@ class Spectral:
 
     # Fixed by design, not user-configurable (see database_options spectrogram schema).
     OVERLAP_FRACTION = 0.5
-
-    # Fraction of median Δt a step can deviate by and still count as "already uniform"
-    # (skip interpolation). Kept tight since the reference EEG recording measured
-    # jitter=0; revisit once validated against real hardware timestamp noise.
-    JITTER_TOLERANCE = 0.05
-
-    # Multiple of median Δt beyond which a step is a recording gap (masked as NaN in
-    # the STFT output) rather than jitter (interpolated across).
-    GAP_FACTOR = 3.0
 
     # Perceptually uniform and colorblind-safe, like the Okabe-Ito trace palette above.
     COLORSCALE = "Viridis"
