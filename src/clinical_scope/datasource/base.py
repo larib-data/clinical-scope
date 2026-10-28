@@ -502,10 +502,15 @@ class DataSourceBase(ABC):
         """
         field_display = database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
         derived = transforms.derived_rows(database_options_specific)
+        # Tested as strings only: a malformed entry must fail alone in the loop, not here.
         list_signals = (
             list(df.columns)
             if field_display is None
-            else [name for name in field_display if name not in derived or name in df.columns]
+            else [
+                name
+                for name in field_display
+                if not (isinstance(name, str) and name in derived and name not in df.columns)
+            ]
         )
 
         kwargs = {

@@ -6,12 +6,13 @@ by where its output samples land -- never inside a gap, always on one uniform gr
 """
 
 import logging
+import tracemalloc
 
 import numpy as np
 import pytest
 
 from clinical_scope import transforms
-from clinical_scope.sampling import contiguous_segments
+from clinical_scope.sampling import contiguous_segments, gap_free_runs
 
 
 def _datetime_x(t_seconds: np.ndarray) -> np.ndarray:
@@ -71,6 +72,12 @@ class TestParseTransformCell:
             "lowpass(cutoff_hz=1, cutoff_hz=2)",  # which one?
             "lowpass(method='highpass')",  # would overwrite the method
             "5",
+            # Literals, but not ones a JSON store can hold: the upload would fail on them.
+            "lowpass(cutoff_hz={5})",
+            "lowpass(cutoff_hz=5j)",
+            "lowpass(cutoff_hz=b'5')",
+            "lowpass(cutoff_hz=...)",
+            "lowpass(cutoff_hz=[5])",
         ],
     )
     def test_anything_else_is_kept_as_text_for_validation_to_report(self, cell):
@@ -291,11 +298,67 @@ class TestGridDriver:
         assert (x_out <= gap_start).sum() > 1000, "the long stretch is still filtered"
         assert "too short" in caplog.text
 
+    def test_memory_follows_the_samples_not_the_time_they_span(self):
+        """Two 10 s bursts a day apart: a grid across the day would hold 10.8 M points."""
+        x, y, _ = _with_gap(125.0, 10.0, 86_400.0, 10.0)
+
+        tracemalloc.start()
+        try:
+            x_out, _ = _run({"method": "lowpass", "cutoff_hz": 5}, x, y)
+            _, peak_bytes = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        assert len(x_out) == len(x)
+        assert peak_bytes < 20e6
+
+    def test_each_stretch_between_gaps_keeps_its_own_sampling(self):
+        """A recording resumed at another rate is gridded at that rate, not the first one's."""
+        t_fast = np.arange(0, 10, 1 / 125)
+        t_slow = 20 + np.arange(0, 10, 1 / 50)
+        t_seconds = np.concatenate([t_fast, t_slow])
+        x = _datetime_x(t_seconds)
+
+        x_out, _ = _run({"method": "lowpass", "cutoff_hz": 5}, x, np.sin(2 * np.pi * t_seconds))
+
+        steps_s = np.diff(x_out.astype(np.int64)) / 1e9
+        assert np.allclose(steps_s[: len(t_fast) - 1], 1 / 125)
+        assert np.allclose(steps_s[-(len(t_slow) - 1) :], 1 / 50)
+
     def test_when_every_stretch_is_too_short_the_transform_fails(self):
         x, y = _tones(125.0, 10 / 125.0, 1.0)
 
         with pytest.raises(ValueError, match="too short"):
             _run({"method": "lowpass", "cutoff_hz": 5}, x, y)
+
+
+class TestNoOutputAtAll:
+    def test_a_method_yielding_no_finite_value_fails_with_its_own_reason(self):
+        diverging = transforms.TransformDefinition(
+            name="diverging",
+            params=(),
+            needs_uniform_grid=True,
+            fn=lambda y, dt_s: np.full_like(y, np.inf),  # noqa: ARG005
+        )
+        x, y = _tones(125.0, 10.0, 1.0)
+
+        with pytest.raises(ValueError, match="no finite value"):
+            transforms.ResolvedTransform(diverging, {}).apply(x, y)
+
+
+class TestGapFreeRuns:
+    def test_splits_where_a_step_exceeds_three_median_steps(self):
+        x = _datetime_x(np.array([0.0, 1.0, 2.0, 3.0, 10.0, 11.0, 12.0]))
+
+        assert gap_free_runs(x) == [slice(0, 4), slice(4, 7)]
+
+    def test_jitter_below_the_gap_factor_is_one_run(self):
+        x = _datetime_x(np.array([0.0, 1.0, 3.5, 4.0, 5.0]))
+
+        assert gap_free_runs(x) == [slice(0, 5)]
+
+    def test_an_empty_series_has_no_run(self):
+        assert gap_free_runs(_datetime_x(np.array([]))) == []
 
 
 class TestContiguousSegments:
@@ -326,15 +389,15 @@ class TestMovingAverage:
         assert np.array_equal(x_out, x)
         assert len(y_out) == len(x)
 
-    def test_is_centred_so_it_does_not_lag(self):
-        t_seconds = np.arange(0, 100, 0.1)
+    def test_is_centred_so_it_neither_lags_nor_leads(self):
+        """A trailing average of a ramp lags it by half the window; a centred one sits on it."""
+        t_seconds = np.arange(0, 100, 1.0)
         x = _datetime_x(t_seconds)
 
         _, y_out = _run({"method": "moving_average", "window_s": 2}, x, t_seconds.copy())
 
-        interior = slice(20, -20)
-        # A trailing average of a ramp lags it by half the window: 1 s here.
-        assert np.max(np.abs(y_out[interior] - t_seconds[interior])) < 0.1
+        interior = slice(2, -2)
+        assert np.allclose(y_out[interior], t_seconds[interior])
 
     def test_does_not_bridge_a_gap_longer_than_its_window(self):
         t_seconds = np.concatenate([np.arange(0, 10, 1.0), np.arange(110, 120, 1.0)])

@@ -22,7 +22,12 @@ from typing import Any
 import numpy as np
 
 import clinical_scope.constants as cst
-from clinical_scope.sampling import build_uniform_grid, contiguous_segments
+from clinical_scope.sampling import (
+    TooFewSamplesError,
+    build_uniform_grid,
+    contiguous_segments,
+    gap_free_runs,
+)
 from clinical_scope.validation import ValidationIssue
 
 logger = logging.getLogger(__name__)
@@ -144,9 +149,14 @@ def parse_transform_cell(cell: str) -> dict[str, Any] | str:
         if keyword.arg is None or keyword.arg in spec:
             return text
         try:
-            spec[keyword.arg] = ast.literal_eval(keyword.value)
+            value = ast.literal_eval(keyword.value)
         except _PARSE_ERRORS:
             return text
+        # Only what a JSON config could hold: the upload keeps this dict in a JSON store, so a
+        # set or a complex literal would fail the whole upload rather than one validation line.
+        if not isinstance(value, (bool, int, float, str)):
+            return text
+        spec[keyword.arg] = value
     return spec
 
 
@@ -249,10 +259,10 @@ class ResolvedTransform:
         """
         Run on finite, time-sorted samples and return the derived ``(x, y)``, finite only.
 
-        A grid method runs on each gap-free stretch of the regularised series in turn, so no
-        output exists inside a recording gap and nothing on one side of a gap shapes the
-        other. A stretch too short for the method is left out and logged; if every stretch
-        is, this raises. *name* only labels that log line.
+        A grid method runs on each gap-free stretch in turn, each regularised at its own
+        sampling step, so no output exists inside a recording gap and nothing on one side of a
+        gap shapes the other. A stretch too short for the method is left out and logged; if
+        every stretch is, this raises. *name* only labels that log line.
         """
         method = self.definition
         if not method.needs_uniform_grid:
@@ -260,18 +270,33 @@ class ResolvedTransform:
             keep = np.isfinite(y_out)
             return x[keep], y_out[keep]
 
-        x_grid, y_grid, dt_s = build_uniform_grid(x, y)
-        y_out = np.full(len(y_grid), np.nan)
+        x_parts: list[np.ndarray] = []
+        y_parts: list[np.ndarray] = []
         left_out: list[str] = []
-        for segment in contiguous_segments(y_grid):
+        for run in gap_free_runs(x):
             try:
-                y_out[segment] = method.fn(y_grid[segment], dt_s, **self.params)
-            except SegmentTooShortError as exc:
+                x_grid, y_grid, dt_s = build_uniform_grid(x[run], y[run])
+            except TooFewSamplesError as exc:
                 left_out.append(str(exc))
+                continue
+            # A run can still hold a gap against its own, finer median step.
+            for segment in contiguous_segments(y_grid):
+                try:
+                    y_parts.append(method.fn(y_grid[segment], dt_s, **self.params))
+                except SegmentTooShortError as exc:
+                    left_out.append(str(exc))
+                    continue
+                x_parts.append(x_grid[segment])
 
+        x_out = np.concatenate(x_parts) if x_parts else x[:0]
+        y_out = np.concatenate(y_parts) if y_parts else y[:0]
         keep = np.isfinite(y_out)
         if not keep.any():
-            msg = f"every gap-free stretch is too short for {method.name} ({left_out[0]})"
+            msg = (
+                f"every gap-free stretch is too short for {method.name} ({left_out[0]})"
+                if left_out
+                else f"{method.name} produced no finite value from {len(x)} sample(s)"
+            )
             raise ValueError(msg)
         if left_out:
             logger.warning(
@@ -281,7 +306,7 @@ class ResolvedTransform:
                 method.name,
                 left_out[0],
             )
-        return x_grid[keep], y_out[keep]
+        return x_out[keep], y_out[keep]
 
 
 def resolve(spec: Any) -> ResolvedTransform:

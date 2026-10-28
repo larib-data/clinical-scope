@@ -5,6 +5,8 @@ Shared by spectral plots and transforms: both need evenly spaced samples, and ne
 fabricate data across a recording gap.
 """
 
+from itertools import pairwise
+
 import numpy as np
 
 import clinical_scope.constants as cst
@@ -61,6 +63,22 @@ def build_uniform_grid(
 
     x_uniform = (origin_ns + x_uniform_rel_ns).astype("datetime64[ns]")
     return x_uniform, y_uniform, dt_seconds
+
+
+def gap_free_runs(x: np.ndarray, gap_factor: float = cst.Sampling.GAP_FACTOR) -> list[slice]:
+    """
+    The stretches of *x* between recording gaps, as slices into it.
+
+    The gap rule of :func:`build_uniform_grid`, splitting instead of masking: gridding each
+    stretch on its own never allocates a grid across a gap, so two short recordings days apart
+    cost their samples, not the days between them.
+    """
+    if len(x) < 2:  # noqa: PLR2004
+        return [slice(0, len(x))] if len(x) else []
+    steps = np.diff(x.astype("datetime64[ns]").astype(np.int64))
+    breaks = np.flatnonzero(steps > gap_factor * np.median(steps)) + 1
+    edges = [0, *breaks.tolist(), len(x)]
+    return [slice(start, stop) for start, stop in pairwise(edges)]
 
 
 def contiguous_segments(y: np.ndarray) -> list[slice]:

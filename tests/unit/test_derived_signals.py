@@ -333,6 +333,18 @@ class TestExtraction:
         assert "ABP_bad" in caplog.text
         assert expected_in_log in caplog.text
 
+    def test_a_malformed_field_display_entry_costs_only_itself(self, patient_folder):
+        """Hand-edited JSON may nest a list; that entry fails alone, as it did before."""
+        source = _make_fake_source(_waveform_df())
+        section = {
+            "signals": {"ABP_lp": {"source": "ABP", "transform": LOWPASS}},
+            "field_display": [["HR"], "ABP", "ABP_lp"],
+        }
+
+        signals = source.main(_patient_options(patient_folder, quick_load=False), section)
+
+        assert [signal.raw_name for signal in signals] == ["ABP", "ABP_lp"]
+
     def test_a_real_column_named_like_a_derived_row_is_plotted_instead(self, patient_folder):
         source = _make_fake_source(_waveform_df({"ABP": 10.0, "ABP_lp": 3.0}))
         section = {

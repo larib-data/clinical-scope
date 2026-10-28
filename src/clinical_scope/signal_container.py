@@ -340,7 +340,9 @@ def derived_signal_names(
     rows = transforms.derived_rows(database_options_specific)
     field_display = database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
     names = (
-        list(rows) if field_display is None else [name for name in field_display if name in rows]
+        list(rows)
+        if field_display is None
+        else [name for name in field_display if isinstance(name, str) and name in rows]
     )
     to_build = []
     for name in names:

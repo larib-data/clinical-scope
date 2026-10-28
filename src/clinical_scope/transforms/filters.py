@@ -76,7 +76,10 @@ def moving_average(x: np.ndarray, y: np.ndarray, window_s: float) -> np.ndarray:
     a gap longer than that.
     """
     series = pd.Series(y, index=pd.DatetimeIndex(x))
-    return series.rolling(pd.Timedelta(seconds=window_s), center=True).mean().to_numpy()
+    # Closed at both ends: pandas' default leaves the past end open, so the window, and the
+    # average with it, would sit half a sample ahead.
+    window = series.rolling(pd.Timedelta(seconds=window_s), center=True, closed="both")
+    return window.mean().to_numpy()
 
 
 def _band_is_ordered(params: dict[str, Any]) -> str | None:

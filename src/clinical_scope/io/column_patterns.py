@@ -96,6 +96,10 @@ def make_column_selector(
         source_key = cst.DatabaseOptions.SignalConfig.SOURCE
         field_display = [
             *field_display,
-            *(derived[name][source_key] for name in field_display if name in derived),
+            *(
+                derived[name][source_key]
+                for name in field_display
+                if isinstance(name, str) and name in derived
+            ),
         ]
     return lambda file_columns: _pruned_columns(field_display, file_columns)
