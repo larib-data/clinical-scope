@@ -6,7 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Derived signals: filter or smooth a signal from the configuration file.** A row of the `signals` sheet with a `source` and a `transform` draws a new curve computed from another signal of the same data source — for example `lowpass(cutoff_hz=0.5)` on an arterial pressure waveform, or `moving_average(window_s=60)` on heart rate. The quickest way to add one is to duplicate the source's row, rename it and fill in the two new columns: the copy keeps the source's groups, so it is drawn over the original. Five methods are available — `lowpass`, `highpass`, `bandpass`, `bandstop` and `moving_average` — with parameters in hertz and seconds, so one row behaves the same on a fast waveform and on once-per-second numerics. A derived signal can be grouped, looped and used in a spectrogram or a PSD like any other signal, but it exists in the plots only: it is not part of extracted data and Inspect does not list it. The demo configuration shows one of each kind, and the user guide's *Derived signals* section explains the rest.
+
+### Changed
+- **`scipy` is now a dependency**, for the filters above. The standalone application grows accordingly, by about 40 MB on macOS.
 
 ---
 

@@ -27,6 +27,7 @@ from typing import Any
 import pandas as pd
 
 import clinical_scope.constants as cst
+from clinical_scope import transforms
 from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.plot_types.base import CellReader
 
@@ -295,6 +296,15 @@ def _parse_xlsx_data(file_obj: Any) -> dict:
             hover_template = _CELL_READER.text(row, "hover_template")
             if hover_template:
                 signal_options[signal_config.HOVER_TEMPLATE] = hover_template
+
+            source = _CELL_READER.text(row, "source")
+            if source:
+                signal_options[signal_config.SOURCE] = source
+
+            # An unreadable cell stays a string, for validation to report with the rest.
+            transform = _CELL_READER.text(row, "transform")
+            if transform:
+                signal_options[signal_config.TRANSFORM] = transforms.parse_transform_cell(transform)
 
             # Warn about fields that are only meaningful in the sentinel (*) row
             sentinel_only_columns = (

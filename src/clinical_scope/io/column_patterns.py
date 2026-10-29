@@ -12,6 +12,7 @@ from collections.abc import Callable
 import pandas as pd
 
 import clinical_scope.constants as cst
+from clinical_scope import transforms
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,22 @@ def make_column_selector(
 
     Centralizes the ``field_display`` lookup shared by every parquet call site. The returned
     closure defers pattern resolution until the file's columns are known.
+
+    A displayed derived signal is not a column, so it brings its source along, displayed or not.
+    Its own name stays in the list too: a literal absent from the file selects nothing, and a
+    real column of that name is then still read -- it wins over the derived row.
     """
-    field_display = (database_options_specific or {}).get(cst.DatabaseOptions.FIELD_DISPLAY)
+    options = database_options_specific or {}
+    field_display = options.get(cst.DatabaseOptions.FIELD_DISPLAY)
+    if field_display is not None:
+        derived = transforms.derived_rows(options)
+        source_key = cst.DatabaseOptions.SignalConfig.SOURCE
+        field_display = [
+            *field_display,
+            *(
+                derived[name][source_key]
+                for name in field_display
+                if isinstance(name, str) and name in derived
+            ),
+        ]
     return lambda file_columns: _pruned_columns(field_display, file_columns)

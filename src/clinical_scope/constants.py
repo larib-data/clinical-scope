@@ -580,6 +580,10 @@ class DatabaseOptions:
         VISIBLE = "visible"
         LINE_DASH = "line_dash"
         HOVER_TEMPLATE = "hover_template"
+        # A non-empty source makes the row a derived signal, computed from that raw signal.
+        SOURCE = "source"
+        # How a derived signal is computed: {Transform.METHOD: <name>, <param>: <value>, ...}.
+        TRANSFORM = "transform"
 
         DEFAULT_LABEL = None  # default = raw_name
         DEFAULT_UNIT = "-"
@@ -597,6 +601,8 @@ class DatabaseOptions:
                 VISIBLE,
                 LINE_DASH,
                 HOVER_TEMPLATE,
+                SOURCE,
+                TRANSFORM,
             }
         )
 
@@ -635,6 +641,33 @@ class SourceOptions:
     TRACE_OPTIONS = "trace_options"
 
 
+class Sampling:
+    """How sampling.py puts a series on a uniform grid, for spectral plots and transforms alike."""
+
+    # Fraction of median Δt a step can deviate by and still count as "already uniform"
+    # (skip interpolation). Kept tight since the reference EEG recording measured
+    # jitter=0; revisit once validated against real hardware timestamp noise.
+    JITTER_TOLERANCE = 0.05
+
+    # Multiple of median Δt beyond which a step is a recording gap (masked as NaN, never
+    # interpolated across) rather than jitter (interpolated across).
+    GAP_FACTOR = 3.0
+
+
+class Transform:
+    """The canonical form of a derived signal's ``transform``, and the methods it may name."""
+
+    # The key naming the method; every other key of the dict is one of its parameters.
+    METHOD = "method"
+
+    # --- Methods (implemented in transforms/filters.py) ---
+    LOWPASS = "lowpass"  # Butterworth, zero-phase
+    HIGHPASS = "highpass"  # Butterworth, zero-phase
+    BANDPASS = "bandpass"  # Butterworth, zero-phase
+    BANDSTOP = "bandstop"  # Butterworth, zero-phase
+    MOVING_AVERAGE = "moving_average"  # centred, over a time window
+
+
 class Spectral:
     """Defaults for spectral.py's STFT-based spectrogram computation."""
 
@@ -644,15 +677,6 @@ class Spectral:
 
     # Fixed by design, not user-configurable (see database_options spectrogram schema).
     OVERLAP_FRACTION = 0.5
-
-    # Fraction of median Δt a step can deviate by and still count as "already uniform"
-    # (skip interpolation). Kept tight since the reference EEG recording measured
-    # jitter=0; revisit once validated against real hardware timestamp noise.
-    JITTER_TOLERANCE = 0.05
-
-    # Multiple of median Δt beyond which a step is a recording gap (masked as NaN in
-    # the STFT output) rather than jitter (interpolated across).
-    GAP_FACTOR = 3.0
 
     # Perceptually uniform and colorblind-safe, like the Okabe-Ito trace palette above.
     COLORSCALE = "Viridis"

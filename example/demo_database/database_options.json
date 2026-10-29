@@ -16,6 +16,19 @@
                     200.0
                 ]
             },
+            "art_lp": {
+                "label": "Arterial pressure, low-pass 0.5 Hz",
+                "unit": "mmHg",
+                "range": [
+                    0.0,
+                    200.0
+                ],
+                "source": "art",
+                "transform": {
+                    "method": "lowpass",
+                    "cutoff_hz": 0.5
+                }
+            },
             "pleth": {
                 "label": "Plethysmography",
                 "unit": "AU"
@@ -23,6 +36,7 @@
         },
         "field_display": [
             "art",
+            "art_lp",
             "pleth"
         ]
     },
@@ -31,6 +45,15 @@
             "FC": {
                 "label": "Heart Rate",
                 "unit": "bpm"
+            },
+            "FC_ma": {
+                "label": "Heart Rate, 1-min average",
+                "unit": "bpm",
+                "source": "FC",
+                "transform": {
+                    "method": "moving_average",
+                    "window_s": 60
+                }
             },
             "PNId": {
                 "label": "Pressure diastolic",
@@ -50,6 +73,7 @@
         },
         "field_display": [
             "FC",
+            "FC_ma",
             "PNId",
             "PNIm",
             "PNIs"
@@ -697,7 +721,9 @@
         "grouped_fields": {
             "Arterial Pressure": [
                 "other::waves::art",
+                "other::waves::art_lp",
                 "other::numerics::FC",
+                "other::numerics::FC_ma",
                 "other::numerics::PNId",
                 "other::numerics::PNIm",
                 "other::numerics::PNIs",
