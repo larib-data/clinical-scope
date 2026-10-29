@@ -103,6 +103,16 @@ class TestValidateTransform:
             {"method": "bandpass", "low_hz": 1, "high_hz": 40},
             {"method": "bandstop", "low_hz": 49, "high_hz": 51, "order": 2},
             {"method": "moving_average", "window_s": 60},
+            {"method": "moving_median", "window_s": 5},
+            {"method": "savgol", "window_s": 1},
+            {"method": "savgol", "window_s": 1, "polyorder": 0},
+            {"method": "derivative"},
+            {"method": "derivative", "window_s": 0},
+            {"method": "derivative", "window_s": 0.05},
+            {"method": "minmax", "low_pct": 1, "high_pct": 99},
+            {"method": "minmax", "low_pct": 0, "high_pct": 100},
+            {"method": "log10"},
+            {"method": "zscore"},
         ],
     )
     def test_a_valid_spec_raises_nothing(self, spec):
@@ -153,6 +163,41 @@ class TestValidateTransform:
         spec = {"method": "lowpass", "cutoff_hz": 5, param: value}
 
         assert _issues(spec) == [("error", f"t.{param}")]
+
+    @pytest.mark.parametrize("method", ["savgol", "moving_median"])
+    def test_a_window_of_zero_is_refused_where_it_means_nothing(self, method):
+        assert _issues({"method": method, "window_s": 0}) == [("error", "t.window_s")]
+
+    @pytest.mark.parametrize(
+        ("spec", "path"),
+        [
+            ({"method": "savgol", "window_s": 1, "polyorder": -1}, "t.polyorder"),
+            ({"method": "savgol", "window_s": 1, "polyorder": 1.5}, "t.polyorder"),
+            ({"method": "derivative", "window_s": -1}, "t.window_s"),
+            ({"method": "minmax", "high_pct": 101}, "t.high_pct"),
+            ({"method": "minmax", "low_pct": -1}, "t.low_pct"),
+            ({"method": "minmax", "low_pct": 50, "high_pct": 50}, "t"),
+            ({"method": "minmax", "low_pct": 100}, "t"),
+            ({"method": "minmax", "low_pct": 99, "high_pct": 1}, "t"),
+        ],
+    )
+    def test_a_zero_bounded_or_ordered_parameter_is_checked(self, spec, path):
+        assert _issues(spec) == [("error", path)]
+
+    def test_messages_say_what_is_wrong(self):
+        def message(spec):
+            return transforms.validate_transform(spec, "t")[0].message
+
+        assert message({"method": "lowpass", "cutoff_hz": 0}) == "Must be positive, got 0"
+        assert (
+            message({"method": "derivative", "window_s": -1})
+            == "Must be zero or positive, got -1"
+        )
+        assert message({"method": "minmax", "high_pct": 101}) == "Must be at most 100, got 101"
+
+    @pytest.mark.parametrize("method", ["log10", "ln", "exp", "abs", "negate", "zscore"])
+    def test_a_parameterless_method_refuses_a_parameter(self, method):
+        assert _issues({"method": method, "window_s": 1}) == [("error", "t")]
 
     @pytest.mark.parametrize("method", ["bandpass", "bandstop"])
     @pytest.mark.parametrize(("low", "high"), [(10, 1), (5, 5)])
@@ -339,6 +384,7 @@ class TestNoOutputAtAll:
             params=(),
             needs_uniform_grid=True,
             fn=lambda y, dt_s: np.full_like(y, np.inf),  # noqa: ARG005
+            unit_rule=transforms.base.unchanged,
         )
         x, y = _tones(125.0, 10.0, 1.0)
 
@@ -406,3 +452,287 @@ class TestMovingAverage:
         _, y_out = _run({"method": "moving_average", "window_s": 60}, _datetime_x(t_seconds), y)
 
         assert np.array_equal(y_out, y)
+
+
+# ---------------------------------------------------------------------------------------------
+# The v2 methods
+# ---------------------------------------------------------------------------------------------
+
+
+class TestParseNewCells:
+    def test_a_bare_parameterless_method_name_parses(self):
+        assert transforms.parse_transform_cell("log10") == {"method": "log10"}
+
+    def test_minmax_percentiles_parse_as_keywords(self):
+        assert transforms.parse_transform_cell("minmax(low_pct=1, high_pct=99)") == {
+            "method": "minmax",
+            "low_pct": 1,
+            "high_pct": 99,
+        }
+
+
+class TestSavgol:
+    def test_a_quadratic_is_preserved_at_any_window(self):
+        t_seconds = np.arange(0, 20, 0.04)
+        y = 3.0 * t_seconds**2 - 2.0 * t_seconds + 5.0
+
+        for window_s in (0.5, 1.0, 2.2):
+            _, y_out = _run(
+                {"method": "savgol", "window_s": window_s, "polyorder": 2},
+                _datetime_x(t_seconds),
+                y,
+            )
+
+            assert np.allclose(y_out, y, rtol=1e-9, atol=1e-6)
+
+    def test_it_smooths_noise(self):
+        t_seconds = np.arange(0, 20, 0.04)
+        noise = np.random.default_rng(0).normal(0, 1, len(t_seconds))
+
+        _, y_out = _run({"method": "savgol", "window_s": 1}, _datetime_x(t_seconds), noise)
+
+        assert np.std(y_out) < 0.5 * np.std(noise)
+
+    def test_the_window_handed_to_scipy_is_never_even(self, monkeypatch):
+        seen = []
+        real = transforms.filters.signal.savgol_filter
+
+        def spy(y, window_length, *args, **kwargs):
+            seen.append(window_length)
+            return real(y, window_length, *args, **kwargs)
+
+        monkeypatch.setattr(transforms.filters.signal, "savgol_filter", spy)
+        t_seconds = np.arange(0, 20, 0.04)
+
+        # 25 Hz: 0.4 s is 10 samples, 0.5 s is 12.5 -> 12, 0.2 s is 5.
+        for window_s in (0.4, 0.5, 0.2):
+            _run({"method": "savgol", "window_s": window_s}, _datetime_x(t_seconds), t_seconds)
+
+        assert seen == [11, 13, 5]
+
+    def test_a_window_no_longer_than_the_polynomial_returns_the_input_and_says_so(self, caplog):
+        t_seconds = np.arange(0, 20, 1.0)
+        y = np.random.default_rng(1).normal(0, 1, len(t_seconds))
+
+        with caplog.at_level(logging.INFO, logger="clinical_scope.transforms.filters"):
+            _, y_out = _run({"method": "savgol", "window_s": 0.5}, _datetime_x(t_seconds), y)
+
+        assert np.array_equal(y_out, y)
+        assert "savgol" in caplog.text
+        assert "unsmoothed" in caplog.text
+
+    def test_polyorder_one_with_a_three_sample_window_still_smooths(self):
+        """The window is long enough for the polynomial, so only n <= polyorder is skipped."""
+        t_seconds = np.arange(0, 20, 1.0)
+        y = np.random.default_rng(2).normal(0, 1, len(t_seconds))
+
+        _, y_out = _run({"method": "savgol", "window_s": 3, "polyorder": 1}, _datetime_x(t_seconds), y)
+
+        assert not np.allclose(y_out, y)
+
+    def test_a_stretch_shorter_than_the_window_is_left_out(self):
+        t_seconds = np.arange(0, 3, 0.04)
+
+        with pytest.raises(ValueError, match="too short"):
+            _run({"method": "savgol", "window_s": 10}, _datetime_x(t_seconds), t_seconds)
+
+
+class TestMovingMedian:
+    def test_removes_an_isolated_spike_and_keeps_the_timestamps(self):
+        t_seconds = np.arange(0, 30, 1.0)
+        x = _datetime_x(t_seconds)
+        y = np.ones(len(t_seconds))
+        y[15] = 100.0
+
+        x_out, y_out = _run({"method": "moving_median", "window_s": 4}, x, y)
+
+        assert np.array_equal(x_out, x)
+        assert np.array_equal(y_out, np.ones(len(t_seconds)))
+
+    def test_a_window_shorter_than_the_spacing_returns_the_input(self):
+        t_seconds = np.arange(0, 30, 1.0)
+        y = np.random.default_rng(3).normal(0, 1, len(t_seconds))
+
+        _, y_out = _run({"method": "moving_median", "window_s": 0.1}, _datetime_x(t_seconds), y)
+
+        assert np.array_equal(y_out, y)
+
+    def test_does_not_bridge_a_gap_longer_than_its_window(self):
+        t_seconds = np.concatenate([np.arange(0, 10, 1.0), np.arange(110, 120, 1.0)])
+        y = np.where(t_seconds < 50, 0.0, 10.0)
+
+        _, y_out = _run({"method": "moving_median", "window_s": 60}, _datetime_x(t_seconds), y)
+
+        assert np.array_equal(y_out, y)
+
+    def test_is_centred_so_it_neither_lags_nor_leads(self):
+        t_seconds = np.arange(0, 100, 1.0)
+
+        _, y_out = _run(
+            {"method": "moving_median", "window_s": 2}, _datetime_x(t_seconds), t_seconds.copy()
+        )
+
+        assert np.allclose(y_out[2:-2], t_seconds[2:-2])
+
+
+class TestDerivative:
+    def test_a_ramp_has_its_slope_as_derivative(self):
+        t_seconds = np.arange(0, 20, 0.04)
+
+        _, y_out = _run(
+            {"method": "derivative", "window_s": 0.5}, _datetime_x(t_seconds), 3.0 * t_seconds
+        )
+
+        assert np.allclose(y_out, 3.0)
+
+    def test_window_zero_is_central_differences_edges_included(self):
+        t_seconds = np.arange(0, 20, 0.04)
+        y = np.sin(t_seconds) + 0.1 * t_seconds**2
+
+        _, y_out = _run({"method": "derivative"}, _datetime_x(t_seconds), y)
+
+        assert np.allclose(y_out, np.gradient(y, 0.04, edge_order=2))
+
+    def test_the_default_window_is_zero(self):
+        assert transforms.resolve({"method": "derivative"}).spec == {
+            "method": "derivative",
+            "window_s": 0,
+        }
+
+    def test_the_derivative_of_a_cosine_is_minus_a_sine(self):
+        t_seconds = np.arange(0, 20, 0.01)
+
+        _, y_out = _run(
+            {"method": "derivative", "window_s": 0.1},
+            _datetime_x(t_seconds),
+            np.cos(t_seconds),
+        )
+
+        assert np.allclose(y_out[10:-10], -np.sin(t_seconds)[10:-10], atol=1e-3)
+
+    def test_a_window_under_three_samples_is_raised_to_three_and_says_so(self, caplog):
+        t_seconds = np.arange(0, 20, 1.0)
+
+        with caplog.at_level(logging.INFO, logger="clinical_scope.transforms.filters"):
+            _, y_out = _run(
+                {"method": "derivative", "window_s": 0.5}, _datetime_x(t_seconds), 2.0 * t_seconds
+            )
+
+        assert np.allclose(y_out, 2.0)
+        assert "derivative" in caplog.text
+        assert "three" in caplog.text
+
+    def test_no_output_exists_inside_a_gap_and_no_slope_crosses_it(self):
+        t_seconds = np.concatenate([np.arange(0, 10, 0.1), np.arange(30, 40, 0.1)])
+        y = np.where(t_seconds < 20, 0.0, 1000.0)
+
+        x_out, y_out = _run({"method": "derivative"}, _datetime_x(t_seconds), y)
+
+        t_out = (x_out - x_out[0]).astype("timedelta64[ms]").astype(np.int64) / 1000.0
+        assert not np.any((t_out > 10) & (t_out < 30))
+        assert np.allclose(y_out, 0.0)
+
+    def test_a_stretch_shorter_than_the_window_is_left_out(self):
+        t_seconds = np.arange(0, 2, 0.04)
+
+        with pytest.raises(ValueError, match="too short"):
+            _run({"method": "derivative", "window_s": 10}, _datetime_x(t_seconds), t_seconds)
+
+
+class TestElementwise:
+    def test_log10_keeps_only_positive_samples_at_their_timestamps(self):
+        x = _datetime_x(np.arange(4.0))
+
+        x_out, y_out = _run({"method": "log10"}, x, np.array([-1.0, 0.0, 10.0, 100.0]))
+
+        assert np.array_equal(x_out, x[2:])
+        assert y_out.tolist() == [1.0, 2.0]
+
+    def test_ln(self):
+        x = _datetime_x(np.arange(3.0))
+
+        _, y_out = _run({"method": "ln"}, x, np.array([1.0, np.e, np.e**2]))
+
+        assert np.allclose(y_out, [0.0, 1.0, 2.0])
+
+    def test_exp_overflow_leaves_a_gap(self):
+        x = _datetime_x(np.arange(3.0))
+
+        x_out, y_out = _run({"method": "exp"}, x, np.array([0.0, 1.0, 1000.0]))
+
+        assert np.array_equal(x_out, x[:2])
+        assert np.allclose(y_out, [1.0, np.e])
+
+    def test_abs_and_negate(self):
+        x = _datetime_x(np.arange(3.0))
+        y = np.array([-2.0, 0.0, 3.0])
+
+        assert _run({"method": "abs"}, x, y)[1].tolist() == [2.0, 0.0, 3.0]
+        assert _run({"method": "negate"}, x, y)[1].tolist() == [2.0, -0.0, -3.0]
+
+    def test_no_numpy_warning_escapes(self):
+        x = _datetime_x(np.arange(3.0))
+
+        with np.errstate(all="raise"):
+            _run({"method": "log10"}, x, np.array([-1.0, 0.0, 1.0]))
+            _run({"method": "exp"}, x, np.array([0.0, 1.0, 1000.0]))
+
+    def test_a_signal_with_no_positive_sample_fails_naming_the_method(self):
+        x = _datetime_x(np.arange(3.0))
+
+        with pytest.raises(ValueError, match="log10 produced no finite value"):
+            _run({"method": "log10"}, x, np.array([-1.0, 0.0, -5.0]))
+
+
+class TestNormalisation:
+    def test_zscore_has_mean_zero_and_unit_deviation(self):
+        y = np.random.default_rng(4).normal(50, 7, 500)
+
+        x_out, y_out = _run({"method": "zscore"}, _datetime_x(np.arange(500.0)), y)
+
+        assert len(x_out) == 500
+        assert y_out.mean() == pytest.approx(0.0, abs=1e-12)
+        assert y_out.std() == pytest.approx(1.0)
+
+    def test_zscore_of_a_known_series(self):
+        _, y_out = _run({"method": "zscore"}, _datetime_x(np.arange(2.0)), np.array([1.0, 3.0]))
+
+        assert y_out.tolist() == [-1.0, 1.0]
+
+    def test_bare_minmax_spans_exactly_zero_to_one(self):
+        y = np.array([10.0, 20.0, 15.0, 30.0])
+
+        _, y_out = _run({"method": "minmax"}, _datetime_x(np.arange(4.0)), y)
+
+        assert y_out.min() == 0.0
+        assert y_out.max() == 1.0
+        assert y_out.tolist() == [0.0, 0.5, 0.25, 1.0]
+
+    def test_minmax_percentiles_do_not_clip_a_spike(self):
+        y = np.concatenate([np.linspace(0.0, 1.0, 200), [50.0]])
+
+        _, y_out = _run(
+            {"method": "minmax", "low_pct": 1, "high_pct": 99},
+            _datetime_x(np.arange(len(y), dtype=float)),
+            y,
+        )
+
+        assert y_out[-1] > 10.0
+        assert np.percentile(y_out, 1) == pytest.approx(0.0, abs=1e-12)
+        assert np.percentile(y_out, 99) == pytest.approx(1.0, abs=1e-12)
+
+    @pytest.mark.parametrize("method", ["zscore", "minmax"])
+    def test_a_constant_signal_fails_naming_the_method(self, method):
+        with pytest.raises(ValueError, match=method):
+            _run({"method": method}, _datetime_x(np.arange(5.0)), np.full(5, 7.0))
+
+    def test_the_statistics_come_from_the_samples_it_receives(self):
+        """Shorten the series and the same row draws a different curve."""
+        y = np.arange(10.0)
+        x = _datetime_x(np.arange(10.0))
+
+        full = _run({"method": "minmax"}, x, y)[1]
+        half = _run({"method": "minmax"}, x[:5], y[:5])[1]
+
+        assert full[4] == pytest.approx(4 / 9)
+        assert half[4] == 1.0

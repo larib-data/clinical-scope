@@ -5,7 +5,7 @@ A transform computes a derived signal from one source signal: a low-pass filter 
 waveform, a moving average on a numeric. This module holds what every method shares -- the
 parameter grammar, the spreadsheet cell parser, validation, and the driver that puts a series
 on a uniform grid and runs a method on each gap-free stretch. The methods live in
-``filters.py`` and register here.
+``filters.py``, ``elementwise.py`` and ``normalisation.py`` and register here.
 
 Parameters are physical (``cutoff_hz``, ``window_s``), never sample counts: a method converts
 them from the signal's actual sampling, so one config row means the same on a 125 Hz waveform
@@ -42,11 +42,17 @@ class SegmentTooShortError(ValueError):
 
 @dataclass(frozen=True)
 class Param:
-    """One keyword a method takes: a positive number of *kind*, required unless it has a default."""
+    """
+    One keyword a method takes: a number of *kind*, required unless it has a default.
+
+    Positive unless ``allow_zero`` admits zero too; ``maximum`` bounds it from above.
+    """
 
     name: str
     kind: type[int] | type[float]  # an int is accepted where a float is expected
     default: float | None = None
+    allow_zero: bool = False
+    maximum: float | None = None
 
     @property
     def required(self) -> bool:
@@ -59,9 +65,19 @@ class Param:
             return f"Must be a number, got {value!r}"
         if self.kind is int and not isinstance(value, int):
             return f"Must be a whole number, got {value!r}"
-        if not (math.isfinite(value) and value > 0):
+        if self.allow_zero:
+            if not (math.isfinite(value) and value >= 0):
+                return f"Must be zero or positive, got {value!r}"
+        elif not (math.isfinite(value) and value > 0):
             return f"Must be positive, got {value!r}"
+        if self.maximum is not None and value > self.maximum:
+            return f"Must be at most {self.maximum:g}, got {value!r}"
         return None
+
+
+def unchanged(unit: str) -> str:
+    """The unit rule of a method that leaves the unit as it is."""
+    return unit
 
 
 @dataclass(frozen=True)
@@ -73,12 +89,17 @@ class TransformDefinition:
     gap-free stretch of the regularised series, as ``fn(y, dt_s, **params)``, and returns as
     many values as it was given. Any other method gets the samples as recorded, as
     ``fn(x, y, **params)`` with *x* datetime64, and returns y on that same x.
+
+    ``unit_rule`` maps the source's unit to the derived one (``mmHg`` -> ``mmHg/s``). It has no
+    default so a new method has to say whether it changes the unit; :func:`unchanged` says not.
+    It is given the source's unit, ``-`` when the source has none, and decides what that means.
     """
 
     name: str
     params: tuple[Param, ...]
     needs_uniform_grid: bool
     fn: Callable[..., np.ndarray]
+    unit_rule: Callable[[str], str]
     # A rule across parameters (low_hz < high_hz): why a complete parameter set is invalid.
     check: Callable[[dict[str, Any]], str | None] | None = None
 
@@ -268,6 +289,9 @@ class ResolvedTransform:
         if not method.needs_uniform_grid:
             y_out = method.fn(x, y, **self.params)
             keep = np.isfinite(y_out)
+            if not keep.any():
+                msg = f"{method.name} produced no finite value from {len(x)} sample(s)"
+                raise ValueError(msg)
             return x[keep], y_out[keep]
 
         x_parts: list[np.ndarray] = []
