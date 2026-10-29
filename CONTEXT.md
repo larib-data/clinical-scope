@@ -48,10 +48,10 @@ _Avoid_: power spectrum, periodogram, Welch plot, spectral analysis (see above)
 **Derived signal**:
 A Signal computed from one source Signal of the same datasource by a **Transform** declared in `database_options`, drawn as an ordinary time-series line. Display-only: never reaches Extract or Inspect. Contrast with Loop / Spectrogram / PSD, which derive a *plot*, not a Signal.
 _Avoid_: processed signal, computed column, virtual signal
-- Declared as a row of the `signals` block carrying `source` and `transform`; every other key of the row configures it like any Signal, and only `unit_conversion` is taken from the source when the row leaves it unset.
+- Declared as a row of the `signals` block carrying `source` and `transform`; every other key of the row configures it like any Signal, except that `unit_conversion` and `unit` are taken from the source when the row leaves them unset: `unit` through the method's unit rule (a derivative of mmHg is mmHg/s), `-` when the row sets its own `unit_conversion`.
 
 **Transform**:
-The computation that turns a source Signal into a Derived signal — a named method with physical parameters, e.g. `lowpass(cutoff_hz=5)`. One per Derived signal; it runs on each gap-free stretch of the source, never across a recording gap.
+The computation that turns a source Signal into a Derived signal — a named method with physical parameters, e.g. `lowpass(cutoff_hz=5)`. One per Derived signal; it never produces a value inside a recording gap. A windowed method runs on each gap-free stretch of the source; a normalisation takes its statistics from every sample of the loaded time window.
 _Avoid_: filter (only some Transforms are filters), processing
 
 **Grouping**:

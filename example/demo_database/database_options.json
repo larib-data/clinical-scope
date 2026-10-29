@@ -29,6 +29,14 @@
                     "cutoff_hz": 0.5
                 }
             },
+            "art_dpdt": {
+                "label": "Arterial pressure, rate of change",
+                "source": "art",
+                "transform": {
+                    "method": "derivative",
+                    "window_s": 0.05
+                }
+            },
             "pleth": {
                 "label": "Plethysmography",
                 "unit": "AU"
@@ -37,8 +45,15 @@
         "field_display": [
             "art",
             "art_lp",
+            "art_dpdt",
             "pleth"
-        ]
+        ],
+        "grouped_fields": {
+            "Arterial Pressure Rate": [
+                "art",
+                "art_dpdt"
+            ]
+        }
     },
     "other::numerics": {
         "signals": {
@@ -109,6 +124,19 @@
                 "unit": "Ohms",
                 "color": "black"
             },
+            "Global_norm": {
+                "label": "Global, normalised (1st-99th percentile)",
+                "range": [
+                    0.0,
+                    1.0
+                ],
+                "source": "Global",
+                "transform": {
+                    "method": "minmax",
+                    "low_pct": 1,
+                    "high_pct": 99
+                }
+            },
             "Local 1*": {
                 "unit": "Ohms",
                 "color": "red"
@@ -146,6 +174,7 @@
         },
         "field_display": [
             "Global",
+            "Global_norm",
             "Local 1*",
             "Local 2*",
             "Local 3*",
@@ -166,6 +195,10 @@
                 "%Local 2*",
                 "%Local 3*",
                 "%Local 4*"
+            ],
+            "EIT Normalised": [
+                "Global",
+                "Global_norm"
             ]
         }
     },

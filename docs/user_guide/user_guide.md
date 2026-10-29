@@ -1060,7 +1060,7 @@ See `example/demo_database/` in the source repository for a complete example in 
 
 ## Derived signals {#derived-signals}
 
-A derived signal is a new curve computed from one signal of your data — a smoothed arterial pressure, a filtered EEG channel, a one-minute average of heart rate. It is configured and drawn like any other signal: it has its own label, unit and colour, it can be grouped with other signals, and it can be used in a loop, a spectrogram or a PSD. Several derived signals can be computed from the same signal, for instance to compare two ways of smoothing it.
+A derived signal is a new curve computed from one signal of your data — a smoothed arterial pressure, a filtered EEG channel, a one-minute average of heart rate, the rate of change of a pressure, a signal rescaled to 0–1. It is configured and drawn like any other signal: it has its own label, unit and colour, it can be grouped with other signals, and it can be used in a loop, a spectrogram or a PSD. Several derived signals can be computed from the same signal, for instance to compare two ways of smoothing it.
 
 Derived signals appear in the plots only. They are not part of extracted data, and Inspect does not list them.
 
@@ -1071,9 +1071,10 @@ In the [`signals` sheet](#signals-sheet), duplicate the row of the signal you wa
 1. give it a new name in the `signal` column (e.g. `art_lp`) — you refer to it by this name elsewhere, like any raw name;
 2. write the original signal's name in the `source` column;
 3. write the computation in the `transform` column, e.g. `lowpass(cutoff_hz=0.5)`;
-4. change `label`, and perhaps `color` or `line_dash`, so the two curves can be told apart.
+4. change `label`, and perhaps `color` or `line_dash`, so the two curves can be told apart;
+5. if the method changes the unit (a rate of change, a logarithm, a normalisation), clear the copied `unit` so it is worked out for you — see [What to expect](#derived-signals-what-to-expect).
 
-The copy keeps the original's `groups`, so it is drawn on the same plot, over the original. The demo configuration in `example/demo_database/` does exactly this for an arterial pressure waveform and for heart rate.
+The copy keeps the original's `groups`, so it is drawn on the same plot, over the original. The demo configuration in `example/demo_database/` does exactly this for an arterial pressure waveform and for heart rate, and also shows the rate of change of the arterial pressure and a normalised EIT impedance, each drawn over its source with the `unit` left empty.
 
 In JSON, the same derived signal is an entry of the `signals` block, with `transform` written as an object:
 
@@ -1105,17 +1106,46 @@ Parameters are always written by name, in hertz or seconds, never as a number of
 | `bandpass` | `low_hz`, `high_hz` (both required), `order` (default 4) | Keeps only what lies between `low_hz` and `high_hz`. |
 | `bandstop` | `low_hz`, `high_hz` (both required), `order` (default 4) | Removes what lies between `low_hz` and `high_hz`, e.g. 49–51 Hz mains interference. |
 | `moving_average` | `window_s` (required) | Averages over a window of `window_s` seconds centred on each point. |
+| `moving_median` | `window_s` (required) | Takes the median over a window of `window_s` seconds centred on each point: an isolated spike or flush is ignored instead of smeared. |
+| `savgol` | `window_s` (required), `polyorder` (default 2) | Smooths by fitting a polynomial of degree `polyorder` in a window of `window_s` seconds: peaks keep their height better than with a moving average. |
+| `derivative` | `window_s` (default 0) | Rate of change per second. With the default `0` it is the plain difference between neighbouring points; a larger `window_s` smooths it over that many seconds. |
+| `log10`, `ln` | none | Base-10 or natural logarithm. Zero and negative values leave a gap. |
+| `exp` | none | Exponential. A value too large to represent leaves a gap. |
+| `abs` | none | Absolute value. |
+| `negate` | none | Flips the sign. |
+| `zscore` | none | Rescales to mean 0 and standard deviation 1 (population standard deviation). |
+| `minmax` | `low_pct` (default 0), `high_pct` (default 100) | Rescales so that the `low_pct` percentile is 0 and the `high_pct` percentile is 1. Values beyond them are kept, not clipped, so they fall below 0 or above 1. |
 
-The four filters are Butterworth filters of the given `order`, applied forwards then backwards so that the filtered curve does not lag behind the original; a higher order separates kept from removed frequencies more sharply. Before filtering, slightly irregular timestamps are placed on a regular time grid. The moving average keeps the points as recorded. A `cutoff_hz` or `high_hz` must stay below half the signal's sampling rate.
+A method that takes no parameter is written as its bare name, e.g. `log10`.
 
-A mistake the file alone shows — an unknown method, a misspelled, missing or negative parameter, a `source` without a `transform` — is reported in the status box when the file is loaded, and that derived signal is not drawn. A misspelled parameter is never silently ignored: the filter would otherwise run with its default, and nothing on the plot would show it.
+The four filters are Butterworth filters of the given `order`, applied forwards then backwards so that the filtered curve does not lag behind the original; a higher order separates kept from removed frequencies more sharply. Before filtering, slightly irregular timestamps are placed on a regular time grid, as they are for `savgol` and `derivative`. The moving average and median, the logarithms, `exp`, `abs`, `negate` and the two normalisations keep the points as recorded. A `cutoff_hz` or `high_hz` must stay below half the signal's sampling rate.
 
-### What to expect
+A window is a duration, and one too short for a signal's sampling means "no smoothing" rather than an error: `savgol` returns the signal unchanged, `derivative` uses its three-point minimum, and `moving_median` holds one point. One row therefore runs on a fast waveform and on numerics alike. The log says when this happens.
 
-- **Unit conversion is the one value taken from the source.** If the derived row leaves `unit_conversion` empty, the source's factor applies, so the derived curve is in the same units as the original. A value you set replaces the source's factor rather than multiplying it: set `1` to draw the derived signal in the device's raw units. Every other empty column means its usual default, exactly as on any row.
+**Rate of change.** `derivative` is per second: the derivative of a pressure in mmHg is in mmHg/s. For per minute, set the row's `unit_conversion` to 60 times the source's own factor (`60` when the source has none), because the row's factor replaces the source's rather than multiplying it, and set `unit` to e.g. `mmHg/min`: the derivative is linear, so the result is exactly the per-minute rate. A `window_s` of a few samples (for example `0.05` on a 125 Hz waveform) takes the noise out of a derivative.
+
+**Normalisation.** `zscore` and `minmax` take their statistics from the time window you loaded, between the start and end datetimes. The same row therefore draws a different curve when the window changes. `minmax` never clips, so a single large artefact (such as an arterial line flush) can compress everything else toward one end; use `minmax(low_pct=1, high_pct=99)` together with a `range` such as 0 to 1 to frame the bulk of the signal and let the artefact run off the plot. A constant signal cannot be normalised: it is left out and the log says so.
+
+A mistake the file alone shows — an unknown method, a misspelled or missing parameter, one that is out of range (negative, zero where a positive value is needed, a percentile above 100, `low_pct` not below `high_pct`), a `source` without a `transform` — is reported in the status box when the file is loaded, and that derived signal is not drawn. A misspelled parameter is never silently ignored: the filter would otherwise run with its default, and nothing on the plot would show it.
+
+### What to expect {#derived-signals-what-to-expect}
+
+- **The unit follows the source.** Leave `unit` empty and it is worked out from the unit of the source: unchanged for the filters, the moving average and median, `savgol`, `abs` and `negate`, and rewritten for the others, so the derived curve lands on the right axis when drawn over its source.
+
+  | Method | Source in `mmHg` | Source with no unit |
+  |---|---|---|
+  | `derivative` | `mmHg/s` | `/s` |
+  | `log10` | `log10(mmHg)` | `log10` |
+  | `ln` | `ln(mmHg)` | `ln` |
+  | `exp` | `exp(mmHg)` | `exp` |
+  | `zscore` | `z` | `z` |
+  | `minmax` | `norm` | `norm` |
+
+  A `unit` you type always wins. The one exception is a row duplicated from its source: for a method that changes the unit, the copied `unit` is ignored and the derived one is used, with a warning when the file is loaded. A row that sets its own `unit_conversion` must also set `unit`, because the unit cannot be guessed from a factor; without one the unit is `-`, and a warning asks for it.
+- **Unit conversion is taken from the source.** If the derived row leaves `unit_conversion` empty, the source's factor applies, so the derived curve is in the same units as the original. A value you set replaces the source's factor rather than multiplying it: set `1` to draw the derived signal in the device's raw units. Every other empty column (`label`, `color`, `range`, `groups`, …) means its usual default, exactly as on any row.
 - **`period_resampling` does not apply.** A derived signal is always computed from every recorded point of its source; a `period_resampling` on its row is ignored, with a warning when the file is loaded.
-- **Gaps are never bridged.** Where the source has a recording gap, the derived signal has one too: each stretch between gaps is computed on its own. A stretch too short for the filter is left out, and the log says so.
-- **Filters may show transients at the edges.** At the start and end of the time window, and on either side of a gap, a filtered curve can briefly swing away from the original before settling. This comes with filtering any recording that has a beginning and an end, so read the first and last seconds of a filtered stretch with care.
+- **Gaps are never bridged.** Where the source has a recording gap, the derived signal has one too: each stretch between gaps is computed on its own (the two normalisations aside, which use every point of the loaded window to set their scale). A stretch too short for the filter is left out, and the log says so.
+- **Filters may show transients at the edges.** At the start and end of the time window, and on either side of a gap, a filtered curve can briefly swing away from the original before settling; a smoothing window or a derivative is affected by up to half a window there. This comes with filtering any recording that has a beginning and an end, so read the first and last seconds of a filtered stretch with care.
 - **One file, many patients.** If a derived signal cannot be computed for one patient — its source is missing from that patient's data, or its cutoff is too high for that recording's sampling rate — only that derived signal is left out, and the log says why. Everything else is drawn as usual.
 - **A real column wins.** If the data already contains a column with the derived signal's name, that column is plotted instead, and the log asks you to rename the row.
 
