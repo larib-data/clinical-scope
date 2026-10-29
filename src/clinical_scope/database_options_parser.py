@@ -149,11 +149,24 @@ def _check_derived_signals(section: dict, path_prefix: str, issues: list[Validat
             )
 
         if has_transform:
-            issues.extend(
-                transforms.validate_transform(
-                    signal_options[signal_config.TRANSFORM], f"{signal_path}.transform"
-                )
+            transform_issues = transforms.validate_transform(
+                signal_options[signal_config.TRANSFORM], f"{signal_path}.transform"
             )
+            issues.extend(transform_issues)
+            # An unknown or malformed method has no unit rule to check the row against.
+            if raw_name in derived and not any(i.severity == "error" for i in transform_issues):
+                definition = transforms.resolve(signal_options[signal_config.TRANSFORM]).definition
+                _, unit_warning = transforms.derived_unit(
+                    signal_options, source, signals.get(source), definition
+                )
+                if unit_warning:
+                    issues.append(
+                        ValidationIssue(
+                            severity="warning",
+                            path=f"{signal_path}.{signal_config.UNIT}",
+                            message=unit_warning,
+                        )
+                    )
         else:
             issues.append(
                 ValidationIssue(

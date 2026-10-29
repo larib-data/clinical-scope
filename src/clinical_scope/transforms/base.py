@@ -259,6 +259,59 @@ def validate_transform(spec: Any, path: str) -> list[ValidationIssue]:
     return issues
 
 
+def _unit_of(row: Any) -> str | None:
+    """The ``unit`` a signal row sets, or ``None`` when it sets none."""
+    unit = row.get(cst.DatabaseOptions.SignalConfig.UNIT) if isinstance(row, dict) else None
+    return unit if isinstance(unit, str) and unit.strip() else None
+
+
+def derived_unit(
+    row: dict, source_name: str, source_row: Any, definition: TransformDefinition
+) -> tuple[str, str | None]:
+    """
+    The unit a derived row is drawn in, and a warning when its own ``unit`` cannot be honoured.
+
+    Three steps, first match wins. A ``unit`` the row sets is used, unless the method changes
+    the unit and the row merely copies the source's. Else a row with its own ``unit_conversion``
+    gets ``-``: the factor may mean anything (x60 for per-minute), so the unit is not guessed.
+    Else the method's unit rule applied to the source's. Shared by the signal builder and by
+    validation so the two cannot disagree.
+    """
+    signal_config = cst.DatabaseOptions.SignalConfig
+    source_unit = _unit_of(source_row)
+    own_unit = _unit_of(row)
+    changes_unit = definition.unit_rule is not unchanged
+    copied = own_unit is not None and own_unit == source_unit
+    if own_unit is not None and not (copied and changes_unit):
+        return own_unit, None
+
+    has_own_factor = row.get(signal_config.UNIT_CONVERSION) is not None
+    if has_own_factor:
+        effective = signal_config.DEFAULT_UNIT
+        reason = (
+            f"this row's own unit_conversion means its unit cannot be derived from the unit "
+            f"of '{source_name}'"
+        )
+    else:
+        effective = definition.unit_rule(source_unit or signal_config.DEFAULT_UNIT)
+        reason = ""
+
+    if copied:
+        message = (
+            f"`{definition.name}` changes the unit; `{own_unit}`, copied from "
+            f"'{source_name}', is ignored and `{effective}` is used. Set `unit` to choose another."
+        )
+        if has_own_factor:
+            message = (
+                f"`{definition.name}` changes the unit, so the `{own_unit}` copied from "
+                f"'{source_name}' cannot be kept; {reason}. Set `unit`."
+            )
+        return effective, message
+    if has_own_factor:
+        return effective, f"Set `unit`: {reason}"
+    return effective, None
+
+
 def _with_defaults(definition: TransformDefinition, spec: dict[str, Any]) -> dict[str, Any]:
     """The parameters *definition* runs with: each one given in *spec*, else its default."""
     return {param.name: spec.get(param.name, param.default) for param in definition.params}

@@ -401,8 +401,14 @@ class Signal:
         source_options: dict[str, Any],
         definition: type[PlotTypeDefinition],
         display_timezone: str | None = None,
+        unit: str | None = None,
     ) -> "TraceOptions":
-        """Build trace options from database and source options."""
+        """
+        Build trace options from database and source options.
+
+        *unit* replaces the row's own ``unit`` for the axis title, the hover and the axis
+        grouping: a derived signal's unit is resolved from its source, not read off its row.
+        """
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
         signal_options = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
@@ -416,7 +422,11 @@ class Signal:
         signal_config = cst.DatabaseOptions.SignalConfig
         name_signal = signal_options.get(signal_config.LABEL, raw_signal_name)
         range_signal_plot = signal_options.get(signal_config.RANGE)
-        y_unit_name = signal_options.get(signal_config.UNIT, signal_config.DEFAULT_UNIT)
+        y_unit_name = (
+            unit
+            if unit is not None
+            else signal_options.get(signal_config.UNIT, signal_config.DEFAULT_UNIT)
+        )
         y_axis_title_raw = f"{name_signal} ({y_unit_name or ''})"
         y_axis_title = wrap_label(y_axis_title_raw, max_line_length=12)
 
@@ -568,8 +578,9 @@ class Signal:
         *df* is the formatted frame, so timezone, time shift and the datetime window already
         apply. The source is scaled by the derived row's own ``unit_conversion`` if it sets one,
         else by the source row's: replaced, never multiplied, so a row duplicated from its
-        source applies the factor once. ``period_resampling`` never applies -- decimating
-        before a filter aliases, and thinning for display is the resampler's job.
+        source applies the factor once. The unit is resolved by ``transforms.derived_unit``: the
+        row's own, else one derived from the source's. ``period_resampling`` never applies --
+        decimating before a filter aliases, and thinning for display is the resampler's job.
 
         Built from final arrays because ``__post_init__`` draws the trace and shifts ``data.x``
         in place. Raises when this data cannot yield the signal (source column absent, a cutoff
@@ -592,6 +603,9 @@ class Signal:
             signal_config.UNIT_CONVERSION, source_unit_conversion
         )
         transform = transforms.resolve(signal_options.get(signal_config.TRANSFORM))
+        unit, _ = transforms.derived_unit(
+            signal_options, source_name, source_row, transform.definition
+        )
 
         column = get_column_name_from_pattern(df.columns, source_name)
         if column not in df.columns:
@@ -611,6 +625,7 @@ class Signal:
             source_options,
             definition=TimeSeries,
             display_timezone=display_fallbacks.display_timezone,
+            unit=unit,
         )
         return cls(
             raw_name=raw_signal_name,

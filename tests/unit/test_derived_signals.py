@@ -20,7 +20,7 @@ from clinical_scope.database_options_parser import validate_database_options
 from clinical_scope.database_options_xlsx import xlsx_bytes_to_database_options
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.io.column_patterns import make_column_selector
-from clinical_scope.signal_container import Signal, derived_signal_names
+from clinical_scope.signal_container import PlotGroup, Signal, derived_signal_names
 
 FS = 125.0
 LOWPASS = {"method": "lowpass", "cutoff_hz": 5}
@@ -49,7 +49,7 @@ def _interior_mean(signal: Signal) -> float:
 
 
 class TestUnitConversion:
-    """Only unit_conversion is taken from the source -- and a derived row's own value replaces it."""
+    """A derived row's own unit_conversion replaces the source's -- it is never multiplied."""
 
     def test_absent_on_the_derived_row_it_inherits_the_source_factor(self):
         signals = {
@@ -92,8 +92,8 @@ class TestDerivedFromDataframe:
         assert signal.metadata.parent_signal_name == "ABP"
         assert signal.metadata.transform == {"method": "lowpass", "cutoff_hz": 5, "order": 4}
 
-    def test_only_its_own_row_configures_it(self):
-        """No column but unit_conversion is inherited: an empty cell means the usual default."""
+    def test_only_unit_conversion_and_unit_are_taken_from_the_source(self):
+        """Every other empty cell means the usual default; an empty unit comes from the source."""
         signals = {
             "ABP": {"label": "Arterial", "unit": "mmHg", "color": "red", "range": [0, 200]},
             "ABP_lp": {"source": "ABP", "transform": LOWPASS},
@@ -102,7 +102,7 @@ class TestDerivedFromDataframe:
         signal = _derived(_waveform_df(), signals)
 
         assert signal.name == "ABP_lp"
-        assert signal.trace_options.plot_options.y_unit_name == "-"
+        assert signal.trace_options.plot_options.y_unit_name == "mmHg"
         assert signal.trace_options.line_color is None
         assert signal.trace_options.plot_options.y_axis_range is None
 
@@ -169,6 +169,234 @@ class TestDerivedFromDataframe:
 # ---------------------------------------------------------------------------------------------
 # Which derived rows get built
 # ---------------------------------------------------------------------------------------------
+
+
+def _unit_of(signals: dict, transform: dict, name: str = "dp") -> str:
+    signals = {**signals, name: {"source": "ABP", "transform": transform, **signals.get(name, {})}}
+    # Varying data: the normalisations refuse a constant signal.
+    df = _waveform_df()
+    df["ABP"] = np.linspace(1.0, 100.0, len(df))
+    return _derived(df, signals, name=name).trace_options.plot_options.y_unit_name
+
+
+SOURCE_ROW = {"ABP": {"unit": "mmHg"}}
+
+
+class TestDerivedUnit:
+    """An empty unit is derived from the source's by the method's rule."""
+
+    @pytest.mark.parametrize(
+        ("transform", "expected"),
+        [
+            ({"method": "lowpass", "cutoff_hz": 5}, "mmHg"),
+            ({"method": "moving_average", "window_s": 1}, "mmHg"),
+            ({"method": "moving_median", "window_s": 1}, "mmHg"),
+            ({"method": "savgol", "window_s": 0.2}, "mmHg"),
+            ({"method": "abs"}, "mmHg"),
+            ({"method": "negate"}, "mmHg"),
+            ({"method": "derivative"}, "mmHg/s"),
+            ({"method": "log10"}, "log10(mmHg)"),
+            ({"method": "ln"}, "ln(mmHg)"),
+            ({"method": "exp"}, "exp(mmHg)"),
+            ({"method": "zscore"}, "z"),
+            ({"method": "minmax"}, "norm"),
+        ],
+    )
+    def test_the_rule_applied_to_the_source_unit(self, transform, expected):
+        assert _unit_of(SOURCE_ROW, transform) == expected
+
+    @pytest.mark.parametrize(
+        ("transform", "expected"),
+        [
+            ({"method": "lowpass", "cutoff_hz": 5}, "-"),
+            ({"method": "derivative"}, "/s"),
+            ({"method": "log10"}, "log10"),
+            ({"method": "ln"}, "ln"),
+            ({"method": "exp"}, "exp"),
+            ({"method": "zscore"}, "z"),
+            ({"method": "minmax"}, "norm"),
+        ],
+    )
+    def test_a_source_without_a_unit_drops_it_from_the_rule(self, transform, expected):
+        assert _unit_of({"ABP": {"label": "Arterial"}}, transform) == expected
+
+    def test_a_source_with_no_row_has_no_unit(self):
+        assert _unit_of({}, {"method": "derivative"}) == "/s"
+
+    def test_an_explicit_different_unit_wins(self):
+        signals = {**SOURCE_ROW, "dp": {"unit": "kPa/s"}}
+
+        assert _unit_of(signals, {"method": "derivative"}) == "kPa/s"
+
+    def test_a_copied_unit_on_an_identity_method_is_kept(self):
+        signals = {**SOURCE_ROW, "dp": {"unit": "mmHg"}}
+
+        assert _unit_of(signals, LOWPASS) == "mmHg"
+
+    def test_a_copied_unit_on_a_unit_changing_method_is_replaced(self):
+        signals = {**SOURCE_ROW, "dp": {"unit": "mmHg"}}
+
+        assert _unit_of(signals, {"method": "derivative"}) == "mmHg/s"
+
+    def test_a_row_with_its_own_unit_conversion_and_no_unit_gets_the_default(self):
+        signals = {**SOURCE_ROW, "dp": {"unit_conversion": 60}}
+
+        assert _unit_of(signals, {"method": "derivative"}) == "-"
+
+    def test_a_row_with_its_own_unit_conversion_and_a_unit_uses_it(self):
+        signals = {**SOURCE_ROW, "dp": {"unit_conversion": 60, "unit": "mmHg/min"}}
+
+        assert _unit_of(signals, {"method": "derivative"}) == "mmHg/min"
+
+    def test_the_unit_reaches_the_axis_title(self):
+        signals = {**SOURCE_ROW, "dp": {"source": "ABP", "transform": {"method": "derivative"}}}
+
+        signal = _derived(_waveform_df(), signals, name="dp")
+
+        assert "mmHg/s" in signal.trace_options.plot_options.y_axis_title.replace("<br>", "")
+
+    def test_the_config_rows_are_not_modified(self):
+        signals = {**SOURCE_ROW, "dp": {"source": "ABP", "transform": {"method": "derivative"}}}
+
+        _derived(_waveform_df(), signals, name="dp")
+
+        assert signals["dp"] == {"source": "ABP", "transform": {"method": "derivative"}}
+
+    def test_a_derivative_overlaid_with_its_source_lands_on_the_second_axis(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {"source": "ABP", "transform": {"method": "derivative"}},
+            "lp": {"source": "ABP", "transform": LOWPASS},
+        }
+        df = _waveform_df()
+        smooth = _derived(df, signals, name="lp")
+        rate = _derived(df, signals, name="dp")
+
+        group = PlotGroup(name="ABP", signals=[smooth, rate])
+
+        assert [secondary for _, secondary in group.assign_axes()] == [False, True]
+        assert group.plot_options.y_unit_name == "mmHg"
+        assert group.plot_options.y2_unit_name == "mmHg/s"
+
+
+class TestDerivativeValues:
+    def test_a_ramp_gives_its_slope_and_unit_conversion_60_gives_per_minute(self):
+        df = _waveform_df()
+        df["ABP"] = 3.0 * (df.index - df.index[0]).total_seconds()
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {"source": "ABP", "transform": {"method": "derivative"}},
+            "dp_min": {
+                "source": "ABP",
+                "transform": {"method": "derivative"},
+                "unit_conversion": 60,
+                "unit": "mmHg/min",
+            },
+        }
+
+        per_second = _derived(df, signals, name="dp")
+        per_minute = _derived(df, signals, name="dp_min")
+
+        assert np.allclose(per_second.data.y, 3.0)
+        assert np.allclose(per_minute.data.y, 180.0)
+
+
+class TestUnitWarnings:
+    PATH = "servo_u.signals.dp.unit"
+
+    @staticmethod
+    def _warnings(signals: dict) -> list[str]:
+        issues = validate_database_options({"servo_u": {"signals": signals}})
+        return [issue.message for issue in issues if issue.path == TestUnitWarnings.PATH]
+
+    def test_a_copied_unit_on_a_unit_changing_method_warns_and_names_the_replacement(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {"source": "ABP", "transform": {"method": "derivative"}, "unit": "mmHg"},
+        }
+
+        (message,) = self._warnings(signals)
+
+        assert "`derivative` changes the unit" in message
+        assert "`mmHg`" in message
+        assert "'ABP'" in message
+        assert "`mmHg/s`" in message
+
+    def test_a_copied_unit_on_an_identity_method_does_not_warn(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {"source": "ABP", "transform": LOWPASS, "unit": "mmHg"},
+        }
+
+        assert self._warnings(signals) == []
+
+    def test_an_empty_unit_with_its_own_unit_conversion_asks_for_a_unit(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {"source": "ABP", "transform": {"method": "derivative"}, "unit_conversion": 60},
+        }
+
+        (message,) = self._warnings(signals)
+
+        assert message.startswith("Set `unit`")
+        assert "'ABP'" in message
+
+    def test_a_copied_unit_with_its_own_unit_conversion_says_a_unit_must_be_set(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {
+                "source": "ABP",
+                "transform": {"method": "derivative"},
+                "unit": "mmHg",
+                "unit_conversion": 60,
+            },
+        }
+
+        (message,) = self._warnings(signals)
+
+        assert "changes the unit" in message
+        assert "Set `unit`" in message
+
+    def test_an_explicit_different_unit_does_not_warn(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {
+                "source": "ABP",
+                "transform": {"method": "derivative"},
+                "unit": "mmHg/min",
+                "unit_conversion": 60,
+            },
+        }
+
+        assert self._warnings(signals) == []
+
+    def test_an_empty_unit_on_a_row_without_a_unit_conversion_does_not_warn(self):
+        signals = {"ABP": {"unit": "mmHg"}, "dp": {"source": "ABP", "transform": LOWPASS}}
+
+        assert self._warnings(signals) == []
+
+    def test_a_source_with_no_row_has_no_unit_to_copy(self):
+        signals = {"dp": {"source": "ABP", "transform": {"method": "derivative"}, "unit": "-"}}
+
+        assert self._warnings(signals) == []
+
+    def test_an_invalid_transform_gets_no_unit_warning(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {"source": "ABP", "transform": {"method": "nope"}, "unit": "mmHg"},
+        }
+
+        assert self._warnings(signals) == []
+
+    def test_these_are_warnings_never_errors(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "dp": {"source": "ABP", "transform": {"method": "derivative"}, "unit": "mmHg"},
+        }
+
+        issues = validate_database_options({"servo_u": {"signals": signals}})
+
+        assert [issue.severity for issue in issues] == ["warning"]
 
 
 class TestDerivedSignalNames:
@@ -314,8 +542,9 @@ class TestExtraction:
                 {"source": "ABP", "transform": {"method": "lowpass", "cutoff_hz": 5, "oder": 2}},
                 "oder",
             ),
+            ({"source": "ABP", "transform": {"method": "zscore"}}, "zscore"),
         ],
-        ids=["source-absent", "cutoff-above-nyquist", "misspelled-parameter"],
+        ids=["source-absent", "cutoff-above-nyquist", "misspelled-parameter", "constant-signal"],
     )
     def test_a_derived_signal_that_cannot_be_built_costs_only_itself(
         self, patient_folder, caplog, derived_row, expected_in_log
@@ -332,6 +561,21 @@ class TestExtraction:
         assert [signal.raw_name for signal in signals] == ["ABP", "HR_lp"]
         assert "ABP_bad" in caplog.text
         assert expected_in_log in caplog.text
+
+    def test_a_log_of_a_signal_with_no_positive_sample_is_skipped_and_logged(
+        self, patient_folder, caplog
+    ):
+        source = _make_fake_source(_waveform_df({"ABP": -1.0, "HR": 60.0}))
+        section = {
+            "signals": {"ABP_log": {"source": "ABP", "transform": {"method": "log10"}}},
+            "field_display": ["ABP", "ABP_log"],
+        }
+
+        with caplog.at_level(logging.ERROR):
+            signals = source.main(_patient_options(patient_folder, quick_load=False), section)
+
+        assert [signal.raw_name for signal in signals] == ["ABP"]
+        assert "log10 produced no finite value" in caplog.text
 
     def test_a_malformed_field_display_entry_costs_only_itself(self, patient_folder):
         """Hand-edited JSON may nest a list; that entry fails alone, as it did before."""
@@ -479,7 +723,12 @@ class TestValidation:
                 "servo_u": {
                     "signals": {
                         "ABP": {"unit_conversion": 2.0},
-                        "ABP_lp": {"source": "ABP", "transform": LOWPASS, "unit_conversion": 1},
+                        "ABP_lp": {
+                            "source": "ABP",
+                            "transform": LOWPASS,
+                            "unit_conversion": 1,
+                            "unit": "mmHg",
+                        },
                     }
                 }
             }
