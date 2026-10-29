@@ -32,7 +32,6 @@ def _function_of_unit(name: str) -> Callable[[str], str]:
     return rule
 
 
-# Native-irregular: no grid is needed, and the timestamps stay as recorded.
 for _name, _function, _rule in (
     (cst.Transform.LOG10, np.log10, _function_of_unit("log10")),
     (cst.Transform.LN, np.log, _function_of_unit("ln")),

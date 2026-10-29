@@ -580,7 +580,8 @@ class DatabaseOptions:
         VISIBLE = "visible"
         LINE_DASH = "line_dash"
         HOVER_TEMPLATE = "hover_template"
-        # A non-empty source makes the row a derived signal, computed from that raw signal.
+        # A non-empty source makes the row a derived signal, computed from the signal it names,
+        # which may itself be derived.
         SOURCE = "source"
         # How a derived signal is computed: {Transform.METHOD: <name>, <param>: <value>, ...}.
         TRANSFORM = "transform"
@@ -671,11 +672,11 @@ class Transform:
     DERIVATIVE = "derivative"  # rate of change per second, optionally smoothed
 
     # --- Methods (implemented in transforms/elementwise.py) ---
-    LOG10 = "log10"  # base-10 logarithm; non-positive samples leave gaps
-    LN = "ln"  # natural logarithm; non-positive samples leave gaps
-    EXP = "exp"  # exponential; overflow leaves gaps
-    ABS = "abs"  # absolute value
-    NEGATE = "negate"  # sign flip
+    LOG10 = "log10"  # non-positive samples leave gaps
+    LN = "ln"  # non-positive samples leave gaps
+    EXP = "exp"  # overflow leaves gaps
+    ABS = "abs"
+    NEGATE = "negate"
 
     # --- Methods (implemented in transforms/normalisation.py) ---
     ZSCORE = "zscore"  # mean 0, standard deviation 1 over the loaded window

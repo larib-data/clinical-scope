@@ -592,8 +592,7 @@ class Signal:
         up to a column, and each row on the way is computed in turn, nothing kept from one
         signal to the next. The column is scaled by its own row's ``unit_conversion``, as when
         it is plotted, and each row scales its transform's result by its own
-        (``transforms.own_factor``), so every row starts from its source's curve as drawn. The
-        unit is resolved by ``transforms.derived_unit`` along the same chain.
+        (``transforms.own_factor``), so every row starts from its source's curve as drawn.
         ``period_resampling`` never applies -- decimating before a filter aliases, and thinning
         for display is the resampler's job.
 
