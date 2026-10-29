@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 
 - **A derived signal's empty `unit` is worked out from its source's.** A smoothed pressure stays in `mmHg` and so lands on the same axis as the original, and a derivative of it is `mmHg/s`. A `unit` you type still wins, except that on a method that changes the unit, a `unit` copied from the source is replaced and the file loads with a warning; a row with its own `unit_conversion` must set `unit` too, or it is `-` and a warning asks for it.
 
+- **A derived signal's `unit_conversion` scales its own result.** A derived signal is computed from its source as drawn, already converted, and its own `unit_conversion` multiplies what the method returns: `60` turns a rate of change per second into one per minute, and `100` turns `minmax` into a percentage, whatever the source's factor. A value equal to the source's is taken as copied when the row was duplicated and is ignored, with a warning when the file is loaded, so the curve is never converted twice.
+
+- **Derived signals can be chained.** A derived signal's `source` may name another derived signal, so steps combine: a `derivative` of a `derivative` draws the second derivative of a pressure, and `lowpass` then `minmax` keeps the slow, ventilation-driven part of an EIT impedance and rescales it to overlay on volume. Each step is drawn only if displayed, and a hidden one is still computed for the signals built from it. The unit is worked out step by step (`mmHg/s/s`). Sources that loop back on each other are reported when the file is loaded, and a step that cannot be computed for one patient leaves out every signal built from it, with the log naming that step. The demo configuration adds the second derivative of the arterial pressure.
+
 ### Changed
 - **`scipy` is now a dependency**, for the filters above. The standalone application grows accordingly, by about 40 MB on macOS.
 

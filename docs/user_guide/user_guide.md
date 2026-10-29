@@ -742,7 +742,7 @@ source key in this file is what activates that source; removing it disables it e
 |---|---|---|---|
 | `label` | string | signal name | Display label shown on plot axes and legends. |
 | `unit` | string | `""` | Unit string shown on the Y-axis (e.g., `"mmHg"`, `"cmH2O"`). |
-| `unit_conversion` | float | `1.0` | Multiplication factor applied to raw values for unit conversion. On a [derived signal](#derived-signals), left unset it takes the factor of its `source`. |
+| `unit_conversion` | float | `1.0` | Multiplication factor applied to raw values for unit conversion. On a [derived signal](#derived-signals), it multiplies the derived signal's own result instead, and a value equal to its `source`'s is ignored as copied. |
 | `range` | `[min, max]` or null | auto | Fixed Y-axis range. Either bound can be `null` for auto-scaling. |
 | `priority` | float | source default | Plot ordering priority (lower = higher on page). Signals with the same priority share a subplot. |
 | `color` | string | auto | Line color (any CSS color string, e.g., `"red"`, `"#1f77b4"`). |
@@ -750,7 +750,7 @@ source key in this file is what activates that source; removing it disables it e
 | `line_dash` | string | `"solid"` | Line style: `"solid"`, `"dash"`, `"dot"`, `"dashdot"`. |
 | `period_resampling` | float | source default | Resampling period in seconds for this specific signal. Ignored on a [derived signal](#derived-signals). |
 | `hover_template` | string | `null` | Custom hover tooltip. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is passed directly to Plotly as a `hovertemplate`. Leave empty for the default compact display. |
-| `source` | string | `null` | Makes this entry a [derived signal](#derived-signals): the raw name of the signal, from the same data source, that it is computed from. |
+| `source` | string | `null` | Makes this entry a [derived signal](#derived-signals): the raw name of the signal, from the same data source, that it is computed from — a signal of the data, or another derived signal. |
 | `transform` | object | `null` | How a [derived signal](#derived-signals) is computed from its `source`: the method, then its parameters, e.g. `{"method": "lowpass", "cutoff_hz": 5}`. |
 
 ### `numerics` Block (Datasource-Level Defaults)
@@ -982,7 +982,7 @@ The **Scope** column below indicates where each field is meaningful:
 | `signal` | Yes | Both | Raw signal name. Use `*` for a sentinel row that sets datasource-level defaults. |
 | `label` | No | Signal | Display label. Defaults to the signal name if empty or identical. |
 | `unit` | No | Signal | Unit string (e.g., `mmHg`). |
-| `unit_conversion` | No | Signal | Numeric multiplier for unit conversion. |
+| `unit_conversion` | No | Signal | Numeric multiplier for unit conversion. On a [derived signal](#derived-signals), it multiplies the derived signal's own result instead, and a value equal to its `source`'s is ignored as copied. |
 | `range_min` | No | Signal | Minimum Y-axis value. |
 | `range_max` | No | Signal | Maximum Y-axis value. |
 | `priority` | No | Both | Plot priority (float). In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. |
@@ -993,7 +993,7 @@ The **Scope** column below indicates where each field is meaningful:
 | `hover_template` | No | Signal | Hover tooltip format. Magic keywords: `"fraction"` shows values in (0, 1) as `1/n`; `"percentage"` shows them as `33.3%`. Any other string is forwarded directly to Plotly as a `hovertemplate`. |
 | `display` | No | Signal | `yes` / `no` — whether to add this signal to the display list. Default: `yes`. Set `no` to keep the row's label and unit on file while leaving the signal out of the plots entirely: unlike `visible`, it produces no trace and no legend entry. Useful for parking a signal you may want back later, or for describing a column that is not worth plotting (see `Comments(-)` under `fluxmed_parameters` in `example/demo_database/database_options.xlsx`). |
 | `groups` | No | Signal | Semicolon-separated group names (e.g., `Respiratory;Pressure`). Groups within one datasource become local `grouped_fields`; groups spanning multiple datasources become `global.grouped_fields`. |
-| `source` | No | Signal | Raw name of the signal this row is computed from, in the same `datasource` — makes the row a [derived signal](#derived-signals). |
+| `source` | No | Signal | Raw name of the signal this row is computed from, in the same `datasource` — a signal of the data, or another derived row. Makes the row a [derived signal](#derived-signals). |
 | `transform` | No | Signal | How to compute it: the method, then its parameters by name, e.g. `lowpass(cutoff_hz=5, order=4)`. See [Derived signals](#derived-signals). |
 | `timezone` | No | **Sentinel** | Override the timezone for this datasource (e.g., `"Europe/Paris"`, `"UTC"`). Only valid in `*` rows; a warning is logged if placed in a per-signal row. Works with `other::<stem>` datasource keys. See [`additional_informations` Block](#additional_informations-block) for which datasources support this. |
 | `trace_mode` | No | **Sentinel** | `lines`, `markers` or `lines+markers` for every trace in this datasource, `other::<stem>` keys included — e.g. a sparse infusion log reads better as `markers` than as connected `lines`. Only valid in `*` rows; see [`trace_options`](#trace_options-block). |
@@ -1060,7 +1060,7 @@ See `example/demo_database/` in the source repository for a complete example in 
 
 ## Derived signals {#derived-signals}
 
-A derived signal is a new curve computed from one signal of your data — a smoothed arterial pressure, a filtered EEG channel, a one-minute average of heart rate, the rate of change of a pressure, a signal rescaled to 0–1. It is configured and drawn like any other signal: it has its own label, unit and colour, it can be grouped with other signals, and it can be used in a loop, a spectrogram or a PSD. Several derived signals can be computed from the same signal, for instance to compare two ways of smoothing it.
+A derived signal is a new curve computed from one signal of your data — a smoothed arterial pressure, a filtered EEG channel, a one-minute average of heart rate, the rate of change of a pressure, a signal rescaled to 0–1. It is configured and drawn like any other signal: it has its own label, unit and colour, it can be grouped with other signals, and it can be used in a loop, a spectrogram or a PSD. Several derived signals can be computed from the same signal, for instance to compare two ways of smoothing it, and a derived signal can itself be computed from another — see [Chaining derived signals](#derived-signals-chaining).
 
 Derived signals appear in the plots only. They are not part of extracted data, and Inspect does not list them.
 
@@ -1072,7 +1072,8 @@ In the [`signals` sheet](#signals-sheet), duplicate the row of the signal you wa
 2. write the original signal's name in the `source` column;
 3. write the computation in the `transform` column, e.g. `lowpass(cutoff_hz=0.5)`;
 4. change `label`, and perhaps `color` or `line_dash`, so the two curves can be told apart;
-5. if the method changes the unit (a rate of change, a logarithm, a normalisation), clear the copied `unit` so it is worked out for you — see [What to expect](#derived-signals-what-to-expect).
+5. if the method changes the unit (a rate of change, a logarithm, a normalisation), clear the copied `unit` so it is worked out for you — see [What to expect](#derived-signals-what-to-expect);
+6. clear the copied `unit_conversion`, if the original has one: the derived signal is computed from the original as drawn, already converted. A `unit_conversion` equal to the original's is ignored, with a warning when the file is loaded.
 
 The copy keeps the original's `groups`, so it is drawn on the same plot, over the original. The demo configuration in `example/demo_database/` does exactly this for an arterial pressure waveform and for heart rate, and also shows the rate of change of the arterial pressure and a normalised EIT impedance, each drawn over its source with the `unit` left empty.
 
@@ -1093,7 +1094,7 @@ In JSON, the same derived signal is an entry of the `signals` block, with `trans
 }
 ```
 
-The `source` must be a signal of the same data source — for `other`, of the same file — and a signal of the data itself: a derived signal cannot be computed from another derived signal.
+The `source` must be a signal of the same data source — for `other`, of the same file. It may be another derived signal: see [Chaining derived signals](#derived-signals-chaining).
 
 ### Methods
 
@@ -1122,11 +1123,20 @@ The four filters are Butterworth filters of the given `order`, applied forwards 
 
 A window is a duration, and one too short for a signal's sampling means "no smoothing" rather than an error: `savgol` returns the signal unchanged, `derivative` uses its three-point minimum, and `moving_median` holds one point. One row therefore runs on a fast waveform and on numerics alike. The log says when this happens.
 
-**Rate of change.** `derivative` is per second: the derivative of a pressure in mmHg is in mmHg/s. For per minute, set the row's `unit_conversion` to 60 times the source's own factor (`60` when the source has none), because the row's factor replaces the source's rather than multiplying it, and set `unit` to e.g. `mmHg/min`: the derivative is linear, so the result is exactly the per-minute rate. A `window_s` of a few samples (for example `0.05` on a 125 Hz waveform) takes the noise out of a derivative.
+**Rate of change.** `derivative` is per second: the derivative of a pressure in mmHg is in mmHg/s. For per minute, set the row's `unit_conversion` to `60` and its `unit` to e.g. `mmHg/min`. A `window_s` of a few samples (for example `0.05` on a 125 Hz waveform) takes the noise out of a derivative.
 
 **Normalisation.** `zscore` and `minmax` take their statistics from the time window you loaded, between the start and end datetimes. The same row therefore draws a different curve when the window changes. `minmax` never clips, so a single large artefact (such as an arterial line flush) can compress everything else toward one end; use `minmax(low_pct=1, high_pct=99)` together with a `range` such as 0 to 1 to frame the bulk of the signal and let the artefact run off the plot. A constant signal cannot be normalised: it is left out and the log says so.
 
 A mistake the file alone shows — an unknown method, a misspelled or missing parameter, one that is out of range (negative, zero where a positive value is needed, a percentile above 100, `low_pct` not below `high_pct`), a `source` without a `transform` — is reported in the status box when the file is loaded, and that derived signal is not drawn. A misspelled parameter is never silently ignored: the filter would otherwise run with its default, and nothing on the plot would show it.
+
+### Chaining derived signals {#derived-signals-chaining}
+
+A derived signal can be the `source` of another: write its name in the second row's `source` column. Each step is then computed from the curve of the step before, as that curve is drawn. In the demo configuration, `art_dpdt` is the rate of change of the arterial pressure (`source` `art`, `derivative(window_s=0.05)`), and `art_d2` its second derivative (`source` `art_dpdt`, the same `transform`). Other uses: `lowpass` then `minmax`, to keep the slow, ventilation-driven part of an EIT impedance and rescale it so its shape can be overlaid on volume; or `moving_median` then `derivative`, to take the rate of change of a signal with isolated spikes.
+
+- The rows may come in any order in the file, and a chain may have any number of steps.
+- Only displayed rows are drawn. A step you do not want to see need not be displayed: set its `display` to `no` (in JSON, leave it out of `field_display`), and it is still computed as part of every row built from it.
+- A chain must lead to a signal of the data. Rows whose sources loop back on each other (`a` computed from `b`, and `b` from `a`) are reported as an error when the file is loaded, and are not drawn.
+- If a step cannot be computed for a patient — its cutoff is too high for that recording, say — every row computed from it is left out too, and the log names the step that failed.
 
 ### What to expect {#derived-signals-what-to-expect}
 
@@ -1141,13 +1151,16 @@ A mistake the file alone shows — an unknown method, a misspelled or missing pa
   | `zscore` | `z` | `z` |
   | `minmax` | `norm` | `norm` |
 
-  A `unit` you type always wins. The one exception is a row duplicated from its source: for a method that changes the unit, the copied `unit` is ignored and the derived one is used, with a warning when the file is loaded. A row that sets its own `unit_conversion` must also set `unit`, because the unit cannot be guessed from a factor; without one the unit is `-`, and a warning asks for it.
-- **Unit conversion is taken from the source.** If the derived row leaves `unit_conversion` empty, the source's factor applies, so the derived curve is in the same units as the original. A value you set replaces the source's factor rather than multiplying it: set `1` to draw the derived signal in the device's raw units. Every other empty column (`label`, `color`, `range`, `groups`, …) means its usual default, exactly as on any row.
+  In a [chain](#derived-signals-chaining), the unit is worked out step by step: the derivative of the derivative of a pressure in mmHg is `mmHg/s/s`. Type `mmHg/s²` in `unit` if you prefer it.
+
+  A `unit` you type always wins. The one exception is a row duplicated from its source: for a method that changes the unit, the copied `unit` is ignored and the derived one is used, with a warning when the file is loaded. A row that sets its own `unit_conversion` must also set `unit`, because the unit cannot be guessed from a factor; without one the unit is `-`, and a warning asks for it. A `unit_conversion` of `1` does not count, since it changes nothing, and neither does one copied from the source, which is ignored as the next point explains.
+- **`unit_conversion` scales the derived signal's own result.** A derived signal is computed from its source as drawn, already converted by the source's `unit_conversion`, so the cell is usually left empty. A value you set multiplies the result of the method: `60` turns a rate per second into a rate per minute, and `100` turns the 0–1 of `minmax` into a percentage. Every other empty column (`label`, `color`, `range`, `groups`, …) means its usual default, exactly as on any row.
+- **A `unit_conversion` equal to the source's is ignored.** Duplicating the source's row copies its `unit_conversion`, and applying it again would convert the curve twice. So a value equal to the source's own `unit_conversion` is taken as copied and ignored, and a warning says so when the file is loaded. Clear the cell to silence it.
 - **`period_resampling` does not apply.** A derived signal is always computed from every recorded point of its source; a `period_resampling` on its row is ignored, with a warning when the file is loaded.
 - **Gaps are never bridged.** Where the source has a recording gap, the derived signal has one too: each stretch between gaps is computed on its own (the two normalisations aside, which use every point of the loaded window to set their scale). A stretch too short for the filter is left out, and the log says so.
 - **Filters may show transients at the edges.** At the start and end of the time window, and on either side of a gap, a filtered curve can briefly swing away from the original before settling; a smoothing window or a derivative is affected by up to half a window there. This comes with filtering any recording that has a beginning and an end, so read the first and last seconds of a filtered stretch with care.
 - **One file, many patients.** If a derived signal cannot be computed for one patient — its source is missing from that patient's data, or its cutoff is too high for that recording's sampling rate — only that derived signal is left out, and the log says why. Everything else is drawn as usual.
-- **A real column wins.** If the data already contains a column with the derived signal's name, that column is plotted instead, and the log asks you to rename the row.
+- **A real column wins.** If the data already contains a column with the derived signal's name, that column is plotted instead, and the log asks you to rename the row. The same goes for a chain passing through that name: the rows computed from it start from the column.
 
 \newpage
 

@@ -37,6 +37,14 @@
                     "window_s": 0.05
                 }
             },
+            "art_d2": {
+                "label": "Arterial pressure, second derivative",
+                "source": "art_dpdt",
+                "transform": {
+                    "method": "derivative",
+                    "window_s": 0.05
+                }
+            },
             "pleth": {
                 "label": "Plethysmography",
                 "unit": "AU"
@@ -46,6 +54,7 @@
             "art",
             "art_lp",
             "art_dpdt",
+            "art_d2",
             "pleth"
         ],
         "grouped_fields": {
