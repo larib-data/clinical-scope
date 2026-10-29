@@ -2,10 +2,12 @@
 What a transform is, independently of any one method.
 
 A transform computes a derived signal from one source signal: a low-pass filter on a pressure
-waveform, a moving average on a numeric. This module holds what every method shares -- the
-parameter grammar, the spreadsheet cell parser, validation, and the driver that puts a series
-on a uniform grid and runs a method on each gap-free stretch. The methods live in
-``filters.py``, ``elementwise.py`` and ``normalisation.py`` and register here.
+waveform, a moving average on a numeric. The source may itself be derived, and
+:func:`derived_chain` follows such a chain up to the column it starts from. This module holds
+what every method shares -- the parameter grammar, the spreadsheet cell parser, validation,
+and the driver that puts a series on a uniform grid and runs a method on each gap-free
+stretch. The methods live in ``filters.py``, ``elementwise.py`` and ``normalisation.py`` and
+register here.
 
 Parameters are physical (``cutoff_hz``, ``window_s``), never sample counts: a method converts
 them from the signal's actual sampling, so one config row means the same on a 125 Hz waveform
@@ -146,6 +148,81 @@ def derived_rows(database_options_specific: dict) -> dict[str, dict]:
     }
 
 
+class ChainError(ValueError):
+    """Derived rows whose ``source`` names loop back on themselves, so none reaches a column."""
+
+
+def derived_chain(
+    name: str,
+    database_options_specific: dict,
+    is_column: Callable[[str], bool] = lambda _name: False,
+) -> tuple[str, list[str]]:
+    """
+    Follow the derived row *name* up its ``source`` names to the column it is computed from.
+
+    Returns that column's name, then the derived rows on the way, root first and *name* last:
+    running their transforms in that order builds *name*. The walk stops at the first name that
+    is not a derived row, or that *is_column* says is a column of the data -- a column wins
+    over a derived row of its name, so a chain through it starts from the curve plotted under
+    it. Whether the name it stops at is a column at all is for the caller to check: validation
+    has no data, and pruning and building have different ones.
+
+    Raises ChainError on a cycle, which a config that skipped validation can still hold.
+    """
+    rows = derived_rows(database_options_specific)
+    source_key = cst.DatabaseOptions.SignalConfig.SOURCE
+    links = [name]
+    current = rows[name][source_key]
+    while current in rows and not is_column(current):
+        if current in links:
+            cycle = " -> ".join(f"'{link}'" for link in [*links[links.index(current) :], current])
+            msg = (
+                f"The sources loop: {cycle}. Each of these derived signals is computed from the "
+                f"next, so none reaches a signal of the data."
+            )
+            raise ChainError(msg)
+        links.append(current)
+        current = rows[current][source_key]
+    return current, links[::-1]
+
+
+def factor_is_copied(row: dict, source_row: Any) -> bool:
+    """
+    Whether a derived row's ``unit_conversion`` merely repeats its source row's own.
+
+    Duplicating the source's row is how a derived row is made, and it carries the factor over;
+    applying it again would scale the source's curve, already scaled by it, a second time. A
+    factor of 1 changes nothing either way, so it is never reported as copied.
+    """
+    signal_config = cst.DatabaseOptions.SignalConfig
+    factor = row.get(signal_config.UNIT_CONVERSION)
+    source_factor = (
+        source_row.get(signal_config.UNIT_CONVERSION) if isinstance(source_row, dict) else None
+    )
+    return (
+        factor is not None
+        and factor != signal_config.DEFAULT_UNIT_CONVERSION
+        and factor == source_factor
+    )
+
+
+def own_factor(row: dict, source_row: Any) -> float | None:
+    """
+    The factor a derived row scales its own result by, or ``None`` when it sets none.
+
+    An empty cell, a 1 and a factor copied from the source row (:func:`factor_is_copied`) all
+    mean the row's result is drawn as its transform returns it.
+    """
+    factor = row.get(cst.DatabaseOptions.SignalConfig.UNIT_CONVERSION)
+    if (
+        factor is None
+        or factor == cst.DatabaseOptions.SignalConfig.DEFAULT_UNIT_CONVERSION
+        or factor_is_copied(row, source_row)
+    ):
+        return None
+    return factor
+
+
 def parse_transform_cell(cell: str) -> dict[str, Any] | str:
     """
     Read a spreadsheet ``transform`` cell, e.g. ``lowpass(cutoff_hz=5, order=4)``, as a dict.
@@ -266,26 +343,54 @@ def _unit_of(row: Any) -> str | None:
 
 
 def derived_unit(
-    row: dict, source_name: str, source_row: Any, definition: TransformDefinition
+    column: str, links: list[str], database_options_specific: dict
 ) -> tuple[str, str | None]:
     """
-    The unit a derived row is drawn in, and a warning when its own ``unit`` cannot be honoured.
+    The unit the last of *links* is drawn in, and a warning when its ``unit`` cannot be honoured.
+
+    *column* and *links* are a chain as :func:`derived_chain` returns it. The unit is worked
+    out link by link from the column's own ``unit``, so a derivative of a derivative of mmHg is
+    ``mmHg/s/s``. Shared by the signal builder and by validation so the two cannot disagree.
+    Raises ValueError when a link's transform cannot be resolved.
+    """
+    signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS)
+    signals = signals if isinstance(signals, dict) else {}
+    unit = _unit_of(signals.get(column))
+    warning = None
+    source_name = column
+    for link in links:
+        row = signals[link]
+        definition = resolve(row.get(cst.DatabaseOptions.SignalConfig.TRANSFORM)).definition
+        unit, warning = _link_unit(row, source_name, signals.get(source_name), unit, definition)
+        source_name = link
+    return unit, warning
+
+
+def _link_unit(
+    row: dict,
+    source_name: str,
+    source_row: Any,
+    source_unit: str | None,
+    definition: TransformDefinition,
+) -> tuple[str, str | None]:
+    """
+    One link's unit, given its source's: *source_unit* is the unit the source is drawn in.
 
     Three steps, first match wins. A ``unit`` the row sets is used, unless the method changes
-    the unit and the row merely copies the source's. Else a row with its own ``unit_conversion``
-    gets ``-``: the factor may mean anything (x60 for per-minute), so the unit is not guessed.
-    Else the method's unit rule applied to the source's. Shared by the signal builder and by
-    validation so the two cannot disagree.
+    the unit and the row merely copies the source row's ``unit`` cell. Else a row with its own
+    ``unit_conversion`` gets ``-``: the factor may mean anything (x60 for per-minute), so the
+    unit is not guessed. Else the method's unit rule applied to *source_unit*.
     """
     signal_config = cst.DatabaseOptions.SignalConfig
-    source_unit = _unit_of(source_row)
     own_unit = _unit_of(row)
     changes_unit = definition.unit_rule is not unchanged
-    copied = own_unit is not None and own_unit == source_unit
+    # Against the cell, not the unit the source is drawn in: only the cell is carried over
+    # by duplicating the row.
+    copied = own_unit is not None and own_unit == _unit_of(source_row)
     if own_unit is not None and not (copied and changes_unit):
         return own_unit, None
 
-    has_own_factor = row.get(signal_config.UNIT_CONVERSION) is not None
+    has_own_factor = own_factor(row, source_row) is not None
     if has_own_factor:
         effective = signal_config.DEFAULT_UNIT
         reason = (

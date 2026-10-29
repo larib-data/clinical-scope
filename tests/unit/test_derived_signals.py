@@ -49,9 +49,9 @@ def _interior_mean(signal: Signal) -> float:
 
 
 class TestUnitConversion:
-    """A derived row's own unit_conversion replaces the source's -- it is never multiplied."""
+    """A derived row starts from its source's curve; its own unit_conversion scales its result."""
 
-    def test_absent_on_the_derived_row_it_inherits_the_source_factor(self):
+    def test_absent_on_the_derived_row_the_source_curve_is_transformed_as_drawn(self):
         signals = {
             "ABP": {"unit_conversion": 2.0},
             "ABP_lp": {"source": "ABP", "transform": LOWPASS},
@@ -59,7 +59,7 @@ class TestUnitConversion:
 
         assert _interior_mean(_derived(_waveform_df(), signals)) == pytest.approx(20.0)
 
-    def test_equal_to_the_source_factor_it_is_applied_once_not_squared(self):
+    def test_equal_to_the_source_factor_it_is_read_as_copied_and_ignored(self):
         signals = {
             "ABP": {"unit_conversion": 2.0},
             "ABP_lp": {"source": "ABP", "transform": LOWPASS, "unit_conversion": 2.0},
@@ -67,13 +67,27 @@ class TestUnitConversion:
 
         assert _interior_mean(_derived(_waveform_df(), signals)) == pytest.approx(20.0)
 
-    def test_set_to_one_it_draws_raw_units(self):
+    def test_set_to_one_it_scales_nothing(self):
         signals = {
             "ABP": {"unit_conversion": 2.0},
             "ABP_lp": {"source": "ABP", "transform": LOWPASS, "unit_conversion": 1},
         }
 
-        assert _interior_mean(_derived(_waveform_df(), signals)) == pytest.approx(10.0)
+        assert _interior_mean(_derived(_waveform_df(), signals)) == pytest.approx(20.0)
+
+    def test_its_own_factor_scales_the_result_after_the_transform(self):
+        """Scaled before, minmax would undo it; after, 0-1 becomes 0-100."""
+        df = _waveform_df()
+        df["ABP"] = np.linspace(1.0, 5.0, len(df))
+        signals = {
+            "ABP": {"unit_conversion": 2.0},
+            "pct": {"source": "ABP", "transform": {"method": "minmax"}, "unit_conversion": 100},
+        }
+
+        signal = _derived(df, signals, name="pct")
+
+        assert signal.data.y.min() == pytest.approx(0.0)
+        assert signal.data.y.max() == pytest.approx(100.0)
 
     def test_with_no_factor_anywhere_values_are_unscaled(self):
         signals = {"ABP_lp": {"source": "ABP", "transform": LOWPASS}}
@@ -248,6 +262,14 @@ class TestDerivedUnit:
 
         assert _unit_of(signals, {"method": "derivative"}) == "mmHg/min"
 
+    def test_a_unit_conversion_copied_from_the_source_does_not_count_as_its_own(self):
+        signals = {
+            "ABP": {"unit": "mmHg", "unit_conversion": 7.5},
+            "dp": {"unit_conversion": 7.5},
+        }
+
+        assert _unit_of(signals, {"method": "derivative"}) == "mmHg/s"
+
     def test_the_unit_reaches_the_axis_title(self):
         signals = {**SOURCE_ROW, "dp": {"source": "ABP", "transform": {"method": "derivative"}}}
 
@@ -299,6 +321,103 @@ class TestDerivativeValues:
 
         assert np.allclose(per_second.data.y, 3.0)
         assert np.allclose(per_minute.data.y, 180.0)
+
+    def test_per_minute_is_60_whatever_the_source_factor(self):
+        df = _waveform_df()
+        df["ABP"] = 3.0 * (df.index - df.index[0]).total_seconds()
+        signals = {
+            "ABP": {"unit_conversion": 2.0},
+            "dp_min": {
+                "source": "ABP",
+                "transform": {"method": "derivative"},
+                "unit_conversion": 60,
+            },
+        }
+
+        assert np.allclose(_derived(df, signals, name="dp_min").data.y, 360.0)
+
+
+def _parabola_df() -> pd.DataFrame:
+    """ABP = 3 t^2: its derivative is 6 t, its second derivative 6."""
+    df = _waveform_df()
+    df["ABP"] = 3.0 * (df.index - df.index[0]).total_seconds() ** 2
+    return df
+
+
+class TestChain:
+    """A derived row whose source is another derived row runs both transforms in turn."""
+
+    # Declared child first: the order of the rows does not matter.
+    SIGNALS = {  # noqa: RUF012
+        "ABP": {"unit": "mmHg"},
+        "d2": {"source": "d1", "transform": {"method": "derivative"}},
+        "d1": {"source": "ABP", "transform": {"method": "derivative"}},
+    }
+
+    def test_a_derivative_of_a_derivative_is_the_second_derivative(self):
+        signal = _derived(_parabola_df(), self.SIGNALS, name="d2")
+
+        assert np.allclose(signal.data.y, 6.0)
+
+    def test_each_link_scales_its_own_result_and_the_next_starts_from_it(self):
+        signals = {
+            "ABP": {"unit_conversion": 2.0},
+            "d1": {"source": "ABP", "transform": {"method": "derivative"}, "unit_conversion": 60},
+            "d2": {"source": "d1", "transform": {"method": "derivative"}},
+        }
+
+        assert np.allclose(_derived(_parabola_df(), signals, name="d2").data.y, 720.0)
+
+    def test_the_unit_is_worked_out_link_by_link(self):
+        signal = _derived(_parabola_df(), self.SIGNALS, name="d2")
+
+        assert signal.trace_options.plot_options.y_unit_name == "mmHg/s/s"
+
+    def test_a_typed_unit_is_compared_with_the_source_s_cell_only(self):
+        """d1's cell is empty, so a d2 unit that matches d1's derived one is not a copy."""
+        signals = {**self.SIGNALS, "d2": {**self.SIGNALS["d2"], "unit": "mmHg/s"}}
+
+        signal = _derived(_parabola_df(), signals, name="d2")
+
+        assert signal.trace_options.plot_options.y_unit_name == "mmHg/s"
+
+    def test_metadata_names_the_direct_parent(self):
+        signal = _derived(_parabola_df(), self.SIGNALS, name="d2")
+
+        assert signal.metadata.parent_signal_name == "d1"
+        assert signal.metadata.transform == {"method": "derivative", "window_s": 0}
+
+    def test_a_cycle_raises_instead_of_looping(self):
+        signals = {
+            "a": {"source": "b", "transform": LOWPASS},
+            "b": {"source": "a", "transform": LOWPASS},
+        }
+
+        with pytest.raises(ValueError, match="'a' -> 'b' -> 'a'"):
+            _derived(_waveform_df(), signals, name="a")
+
+    def test_a_chain_ending_at_no_column_raises_naming_where_it_ends(self):
+        signals = {
+            "lp": {"source": "CVP", "transform": LOWPASS},
+            "norm": {"source": "lp", "transform": {"method": "minmax"}},
+        }
+
+        with pytest.raises(ValueError, match="'CVP'"):
+            _derived(_waveform_df(), signals, name="norm")
+
+    def test_a_column_named_like_a_link_is_where_the_chain_starts(self, caplog):
+        df = _waveform_df({"ABP": 10.0, "ABP_lp": 3.0})
+        signals = {
+            "ABP_lp": {"source": "ABP", "transform": LOWPASS},
+            "ABP_ma": {"source": "ABP_lp", "transform": {"method": "moving_average", "window_s": 1}},
+        }
+
+        with caplog.at_level(logging.WARNING):
+            signal = _derived(df, signals, name="ABP_ma")
+
+        assert np.allclose(signal.data.y, 3.0)
+        assert "'ABP_lp'" in caplog.text
+        assert "Rename" in caplog.text
 
 
 class TestUnitWarnings:
@@ -388,6 +507,15 @@ class TestUnitWarnings:
 
         assert self._warnings(signals) == []
 
+    def test_a_row_computed_from_an_invalid_one_gets_no_unit_warning(self):
+        signals = {
+            "ABP": {"unit": "mmHg"},
+            "lp": {"source": "ABP", "transform": {"method": "nope"}},
+            "dp": {"source": "lp", "transform": {"method": "derivative"}, "unit": "mmHg"},
+        }
+
+        assert self._warnings(signals) == []
+
     def test_these_are_warnings_never_errors(self):
         signals = {
             "ABP": {"unit": "mmHg"},
@@ -397,6 +525,39 @@ class TestUnitWarnings:
         issues = validate_database_options({"servo_u": {"signals": signals}})
 
         assert [issue.severity for issue in issues] == ["warning"]
+
+
+class TestCopiedFactorWarning:
+    PATH = "servo_u.signals.dp.unit_conversion"
+
+    @staticmethod
+    def _issues(source_factor: float, own_factor: float) -> list:
+        signals = {
+            "ABP": {"unit": "mmHg", "unit_conversion": source_factor},
+            "dp": {
+                "source": "ABP",
+                "transform": {"method": "derivative"},
+                "unit_conversion": own_factor,
+            },
+        }
+        return validate_database_options({"servo_u": {"signals": signals}})
+
+    def test_a_factor_equal_to_the_source_s_warns_it_is_ignored(self):
+        issues = self._issues(7.5, 7.5)
+
+        assert [(issue.severity, issue.path) for issue in issues] == [("warning", self.PATH)]
+        assert issues[0].message.startswith("Ignored")
+        assert "'ABP'" in issues[0].message
+
+    def test_a_different_factor_does_not(self):
+        paths = [issue.path for issue in self._issues(7.5, 60)]
+
+        assert self.PATH not in paths
+
+    def test_a_factor_of_one_on_both_is_not_reported_as_copied(self):
+        paths = [issue.path for issue in self._issues(1, 1)]
+
+        assert self.PATH not in paths
 
 
 class TestDerivedSignalNames:
@@ -461,6 +622,28 @@ class TestColumnSelector:
         section = {"signals": {"ABP_lp": {"source": "ABP", "transform": LOWPASS}}}
 
         assert make_column_selector(section)(["ABP", "HR"]) is None
+
+    def test_a_chain_brings_the_column_it_starts_from(self):
+        section = {
+            "signals": {
+                "ABP_lp": {"source": "ABP", "transform": LOWPASS},
+                "ABP_norm": {"source": "ABP_lp", "transform": {"method": "minmax"}},
+            },
+            "field_display": ["HR", "ABP_norm"],
+        }
+
+        assert make_column_selector(section)(["ABP", "HR", "SpO2"]) == ["HR", "ABP"]
+
+    def test_a_cycle_brings_nothing(self):
+        section = {
+            "signals": {
+                "a": {"source": "b", "transform": LOWPASS},
+                "b": {"source": "a", "transform": LOWPASS},
+            },
+            "field_display": ["HR", "a"],
+        }
+
+        assert make_column_selector(section)(["ABP", "HR"]) == ["HR"]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -619,6 +802,47 @@ class TestExtraction:
         assert [signal.raw_name for signal in signals] == ["HR", "ABP_lp"]
         assert _interior_mean(signals[1]) == pytest.approx(10.0)
 
+    def test_quick_load_builds_a_chain_from_its_column_alone(self, patient_folder):
+        """Only the end of the chain is displayed: its link is computed, not drawn."""
+        section = {
+            "signals": {
+                "ABP_lp": {"source": "ABP", "transform": LOWPASS},
+                "ABP_ma": {
+                    "source": "ABP_lp",
+                    "transform": {"method": "moving_average", "window_s": 1},
+                },
+            },
+            "field_display": ["HR", "ABP_ma"],
+        }
+        _make_fake_source(_waveform_df()).main(
+            _patient_options(patient_folder, quick_load=True), section
+        )
+        cached_only = _make_fake_source(pd.DataFrame())
+
+        signals = cached_only.main(_patient_options(patient_folder, quick_load=True), section)
+
+        assert [signal.raw_name for signal in signals] == ["HR", "ABP_ma"]
+        assert _interior_mean(signals[1]) == pytest.approx(10.0)
+
+    def test_a_broken_link_costs_every_row_computed_from_it(self, patient_folder, caplog):
+        source = _make_fake_source(_waveform_df())
+        section = {
+            "signals": {
+                "ABP_bad": {"source": "ABP", "transform": {"method": "lowpass", "cutoff_hz": 80}},
+                "ABP_norm": {"source": "ABP_bad", "transform": {"method": "minmax"}},
+                "HR_lp": {"source": "HR", "transform": LOWPASS},
+            },
+            "field_display": ["ABP", "ABP_norm", "HR_lp"],
+        }
+
+        with caplog.at_level(logging.ERROR):
+            signals = source.main(_patient_options(patient_folder, quick_load=False), section)
+
+        assert [signal.raw_name for signal in signals] == ["ABP", "HR_lp"]
+        assert "ABP_norm" in caplog.text
+        assert "'ABP_bad'" in caplog.text
+        assert "Nyquist" in caplog.text
+
 
 class TestVisualizeOnly:
     """Extract and Inspect stop at the formatted frame, so a derived signal never reaches them."""
@@ -688,13 +912,27 @@ class TestValidation:
 
         assert _validate(signals) == [("error", f"{self.PATH}.source")]
 
-    def test_a_derived_signal_cannot_be_the_source_of_another(self):
+    def test_a_derived_signal_can_be_the_source_of_another(self):
         signals = {
-            "ABP_lp": {"source": "ABP", "transform": LOWPASS},
             "ABP_lp2": {"source": "ABP_lp", "transform": LOWPASS},
+            "ABP_lp": {"source": "ABP", "transform": LOWPASS},
         }
 
-        assert _validate(signals) == [("error", "servo_u.signals.ABP_lp2.source")]
+        assert _validate(signals) == []
+
+    def test_a_cycle_is_an_error_on_each_row_naming_them(self):
+        signals = {
+            "a": {"source": "b", "transform": LOWPASS},
+            "b": {"source": "a", "transform": LOWPASS},
+        }
+
+        issues = validate_database_options({"servo_u": {"signals": signals}})
+
+        assert [(issue.severity, issue.path) for issue in issues] == [
+            ("error", "servo_u.signals.a.source"),
+            ("error", "servo_u.signals.b.source"),
+        ]
+        assert "'a' -> 'b' -> 'a'" in issues[0].message
 
     def test_the_transform_itself_is_validated(self):
         signals = {"ABP_lp": {"source": "ABP", "transform": {"method": "lowpass"}}}
@@ -716,25 +954,20 @@ class TestValidation:
 
         assert _validate(signals) == [("warning", f"{self.PATH}.period_resampling")]
 
-    def test_unit_conversion_of_one_is_not_redundant_on_a_derived_row(self):
-        """There it overrides the source's factor, so it is not the default it looks like."""
+    def test_unit_conversion_of_one_is_redundant_on_a_derived_row_too(self):
+        """It scales the row's own result, so 1 is the default it looks like."""
         issues = validate_database_options(
             {
                 "servo_u": {
                     "signals": {
                         "ABP": {"unit_conversion": 2.0},
-                        "ABP_lp": {
-                            "source": "ABP",
-                            "transform": LOWPASS,
-                            "unit_conversion": 1,
-                            "unit": "mmHg",
-                        },
+                        "ABP_lp": {"source": "ABP", "transform": LOWPASS, "unit_conversion": 1},
                     }
                 }
             }
         )
 
-        assert issues == []
+        assert [(issue.severity, issue.path) for issue in issues] == [("info", self.PATH)]
 
     def test_works_in_an_other_file_scope(self):
         issues = validate_database_options(

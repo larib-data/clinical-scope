@@ -313,6 +313,7 @@ class TraceOptions:
 class Metadata:
     datasource_name: str | None = None
     is_derived: bool = False
+    # A derived signal's direct source, the row's `source`, which may itself be derived.
     parent_signal_name: str | None = None
     period_resampling: float | None = None
     time_shift_second: float | None = None
@@ -326,6 +327,18 @@ class Quality:
     quality_score: float = 1.0
 
 
+def _unit_conversion_of(row: Any) -> float:
+    """
+    The factor a column's row scales it by when plotted, also where a derived chain starts.
+
+    One reader for both, so a derived signal always starts from its column as drawn.
+    """
+    signal_config = cst.DatabaseOptions.SignalConfig
+    if not isinstance(row, dict):
+        return signal_config.DEFAULT_UNIT_CONVERSION
+    return row.get(signal_config.UNIT_CONVERSION, signal_config.DEFAULT_UNIT_CONVERSION)
+
+
 def derived_signal_names(
     database_options_specific: dict, columns: pd.Index | list[str]
 ) -> list[str]:
@@ -333,9 +346,10 @@ def derived_signal_names(
     The derived signals to build for one datasource: displayed, and not shadowed by a column.
 
     Displayed means named in ``field_display`` -- or every derived row when it is unset, as
-    every column then is. A row named like a real column is skipped with a warning and the
-    column wins: adding ``source`` to a row must never silently swap real data for a computed
-    curve under the same name.
+    every column then is. A derived row another is computed from is built only if displayed
+    itself; otherwise it only runs as a step of that other row's chain. A row named like a real
+    column is skipped with a warning and the column wins: adding ``source`` to a row must never
+    silently swap real data for a computed curve under the same name.
     """
     rows = transforms.derived_rows(database_options_specific)
     field_display = database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
@@ -491,9 +505,7 @@ class Signal:
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
         signal_config = cst.DatabaseOptions.SignalConfig
         name_signal = signal_options.get(signal_config.LABEL, raw_signal_name)
-        unit_conversion_factor = signal_options.get(
-            signal_config.UNIT_CONVERSION, signal_config.DEFAULT_UNIT_CONVERSION
-        )
+        unit_conversion_factor = _unit_conversion_of(signal_options)
         period_resampling_global = numerics.get(
             cst.DatabaseOptions.Numerics.PERIOD_RESAMPLING,
             cst.DatabaseOptions.Numerics.DEFAULT_PERIOD_RESAMPLING,
@@ -576,15 +588,19 @@ class Signal:
         Build the derived signal *raw_signal_name* by transforming its source column in *df*.
 
         *df* is the formatted frame, so timezone, time shift and the datetime window already
-        apply. The source is scaled by the derived row's own ``unit_conversion`` if it sets one,
-        else by the source row's: replaced, never multiplied, so a row duplicated from its
-        source applies the factor once. The unit is resolved by ``transforms.derived_unit``: the
-        row's own, else one derived from the source's. ``period_resampling`` never applies --
-        decimating before a filter aliases, and thinning for display is the resampler's job.
+        apply. The source may itself be derived: ``transforms.derived_chain`` follows the chain
+        up to a column, and each row on the way is computed in turn, nothing kept from one
+        signal to the next. The column is scaled by its own row's ``unit_conversion``, as when
+        it is plotted, and each row scales its transform's result by its own
+        (``transforms.own_factor``), so every row starts from its source's curve as drawn. The
+        unit is resolved by ``transforms.derived_unit`` along the same chain.
+        ``period_resampling`` never applies -- decimating before a filter aliases, and thinning
+        for display is the resampler's job.
 
         Built from final arrays because ``__post_init__`` draws the trace and shifts ``data.x``
-        in place. Raises when this data cannot yield the signal (source column absent, a cutoff
-        at or above its Nyquist frequency, ...); the caller skips it and carries on.
+        in place. Raises when this data cannot yield the signal (column absent, a cutoff at or
+        above its Nyquist frequency, a cycle of sources, ...), naming the row of the chain that
+        failed; the caller skips it and carries on.
         """
         source_options = source_options or {}
         database_options_specific = database_options_specific or {}
@@ -592,32 +608,46 @@ class Signal:
         signal_config = cst.DatabaseOptions.SignalConfig
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
         signal_options = signals[raw_signal_name]
-        source_name = signal_options[signal_config.SOURCE]
-        source_row = signals.get(source_name)
-        source_unit_conversion = (
-            source_row.get(signal_config.UNIT_CONVERSION, signal_config.DEFAULT_UNIT_CONVERSION)
-            if isinstance(source_row, dict)
-            else signal_config.DEFAULT_UNIT_CONVERSION
-        )
-        unit_conversion_factor = signal_options.get(
-            signal_config.UNIT_CONVERSION, source_unit_conversion
-        )
-        transform = transforms.resolve(signal_options.get(signal_config.TRANSFORM))
-        unit, _ = transforms.derived_unit(
-            signal_options, source_name, source_row, transform.definition
-        )
 
-        column = get_column_name_from_pattern(df.columns, source_name)
-        if column not in df.columns:
-            msg = f"its source '{source_name}' is not a column of this data"
-            raise ValueError(msg)
-        y_full = df[column].to_numpy(dtype=np.float64) * unit_conversion_factor
-        valid_mask = np.isfinite(y_full)
-        x, y = transform.apply(
-            df.index[valid_mask].to_numpy(dtype="datetime64[ns]"),
-            y_full[valid_mask],
-            name=raw_signal_name,
+        column_name, links = transforms.derived_chain(
+            raw_signal_name,
+            database_options_specific,
+            is_column=lambda name: get_column_name_from_pattern(df.columns, name) in df.columns,
         )
+        if column_name in transforms.derived_rows(database_options_specific):
+            logger.warning(
+                "Derived signal '%s' is computed from the column '%s', not from the derived row "
+                "of that name: the data already has a column of that name, which is plotted "
+                "instead. Rename the row to compute from the derived signal.",
+                raw_signal_name,
+                column_name,
+            )
+        column = get_column_name_from_pattern(df.columns, column_name)
+        if column not in df.columns:
+            msg = f"'{column_name}', which it is computed from, is not a column of this data"
+            raise ValueError(msg)
+        column_factor = _unit_conversion_of(signals.get(column_name))
+        y_full = df[column].to_numpy(dtype=np.float64) * column_factor
+        valid_mask = np.isfinite(y_full)
+        x = df.index[valid_mask].to_numpy(dtype="datetime64[ns]")
+        y = y_full[valid_mask]
+
+        source_name = column_name
+        for link in links:
+            link_options = signals[link]
+            try:
+                transform = transforms.resolve(link_options.get(signal_config.TRANSFORM))
+                x, y = transform.apply(x, y, name=link)
+            except ValueError as exc:
+                if link == raw_signal_name:
+                    raise
+                msg = f"'{link}', which it is computed from, cannot be computed: {exc}"
+                raise ValueError(msg) from exc
+            factor = transforms.own_factor(link_options, signals.get(source_name))
+            if factor is not None:
+                y = y * factor
+            source_name = link
+        unit, _ = transforms.derived_unit(column_name, links, database_options_specific)
 
         trace_options = cls._build_trace_options(
             raw_signal_name,
@@ -633,7 +663,9 @@ class Signal:
             data=Data(x=x, y=y, timezone=df.index.tz),
             trace_options=trace_options,
             metadata=Metadata(
-                is_derived=True, parent_signal_name=source_name, transform=transform.spec
+                is_derived=True,
+                parent_signal_name=signal_options[signal_config.SOURCE],
+                transform=transform.spec,
             ),
             display_fallbacks=display_fallbacks,
         )

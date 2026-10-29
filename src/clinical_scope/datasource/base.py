@@ -495,10 +495,10 @@ class DataSourceBase(ABC):
         """
         Build one Signal per name in ``field_display``, or per column when it is unset.
 
-        A derived name is not a column: it is built from its source column instead. A name
-        that cannot be turned into a Signal is logged and skipped, so one unusable column or
-        derived row does not cost the datasource its other signals. Override this method for
-        datasource-specific signal extraction needs.
+        A derived name is not a column: it is built from the column its chain of sources starts
+        from instead. A name that cannot be turned into a Signal is logged and skipped, so one
+        unusable column or derived row does not cost the datasource its other signals. Override
+        this method for datasource-specific signal extraction needs.
         """
         field_display = database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
         derived = transforms.derived_rows(database_options_specific)

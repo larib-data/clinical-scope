@@ -1,5 +1,6 @@
 """Parse and validate database_options files."""
 
+import contextlib
 import logging
 
 import clinical_scope.constants as cst
@@ -101,9 +102,10 @@ def _check_derived_signals(section: dict, path_prefix: str, issues: list[Validat
     """
     Check every signal row declaring ``source`` or ``transform``: the two travel together.
 
-    Only what the file alone can show. Whether the source column exists, or a cutoff fits the
-    recording's sampling, depends on the patient: a row failing there is skipped when the data
-    is plotted, not reported here.
+    A ``source`` may name another derived row, so the chain each one starts is followed, and a
+    cycle is reported. Only what the file alone can show: whether the column a chain ends at
+    exists, or a cutoff fits the recording's sampling, depends on the patient, and a row failing
+    there is skipped when the data is plotted, not reported here.
     """
     signal_config = cst.DatabaseOptions.SignalConfig
     signals = section.get(cst.DatabaseOptions.SIGNALS)
@@ -119,6 +121,7 @@ def _check_derived_signals(section: dict, path_prefix: str, issues: list[Validat
             continue
         signal_path = f"{path_prefix}.signals.{raw_name}"
         source = signal_options.get(signal_config.SOURCE)
+        chain = None
 
         if not has_source:
             issues.append(
@@ -136,37 +139,47 @@ def _check_derived_signals(section: dict, path_prefix: str, issues: list[Validat
                     message=f"Must be the name of a signal, got {source!r}",
                 )
             )
-        elif source in derived:
-            issues.append(
-                ValidationIssue(
-                    severity="error",
-                    path=f"{signal_path}.source",
-                    message=(
-                        f"'{source}' is itself a derived signal; a derived signal is computed "
-                        f"from a signal of the data"
-                    ),
+        else:
+            try:
+                chain = transforms.derived_chain(raw_name, section)
+            except transforms.ChainError as exc:
+                issues.append(
+                    ValidationIssue(
+                        severity="error", path=f"{signal_path}.source", message=str(exc)
+                    )
                 )
-            )
+            if transforms.factor_is_copied(signal_options, signals.get(source)):
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        path=f"{signal_path}.{signal_config.UNIT_CONVERSION}",
+                        message=(
+                            f"Ignored: equal to the unit_conversion of '{source}', so read as "
+                            f"copied with its row. This row is computed from the curve of "
+                            f"'{source}', which that factor already scales; clear the cell."
+                        ),
+                    )
+                )
 
         if has_transform:
             transform_issues = transforms.validate_transform(
                 signal_options[signal_config.TRANSFORM], f"{signal_path}.transform"
             )
             issues.extend(transform_issues)
-            # An unknown or malformed method has no unit rule to check the row against.
-            if raw_name in derived and not any(i.severity == "error" for i in transform_issues):
-                definition = transforms.resolve(signal_options[signal_config.TRANSFORM]).definition
-                _, unit_warning = transforms.derived_unit(
-                    signal_options, source, signals.get(source), definition
-                )
-                if unit_warning:
-                    issues.append(
-                        ValidationIssue(
-                            severity="warning",
-                            path=f"{signal_path}.{signal_config.UNIT}",
-                            message=unit_warning,
-                        )
+            # An unknown or malformed method has no unit rule to check the row against, and
+            # neither does a row computed from one: that link is reported on its own row.
+            unit_warning = None
+            if chain is not None and not any(i.severity == "error" for i in transform_issues):
+                with contextlib.suppress(ValueError):
+                    _, unit_warning = transforms.derived_unit(*chain, section)
+            if unit_warning:
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        path=f"{signal_path}.{signal_config.UNIT}",
+                        message=unit_warning,
                     )
+                )
         else:
             issues.append(
                 ValidationIssue(
@@ -340,13 +353,11 @@ def _check_redundant_entries(
                 )
             )
 
-        # On a derived row a factor of 1 is not the default: it overrides the source's factor.
         unit_conversion = signal_options.get(signal_config.UNIT_CONVERSION)
         if (
             unit_conversion is not None
             and isinstance(unit_conversion, (int, float))
             and float(unit_conversion) == signal_config.DEFAULT_UNIT_CONVERSION
-            and signal_config.SOURCE not in signal_options
         ):
             issues.append(
                 ValidationIssue(

@@ -12,13 +12,17 @@ from clinical_scope.transforms import (  # noqa: F401 -- registers the methods
     normalisation,
 )
 from clinical_scope.transforms.base import (
+    ChainError,
     Param,
     ResolvedTransform,
     SegmentTooShortError,
     TransformDefinition,
+    derived_chain,
     derived_rows,
     derived_unit,
+    factor_is_copied,
     method_names,
+    own_factor,
     parse_transform_cell,
     register,
     resolve,
@@ -26,13 +30,17 @@ from clinical_scope.transforms.base import (
 )
 
 __all__ = [
+    "ChainError",
     "Param",
     "ResolvedTransform",
     "SegmentTooShortError",
     "TransformDefinition",
+    "derived_chain",
     "derived_rows",
     "derived_unit",
+    "factor_is_copied",
     "method_names",
+    "own_factor",
     "parse_transform_cell",
     "register",
     "resolve",

@@ -85,21 +85,32 @@ def make_column_selector(
     Centralizes the ``field_display`` lookup shared by every parquet call site. The returned
     closure defers pattern resolution until the file's columns are known.
 
-    A displayed derived signal is not a column, so it brings its source along, displayed or not.
-    Its own name stays in the list too: a literal absent from the file selects nothing, and a
-    real column of that name is then still read -- it wins over the derived row.
+    A displayed derived signal is not a column, so it brings along the column its chain of
+    sources starts from, displayed or not. The chain is followed with the file's columns, so
+    it stops where the build will: at a column named like a derived row. Its own name stays in
+    the list too: a literal absent from the file selects nothing, and a real column of that
+    name is then still read -- it wins over the derived row.
     """
     options = database_options_specific or {}
     field_display = options.get(cst.DatabaseOptions.FIELD_DISPLAY)
-    if field_display is not None:
-        derived = transforms.derived_rows(options)
-        source_key = cst.DatabaseOptions.SignalConfig.SOURCE
-        field_display = [
-            *field_display,
-            *(
-                derived[name][source_key]
-                for name in field_display
-                if isinstance(name, str) and name in derived
-            ),
-        ]
-    return lambda file_columns: _pruned_columns(field_display, file_columns)
+    if field_display is None:
+        return lambda file_columns: _pruned_columns(None, file_columns)
+    derived = transforms.derived_rows(options)
+    displayed_derived = [
+        name for name in field_display if isinstance(name, str) and name in derived
+    ]
+
+    def select(file_columns: list[str]) -> list[str] | None:
+        def is_column(pattern: str) -> bool:
+            return get_column_name_from_pattern(file_columns, pattern) in file_columns
+
+        roots = []
+        for name in displayed_derived:
+            try:
+                column, _ = transforms.derived_chain(name, options, is_column)
+            except transforms.ChainError:
+                continue  # building it reports the cycle
+            roots.append(column)
+        return _pruned_columns([*field_display, *roots], file_columns)
+
+    return select
