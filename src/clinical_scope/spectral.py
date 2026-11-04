@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 import clinical_scope.constants as cst
+from clinical_scope.sampling import TooFewSamplesError, build_uniform_grid
 
 
 class SpectralRefusalError(ValueError):
@@ -19,15 +20,15 @@ class SpectralParams:
     Bundled rather than passed one by one: they always travel together, they are all bare
     floats (so a transposed pair would silently return a different spectrum, not an error),
     and a new knob becomes one field here instead of an argument threaded through four
-    signatures. Defaults come from ``cst.Spectral``; ``window_s`` alone defaults to *None*,
-    meaning "derive it from ``freq_min``".
+    signatures. Defaults come from ``cst.Spectral`` and ``cst.Sampling``; ``window_s`` alone
+    defaults to *None*, meaning "derive it from ``freq_min``".
     """
 
     window_s: float | None = None
     overlap: float = cst.Spectral.OVERLAP_FRACTION
     window_cycles: float = cst.Spectral.WINDOW_CYCLES
-    jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE
-    gap_factor: float = cst.Spectral.GAP_FACTOR
+    jitter_tolerance: float = cst.Sampling.JITTER_TOLERANCE
+    gap_factor: float = cst.Sampling.GAP_FACTOR
 
     @classmethod
     def from_options(
@@ -38,55 +39,6 @@ class SpectralParams:
             window_s=window_s,
             overlap=overlap if overlap is not None else cls.overlap,
         )
-
-
-def build_uniform_grid(
-    x: np.ndarray,
-    y: np.ndarray,
-    jitter_tolerance: float = cst.Spectral.JITTER_TOLERANCE,
-    gap_factor: float = cst.Spectral.GAP_FACTOR,
-) -> tuple[np.ndarray, np.ndarray, float]:
-    """
-    Return ``(x_uniform, y_uniform, dt_seconds)`` on a grid ready for FFT.
-
-    ``x`` must already be sorted, unique datetime64 values with ``y`` NaN-free
-    (callers drop NaNs before this). Gaps (a step past ``gap_factor`` times the
-    median) are masked as NaN rather than interpolated across, so the STFT doesn't
-    fabricate data over e.g. a lead disconnect. Jitter within ``jitter_tolerance``
-    of the median step is treated as already uniform and returned unchanged; beyond
-    that, the whole series is linearly interpolated onto a grid at the median step.
-    """
-    if len(x) < 2:  # noqa: PLR2004
-        msg = "Need at least 2 samples to build a uniform grid."
-        raise SpectralRefusalError(msg)
-
-    x_ns = x.astype("datetime64[ns]").astype(np.int64)
-    origin_ns = x_ns[0]
-    # Relative to origin, not raw epoch ns: epoch ns (~1.7e18) exceeds float64's 2^53
-    # exact-integer range, so np.interp's internal float64 cast would round grid steps
-    # to ~hundreds of ns instead of the true dt.
-    x_rel_ns = x_ns - origin_ns
-    dt_ns_steps = np.diff(x_ns)
-    median_dt_ns = float(np.median(dt_ns_steps))
-    dt_ns_int = round(median_dt_ns)
-    dt_seconds = median_dt_ns / 1e9
-
-    jitter = np.abs(dt_ns_steps - median_dt_ns) / median_dt_ns
-    is_gap = dt_ns_steps > gap_factor * median_dt_ns
-
-    if not is_gap.any() and (jitter <= jitter_tolerance).all():
-        return x, y, dt_seconds
-
-    n_samples = round(x_rel_ns[-1] / dt_ns_int) + 1
-    x_uniform_rel_ns = np.arange(n_samples, dtype=np.int64) * dt_ns_int
-    y_uniform = np.interp(x_uniform_rel_ns, x_rel_ns, y)
-
-    if is_gap.any():
-        for start, end in zip(x_rel_ns[:-1][is_gap], x_rel_ns[1:][is_gap], strict=True):
-            y_uniform[(x_uniform_rel_ns > start) & (x_uniform_rel_ns < end)] = np.nan
-
-    x_uniform = (origin_ns + x_uniform_rel_ns).astype("datetime64[ns]")
-    return x_uniform, y_uniform, dt_seconds
 
 
 def stft(
@@ -173,9 +125,12 @@ def _framed_power(
         raise SpectralRefusalError(msg)
 
     valid = ~np.isnan(y)
-    x_uniform, y_uniform, dt_seconds = build_uniform_grid(
-        x[valid], y[valid], params.jitter_tolerance, params.gap_factor
-    )
+    try:
+        x_uniform, y_uniform, dt_seconds = build_uniform_grid(
+            x[valid], y[valid], params.jitter_tolerance, params.gap_factor
+        )
+    except TooFewSamplesError as exc:
+        raise SpectralRefusalError(str(exc)) from exc
 
     nyquist = 0.5 / dt_seconds
     if freq_max > nyquist:

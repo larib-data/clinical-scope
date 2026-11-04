@@ -1,8 +1,10 @@
 """Parse and validate database_options files."""
 
+import contextlib
 import logging
 
 import clinical_scope.constants as cst
+from clinical_scope import transforms
 from clinical_scope.datasource.registry import DataSource
 from clinical_scope.plot_types import registry as plot_types
 from clinical_scope.validation import ValidationIssue
@@ -91,8 +93,113 @@ def validate_database_options(database_options: dict) -> list[ValidationIssue]:
 def _validate_section(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
     _check_unknown_keys(section, path_prefix, issues)
     _check_types(section, path_prefix, issues)
+    _check_derived_signals(section, path_prefix, issues)
     _check_plot_types(section, path_prefix, issues)
     _check_redundant_entries(section, path_prefix, issues)
+
+
+def _check_derived_signals(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:
+    """
+    Check every signal row declaring ``source`` or ``transform``: the two travel together.
+
+    A ``source`` may name another derived row, so the chain each one starts is followed, and a
+    cycle is reported. Only what the file alone can show: whether the column a chain ends at
+    exists, or a cutoff fits the recording's sampling, depends on the patient, and a row failing
+    there is skipped when the data is plotted, not reported here.
+    """
+    signal_config = cst.DatabaseOptions.SignalConfig
+    signals = section.get(cst.DatabaseOptions.SIGNALS)
+    if not isinstance(signals, dict):
+        return
+    derived = transforms.derived_rows(section)
+    for raw_name, signal_options in signals.items():
+        if not isinstance(signal_options, dict):
+            continue
+        has_source = signal_config.SOURCE in signal_options
+        has_transform = signal_config.TRANSFORM in signal_options
+        if not (has_source or has_transform):
+            continue
+        signal_path = f"{path_prefix}.signals.{raw_name}"
+        source = signal_options.get(signal_config.SOURCE)
+        chain = None
+
+        if not has_source:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=signal_path,
+                    message="'transform' needs a 'source': the signal it is computed from",
+                )
+            )
+        elif raw_name not in derived:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=f"{signal_path}.source",
+                    message=f"Must be the name of a signal, got {source!r}",
+                )
+            )
+        else:
+            try:
+                chain = transforms.derived_chain(raw_name, section)
+            except transforms.ChainError as exc:
+                issues.append(
+                    ValidationIssue(
+                        severity="error", path=f"{signal_path}.source", message=str(exc)
+                    )
+                )
+            if transforms.factor_is_copied(signal_options, signals.get(source)):
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        path=f"{signal_path}.{signal_config.UNIT_CONVERSION}",
+                        message=(
+                            f"Ignored: equal to the unit_conversion of '{source}', so read as "
+                            f"copied with its row. This row is computed from the curve of "
+                            f"'{source}', which that factor already scales; clear the cell."
+                        ),
+                    )
+                )
+
+        if has_transform:
+            transform_issues = transforms.validate_transform(
+                signal_options[signal_config.TRANSFORM], f"{signal_path}.transform"
+            )
+            issues.extend(transform_issues)
+            # An unknown or malformed method has no unit rule to check the row against, and
+            # neither does a row computed from one: that link is reported on its own row.
+            unit_warning = None
+            if chain is not None and not any(i.severity == "error" for i in transform_issues):
+                with contextlib.suppress(ValueError):
+                    _, unit_warning = transforms.derived_unit(*chain, section)
+            if unit_warning:
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        path=f"{signal_path}.{signal_config.UNIT}",
+                        message=unit_warning,
+                    )
+                )
+        else:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    path=signal_path,
+                    message=(
+                        "'source' needs a 'transform': how to compute this signal from it, "
+                        "e.g. lowpass(cutoff_hz=5)"
+                    ),
+                )
+            )
+
+        if has_source and signal_config.PERIOD_RESAMPLING in signal_options:
+            issues.append(
+                ValidationIssue(
+                    severity="warning",
+                    path=f"{signal_path}.period_resampling",
+                    message="Ignored: a derived signal is computed from every sample of its source",
+                )
+            )
 
 
 def _check_unknown_keys(section: dict, path_prefix: str, issues: list[ValidationIssue]) -> None:

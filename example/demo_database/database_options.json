@@ -16,6 +16,35 @@
                     200.0
                 ]
             },
+            "art_lp": {
+                "label": "Arterial pressure, low-pass 0.5 Hz",
+                "unit": "mmHg",
+                "range": [
+                    0.0,
+                    200.0
+                ],
+                "source": "art",
+                "transform": {
+                    "method": "lowpass",
+                    "cutoff_hz": 0.5
+                }
+            },
+            "art_dpdt": {
+                "label": "Arterial pressure, rate of change",
+                "source": "art",
+                "transform": {
+                    "method": "derivative",
+                    "window_s": 0.05
+                }
+            },
+            "art_d2": {
+                "label": "Arterial pressure, second derivative",
+                "source": "art_dpdt",
+                "transform": {
+                    "method": "derivative",
+                    "window_s": 0.05
+                }
+            },
             "pleth": {
                 "label": "Plethysmography",
                 "unit": "AU"
@@ -23,14 +52,32 @@
         },
         "field_display": [
             "art",
+            "art_lp",
+            "art_dpdt",
+            "art_d2",
             "pleth"
-        ]
+        ],
+        "grouped_fields": {
+            "Arterial Pressure Rate": [
+                "art",
+                "art_dpdt"
+            ]
+        }
     },
     "other::numerics": {
         "signals": {
             "FC": {
                 "label": "Heart Rate",
                 "unit": "bpm"
+            },
+            "FC_ma": {
+                "label": "Heart Rate, 1-min average",
+                "unit": "bpm",
+                "source": "FC",
+                "transform": {
+                    "method": "moving_average",
+                    "window_s": 60
+                }
             },
             "PNId": {
                 "label": "Pressure diastolic",
@@ -50,6 +97,7 @@
         },
         "field_display": [
             "FC",
+            "FC_ma",
             "PNId",
             "PNIm",
             "PNIs"
@@ -84,6 +132,19 @@
             "Global": {
                 "unit": "Ohms",
                 "color": "black"
+            },
+            "Global_norm": {
+                "label": "Global, normalised (1st-99th percentile)",
+                "range": [
+                    0.0,
+                    1.0
+                ],
+                "source": "Global",
+                "transform": {
+                    "method": "minmax",
+                    "low_pct": 1,
+                    "high_pct": 99
+                }
             },
             "Local 1*": {
                 "unit": "Ohms",
@@ -122,6 +183,7 @@
         },
         "field_display": [
             "Global",
+            "Global_norm",
             "Local 1*",
             "Local 2*",
             "Local 3*",
@@ -142,6 +204,10 @@
                 "%Local 2*",
                 "%Local 3*",
                 "%Local 4*"
+            ],
+            "EIT Normalised": [
+                "Global",
+                "Global_norm"
             ]
         }
     },
@@ -697,7 +763,9 @@
         "grouped_fields": {
             "Arterial Pressure": [
                 "other::waves::art",
+                "other::waves::art_lp",
                 "other::numerics::FC",
+                "other::numerics::FC_ma",
                 "other::numerics::PNId",
                 "other::numerics::PNIm",
                 "other::numerics::PNIs",

@@ -35,6 +35,7 @@ dependencies = [
   "defusedxml",
   "pytz",
   "pyedflib",
+  "scipy>=1.11",
 ]
 
 [project.scripts]

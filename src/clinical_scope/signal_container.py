@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import clinical_scope.constants as cst
-from clinical_scope import hover_formatters
+from clinical_scope import hover_formatters, transforms
 from clinical_scope.datasource.formatting.timezone import (
     change_ndarray_timezone,
     resolve_display_timezone,
@@ -313,15 +313,62 @@ class TraceOptions:
 class Metadata:
     datasource_name: str | None = None
     is_derived: bool = False
+    # A derived signal's direct source, the row's `source`, which may itself be derived.
     parent_signal_name: str | None = None
     period_resampling: float | None = None
     time_shift_second: float | None = None
+    # A derived signal's canonical transform, defaults filled in: exactly what was applied.
+    transform: dict | None = None
 
 
 @dataclass
 class Quality:
     is_valid: bool = True
     quality_score: float = 1.0
+
+
+def _unit_conversion_of(row: Any) -> float:
+    """
+    The factor a column's row scales it by when plotted, also where a derived chain starts.
+
+    One reader for both, so a derived signal always starts from its column as drawn.
+    """
+    signal_config = cst.DatabaseOptions.SignalConfig
+    if not isinstance(row, dict):
+        return signal_config.DEFAULT_UNIT_CONVERSION
+    return row.get(signal_config.UNIT_CONVERSION, signal_config.DEFAULT_UNIT_CONVERSION)
+
+
+def derived_signal_names(
+    database_options_specific: dict, columns: pd.Index | list[str]
+) -> list[str]:
+    """
+    The derived signals to build for one datasource: displayed, and not shadowed by a column.
+
+    Displayed means named in ``field_display`` -- or every derived row when it is unset, as
+    every column then is. A derived row another is computed from is built only if displayed
+    itself; otherwise it only runs as a step of that other row's chain. A row named like a real
+    column is skipped with a warning and the column wins: adding ``source`` to a row must never
+    silently swap real data for a computed curve under the same name.
+    """
+    rows = transforms.derived_rows(database_options_specific)
+    field_display = database_options_specific.get(cst.DatabaseOptions.FIELD_DISPLAY)
+    names = (
+        list(rows)
+        if field_display is None
+        else [name for name in field_display if isinstance(name, str) and name in rows]
+    )
+    to_build = []
+    for name in names:
+        if name in columns:
+            logger.warning(
+                "Derived signal '%s' not built: the data already has a column of that name, "
+                "which is plotted instead. Rename the row to plot the derived signal.",
+                name,
+            )
+            continue
+        to_build.append(name)
+    return to_build
 
 
 def signal_utc_float_seconds(signal: "Signal") -> np.ndarray:
@@ -368,8 +415,14 @@ class Signal:
         source_options: dict[str, Any],
         definition: type[PlotTypeDefinition],
         display_timezone: str | None = None,
+        unit: str | None = None,
     ) -> "TraceOptions":
-        """Build trace options from database and source options."""
+        """
+        Build trace options from database and source options.
+
+        *unit* replaces the row's own ``unit`` for the axis title, the hover and the axis
+        grouping: a derived signal's unit is resolved from its source, not read off its row.
+        """
         signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
         signal_options = signals.get(raw_signal_name, {}) if isinstance(signals, dict) else {}
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
@@ -383,7 +436,11 @@ class Signal:
         signal_config = cst.DatabaseOptions.SignalConfig
         name_signal = signal_options.get(signal_config.LABEL, raw_signal_name)
         range_signal_plot = signal_options.get(signal_config.RANGE)
-        y_unit_name = signal_options.get(signal_config.UNIT, signal_config.DEFAULT_UNIT)
+        y_unit_name = (
+            unit
+            if unit is not None
+            else signal_options.get(signal_config.UNIT, signal_config.DEFAULT_UNIT)
+        )
         y_axis_title_raw = f"{name_signal} ({y_unit_name or ''})"
         y_axis_title = wrap_label(y_axis_title_raw, max_line_length=12)
 
@@ -448,9 +505,7 @@ class Signal:
         numerics = database_options_specific.get(cst.DatabaseOptions.NUMERICS, {})
         signal_config = cst.DatabaseOptions.SignalConfig
         name_signal = signal_options.get(signal_config.LABEL, raw_signal_name)
-        unit_conversion_factor = signal_options.get(
-            signal_config.UNIT_CONVERSION, signal_config.DEFAULT_UNIT_CONVERSION
-        )
+        unit_conversion_factor = _unit_conversion_of(signal_options)
         period_resampling_global = numerics.get(
             cst.DatabaseOptions.Numerics.PERIOD_RESAMPLING,
             cst.DatabaseOptions.Numerics.DEFAULT_PERIOD_RESAMPLING,
@@ -519,6 +574,100 @@ class Signal:
             {key: f"{value:.4f}s" for key, value in timing.items()},
         )
         return obj
+
+    @classmethod
+    def derived_from_dataframe(
+        cls,
+        df: pd.DataFrame,
+        raw_signal_name: str,
+        source_options: dict | None = None,
+        database_options_specific: dict | None = None,
+        display_fallbacks: DisplayFallbacks | None = None,
+    ) -> "Signal":
+        """
+        Build the derived signal *raw_signal_name* by transforming its source column in *df*.
+
+        *df* is the formatted frame, so timezone, time shift and the datetime window already
+        apply. The source may itself be derived: ``transforms.derived_chain`` follows the chain
+        up to a column, and each row on the way is computed in turn, nothing kept from one
+        signal to the next. The column is scaled by its own row's ``unit_conversion``, as when
+        it is plotted, and each row scales its transform's result by its own
+        (``transforms.own_factor``), so every row starts from its source's curve as drawn.
+        ``period_resampling`` never applies -- decimating before a filter aliases, and thinning
+        for display is the resampler's job.
+
+        Built from final arrays because ``__post_init__`` draws the trace and shifts ``data.x``
+        in place. Raises when this data cannot yield the signal (column absent, a cutoff at or
+        above its Nyquist frequency, a cycle of sources, ...), naming the row of the chain that
+        failed; the caller skips it and carries on.
+        """
+        source_options = source_options or {}
+        database_options_specific = database_options_specific or {}
+        display_fallbacks = display_fallbacks or DisplayFallbacks()
+        signal_config = cst.DatabaseOptions.SignalConfig
+        signals = database_options_specific.get(cst.DatabaseOptions.SIGNALS, {})
+        signal_options = signals[raw_signal_name]
+
+        column_name, links = transforms.derived_chain(
+            raw_signal_name,
+            database_options_specific,
+            is_column=lambda name: get_column_name_from_pattern(df.columns, name) in df.columns,
+        )
+        if column_name in transforms.derived_rows(database_options_specific):
+            logger.warning(
+                "Derived signal '%s' is computed from the column '%s', not from the derived row "
+                "of that name: the data already has a column of that name, which is plotted "
+                "instead. Rename the row to compute from the derived signal.",
+                raw_signal_name,
+                column_name,
+            )
+        column = get_column_name_from_pattern(df.columns, column_name)
+        if column not in df.columns:
+            msg = f"'{column_name}', which it is computed from, is not a column of this data"
+            raise ValueError(msg)
+        column_factor = _unit_conversion_of(signals.get(column_name))
+        y_full = df[column].to_numpy(dtype=np.float64) * column_factor
+        valid_mask = np.isfinite(y_full)
+        x = df.index[valid_mask].to_numpy(dtype="datetime64[ns]")
+        y = y_full[valid_mask]
+
+        source_name = column_name
+        for link in links:
+            link_options = signals[link]
+            try:
+                transform = transforms.resolve(link_options.get(signal_config.TRANSFORM))
+                x, y = transform.apply(x, y, name=link)
+            except ValueError as exc:
+                if link == raw_signal_name:
+                    raise
+                msg = f"'{link}', which it is computed from, cannot be computed: {exc}"
+                raise ValueError(msg) from exc
+            factor = transforms.own_factor(link_options, signals.get(source_name))
+            if factor is not None:
+                y = y * factor
+            source_name = link
+        unit, _ = transforms.derived_unit(column_name, links, database_options_specific)
+
+        trace_options = cls._build_trace_options(
+            raw_signal_name,
+            database_options_specific,
+            source_options,
+            definition=TimeSeries,
+            display_timezone=display_fallbacks.display_timezone,
+            unit=unit,
+        )
+        return cls(
+            raw_name=raw_signal_name,
+            name=signal_options.get(signal_config.LABEL, raw_signal_name),
+            data=Data(x=x, y=y, timezone=df.index.tz),
+            trace_options=trace_options,
+            metadata=Metadata(
+                is_derived=True,
+                parent_signal_name=signal_options[signal_config.SOURCE],
+                transform=transform.spec,
+            ),
+            display_fallbacks=display_fallbacks,
+        )
 
     # ---------------- Regular Methods ----------------
     def to_plotly_trace(self) -> go.Scatter | go.Heatmap:

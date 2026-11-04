@@ -24,7 +24,7 @@ _Avoid_: device, modality
 **Signal**:
 A single measured channel sampled over time from one datasource (e.g. arterial pressure, SpO₂).
 _Avoid_: field, parameter, channel, trace (a distinct concept — see **Trace**), series, variable
-- A Signal's **raw name** is its identifier in the source data (the device's original column name); its **Label** is its human-readable display name.
+- A Signal's **raw name** is its identifier in the source data (the device's original column name) — or, for a **Derived signal**, its row name in `database_options`, which appears in no file; its **Label** is its human-readable display name.
 - The `field_display` and `grouped_fields` keys in a `database_options` file reference Signals **by raw name**.
 
 **Trace**:
@@ -44,6 +44,16 @@ _Avoid_: DSA, CSA, compressed spectral array, spectral analysis (the category co
 **PSD**:
 A power-vs-frequency plot of one or more Signals — frequency on x, power in dB on y, averaged over the loaded time range. Configured via the `psd` key (a list of Signals, a frequency band, and an optional dB range). Where a Spectrogram shows how rhythm evolves, a PSD shows the shape of the spectrum at rest; unlike a Spectrogram, several Signals may legitimately share one PSD subplot.
 _Avoid_: power spectrum, periodogram, Welch plot, spectral analysis (see above)
+
+**Derived signal**:
+A Signal computed from one source Signal of the same datasource by a **Transform** declared in `database_options`, drawn as an ordinary time-series line. The source may itself be a Derived signal. Display-only: never reaches Extract or Inspect. Contrast with Loop / Spectrogram / PSD, which derive a *plot*, not a Signal.
+_Avoid_: processed signal, computed column, virtual signal
+- Declared as a row of the `signals` block carrying `source` and `transform`; every other key of the row configures it like any Signal, except two. `unit_conversion` scales the row's own result, which starts from its source's curve as drawn; one equal to the source row's own is taken as copied with the row and ignored. `unit`, left unset, is worked out from the source's through the method's unit rule (a derivative of mmHg is mmHg/s), or is `-` when the row sets its own `unit_conversion`.
+- A chain of Derived signals is followed from `source` to `source` up to a column of the data, and each row's Transform is run in turn from there, every time a row is built: nothing is shared between rows. A row in the chain that is not displayed is computed, never built as a Signal.
+
+**Transform**:
+The computation that turns a source Signal into a Derived signal — a named method with physical parameters, e.g. `lowpass(cutoff_hz=5)`. One per Derived signal: running several in turn takes a chain of Derived signals, one row each. It never produces a value inside a recording gap. A windowed method runs on each gap-free stretch of the source; a normalisation takes its statistics from every sample of the loaded time window.
+_Avoid_: filter (only some Transforms are filters), processing
 
 **Grouping**:
 The drawing of several Signals on one subplot with shared axes, configured via `grouped_fields` (within a datasource) or `global.grouped_fields` (across datasources).
@@ -99,6 +109,7 @@ The `database_options` block of per-datasource defaults — resampling period an
 - A **Patient** contains one or more **Datasources** (one subfolder each).
 - A **Datasource** produces many **Signals**.
 - A **Signal** is drawn as one **Trace**.
+- A **Derived signal** is computed from one **Signal** of the same **Datasource**, possibly another **Derived signal**, by one **Transform**.
 - A **Loop** is derived from two **Signals**.
 - A **Spectrogram** is derived from one **Signal**.
 - A **PSD** is derived from one or more **Signals**, overlaid on one subplot.
