@@ -1,5 +1,8 @@
 """Tests for mindray_scope datasource — multi-file CSV and XML loading."""
 
+import logging
+import shutil
+
 import pandas as pd
 import pytest
 
@@ -77,6 +80,69 @@ class TestLoadXml:
         assert isinstance(df, pd.DataFrame)
         assert isinstance(df.index, pd.DatetimeIndex)
         assert len(df) > 0
+
+
+class TestEmptyFiles:
+    """An empty recording is skipped; it must not take the folder's other recordings down."""
+
+    @pytest.fixture
+    def good_xml(self, patient_difficult_path):
+        return next((patient_difficult_path / "mindray_scope").glob("*.xml"))
+
+    @pytest.fixture
+    def good_csv(self, patient_full_path):
+        return next((patient_full_path / "mindray_scope").glob("P4-*.csv"))
+
+    def test_zero_byte_xml_is_skipped(self, tmp_path, good_xml, mindray_scope_cls, caplog):
+        shutil.copy(good_xml, tmp_path)
+        empty = tmp_path / "ECG_I-20040915081233~20040915090233.xml"
+        empty.touch()
+        alone = mindray_scope_cls._load([tmp_path / good_xml.name])
+
+        with caplog.at_level(logging.WARNING):
+            df = mindray_scope_cls._load([tmp_path / good_xml.name, empty])
+
+        assert list(df.columns) == list(alone.columns)
+        assert len(df) == len(alone)
+        assert empty.name in caplog.text
+
+    def test_xml_without_samples_is_skipped(self, tmp_path, good_xml, mindray_scope_cls):
+        shutil.copy(good_xml, tmp_path)
+        no_samples = tmp_path / "ECG_I-20040915081233~20040915090233.xml"
+        no_samples.write_text("<?xml version='1.0'?>\n<DataExport><Patient/></DataExport>\n")
+
+        alone = mindray_scope_cls._load([tmp_path / good_xml.name])
+
+        df = mindray_scope_cls._load([tmp_path / good_xml.name, no_samples])
+
+        assert list(df.columns) == list(alone.columns)
+        assert len(df) == len(alone)
+
+    def test_zero_byte_csv_is_skipped(self, tmp_path, good_csv, mindray_scope_cls):
+        shutil.copy(good_csv, tmp_path)
+        empty = tmp_path / "ECG_II-20040915101233~20040915132151.csv"
+        empty.touch()
+
+        df = mindray_scope_cls._load([tmp_path / good_csv.name, empty])
+
+        assert list(df.columns) == ["P4"]
+
+    def test_all_files_empty_raises(self, tmp_path, mindray_scope_cls):
+        first = tmp_path / "Art-20040915081233~20040915090233.xml"
+        second = tmp_path / "Pleth-20040915081233~20040915090233.csv"
+        first.touch()
+        second.touch()
+
+        with pytest.raises(ValueError, match="empty"):
+            mindray_scope_cls._load([first, second])
+
+    def test_malformed_xml_names_the_file(self, tmp_path, good_xml, mindray_scope_cls):
+        shutil.copy(good_xml, tmp_path)
+        truncated = tmp_path / "ECG_I-20040915081233~20040915090233.xml"
+        truncated.write_text("<?xml version='1.0'?>\n<DataExport><Patient>")
+
+        with pytest.raises(ValueError, match=r"ECG_I-20040915081233~20040915090233\.xml"):
+            mindray_scope_cls._load([tmp_path / good_xml.name, truncated])
 
 
 @pytest.mark.snapshot

@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from defusedxml.ElementTree import ParseError
 from defusedxml.ElementTree import parse as parse_xml
 
 import clinical_scope.datasource.sources.mindray_scope.options as options_naming
@@ -261,6 +262,14 @@ class MindRayScopeDataSource(DataSourceBase):
         loaded_file_names = []
 
         for file_path in file_path_list:
+            # The monitor can export a recording with no data; one such file must not fail
+            # the whole folder. A corrupt (non-empty) file still raises below.
+            if file_path.stat().st_size == 0:
+                logger.warning(
+                    "[%s] Skipping empty file '%s'.", cls.DATASOURCE_NAME, file_path.name
+                )
+                continue
+
             if file_path.suffix == ".csv":
                 # .csv are tz naive
                 name = _get_name_time_series(file_path)
@@ -285,11 +294,29 @@ class MindRayScopeDataSource(DataSourceBase):
 
             elif file_path.suffix == ".xml":
                 # .xml seems tz aware
-                df_waveform, _df_patient = _load_xml(file_path)
+                try:
+                    df_waveform, _df_patient = _load_xml(file_path)
+                except ParseError as exc:
+                    msg = f"Cannot read {cls.DATASOURCE_NAME} file '{file_path.name}': {exc}"
+                    raise ValueError(msg) from exc
+                if df_waveform.empty:
+                    logger.warning(
+                        "[%s] Skipping '%s': it holds no waveform samples.",
+                        cls.DATASOURCE_NAME,
+                        file_path.name,
+                    )
+                    continue
                 df_local = _format_xml_waveform_data(df_waveform)
 
                 df_list.append(df_local)
                 loaded_file_names.append(file_path.name)
+
+        if not df_list:
+            msg = (
+                f"All {len(file_path_list)} {cls.DATASOURCE_NAME} file(s) are empty: "
+                f"{', '.join(p.name for p in file_path_list)}"
+            )
+            raise ValueError(msg)
 
         _reject_mixed_timezone_awareness(df_list, loaded_file_names)
 
