@@ -145,6 +145,51 @@ class TestEmptyFiles:
             mindray_scope_cls._load([tmp_path / good_xml.name, truncated])
 
 
+def _segment(second: int, data: str, resolution: str) -> str:
+    return (
+        f"<WaveformSegment Time='2004-09-15T08:12:{second:02d}.000+01:00'>"
+        f"<SampleRate>2</SampleRate>{resolution}<Data>{data}</Data></WaveformSegment>"
+    )
+
+
+def _waveform(waveform_type: str, segments: str) -> str:
+    return f"<Waveform Type='{waveform_type}' Units='mmHg'>{segments}</Waveform>"
+
+
+def _scope_xml(waveforms: str) -> str:
+    return (
+        "<?xml version='1.0'?>\n<DataExport><VitalSigns>"
+        f"<WaveformSnapshot Time='2004-09-15T08:12:33.000+01:00'>{waveforms}</WaveformSnapshot>"
+        "</VitalSigns></DataExport>"
+    )
+
+
+class TestXmlQuirks:
+    """Real exports deviate from the reference file; each deviation is either read or named."""
+
+    def test_empty_data_resolution_means_unscaled(self, tmp_path, mindray_scope_cls):
+        path = tmp_path / "Art-20040915081233~20040915090233.xml"
+        segments = _segment(33, "10,20", "<DataResolution>0.10</DataResolution>") + _segment(
+            34, "30,40", "<DataResolution/>"
+        )
+        path.write_text(_scope_xml(_waveform("Art", segments)))
+
+        df = mindray_scope_cls._load([path])
+
+        assert df.iloc[:, 0].astype(float).tolist() == pytest.approx([1.0, 2.0, 30.0, 40.0])
+
+    def test_any_failure_names_the_file(self, tmp_path, mindray_scope_cls):
+        path = tmp_path / "Art-20040915081233~20040915090233.xml"
+        resolution = "<DataResolution>1</DataResolution>"
+        waveforms = _waveform("Art", _segment(33, "1,2", resolution)) + _waveform(
+            "Pleth", _segment(33, "3,4", resolution)
+        )
+        path.write_text(_scope_xml(waveforms))
+
+        with pytest.raises(ValueError, match=r"Art-20040915081233~20040915090233\.xml"):
+            mindray_scope_cls._load([path])
+
+
 @pytest.mark.snapshot
 class TestSnapshot:
     """Content regression tests — compare against golden parquet files."""

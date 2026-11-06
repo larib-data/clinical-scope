@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **An empty Mindray scope recording no longer hides the others.** One empty `.xml` or `.csv` file in a `mindray_scope` folder made the whole folder fail to load, with an error that did not say which file was at fault. Empty files are now skipped, with a warning in the log naming each one, and the other recordings load as usual; a folder in which every file is empty reports that instead. A file that is damaged rather than empty still stops the load, but the error now names it.
+- **Mindray scope `.xml` recordings with a blank data resolution now load.** Some exports leave a recording's data resolution blank, and the whole folder failed to load. Such a recording now loads with its values as stored, as when the resolution is missing altogether; a `unit_conversion` in the configuration file scales them for display if needed.
 
 ---
 
