@@ -9,6 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.eit.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_reading import read_each
 from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
@@ -189,8 +190,9 @@ def _parse_eit_asc_file_list(
     all_tidal_variation_summary_dfs = []
     all_tidal_variation_full_dfs = []
 
-    for file_path in asc_files:
-        metadata, dynamic_image, tidal_image, df_summary, df_full = _parse_eit_asc_file(file_path)
+    parsed_files = read_each(asc_files, _parse_eit_asc_file, options_naming.DATASOURCE_NAME)
+    for file_path, parsed in parsed_files:
+        metadata, dynamic_image, tidal_image, df_summary, df_full = parsed
         df_summary["source_file"] = file_path.name
         df_full["source_file"] = file_path.name
 

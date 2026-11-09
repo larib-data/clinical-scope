@@ -9,6 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.mindray_respi_waves.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_reading import read_one
 from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,10 @@ class MindRayRespiWavesDataSource(DataSourceBase):
     @classmethod
     @time_it
     def _load(cls, file_path: Path) -> pd.DataFrame:
+        return read_one(file_path, cls._read_file, cls.DATASOURCE_NAME)
+
+    @classmethod
+    def _read_file(cls, file_path: Path) -> pd.DataFrame:
         """
         Load a MindRay Respi Waves export, one waveform block per row.
 

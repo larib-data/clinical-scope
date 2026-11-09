@@ -10,6 +10,7 @@ from defusedxml.ElementTree import parse as parse_xml
 import clinical_scope.datasource.sources.mindray_scope.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_reading import read_each
 from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
@@ -229,6 +230,17 @@ def _read_xml_recording(file_path: Path) -> pd.DataFrame | None:
     return _format_xml_waveform_data(df_waveform)
 
 
+def _read_recording(file_path: Path) -> pd.DataFrame | None:
+    """Read one recording, dispatching on its extension."""
+    suffix = file_path.suffix.lower()
+    if suffix == ".csv":
+        return _read_csv_recording(file_path)
+    if suffix == ".xml":
+        return _read_xml_recording(file_path)
+    msg = f"Unsupported extension: '{file_path.suffix}'"
+    raise NotImplementedError(msg)
+
+
 def _reject_mixed_timezone_awareness(df_list: list[pd.DataFrame], file_names: list[str]) -> None:
     """
     Raise when *df_list* mixes tz-naive (.csv) and tz-aware (.xml) frames.
@@ -259,80 +271,10 @@ class MindRayScopeDataSource(DataSourceBase):
     @classmethod
     @time_it
     def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
-        extension_preference = options_naming.FILE_EXTENSIONS
-
-        file_dict = {}
-        for file_path in file_path_list:
-            base_name = file_path.stem
-            current_ext = file_path.suffix.lower()
-
-            if base_name not in file_dict:
-                file_dict[base_name] = file_path
-            else:
-                existing_ext = file_dict[base_name].suffix.lower()
-
-                try:
-                    current_priority = extension_preference.index(current_ext)
-                except ValueError:
-                    current_priority = len(extension_preference)
-
-                try:
-                    existing_priority = extension_preference.index(existing_ext)
-                except ValueError:
-                    existing_priority = len(extension_preference)
-
-                # Lower index = preferred extension.
-                if current_priority < existing_priority:
-                    logger.debug(
-                        "Replacing '%s' with '%s' (higher priority extension)",
-                        file_dict[base_name].name,
-                        file_path.name,
-                    )
-                    file_dict[base_name] = file_path
-
-        file_path_list = list(file_dict.values())
-        logger.debug("After deduplication: %d files to process", len(file_path_list))
-
         optimize_storage_dtypes = True
-        df_list = []
-        loaded_file_names = []
-
-        for file_path in file_path_list:
-            # The monitor can export a recording with no data; one such file must not fail
-            # the whole folder. A corrupt (non-empty) file still raises below.
-            if file_path.stat().st_size == 0:
-                logger.warning(
-                    "[%s] Skipping empty file '%s'.", cls.DATASOURCE_NAME, file_path.name
-                )
-                continue
-
-            try:
-                if file_path.suffix == ".csv":
-                    df_local = _read_csv_recording(file_path)
-                elif file_path.suffix == ".xml":
-                    df_local = _read_xml_recording(file_path)
-                else:
-                    continue
-            except Exception as exc:
-                msg = f"Cannot read {cls.DATASOURCE_NAME} file '{file_path.name}': {exc}"
-                raise ValueError(msg) from exc
-
-            if df_local is None:
-                logger.warning(
-                    "[%s] Skipping '%s': it holds no waveform samples.",
-                    cls.DATASOURCE_NAME,
-                    file_path.name,
-                )
-                continue
-            df_list.append(df_local)
-            loaded_file_names.append(file_path.name)
-
-        if not df_list:
-            msg = (
-                f"All {len(file_path_list)} {cls.DATASOURCE_NAME} file(s) are empty: "
-                f"{', '.join(p.name for p in file_path_list)}"
-            )
-            raise ValueError(msg)
+        recordings = read_each(file_path_list, _read_recording, cls.DATASOURCE_NAME)
+        df_list = [df_local for _path, df_local in recordings]
+        loaded_file_names = [path.name for path, _df_local in recordings]
 
         _reject_mixed_timezone_awareness(df_list, loaded_file_names)
 

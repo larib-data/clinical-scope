@@ -61,6 +61,26 @@ def deduplicate_by_stem(files: list[Path], extensions: list[str]) -> list[Path]:
     return list(kept_by_stem.values())
 
 
+def _drop_empty_files(files: list[Path], datasource_name: str, folder_path: Path) -> list[Path]:
+    """
+    Return *files* without the zero-byte ones, warning once per file dropped.
+
+    Runs before any selection: an empty export must neither fail the folder nor shadow a
+    same-stem sibling that holds the data.
+    """
+    kept = []
+    for file in sorted(files):
+        if file.stat().st_size == 0:
+            logger.warning("[%s] Skipping empty file '%s'.", datasource_name, file.name)
+        else:
+            kept.append(file)
+    if not kept:
+        logger.warning(
+            "%d %s files found in '%s', all empty.", len(files), datasource_name, folder_path
+        )
+    return kept
+
+
 def find_files(
     folder_path: Path,
     extensions: list[str],
@@ -72,12 +92,15 @@ def find_files(
     """
     Find data files in *folder_path*.
 
+    Zero-byte files are dropped first, in both modes, so they never count as a match; if every
+    match was empty, return ``None`` (the caller's "no data here").
+
     When *multi* is ``True``, return **all** files matching *extensions*, deduplicated by
     stem and sorted alphabetically, or ``None`` if none found.
 
     When *multi* is ``False``, return a **single** file (tiered disambiguation):
 
-    1. Collect files matching *extensions* (or all files if none given).
+    1. Collect non-empty files matching *extensions* (or all files if none given).
     2. If one match, return it.
     3. Deduplicate by stem: when multiple extensions exist for the same stem,
        keep the most preferred one (earliest in *extensions*).
@@ -97,6 +120,9 @@ def find_files(
         ]
         if not files:
             logger.debug("Could not find any %s files in folder '%s'", datasource_name, folder_path)
+            return None
+        files = _drop_empty_files(files, datasource_name, folder_path)
+        if not files:
             return None
         files = sorted(deduplicate_by_stem(files, extensions))
         logger.debug("Found %s: %s in folder %s", datasource_name, files, folder_path)
@@ -118,6 +144,10 @@ def find_files(
 
     if not matches:
         logger.warning("No file for '%s' found in folder '%s'.", datasource_name, folder_path)
+        return None
+
+    matches = _drop_empty_files(matches, datasource_name, folder_path)
+    if not matches:
         return None
 
     if len(matches) == 1:

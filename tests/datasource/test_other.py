@@ -672,8 +672,9 @@ class TestInspectUnreadableFile:
         return results[0], folder / name
 
     def test_empty_csv_keeps_the_underlying_reason(self, tmp_path, other_cls):
+        # A blank line, not zero bytes: discovery drops a zero-byte file before any reader runs.
         entry, _ = self._inspect_one(
-            tmp_path, other_cls, "empty_file.csv", lambda path: path.write_text("")
+            tmp_path, other_cls, "empty_file.csv", lambda path: path.write_text("\n")
         )
         assert "No columns to parse" in entry.error_message
 
@@ -689,7 +690,7 @@ class TestInspectUnreadableFile:
     def test_the_other_inspection_fields_are_untouched(self, tmp_path, other_cls):
         """The card prints file_path on its own line, so the message need not name the file."""
         entry, path = self._inspect_one(
-            tmp_path, other_cls, "empty_file.csv", lambda path: path.write_text("")
+            tmp_path, other_cls, "empty_file.csv", lambda path: path.write_text("\n")
         )
         assert entry.status == "load_error"
         assert entry.datasource_name == "other::empty_file"

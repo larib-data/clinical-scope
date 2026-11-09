@@ -1,5 +1,6 @@
 """Tests for mindray_respi_numerics datasource — pivot from rows to columns."""
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -91,3 +92,21 @@ class TestSnapshot:
         assert_or_update_snapshot(
             formatted_df, SNAPSHOT_DIR / self._DS / "formatted.parquet", update=update_snapshots
         )
+
+
+class TestEmptyAndUnreadableFile:
+    """An empty export is no data; a damaged one stops the load and is named."""
+
+    def test_zero_byte_file_is_no_data(self, tmp_path, mindray_respi_numerics_cls, caplog):
+        (tmp_path / "mndry_numerics_bloc_SYNTH.parquet").touch()
+
+        with caplog.at_level(logging.WARNING):
+            assert mindray_respi_numerics_cls._find(tmp_path) is None
+
+        assert "mndry_numerics_bloc_SYNTH.parquet" in caplog.text
+
+    def test_damaged_file_raises_naming_it(self, tmp_path, mindray_respi_numerics_cls):
+        (tmp_path / "mndry_numerics_bloc_SYNTH.parquet").write_bytes(b"not a parquet file")
+
+        with pytest.raises(ValueError, match=r"mndry_numerics_bloc_SYNTH\.parquet"):
+            mindray_respi_numerics_cls._load(mindray_respi_numerics_cls._find(tmp_path))

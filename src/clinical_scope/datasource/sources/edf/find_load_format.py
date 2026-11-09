@@ -9,6 +9,7 @@ import clinical_scope.constants as cst
 import clinical_scope.datasource.sources.edf.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_reading import read_each
 from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
@@ -90,10 +91,8 @@ class EDFDataSource(DataSourceBase):
     @classmethod
     @time_it
     def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
-        frames = [read_edf_file(file_path) for file_path in file_path_list]
-        if not frames:
-            return pd.DataFrame(index=pd.DatetimeIndex([], name=cst.DATETIME_INDEX_NAME))
-
+        recordings = read_each(file_path_list, read_edf_file, cls.DATASOURCE_NAME)
+        frames = [frame for _path, frame in recordings]
         df = frames[0] if len(frames) == 1 else pd.concat(frames)
         return deduplicate_then_sort_index(df)
 
