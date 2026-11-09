@@ -130,8 +130,9 @@ def _load_xml(path_xml: str) -> tuple[pd.DataFrame, pd.DataFrame]:
                 sample_rate_elem = segment.find("SampleRate")
                 sample_rate = sample_rate_elem.text if sample_rate_elem is not None else None
 
-                resolution_elem = segment.find("DataResolution")
-                resolution = float(resolution_elem.text) if resolution_elem is not None else 1.0
+                # Missing or empty: values stay unscaled; database_options can convert them.
+                resolution_text = (_safe_text(segment.find("DataResolution")) or "").strip()
+                resolution = float(resolution_text) if resolution_text else 1.0
 
                 data_elem = segment.find("Data")
                 data = data_elem.text.split(",") if data_elem is not None and data_elem.text else []
@@ -190,6 +191,42 @@ def _format_xml_waveform_data(df_waveform: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(
         {f"{waveform_type}({waveform_unit})": df["Value"].to_numpy()}, index=df["Time"]
     )
+
+
+def _read_csv_recording(file_path: Path) -> pd.DataFrame:
+    """
+    Read one tz-naive .csv recording.
+
+    Each row is one second: a start time, then samples spread evenly across that second.
+    """
+    name = _get_name_time_series(file_path)
+    data = pd.read_csv(file_path, delimiter=",", decimal=".", header=None)
+    data = _remove_polluted_columns(data)
+    time_rows = pd.to_datetime(data.iloc[:, 0])
+    signal = data.iloc[:, 1:].to_numpy().flatten()
+    samples_per_row = data.shape[1] - 1
+    timestamps = []
+    for row_start_time in time_rows:
+        row_times = np.linspace(
+            row_start_time.value,
+            (row_start_time + pd.Timedelta(seconds=1)).value,
+            samples_per_row,
+            endpoint=False,
+        )
+        timestamps.extend(pd.to_datetime(row_times))
+    return pd.DataFrame({name: signal}, index=timestamps)
+
+
+def _read_xml_recording(file_path: Path) -> pd.DataFrame | None:
+    """
+    Read one tz-aware .xml recording.
+
+    Returns None when the file parses but holds no waveform samples.
+    """
+    df_waveform, _df_patient = _load_xml(file_path)
+    if df_waveform.empty:
+        return None
+    return _format_xml_waveform_data(df_waveform)
 
 
 def _reject_mixed_timezone_awareness(df_list: list[pd.DataFrame], file_names: list[str]) -> None:
@@ -261,35 +298,41 @@ class MindRayScopeDataSource(DataSourceBase):
         loaded_file_names = []
 
         for file_path in file_path_list:
-            if file_path.suffix == ".csv":
-                # .csv are tz naive
-                name = _get_name_time_series(file_path)
-                data = pd.read_csv(file_path, delimiter=",", decimal=".", header=None)
-                data = _remove_polluted_columns(data)
-                time_rows = pd.to_datetime(data.iloc[:, 0])
-                signal = data.iloc[:, 1:].to_numpy().flatten()
-                samples_per_row = data.shape[1] - 1
-                timestamps = []
-                for row_start_time in time_rows:
-                    row_times = np.linspace(
-                        row_start_time.value,
-                        (row_start_time + pd.Timedelta(seconds=1)).value,
-                        samples_per_row,
-                        endpoint=False,
-                    )
-                    timestamps.extend(pd.to_datetime(row_times))
-                df_local = pd.DataFrame({name: signal}, index=timestamps)
+            # The monitor can export a recording with no data; one such file must not fail
+            # the whole folder. A corrupt (non-empty) file still raises below.
+            if file_path.stat().st_size == 0:
+                logger.warning(
+                    "[%s] Skipping empty file '%s'.", cls.DATASOURCE_NAME, file_path.name
+                )
+                continue
 
-                df_list.append(df_local)
-                loaded_file_names.append(file_path.name)
+            try:
+                if file_path.suffix == ".csv":
+                    df_local = _read_csv_recording(file_path)
+                elif file_path.suffix == ".xml":
+                    df_local = _read_xml_recording(file_path)
+                else:
+                    continue
+            except Exception as exc:
+                msg = f"Cannot read {cls.DATASOURCE_NAME} file '{file_path.name}': {exc}"
+                raise ValueError(msg) from exc
 
-            elif file_path.suffix == ".xml":
-                # .xml seems tz aware
-                df_waveform, _df_patient = _load_xml(file_path)
-                df_local = _format_xml_waveform_data(df_waveform)
+            if df_local is None:
+                logger.warning(
+                    "[%s] Skipping '%s': it holds no waveform samples.",
+                    cls.DATASOURCE_NAME,
+                    file_path.name,
+                )
+                continue
+            df_list.append(df_local)
+            loaded_file_names.append(file_path.name)
 
-                df_list.append(df_local)
-                loaded_file_names.append(file_path.name)
+        if not df_list:
+            msg = (
+                f"All {len(file_path_list)} {cls.DATASOURCE_NAME} file(s) are empty: "
+                f"{', '.join(p.name for p in file_path_list)}"
+            )
+            raise ValueError(msg)
 
         _reject_mixed_timezone_awareness(df_list, loaded_file_names)
 
