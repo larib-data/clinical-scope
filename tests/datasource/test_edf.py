@@ -301,7 +301,9 @@ class TestEmptyAndUnreadableFiles:
         from clinical_scope.datasource.sources.edf import find_load_format
 
         monkeypatch.setattr(
-            find_load_format, "read_edf_file", lambda _path: pd.DataFrame(index=pd.DatetimeIndex([]))
+            find_load_format,
+            "read_edf_file",
+            lambda _path: pd.DataFrame(index=pd.DatetimeIndex([])),
         )
 
         df = edf_cls._load([tmp_path / "no_channels.edf"])

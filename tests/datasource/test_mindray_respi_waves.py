@@ -140,7 +140,7 @@ class TestEmptyAndUnreadableFile:
         assert "mndry_waveform_bloc_SYNTH.parquet" in caplog.text
 
     def test_damaged_file_raises_naming_it(self, tmp_path, mindray_respi_waves_cls):
-        (tmp_path / "mndry_waveform_bloc_SYNTH.parquet").write_bytes(b'not a parquet file')
+        (tmp_path / "mndry_waveform_bloc_SYNTH.parquet").write_bytes(b"not a parquet file")
 
         with pytest.raises(ValueError, match=r"mndry_waveform_bloc_SYNTH\.parquet"):
             mindray_respi_waves_cls._load(mindray_respi_waves_cls._find(tmp_path))

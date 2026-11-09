@@ -93,7 +93,8 @@ def read_recording_header(filepath: Path) -> tuple[datetime, dict[str, str]]:
 
     missing_header_msg = (
         f"it carries no recording header ('{options_naming.REFERENCE_TIME_FIELD}' start time "
-        "and channel names); the file that carries it may be missing or empty"
+        "and channel names); if it is not the recording's first file, the first file may be "
+        "missing or empty"
     )
     start_time = parse_header_info(lines).get(options_naming.REFERENCE_TIME_FIELD)
     if start_time is None:

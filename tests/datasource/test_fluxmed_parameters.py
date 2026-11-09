@@ -93,7 +93,9 @@ class TestEmptyAndUnreadableFile:
         assert "patient_SYNTH 04_09_15-08_12_33 Parameters.txt" in caplog.text
 
     def test_damaged_file_raises_naming_it(self, tmp_path, fluxmed_parameters_cls):
-        (tmp_path / "patient_SYNTH 04_09_15-08_12_33 Parameters.txt").write_bytes(b'no header in here\n1 2 3\n')
+        (tmp_path / "patient_SYNTH 04_09_15-08_12_33 Parameters.txt").write_bytes(
+            b"no header in here\n1 2 3\n"
+        )
 
         with pytest.raises(ValueError, match=r"patient_SYNTH 04_09_15-08_12_33 Parameters\.txt"):
             fluxmed_parameters_cls._load(fluxmed_parameters_cls._find(tmp_path))

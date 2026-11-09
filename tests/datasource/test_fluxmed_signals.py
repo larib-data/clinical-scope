@@ -111,7 +111,9 @@ class TestEmptyAndUnreadableFile:
         assert "patient_SYNTH_04_09_15-08_12_33 Signals.txt" in caplog.text
 
     def test_damaged_file_raises_naming_it(self, tmp_path, fluxmed_signals_cls):
-        (tmp_path / "patient_SYNTH_04_09_15-08_12_33 Signals.txt").write_bytes(b'\xff\xfe\x00 damaged \x81\n')
+        (tmp_path / "patient_SYNTH_04_09_15-08_12_33 Signals.txt").write_bytes(
+            b"\xff\xfe\x00 damaged \x81\n"
+        )
 
         with pytest.raises(ValueError, match=r"patient_SYNTH_04_09_15-08_12_33 Signals\.txt"):
             fluxmed_signals_cls._load(fluxmed_signals_cls._find(tmp_path))
