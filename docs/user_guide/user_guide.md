@@ -615,7 +615,7 @@ all_anns = load_database_annotations("/data")
 
 # Configuration File Reference
 
-## patient_options.json
+## patient_options.json {#patient_optionsjson}
 
 This file defines patient-specific settings. It is automatically saved to the `clinical_scope_output/`
 subfolder each time you click "Process visualization".
@@ -744,7 +744,7 @@ source key in this file is what activates that source; removing it disables it e
 | `unit` | string | `""` | Unit string shown on the Y-axis (e.g., `"mmHg"`, `"cmH2O"`). |
 | `unit_conversion` | float | `1.0` | Multiplication factor applied to raw values for unit conversion. On a [derived signal](#derived-signals), it multiplies the derived signal's own result instead, and a value equal to its `source`'s is ignored as copied. |
 | `range` | `[min, max]` or null | auto | Fixed Y-axis range. Either bound can be `null` for auto-scaling. |
-| `priority` | float | source default | Plot ordering priority (lower = higher on page). Signals with the same priority share a subplot. |
+| `priority` | float | source default | Plot ordering priority (lower = higher on page). It only orders subplots and never puts two signals on the same one — use `grouped_fields` (the `groups` column in Excel) for that. A group is placed at the average priority of its members, and a member with no priority, here or in [`numerics`](#numerics-block-datasource-level-defaults), counts as a very large value: one such member pulls its group towards the bottom of the page. To place a group predictably, give all its members the same priority. |
 | `color` | string | auto | Line color (any CSS color string, e.g., `"red"`, `"#1f77b4"`). |
 | `visible` | boolean | `true` | Set to `false` to load the signal but hide it from the plot by default. |
 | `line_dash` | string | `"solid"` | Line style: `"solid"`, `"dash"`, `"dot"`, `"dashdot"`. |
@@ -769,7 +769,7 @@ The `numerics` block sets **default values** for every signal of a datasource wi
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `period_resampling` | float | source default | Resampling period in seconds, applied to every signal in this datasource. |
-| `priority` | float | source default | Default plot priority for numerics (lower = higher on page). Overridden per signal by `signals.<name>.priority`. |
+| `priority` | float | source default | Default plot priority for every signal of this datasource (lower = higher on page). Overridden per signal by `signals.<name>.priority`. |
 
 > In the Excel format, these values are set via the **sentinel row** (`signal = *`).
 > See [database_options.xlsx](#database_optionsxlsx).
@@ -985,7 +985,7 @@ The **Scope** column below indicates where each field is meaningful:
 | `unit_conversion` | No | Signal | Numeric multiplier for unit conversion. On a [derived signal](#derived-signals), it multiplies the derived signal's own result instead, and a value equal to its `source`'s is ignored as copied. |
 | `range_min` | No | Signal | Minimum Y-axis value. |
 | `range_max` | No | Signal | Maximum Y-axis value. |
-| `priority` | No | Both | Plot priority (float). In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. |
+| `priority` | No | Both | Plot priority (float; lower = higher on page). In a sentinel row sets the datasource-level default; in a signal row overrides it for that signal only. It orders subplots and never merges them — use `groups` for that (see [`priority`](#per-signal-fields-reference-signalssignal_name)). |
 | `color` | No | Signal | CSS color string. |
 | `visible` | No | Signal | `yes` / `no` (default: `yes`). Set `no` to draw the signal but start it hidden — it stays in the legend, and one click brings it back. Accepts `yes`, `1`, `true`, `oui`, `vrai` (case-insensitive). |
 | `line_dash` | No | Signal | `solid`, `dash`, `dot`, `dashdot`. |
