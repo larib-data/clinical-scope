@@ -615,7 +615,7 @@ all_anns = load_database_annotations("/data")
 
 # Configuration File Reference
 
-## patient_options.json
+## patient_options.json {#patient_optionsjson}
 
 This file defines patient-specific settings. It is automatically saved to the `clinical_scope_output/`
 subfolder each time you click "Process visualization".
