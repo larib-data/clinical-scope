@@ -1,5 +1,6 @@
 """Tests for mindray_respi_waves datasource — waveform block expansion."""
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -125,3 +126,21 @@ class TestTraceOptions:
             formatted_df, mindray_respi_waves_cls, {"trace_options": {"mode": "lines+markers"}}
         )
         assert all(sig.trace.line.width == 1.0 for sig in signals)
+
+
+class TestEmptyAndUnreadableFile:
+    """An empty export is no data; a damaged one stops the load and is named."""
+
+    def test_zero_byte_file_is_no_data(self, tmp_path, mindray_respi_waves_cls, caplog):
+        (tmp_path / "mndry_waveform_bloc_SYNTH.parquet").touch()
+
+        with caplog.at_level(logging.WARNING):
+            assert mindray_respi_waves_cls._find(tmp_path) is None
+
+        assert "mndry_waveform_bloc_SYNTH.parquet" in caplog.text
+
+    def test_damaged_file_raises_naming_it(self, tmp_path, mindray_respi_waves_cls):
+        (tmp_path / "mndry_waveform_bloc_SYNTH.parquet").write_bytes(b'not a parquet file')
+
+        with pytest.raises(ValueError, match=r"mndry_waveform_bloc_SYNTH\.parquet"):
+            mindray_respi_waves_cls._load(mindray_respi_waves_cls._find(tmp_path))

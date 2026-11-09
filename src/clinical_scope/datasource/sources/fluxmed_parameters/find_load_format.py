@@ -8,6 +8,7 @@ import pandas as pd
 import clinical_scope.datasource.sources.fluxmed_parameters.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_reading import read_one
 from clinical_scope.io.time_axis import set_datetime_index
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,10 @@ class FluxmedParametersDataSource(DataSourceBase):
     @classmethod
     @time_it
     def _load(cls, file_path: Path) -> pd.DataFrame:
+        return read_one(file_path, cls._read_file, cls.DATASOURCE_NAME)
+
+    @classmethod
+    def _read_file(cls, file_path: Path) -> pd.DataFrame:
         if file_path.suffix.lower() == ".parquet":
             df = set_datetime_index(pd.read_parquet(file_path))
         elif file_path.suffix.lower() in [".txt", ".csv"]:

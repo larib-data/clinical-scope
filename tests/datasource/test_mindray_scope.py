@@ -100,40 +100,58 @@ class TestEmptyFiles:
         alone = mindray_scope_cls._load([tmp_path / good_xml.name])
 
         with caplog.at_level(logging.WARNING):
-            df = mindray_scope_cls._load([tmp_path / good_xml.name, empty])
+            df = mindray_scope_cls._load(mindray_scope_cls._find(tmp_path))
 
-        assert list(df.columns) == list(alone.columns)
-        assert len(df) == len(alone)
+        pd.testing.assert_frame_equal(df, alone)
         assert empty.name in caplog.text
 
-    def test_xml_without_samples_is_skipped(self, tmp_path, good_xml, mindray_scope_cls):
+    def test_xml_without_samples_is_skipped(self, tmp_path, good_xml, mindray_scope_cls, caplog):
         shutil.copy(good_xml, tmp_path)
         no_samples = tmp_path / "ECG_I-20040915081233~20040915090233.xml"
         no_samples.write_text("<?xml version='1.0'?>\n<DataExport><Patient/></DataExport>\n")
 
         alone = mindray_scope_cls._load([tmp_path / good_xml.name])
 
-        df = mindray_scope_cls._load([tmp_path / good_xml.name, no_samples])
+        with caplog.at_level(logging.WARNING):
+            df = mindray_scope_cls._load([tmp_path / good_xml.name, no_samples])
 
         assert list(df.columns) == list(alone.columns)
         assert len(df) == len(alone)
+        assert no_samples.name in caplog.text
 
     def test_zero_byte_csv_is_skipped(self, tmp_path, good_csv, mindray_scope_cls):
         shutil.copy(good_csv, tmp_path)
         empty = tmp_path / "ECG_II-20040915101233~20040915132151.csv"
         empty.touch()
 
-        df = mindray_scope_cls._load([tmp_path / good_csv.name, empty])
+        df = mindray_scope_cls._load(mindray_scope_cls._find(tmp_path))
 
         assert list(df.columns) == ["P4"]
 
-    def test_all_files_empty_raises(self, tmp_path, mindray_scope_cls):
-        first = tmp_path / "Art-20040915081233~20040915090233.xml"
-        second = tmp_path / "Pleth-20040915081233~20040915090233.csv"
-        first.touch()
-        second.touch()
+    def test_zero_byte_xml_does_not_shadow_its_csv(self, tmp_path, good_csv, mindray_scope_cls):
+        csv = tmp_path / good_csv.name
+        shutil.copy(good_csv, csv)
+        (tmp_path / "P4-20040915101233~20040915123642.xml").touch()
 
-        with pytest.raises(ValueError, match="empty"):
+        assert mindray_scope_cls._find(tmp_path) == [csv]
+
+    def test_all_files_empty_is_no_data(self, tmp_path, mindray_scope_cls, caplog):
+        (tmp_path / "Art-20040915081233~20040915090233.xml").touch()
+        (tmp_path / "Pleth-20040915081233~20040915090233.csv").touch()
+
+        with caplog.at_level(logging.WARNING):
+            assert mindray_scope_cls._find(tmp_path) is None
+
+        assert "all empty" in caplog.text
+
+    def test_all_files_without_samples_raises(self, tmp_path, mindray_scope_cls):
+        hollow = "<?xml version='1.0'?>\n<DataExport><Patient/></DataExport>\n"
+        first = tmp_path / "Art-20040915081233~20040915090233.xml"
+        second = tmp_path / "Pleth-20040915081233~20040915090233.xml"
+        first.write_text(hollow)
+        second.write_text(hollow)
+
+        with pytest.raises(ValueError, match=r"Art-20040915081233~20040915090233\.xml"):
             mindray_scope_cls._load([first, second])
 
     def test_malformed_xml_names_the_file(self, tmp_path, good_xml, mindray_scope_cls):

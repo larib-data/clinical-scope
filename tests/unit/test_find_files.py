@@ -10,6 +10,7 @@ with all disambiguation tiers:
   5. Keyword filtering (ordered, progressive narrowing)
 """
 
+import logging
 from pathlib import Path
 
 from clinical_scope.io.discovery import find_files
@@ -20,11 +21,11 @@ from clinical_scope.io.discovery import find_files
 
 
 def create(tmp_path: Path, *names: str) -> list[Path]:
-    """Touch files and return their paths in the same order."""
+    """Create non-empty files and return their paths in the same order."""
     paths = []
     for name in names:
         p = tmp_path / name
-        p.touch()
+        p.write_text("data")
         paths.append(p)
     return paths
 
@@ -80,8 +81,7 @@ class TestFindFilesMultiMode:
         assert len(result) == 2  # both returned, keyword not applied
 
     def test_extension_case_insensitive(self, tmp_path):
-        p = tmp_path / "DATA.CSV"
-        p.touch()
+        (p,) = create(tmp_path, "DATA.CSV")
         result = find_files(tmp_path, [".csv"], "ds", multi=True)
         assert result == [p]
 
@@ -128,8 +128,7 @@ class TestFindFilesSingleExtensionFiltering:
         assert result == path[-1]
 
     def test_extension_matching_is_case_insensitive(self, tmp_path):
-        p = tmp_path / "DATA.CSV"
-        p.touch()
+        (p,) = create(tmp_path, "DATA.CSV")
         result = find_files(tmp_path, [".csv"], "ds")
         assert result == p
 
@@ -371,3 +370,67 @@ class TestFindFilesSingleCombined:
         (p,) = create(tmp_path, "no_extension_file")
         result = find_files(tmp_path, [], "ds")
         assert result == p
+
+
+# ===========================================================================
+# Empty (zero-byte) files — dropped before any selection
+# ===========================================================================
+
+
+class TestFindFilesEmptyFiles:
+    """A zero-byte file is never selected, and never shadows a non-empty sibling."""
+
+    def test_multi_empty_preferred_extension_does_not_shadow(self, tmp_path):
+        empty = tmp_path / "Art-20040915081233.xml"
+        empty.touch()
+        (good,) = create(tmp_path, "Art-20040915081233.csv")
+
+        result = find_files(tmp_path, [".xml", ".csv"], "mindray_scope", multi=True)
+
+        assert result == [good]
+
+    def test_multi_empty_file_is_named_in_a_warning(self, tmp_path, caplog):
+        (tmp_path / "Pleth-20040915081233.csv").touch()
+        create(tmp_path, "Art-20040915081233.csv")
+
+        with caplog.at_level(logging.WARNING):
+            find_files(tmp_path, [".xml", ".csv"], "mindray_scope", multi=True)
+
+        assert "Pleth-20040915081233.csv" in caplog.text
+
+    def test_multi_all_empty_returns_none_and_says_so(self, tmp_path, caplog):
+        (tmp_path / "a.csv").touch()
+        (tmp_path / "b.csv").touch()
+
+        with caplog.at_level(logging.WARNING):
+            result = find_files(tmp_path, [".csv"], "ds", multi=True)
+
+        assert result is None
+        assert "2 ds files found" in caplog.text
+        assert "all empty" in caplog.text
+
+    def test_single_empty_preferred_extension_does_not_shadow(self, tmp_path):
+        (tmp_path / "signals.parquet").touch()
+        (good,) = create(tmp_path, "signals.csv")
+
+        result = find_files(tmp_path, [".parquet", ".csv"], "ds")
+
+        assert result == good
+
+    def test_single_only_file_empty_returns_none_and_says_so(self, tmp_path, caplog):
+        (tmp_path / "parameters.txt").touch()
+
+        with caplog.at_level(logging.WARNING):
+            result = find_files(tmp_path, [".parquet", ".txt"], "ds")
+
+        assert result is None
+        assert "parameters.txt" in caplog.text
+        assert "all empty" in caplog.text
+
+    def test_single_no_extension_filter_drops_empty_files(self, tmp_path):
+        (tmp_path / "empty_export.dat").touch()
+        (good,) = create(tmp_path, "recording.dat")
+
+        result = find_files(tmp_path, [], "ds")
+
+        assert result == good

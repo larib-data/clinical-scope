@@ -1,5 +1,8 @@
 """Tests for servo_u datasource — multi-file .sta binary format."""
 
+import logging
+import shutil
+
 import pandas as pd
 import pytest
 
@@ -84,3 +87,44 @@ class TestSnapshot:
         assert_or_update_snapshot(
             formatted_df, SNAPSHOT_DIR / self._DS / "formatted.parquet", update=update_snapshots
         )
+
+
+class TestEmptyAndUnreadableFiles:
+    """An empty file is skipped; a damaged one stops the load and is named."""
+
+    @pytest.fixture
+    def copied_folder(self, tmp_path, ds_folder):
+        for path in sorted(ds_folder.glob("*.sta")):
+            shutil.copy(path, tmp_path)
+        return tmp_path
+
+    def test_zero_byte_sibling_is_skipped(self, copied_folder, servo_u_cls, caplog):
+        alone = servo_u_cls._load(servo_u_cls._find(copied_folder))
+        (copied_folder / "Curves_00000003.sta").touch()
+
+        with caplog.at_level(logging.WARNING):
+            df = servo_u_cls._load(servo_u_cls._find(copied_folder))
+
+        pd.testing.assert_frame_equal(df, alone)
+        assert "Curves_00000003.sta" in caplog.text
+
+    def test_garbage_sibling_raises_naming_it(self, copied_folder, servo_u_cls):
+        (copied_folder / "Curves_00000003.sta").write_text("not a servo export\n")
+
+        with pytest.raises(ValueError, match=r"Curves_00000003\.sta"):
+            servo_u_cls._load(servo_u_cls._find(copied_folder))
+
+    def test_only_zero_byte_files_is_no_data(self, tmp_path, servo_u_cls, caplog):
+        (tmp_path / "Curves_00000000.sta").touch()
+        (tmp_path / "Curves_00000001.sta").touch()
+
+        with caplog.at_level(logging.WARNING):
+            assert servo_u_cls._find(tmp_path) is None
+
+        assert "all empty" in caplog.text
+
+    def test_zero_byte_header_file_names_the_next_file(self, copied_folder, servo_u_cls):
+        (copied_folder / "Curves_00000000.sta").write_bytes(b"")
+
+        with pytest.raises(ValueError, match=r"Curves_00000001\.sta.*header"):
+            servo_u_cls._load(servo_u_cls._find(copied_folder))

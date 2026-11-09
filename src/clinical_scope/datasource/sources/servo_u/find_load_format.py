@@ -8,6 +8,7 @@ import pandas as pd
 import clinical_scope.datasource.sources.servo_u.options as options_naming
 from clinical_scope.datasource.base import DataSourceBase
 from clinical_scope.datasource.timing import time_it
+from clinical_scope.io.file_reading import read_each, read_one
 from clinical_scope.io.time_axis import deduplicate_then_sort_index
 
 logger = logging.getLogger(__name__)
@@ -81,25 +82,42 @@ def extract_column_mapping_from_section(
     return mapping
 
 
-def parse_file(
-    filepath: Path,
-    start_time: datetime | None,
-    first_file: bool = False,
-    rename_map: dict[str, str] | None = None,
-) -> tuple[pd.DataFrame, datetime, dict[str, str] | None]:
+def read_recording_header(filepath: Path) -> tuple[datetime, dict[str, str]]:
     """
-    Parse one Servo U file into a frame indexed by absolute time.
+    Return the start time and column rename map from the %% header of *filepath*.
 
-    Set *first_file* for the folder's first file: only that one carries the %% header, so
-    it returns the *start_time* and *rename_map* the caller must pass into every later call.
+    Only a recording's first file carries the header; every later file is read against it.
     """
     with Path.open(filepath, "r", encoding="utf-8") as file:
         lines = file.readlines()
 
-    if first_file:
-        header_info = parse_header_info(lines)
-        start_time = header_info[options_naming.REFERENCE_TIME_FIELD]
+    missing_header_msg = (
+        f"it carries no recording header ('{options_naming.REFERENCE_TIME_FIELD}' start time "
+        "and channel names); the file that carries it may be missing or empty"
+    )
+    start_time = parse_header_info(lines).get(options_naming.REFERENCE_TIME_FIELD)
+    if start_time is None:
+        raise ValueError(missing_header_msg)
+    try:
         rename_map = extract_column_mapping_from_section(lines)
+    except ValueError as exc:
+        raise ValueError(missing_header_msg) from exc
+    return start_time, rename_map
+
+
+def parse_file(
+    filepath: Path,
+    start_time: datetime,
+    rename_map: dict[str, str],
+) -> pd.DataFrame:
+    """
+    Parse one Servo U file into a frame indexed by absolute time.
+
+    *start_time* and *rename_map* come from the recording's header file, read by
+    ``read_recording_header``: later files carry neither.
+    """
+    with Path.open(filepath, "r", encoding="utf-8") as file:
+        lines = file.readlines()
 
     table_header_index = None
     for line_index, line in enumerate(lines):
@@ -138,7 +156,7 @@ def parse_file(
         df[options_naming.COLUMN_RELATIVE_TIME], start_time
     )
 
-    return df, start_time, rename_map
+    return df
 
 
 class ServoUDataSource(DataSourceBase):
@@ -149,20 +167,15 @@ class ServoUDataSource(DataSourceBase):
     @classmethod
     @time_it
     def _load(cls, file_path_list: list[Path]) -> pd.DataFrame:
-        all_dfs = []
-        first_file_done = False
-        start_time = None
-        rename_map = None
-
-        for file_path in file_path_list:
-            if not first_file_done:
-                df_local, start_time, rename_map = parse_file(
-                    file_path, start_time, first_file=True
-                )
-                first_file_done = True
-            else:
-                df_local, _, _ = parse_file(file_path, start_time, rename_map=rename_map)
-            all_dfs.append(df_local)
+        start_time, rename_map = read_one(
+            file_path_list[0], read_recording_header, cls.DATASOURCE_NAME
+        )
+        recordings = read_each(
+            file_path_list,
+            lambda file_path: parse_file(file_path, start_time, rename_map),
+            cls.DATASOURCE_NAME,
+        )
+        all_dfs = [df_local for _path, df_local in recordings]
 
         df = pd.concat(all_dfs)
         return deduplicate_then_sort_index(df)

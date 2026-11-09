@@ -294,6 +294,8 @@ class OtherDataSource(DataSourceBase):
                 ):
                     grouped_fields[file_stem] = file_signal_raw_names
 
+            # other/ is a catch-all folder where a non-data CSV is expected, so an unreadable
+            # file is skipped, not fatal.
             except Exception:
                 logger.exception("Failed to process '%s', skipping", file_path.name)
                 continue

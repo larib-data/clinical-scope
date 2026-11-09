@@ -1,6 +1,8 @@
 """Tests for edf datasource — multi-file EDF/EDF+ binary format."""
 
 import datetime
+import logging
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -257,3 +259,51 @@ class TestSnapshot:
         assert_or_update_snapshot(
             formatted_df, SNAPSHOT_DIR / self._DS / "formatted.parquet", update=update_snapshots
         )
+
+
+class TestEmptyAndUnreadableFiles:
+    """An empty file is skipped; a damaged one stops the load and is named."""
+
+    @pytest.fixture
+    def copied_folder(self, tmp_path, ds_folder):
+        for path in sorted(ds_folder.glob("*.edf")):
+            shutil.copy(path, tmp_path)
+        return tmp_path
+
+    def test_zero_byte_sibling_is_skipped(self, copied_folder, edf_cls, caplog):
+        alone = edf_cls._load(edf_cls._find(copied_folder))
+        (copied_folder / "eeg_003.edf").touch()
+
+        with caplog.at_level(logging.WARNING):
+            df = edf_cls._load(edf_cls._find(copied_folder))
+
+        pd.testing.assert_frame_equal(df, alone)
+        assert "eeg_003.edf" in caplog.text
+
+    def test_truncated_sibling_raises_naming_it(self, copied_folder, edf_cls):
+        source = copied_folder / "eeg_001.edf"
+        (copied_folder / "eeg_003.edf").write_bytes(source.read_bytes()[:300])
+
+        with pytest.raises(ValueError, match=r"eeg_003\.edf"):
+            edf_cls._load(edf_cls._find(copied_folder))
+
+    def test_only_zero_byte_files_is_no_data(self, tmp_path, edf_cls, caplog):
+        (tmp_path / "eeg_001.edf").touch()
+        (tmp_path / "eeg_002.edf").touch()
+
+        with caplog.at_level(logging.WARNING):
+            assert edf_cls._find(tmp_path) is None
+
+        assert "all empty" in caplog.text
+
+    def test_channel_less_file_still_loads_as_empty(self, tmp_path, edf_cls, monkeypatch):
+        """A file read to no channels is an empty recording, not a skip and not an error."""
+        from clinical_scope.datasource.sources.edf import find_load_format
+
+        monkeypatch.setattr(
+            find_load_format, "read_edf_file", lambda _path: pd.DataFrame(index=pd.DatetimeIndex([]))
+        )
+
+        df = edf_cls._load([tmp_path / "no_channels.edf"])
+
+        assert df.empty

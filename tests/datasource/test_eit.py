@@ -1,5 +1,8 @@
 """Tests for eit datasource — .asc parser, day parameter, percentage columns."""
 
+import logging
+import shutil
+
 import pandas as pd
 import pytest
 
@@ -122,3 +125,37 @@ class TestSnapshot:
         assert_or_update_snapshot(
             formatted_df, SNAPSHOT_DIR / self._DS / "formatted.parquet", update=update_snapshots
         )
+
+
+class TestEmptyAndUnreadableFiles:
+    """An empty file is skipped; a damaged one stops the load and is named."""
+
+    @pytest.fixture
+    def copied_folder(self, tmp_path, ds_folder):
+        for path in sorted(ds_folder.glob("*.asc")):
+            shutil.copy(path, tmp_path)
+        return tmp_path
+
+    def test_zero_byte_sibling_is_skipped(self, copied_folder, eit_cls, caplog):
+        alone = eit_cls._load(eit_cls._find(copied_folder))
+        (copied_folder / "07_PEEP_Trial_02.asc").touch()
+
+        with caplog.at_level(logging.WARNING):
+            df = eit_cls._load(eit_cls._find(copied_folder))
+
+        pd.testing.assert_frame_equal(df, alone)
+        assert "07_PEEP_Trial_02.asc" in caplog.text
+
+    def test_garbage_sibling_raises_naming_it(self, copied_folder, eit_cls):
+        (copied_folder / "07_PEEP_Trial_02.asc").write_text("not an EIT export\n")
+
+        with pytest.raises(ValueError, match=r"07_PEEP_Trial_02\.asc"):
+            eit_cls._load(eit_cls._find(copied_folder))
+
+    def test_only_zero_byte_files_is_no_data(self, tmp_path, eit_cls, caplog):
+        (tmp_path / "06_PEEP_Trial_01.asc").touch()
+
+        with caplog.at_level(logging.WARNING):
+            assert eit_cls._find(tmp_path) is None
+
+        assert "06_PEEP_Trial_01.asc" in caplog.text

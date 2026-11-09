@@ -1,5 +1,6 @@
 """Tests for fluxmed_signals datasource — filename timestamp extraction."""
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -96,3 +97,21 @@ class TestSnapshot:
         assert_or_update_snapshot(
             formatted_df, SNAPSHOT_DIR / self._DS / "formatted.parquet", update=update_snapshots
         )
+
+
+class TestEmptyAndUnreadableFile:
+    """An empty export is no data; a damaged one stops the load and is named."""
+
+    def test_zero_byte_file_is_no_data(self, tmp_path, fluxmed_signals_cls, caplog):
+        (tmp_path / "patient_SYNTH_04_09_15-08_12_33 Signals.txt").touch()
+
+        with caplog.at_level(logging.WARNING):
+            assert fluxmed_signals_cls._find(tmp_path) is None
+
+        assert "patient_SYNTH_04_09_15-08_12_33 Signals.txt" in caplog.text
+
+    def test_damaged_file_raises_naming_it(self, tmp_path, fluxmed_signals_cls):
+        (tmp_path / "patient_SYNTH_04_09_15-08_12_33 Signals.txt").write_bytes(b'\xff\xfe\x00 damaged \x81\n')
+
+        with pytest.raises(ValueError, match=r"patient_SYNTH_04_09_15-08_12_33 Signals\.txt"):
+            fluxmed_signals_cls._load(fluxmed_signals_cls._find(tmp_path))
