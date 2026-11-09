@@ -38,6 +38,7 @@ Existing configuration files and `annotations.json` files load unchanged. The de
 
 ### Documentation
 - **`priority` orders subplots and never merges them.** The user guide said that signals with the same `priority` share a subplot, but only `groups` does that. It now explains how a group is placed: at the average priority of its members, where a member with no priority counts as a very large value. To place a group predictably, give all its members the same priority.
+- **In the PDF user guide, links to the *patient_options.json* section now work.** Three of them led nowhere.
 
 ---
 
