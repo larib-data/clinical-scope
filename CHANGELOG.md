@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [1.3.2] — 2026-11-09
+
+Derived signals, and fewer silent failures. A row of the configuration file can now draw a filtered, smoothed, differentiated or rescaled copy of another signal. Several ways in which data went missing without a word — an empty recording, a mis-spelled data source name, a timestamp column coarser than the samples — now either load or say so in the log.
+
+Existing configuration files and `annotations.json` files load unchanged. The derived-signal columns are optional, and a file that has never used them is read exactly as before.
+
 ### Added
 - **Derived signals: filter or smooth a signal from the configuration file.** A row of the `signals` sheet with a `source` and a `transform` draws a new curve computed from another signal of the same data source — for example `lowpass(cutoff_hz=0.5)` on an arterial pressure waveform, or `moving_average(window_s=60)` on heart rate. The quickest way to add one is to duplicate the source's row, rename it and fill in the two new columns: the copy keeps the source's groups, so it is drawn over the original. Five methods are available — `lowpass`, `highpass`, `bandpass`, `bandstop` and `moving_average` — with parameters in hertz and seconds, so one row behaves the same on a fast waveform and on once-per-second numerics. A derived signal can be grouped, looped and used in a spectrogram or a PSD like any other signal, but it exists in the plots only: it is not part of extracted data and Inspect does not list it. The demo configuration shows one of each kind, and the user guide's *Derived signals* section explains the rest.
 
@@ -23,6 +33,11 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - **An empty recording no longer stops a data source from loading.** One empty file in a data source folder — a recording the device exported with nothing in it — made the whole data source fail to load, often with an error that did not say which file was at fault; an empty file could even be picked over a good copy of the same recording saved in another format. Empty files are now skipped for every data source, with a warning in the log naming each one, and the other recordings load as usual; a folder in which every file is empty is reported as holding no data. A file that is damaged rather than empty still stops its data source from loading, and for Mindray, Servo-U, EIT, EDF and Fluxmed recordings the error now names it; in the `other` folder, which may hold files that are not recordings, such a file is still skipped with an error in the log. For Servo-U, whose first file carries the start time of the whole recording, an error now says so when that file is missing or empty.
 - **Mindray scope `.xml` recordings with a blank data resolution now load.** Some exports leave a recording's data resolution blank, and the whole folder failed to load. Such a recording now loads with its values as stored, as when the resolution is missing altogether; a `unit_conversion` in the configuration file scales them for display if needed.
+- **A mis-spelled data source name in the configuration file is now reported.** A section named `servo-u` instead of `servo_u` used to discard that device's settings without a word, and the run simply loaded nothing for it. The file now loads with a warning that names the section and lists the names it may take: a data source, `global`, or `other::<file name>`. In the app the warning shows in orange as soon as the file is uploaded.
+- **Rows dropped on duplicate timestamps are now reported.** When several rows share a timestamp, only the first is kept, and this used to happen silently. A CSV whose time column is coarser than its sampling, such as a 100 Hz channel stamped to the second, lost 99 rows in 100 and still drew a plausible curve. Each drop is now logged with its row counts and, for files in `other/`, the file's name. What is kept has not changed.
+
+### Documentation
+- **`priority` orders subplots and never merges them.** The user guide said that signals with the same `priority` share a subplot, but only `groups` does that. It now explains how a group is placed: at the average priority of its members, where a member with no priority counts as a very large value. To place a group predictably, give all its members the same priority.
 
 ---
 
